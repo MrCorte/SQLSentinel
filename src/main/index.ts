@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerIpcHandlers } from './ipc/handlers'
+import { initDb, closeDb, defaultDbPath } from './store/database'
 
 function createWindow(): void {
   // Create the browser window.
@@ -14,7 +15,9 @@ function createWindow(): void {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false
     }
   })
 
@@ -40,6 +43,9 @@ function createWindow(): void {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
+  // Inizializza SQLite — deve essere il primo statement prima di qualsiasi IPC handler
+  initDb(defaultDbPath(app.getPath('appData')))
+
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
 
@@ -68,6 +74,7 @@ app.whenReady().then(() => {
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
+  closeDb()
   if (process.platform !== 'darwin') {
     app.quit()
   }

@@ -1,0 +1,28 @@
+{
+    "permissions": {
+        "allow": [
+            "Bash(npm run *)",
+            "Bash(git *)",
+            "Bash(mkdir *)",
+            "Read(**)",
+            "Edit(**)",
+            "Write(**)"
+        ],
+        "deny": [
+            "Bash(rm -rf *)"
+        ]
+    },
+    "hooks": {
+        "PostToolUse": [
+            {
+                "matcher": "Edit(src/**/*.ts)",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "npm run typecheck 2>&1 | tail -5"
+                    }
+                ]
+            }
+        ]
+    }
+}

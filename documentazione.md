@@ -49,3 +49,49 @@ Aggiunti script:
 npm run test          # esecuzione singola
 npm run test:watch    # watch mode
 ```
+
+---
+
+## FASE 2 — Modulo IPC (2026-03-16)
+
+### File creati
+
+#### `src/main/ipc/types.ts`
+Definizioni dei canali IPC e tipi request/response:
+- `IpcChannel` (enum) — nomi canali come stringhe tipizzate. Usato `enum` invece di `const enum` per evitare problemi di inlining cross-file con esbuild/electron-vite.
+- `IpcResult<T>` — envelope unificato `{ ok: true; data: T } | { ok: false; error: string }`. Garantisce che il renderer non riceva mai stack trace raw.
+- Tipi request: `ManualServerRequest`, `RemoveServerRequest`
+- Tipi response: alias `ScanSubnetResponse`, `AddServerManualResponse`, `GetServersResponse`, `RemoveServerResponse`
+
+#### `src/main/ipc/handlers.ts`
+Registrazione handler `ipcMain.handle()` per tutti i canali:
+- `SCAN_SUBNET` — chiama `scanSubnet()`, invia progress via `event.sender.send(SCAN_PROGRESS, ...)`, restituisce solo i server reachable.
+- `ADD_SERVER_MANUAL` — esegue `scanHost()` (timeout 2s) per popolare `reachable`/`responseTimeMs`, poi persiste il server.
+- `GET_SERVERS` — restituisce copia dello store in-memory.
+- `REMOVE_SERVER` — filtra lo store per chiave `ip:port`.
+- Store in-memory temporaneo (array `knownServers`) — verrà sostituito da SQLite in FASE 4.
+- Errori loggati via `console.error` con solo `err.message`, mai stack trace al renderer.
+
+### File modificati
+
+#### `src/preload/index.ts`
+Espone oggetto `sqlSentinel` tipizzato via `contextBridge.exposeInMainWorld('sqlSentinel', ...)`:
+- `scanSubnet(options)` → `ipcRenderer.invoke(SCAN_SUBNET)`
+- `onScanProgress(callback)` → `ipcRenderer.on(SCAN_PROGRESS, ...)`, ritorna cleanup `() => void`
+- `addServerManual(req)` → `ipcRenderer.invoke(ADD_SERVER_MANUAL)`
+- `getServers()` → `ipcRenderer.invoke(GET_SERVERS)`
+- `removeServer(req)` → `ipcRenderer.invoke(REMOVE_SERVER)`
+
+#### `src/preload/index.d.ts`
+Aggiunta dichiarazione `window.sqlSentinel: SqlSentinelAPI`. Tipi ridichiarati inline (non importati da `src/main/`) perché questo file è compilato con `tsconfig.web.json` che non include il main process. I tipi exportati (`DiscoveredServer`, `ScanOptions`, `ScanProgress`, ecc.) sono importabili dal renderer via path relativo.
+
+#### `src/main/index.ts`
+Aggiunto import e chiamata `registerIpcHandlers()` nella callback `app.whenReady()`.
+
+### File creati (renderer)
+
+#### `src/renderer/src/hooks/useDiscovery.ts`
+Hook React per la pagina Discovery:
+- Stato: `servers: DiscoveredServer[]`, `isScanning: boolean`, `progress: ScanProgress | null`, `error: string | null`
+- `scan(options)` — chiama `window.sqlSentinel.scanSubnet()`, sottoscrive progress events, gestisce cleanup del listener nel `finally`.
+- Importa i tipi da `src/preload/index.d.ts` (path relativo `../../../preload/index`) — funziona perché `tsconfig.web.json` include `src/preload/*.d.ts`.

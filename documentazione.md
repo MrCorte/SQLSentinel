@@ -132,3 +132,35 @@ Collector principale:
 - Connessione fallita → `rejects.toThrow('Login failed')`
 - Timeout → `rejects.toThrow('Connection timeout')`
 - Query parziale fallita (backup negato su msdb) → `backupStatus: []`, le altre query OK, `close()` sempre chiamato
+
+---
+
+## FASE 4 — Modulo Store (2026-03-16)
+
+### File creati
+
+#### `src/main/store/types.ts`
+- `StoredServer` — record persistito su SQLite. `encryptedPassword` marcato con commento "mai loggare".
+- `MetricsSnapshot` — snapshot grezzo con `metricsJson: string` (ServerMetrics serializzato).
+
+#### `src/main/store/database.ts`
+- Pattern `initDb(path) / getDb() / closeDb()` — il path viene passato dall'esterno (main process usa `app.getPath('appData')`, test usa `':memory:'`). Nessuna dipendenza da Electron in questo modulo.
+- `defaultDbPath(appDataPath)` — helper per costruire il path in produzione (`%APPDATA%/sqlsentinel/data.db`).
+- Schema DDL: tabella `servers` con UNIQUE su `(ip, port)`, tabella `metrics_snapshots` con FK CASCADE, indici su `server_id` e `collected_at`.
+- WAL mode e `foreign_keys = ON` impostati via `PRAGMA`.
+
+#### `src/main/store/serverRepository.ts`
+- `upsert(server)` — `INSERT ... ON CONFLICT(ip, port) DO UPDATE SET ...`. Non aggiorna `id` né `added_at` su conflitto. Restituisce il record effettivo (risolve l'id pre-esistente).
+- `findAll()`, `findById(id)`, `remove(id)`, `updateLastSeen(id, date)`, `updateLastMetrics(id, date)`.
+- Mapping `ServerRow` → `StoredServer`: INTEGER → boolean per `use_windows_auth`, TEXT ISO 8601 → Date per i campi data.
+
+#### `src/main/store/metricsRepository.ts`
+- `save(serverId, metrics)` — `JSON.stringify(metrics)` + UUID generato con `randomUUID()`.
+- `findLatest(serverId)` — `ORDER BY collected_at DESC LIMIT 1`, deserializza con reviver per ripristinare le `Date` da stringhe ISO 8601.
+- `findHistory(serverId, limitDays)` — usa `datetime('now', '-N days')` di SQLite.
+- `cleanup(retentionDays)` — `DELETE WHERE collected_at < datetime('now', '-N days')`.
+
+#### `src/main/store/store.test.ts`
+- `initDb(':memory:')` in `beforeEach`, `closeDb()` in `afterEach` — ogni test parte da schema vuoto.
+- **serverRepository**: insert, upsert (no duplicati per ip:port), findById, remove, updateLastSeen, conversione boolean/Date.
+- **metricsRepository**: save+findLatest, deserializzazione Date, snapshot più recente su più record, findHistory, cleanup (verifica eliminazione vecchi + conservazione recenti).

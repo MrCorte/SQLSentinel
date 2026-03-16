@@ -95,3 +95,40 @@ Hook React per la pagina Discovery:
 - Stato: `servers: DiscoveredServer[]`, `isScanning: boolean`, `progress: ScanProgress | null`, `error: string | null`
 - `scan(options)` — chiama `window.sqlSentinel.scanSubnet()`, sottoscrive progress events, gestisce cleanup del listener nel `finally`.
 - Importa i tipi da `src/preload/index.d.ts` (path relativo `../../../preload/index`) — funziona perché `tsconfig.web.json` include `src/preload/*.d.ts`.
+
+---
+
+## FASE 3 — Modulo Collectors (2026-03-16)
+
+### File creati
+
+#### `src/main/collectors/types.ts`
+Tipi per le metriche SQL Server:
+- `ServerConnection` — credenziali e coordinate di connessione. `instanceName` è solo per display: non viene passato al driver perché SQL Browser è disabilitato e la porta è sempre esplicita.
+- `InstanceInfo` — versione, edizione, RAM usata, CPU%, uptime
+- `DatabaseInfo` — nome, stato, recovery model, dimensioni data/log
+- `SessionInfo` — sessioni attive con blocking, wait type, CPU, logical reads
+- `QueryInfo` — top query per elapsed time (testo, execution count, medie CPU/IO)
+- `BackupInfo` — ultimo backup Full/Diff/Log per database
+- `ServerMetrics` — aggregato di tutti i tipi sopra con timestamp
+
+#### `src/main/collectors/sqlCollector.ts`
+Collector principale:
+- `buildConfig(conn)` — costruisce `mssql.config`. `connectTimeout` in `options` (via IOptions), `requestTimeout` direttamente su config. `instanceName` NON passato al driver.
+- Auth: `type: 'ntlm'` (Windows Auth) oppure `type: 'default'` (SQL Auth), come richiede l'interfaccia `tds.ConnectionAuthentication`.
+- `collectMetrics(connection)` — apre un pool, esegue 5 query in `Promise.all()`, ogni query con `.catch()` indipendente → una query fallita non blocca le altre. Pool sempre chiuso nel `finally`.
+- Errori loggati con solo `err.message`, mai stack trace o credenziali.
+
+**Query T-SQL implementate (alias snake_case, commenti in italiano):**
+- `queryInstanceInfo` — `sys.dm_os_process_memory` CROSS JOIN `sys.dm_os_sys_info` + subquery su `sys.dm_os_ring_buffers` per CPU%
+- `queryDatabases` — `sys.databases` INNER JOIN `sys.master_files` GROUP BY, DECIMAL(18,2) per le dimensioni
+- `querySessions` — `sys.dm_exec_requests WHERE session_id > 50`
+- `queryTopQueries` — `sys.dm_exec_query_stats` CROSS APPLY `sys.dm_exec_sql_text`, TOP 20 per elapsed time totale
+- `queryBackupStatus` — `msdb.dbo.backupset` GROUP BY database_name, type='D'/'I'/'L', ultimi 7 giorni
+
+#### `src/main/collectors/sqlCollector.test.ts`
+4 test con mock di `mssql` via factory `vi.mock('mssql', () => ({ connect: vi.fn() }))`:
+- Connessione riuscita → verifica mapping completo di tutti i campi
+- Connessione fallita → `rejects.toThrow('Login failed')`
+- Timeout → `rejects.toThrow('Connection timeout')`
+- Query parziale fallita (backup negato su msdb) → `backupStatus: []`, le altre query OK, `close()` sempre chiamato

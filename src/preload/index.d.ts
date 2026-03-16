@@ -37,7 +37,66 @@ export interface RemoveServerRequest {
   port: number
 }
 
+export interface CollectMetricsRequest {
+  ip: string
+  port: number
+  instanceName?: string
+  useWindowsAuth: boolean
+  username?: string
+  password?: string
+}
+
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string }
+
+export interface InstanceInfo {
+  version: string
+  edition: string
+  memoryUsedMb: number
+  cpuUsagePercent: number
+  uptimeDays: number
+}
+
+export interface DatabaseInfo {
+  name: string
+  stateDesc: string
+  recoveryModel: string
+  sizeMb: number
+  logSizeMb: number
+}
+
+export interface SessionInfo {
+  sessionId: number
+  status: string
+  blockingSessionId: number
+  waitType: string
+  waitTimeMs: number
+  cpuTime: number
+  logicalReads: number
+}
+
+export interface QueryInfo {
+  queryText: string
+  executionCount: number
+  totalElapsedTimeMs: number
+  avgCpuTimeMs: number
+  avgLogicalReads: number
+}
+
+export interface BackupInfo {
+  databaseName: string
+  lastFullBackup: Date | null
+  lastDiffBackup: Date | null
+  lastLogBackup: Date | null
+}
+
+export interface ServerMetrics {
+  collectedAt: Date
+  instanceInfo: InstanceInfo
+  databases: DatabaseInfo[]
+  activeSessions: SessionInfo[]
+  topQueries: QueryInfo[]
+  backupStatus: BackupInfo[]
+}
 
 export interface SqlSentinelAPI {
   scanSubnet(options: ScanOptions): Promise<IpcResult<DiscoveredServer[]>>
@@ -45,6 +104,7 @@ export interface SqlSentinelAPI {
   addServerManual(req: ManualServerRequest): Promise<IpcResult<DiscoveredServer>>
   getServers(): Promise<IpcResult<DiscoveredServer[]>>
   removeServer(req: RemoveServerRequest): Promise<IpcResult<null>>
+  collectMetrics(req: CollectMetricsRequest): Promise<IpcResult<ServerMetrics>>
 }
 
 declare global {

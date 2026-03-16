@@ -4,13 +4,16 @@ import {
   IpcChannel,
   type ManualServerRequest,
   type RemoveServerRequest,
+  type CollectMetricsRequest,
   type ScanSubnetResponse,
   type AddServerManualResponse,
   type GetServersResponse,
-  type RemoveServerResponse
+  type RemoveServerResponse,
+  type CollectMetricsResponse
 } from './types'
 import type { DiscoveredServer, ScanOptions } from '../discovery/types'
 import { scanSubnet, scanHost } from '../discovery/tcpScanner'
+import { collectMetrics } from '../collectors/sqlCollector'
 
 // Temporary in-memory store — will be replaced by SQLite persistence in FASE 4
 let knownServers: DiscoveredServer[] = []
@@ -81,6 +84,27 @@ export function registerIpcHandlers(): void {
       const key = serverKey(req.ip, req.port)
       knownServers = knownServers.filter((s) => serverKey(s.ip, s.port) !== key)
       return { ok: true, data: null }
+    }
+  )
+
+  // COLLECT_METRICS — connects to SQL Server and collects all metrics
+  ipcMain.handle(
+    IpcChannel.COLLECT_METRICS,
+    async (_event: IpcMainInvokeEvent, req: CollectMetricsRequest): Promise<CollectMetricsResponse> => {
+      try {
+        const metrics = await collectMetrics({
+          ip: req.ip,
+          port: req.port,
+          instanceName: req.instanceName,
+          useWindowsAuth: req.useWindowsAuth,
+          username: req.username,
+          password: req.password
+        })
+        return { ok: true, data: metrics }
+      } catch (err) {
+        console.error('[IPC] COLLECT_METRICS:', safeError(err))
+        return { ok: false, error: safeError(err) }
+      }
     }
   )
 }

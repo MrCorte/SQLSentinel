@@ -3,14 +3,17 @@ import type { IpcRendererEvent } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 import { IpcChannel } from '../main/ipc/types'
 import type { ScanOptions, ScanProgress, DiscoveredServer } from '../main/discovery/types'
-import type { ManualServerRequest, RemoveServerRequest, IpcResult } from '../main/ipc/types'
+import type { ManualServerRequest, RemoveServerRequest, CollectMetricsRequest, IpcResult } from '../main/ipc/types'
+import type { ServerMetrics } from '../main/collectors/types'
 
 // Re-export types so the renderer can import them from this file.
 // TypeScript resolves '../../../preload/index' to this file (index.ts) before
 // index.d.ts, so types must be explicitly re-exported here.
 // These are type-only exports — erased at compile time, no runtime effect.
 export type { DiscoveredServer, ScanOptions, ScanProgress } from '../main/discovery/types'
-export type { ManualServerRequest, RemoveServerRequest, IpcResult } from '../main/ipc/types'
+export type { ManualServerRequest, RemoveServerRequest, CollectMetricsRequest, IpcResult } from '../main/ipc/types'
+export type { ServerMetrics } from '../main/collectors/types'
+export type { InstanceInfo, DatabaseInfo, SessionInfo, QueryInfo, BackupInfo } from '../main/collectors/types'
 
 const sqlSentinel = {
   scanSubnet: (options: ScanOptions): Promise<IpcResult<DiscoveredServer[]>> =>
@@ -29,7 +32,10 @@ const sqlSentinel = {
     ipcRenderer.invoke(IpcChannel.GET_SERVERS),
 
   removeServer: (req: RemoveServerRequest): Promise<IpcResult<null>> =>
-    ipcRenderer.invoke(IpcChannel.REMOVE_SERVER, req)
+    ipcRenderer.invoke(IpcChannel.REMOVE_SERVER, req),
+
+  collectMetrics: (req: CollectMetricsRequest): Promise<IpcResult<ServerMetrics>> =>
+    ipcRenderer.invoke(IpcChannel.COLLECT_METRICS, req)
 }
 
 if (process.contextIsolated) {

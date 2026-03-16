@@ -196,3 +196,58 @@ Pagina principale con:
 
 #### `src/renderer/src/App.tsx`
 Sostituito il template demo Electron con `<Discovery />`. Nessun router — pagina singola per FASE 5/6.
+
+---
+
+## FASE 6 — Dashboard Monitoraggio (2026-03-16)
+
+### File creati
+
+#### `src/renderer/src/hooks/useMetrics.ts`
+Hook per raccolta e history metriche:
+- `useMetrics(connection)` — prende `CollectMetricsRequest | null` come input.
+- Stato: `metrics: ServerMetrics | null`, `isLoading`, `error`, `history: MetricsHistoryPoint[]`, `autoRefreshSeconds`, `setAutoRefreshSeconds`.
+- `refresh()` — chiama `window.sqlSentinel.collectMetrics()`, appende un punto alla history (max 60 punti).
+- Auto-refresh tramite `setInterval` con cleanup `useEffect`; si resetta quando cambia il server selezionato (`ip:port`).
+- `MetricsHistoryPoint`: `{ timestamp, memoryUsedMb, cpuUsagePercent }` per i grafici.
+
+#### `src/renderer/src/components/MemoryChart.tsx`
+Grafico recharts con doppio asse Y: Memoria (MB) a sinistra, CPU (%) a destra. `isAnimationActive: false` per performance con aggiornamenti frequenti.
+
+#### `src/renderer/src/components/MetricsPanel.tsx`
+5 tab MUI per visualizzare tutte le metriche:
+- **Panoramica**: InfoCard per versione, edizione, memoria, CPU, uptime + `MemoryChart` (visibile con ≥2 campioni).
+- **Database**: DataGrid con nome, stato, recovery model, dimensioni data/log.
+- **Sessioni**: DataGrid con `blockingSessionId` evidenziato in rosso (MUI Chip error) se > 0.
+- **Backup**: DataGrid con celle colorate in rosso se backup > 24h fa o `null`.
+- **Top Query**: DataGrid con testo query in monospace, `_idx` come row ID sintetico (QueryInfo non ha chiave naturale).
+
+#### `src/renderer/src/pages/Dashboard.tsx`
+Pagina principale con layout sidebar + area destra:
+- Sidebar sinistra (220px): lista server da `getServers()`, selezione attiva, `ServerStatusChip` per ogni entry.
+- Area destra: toolbar con label server, Select auto-refresh (30s/60s/2min/5min/disabilitato), pulsante "Aggiorna metriche" con CircularProgress.
+- Windows Auth di default per la raccolta metriche (credenziali estese previste in FASE futura).
+- Messaggi informativi per stato vuoto / nessun server selezionato.
+
+### File modificati
+
+#### `src/main/ipc/types.ts`
+- Aggiunto `COLLECT_METRICS = 'metrics:collect'` a `IpcChannel`.
+- Aggiunto `CollectMetricsRequest` (credenziali complete per la connessione).
+- Aggiunto `CollectMetricsResponse = IpcResult<ServerMetrics>`.
+- Re-export `ServerMetrics` da `../collectors/types`.
+
+#### `src/main/ipc/handlers.ts`
+- Import `collectMetrics` da `../collectors/sqlCollector`.
+- Aggiunto handler `COLLECT_METRICS`: chiama `collectMetrics()` con i parametri della richiesta, restituisce `IpcResult<ServerMetrics>`. Errore loggato solo con `err.message`.
+
+#### `src/preload/index.ts`
+- Aggiunto `collectMetrics` all'oggetto `sqlSentinel` esposto via contextBridge.
+- Re-export `CollectMetricsRequest`, `ServerMetrics`, `InstanceInfo`, `DatabaseInfo`, `SessionInfo`, `QueryInfo`, `BackupInfo`.
+
+#### `src/preload/index.d.ts`
+- Dichiarazioni inline per `CollectMetricsRequest`, `InstanceInfo`, `DatabaseInfo`, `SessionInfo`, `QueryInfo`, `BackupInfo`, `ServerMetrics`.
+- Aggiunto `collectMetrics(req: CollectMetricsRequest): Promise<IpcResult<ServerMetrics>>` a `SqlSentinelAPI`.
+
+#### `src/renderer/src/App.tsx`
+Sostituito `<Discovery />` diretto con navigazione a 2 tab MUI: "Discovery" e "Dashboard". La Discovery usa `overflow: auto`, la Dashboard usa `overflow: hidden` (layout interno gestisce lo scroll).

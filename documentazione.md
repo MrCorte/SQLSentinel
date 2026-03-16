@@ -164,3 +164,35 @@ Collector principale:
 - `initDb(':memory:')` in `beforeEach`, `closeDb()` in `afterEach` — ogni test parte da schema vuoto.
 - **serverRepository**: insert, upsert (no duplicati per ip:port), findById, remove, updateLastSeen, conversione boolean/Date.
 - **metricsRepository**: save+findLatest, deserializzazione Date, snapshot più recente su più record, findHistory, cleanup (verifica eliminazione vecchi + conservazione recenti).
+
+---
+
+## FASE 5 — Pagina Discovery UI (2026-03-16)
+
+### File creati
+
+#### `src/renderer/src/components/ServerStatusChip.tsx`
+Chip MUI riutilizzabile. Props: `reachable: boolean | null`, `responseTimeMs?: number`. Tre stati: verde "Raggiungibile Xms" / rosso "Non raggiungibile" / grigio "Sconosciuto" (null).
+
+#### `src/renderer/src/components/AddServerDialog.tsx`
+Dialog MUI con form completo: IP/Hostname (obbligatorio), Porta (1-65535, default 1433), Nome Istanza (opzionale), toggle Windows Auth / SQL Auth, campi Username+Password se SQL Auth. Validazione inline con `helperText`. `useEffect` per pre-compilare ip/porta quando aperto da una riga della tabella.
+
+#### `src/renderer/src/pages/Discovery.tsx`
+Pagina principale con:
+- Alert warning per named instances dinamiche
+- Form scan: CIDR, porte (comma-separated, parse + validazione formato CIDR), concorrenza (1-200)
+- LinearProgress `determinate` durante scan con label "X/Y host scansionati, Z trovati"
+- DataGrid con 6 colonne: IP, Porta, Stato (ServerStatusChip), Risposta ms, Tipo discovery (chip), Azioni ("+ Monitora")
+- `getRowId={(row) => \`${row.ip}:${row.port}\`` — nessun campo `id` necessario sui dati
+- AddServerDialog aperto sia da "Aggiungi Manualmente" (form vuoto) sia da riga (pre-compilato)
+
+### File modificati
+
+#### `src/renderer/src/hooks/useDiscovery.ts`
+- Aggiunto tipo `DiscoveryRow` (estende `DiscoveredServer` con `discoveryType: 'auto-tcp' | 'manual'`)
+- Aggiunto tipo `AddServerParams` (include credenziali per uso futuro in FASE 6)
+- `scan` ora produce `DiscoveryRow[]` preservando i server manuali pre-esistenti su conflitto ip:porta
+- Aggiunta funzione `addServer(params)` che chiama `window.sqlSentinel.addServerManual` e aggiorna la lista
+
+#### `src/renderer/src/App.tsx`
+Sostituito il template demo Electron con `<Discovery />`. Nessun router — pagina singola per FASE 5/6.

@@ -25,7 +25,8 @@ import type {
   QueryInfo,
   BackupInfo,
   WaitStatInfo,
-  DbCustomFields
+  DbCustomFields,
+  CollectMetricsRequest
 } from '../../../preload/index'
 import { MemoryChart } from './MemoryChart'
 import { DisksTab } from './tabs/DisksTab'
@@ -36,6 +37,7 @@ interface Props {
   metrics: ServerMetrics
   history: MetricsHistoryPoint[]
   serverId: string
+  connection: CollectMetricsRequest
 }
 
 // -----------------------------------------------------------------------
@@ -91,7 +93,7 @@ function KpiCard({ label, value, accent }: { label: string; value: string; accen
   )
 }
 
-function TabPanoramica({ metrics, history }: Omit<Props, 'serverId'>): React.JSX.Element {
+function TabPanoramica({ metrics, history }: Pick<Props, 'metrics' | 'history'>): React.JSX.Element {
   const info = metrics.instanceInfo
   const memPercent = info.memoryTargetMb > 0 ? (info.memoryUsedMb / info.memoryTargetMb) * 100 : 0
 
@@ -666,7 +668,7 @@ const waitStatColumns: GridColDef<WaitStatInfo>[] = [
 // Componente principale
 // -----------------------------------------------------------------------
 
-export function MetricsPanel({ metrics, history, serverId }: Props): React.JSX.Element {
+export function MetricsPanel({ metrics, history, serverId, connection }: Props): React.JSX.Element {
   const [tab, setTab] = useState(0)
 
   const databases = metrics?.databases ?? []
@@ -750,7 +752,7 @@ export function MetricsPanel({ metrics, history, serverId }: Props): React.JSX.E
         )}
 
         {tab === 4 && (
-          <DisksTab diskVolumes={diskVolumes} databaseFiles={databaseFiles} />
+          <DisksTab diskVolumes={diskVolumes} databaseFiles={databaseFiles} connection={connection} />
         )}
 
         {tab === 5 && (

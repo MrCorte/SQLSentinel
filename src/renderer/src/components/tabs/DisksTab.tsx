@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Box, Typography, Stack, Chip, Divider, Collapse, IconButton } from '@mui/material'
+import { Box, Typography, Stack, Chip, Divider, Collapse, IconButton, Tooltip } from '@mui/material'
 import StorageIcon from '@mui/icons-material/Storage'
 import FolderOpenIcon from '@mui/icons-material/FolderOpen'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
-import type { DiskVolume, DatabaseFile } from '../../../../preload/index'
+import SettingsIcon from '@mui/icons-material/Settings'
+import type { DiskVolume, DatabaseFile, CollectMetricsRequest } from '../../../../preload/index'
 import { SpaceBar } from '../SpaceBar'
 import { tokens } from '../../styles/tokens'
+import { ShrinkDialog } from '../dialogs/ShrinkDialog'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -160,14 +162,18 @@ function DatabaseFileRow({ file }: { file: DatabaseFile }): React.JSX.Element {
 
 function DatabaseGroupCard({
   dbName,
-  files
+  files,
+  connection
 }: {
   dbName: string
   files: DatabaseFile[]
+  connection: CollectMetricsRequest
 }): React.JSX.Element {
   const [open, setOpen] = useState(true)
+  const [shrinkOpen, setShrinkOpen] = useState(false)
 
   return (
+    <>
     <Box
       sx={{
         bgcolor: tokens.color.bgCard,
@@ -199,6 +205,15 @@ function DatabaseGroupCard({
         <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>
           {files.length} {files.length === 1 ? 'file' : 'files'}
         </Typography>
+        <Tooltip title="Shrink database">
+          <IconButton
+            size="small"
+            sx={{ p: 0.25, color: tokens.color.textSecondary, '&:hover': { color: tokens.color.primary } }}
+            onClick={(e) => { e.stopPropagation(); setShrinkOpen(true) }}
+          >
+            <SettingsIcon sx={{ fontSize: 14 }} />
+          </IconButton>
+        </Tooltip>
         <IconButton size="small" sx={{ p: 0.25 }}>
           <ExpandMoreIcon
             sx={{
@@ -223,6 +238,15 @@ function DatabaseGroupCard({
         </Box>
       </Collapse>
     </Box>
+
+    <ShrinkDialog
+      open={shrinkOpen}
+      onClose={() => setShrinkOpen(false)}
+      dbName={dbName}
+      files={files}
+      connection={connection}
+    />
+    </>
   )
 }
 
@@ -233,9 +257,10 @@ function DatabaseGroupCard({
 interface DisksTabProps {
   diskVolumes: DiskVolume[]
   databaseFiles: DatabaseFile[]
+  connection: CollectMetricsRequest
 }
 
-export function DisksTab({ diskVolumes, databaseFiles }: DisksTabProps): React.JSX.Element {
+export function DisksTab({ diskVolumes, databaseFiles, connection }: DisksTabProps): React.JSX.Element {
   // Group databaseFiles by database_name
   const byDb = new Map<string, DatabaseFile[]>()
   for (const file of databaseFiles) {
@@ -308,7 +333,7 @@ export function DisksTab({ diskVolumes, databaseFiles }: DisksTabProps): React.J
         ) : (
           <Stack spacing={1.5}>
             {sortedDbNames.map((dbName) => (
-              <DatabaseGroupCard key={dbName} dbName={dbName} files={byDb.get(dbName)!} />
+              <DatabaseGroupCard key={dbName} dbName={dbName} files={byDb.get(dbName)!} connection={connection} />
             ))}
           </Stack>
         )}

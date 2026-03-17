@@ -18,6 +18,7 @@ import { AddServerDialog } from '../components/AddServerDialog'
 import type { AddServerFormData } from '../components/AddServerDialog'
 import { useDiscovery } from '../hooks/useDiscovery'
 import type { DiscoveryRow } from '../hooks/useDiscovery'
+import { useServersStore } from '../store/serversStore'
 
 // -----------------------------------------------------------------------
 // Parsing porte da stringa "1433,1434" → [1433, 1434]
@@ -37,6 +38,10 @@ function parsePorts(input: string): number[] {
 export function Discovery(): React.JSX.Element {
   const { servers, isScanning, progress, error, scan, addServer } = useDiscovery()
   const { setServerGroup, setServerAlias } = useGroupsStore()
+  const savedServers = useServersStore((s) => s.servers)
+
+  const isAlreadySaved = (row: DiscoveryRow): boolean =>
+    savedServers.some((s) => s.ip === row.ip && s.port === row.port)
 
   // --- Form stato scan ---
   const [cidr, setCidr] = useState('192.168.1.0/24')
@@ -150,11 +155,14 @@ export function Discovery(): React.JSX.Element {
       headerName: 'Azioni',
       width: 200,
       sortable: false,
-      renderCell: (params) => (
-        <Button size="small" variant="outlined" onClick={() => openDialogFromRow(params.row)}>
-          + Monitora
-        </Button>
-      )
+      renderCell: (params) =>
+        isAlreadySaved(params.row) ? (
+          <Chip label="Già monitorato" size="small" variant="outlined" sx={{ fontSize: 11 }} />
+        ) : (
+          <Button size="small" variant="outlined" onClick={() => openDialogFromRow(params.row)}>
+            + Monitora
+          </Button>
+        )
     }
   ]
 
@@ -247,6 +255,7 @@ export function Discovery(): React.JSX.Element {
           rows={servers}
           columns={columns}
           getRowId={(row) => `${row.ip}:${row.port}`}
+          getRowClassName={(params) => (isAlreadySaved(params.row) ? 'row-already-saved' : '')}
           density="compact"
           disableRowSelectionOnClick
           pageSizeOptions={[25, 50, 100]}
@@ -254,7 +263,7 @@ export function Discovery(): React.JSX.Element {
           localeText={{
             noRowsLabel: isScanning ? 'Scansione in corso...' : 'Nessun server trovato. Avvia una scan o aggiungi manualmente.'
           }}
-          sx={{ border: 0 }}
+          sx={{ border: 0, '& .row-already-saved': { opacity: 0.45 } }}
         />
       </Box>
 

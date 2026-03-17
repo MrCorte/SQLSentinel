@@ -118,6 +118,8 @@ export interface StoredServer {
   lastSeen?: string         // ISO 8601
   unreachable?: boolean
   unreachableSince?: string // ISO 8601
+  agGroupId?: string        // group_id if part of an AG
+  agRole?: AgRole
 }
 
 export interface ServerAddResult {
@@ -217,6 +219,97 @@ export interface SaveCsvRequest {
   content: string
 }
 
+export interface ShrinkDatabaseParams {
+  connection: CollectMetricsRequest
+  dbName: string
+  targetPercent: number
+}
+
+export interface ShrinkFileParams {
+  connection: CollectMetricsRequest
+  dbName: string
+  fileName: string
+  targetSizeMb: number
+  isLog: boolean
+}
+
+export interface ShrinkEstimateParams {
+  connection: CollectMetricsRequest
+  dbName: string
+}
+
+export interface ShrinkEstimate {
+  file_name: string
+  current_mb: number
+  used_mb: number
+  reclaimable_mb: number
+}
+
+export interface ShrinkResult {
+  success: boolean
+  duration_ms: number
+  newSizeMb?: number
+  reclaimedMb?: number
+  error?: string
+}
+
+// ---------------------------------------------------------------------------
+// Always On Availability Groups
+// ---------------------------------------------------------------------------
+
+export type AgHealth = 'HEALTHY' | 'PARTIALLY_HEALTHY' | 'NOT_HEALTHY'
+export type AgRole = 'PRIMARY' | 'SECONDARY' | 'RESOLVING'
+
+export interface AvailabilityGroup {
+  group_id: string
+  ag_name: string
+  primary_replica: string
+  ag_health: AgHealth
+  failure_condition_level: number
+  health_check_timeout: number
+}
+
+export interface AvailabilityReplica {
+  replica_id: string
+  ag_name: string
+  group_id: string
+  replica_server_name: string
+  role_desc: AgRole
+  availability_mode_desc: 'SYNCHRONOUS_COMMIT' | 'ASYNCHRONOUS_COMMIT'
+  failover_mode_desc: 'AUTOMATIC' | 'MANUAL'
+  synchronization_health_desc: AgHealth
+  connected_state_desc: 'CONNECTED' | 'DISCONNECTED'
+  operational_state_desc: string
+  recovery_health_desc: string
+  endpoint_url: string
+}
+
+export interface AvailabilityDatabase {
+  ag_name: string
+  database_name: string
+  synchronization_state_desc: 'SYNCHRONIZED' | 'SYNCHRONIZING' | 'NOT_SYNCHRONIZING'
+  synchronization_health_desc: AgHealth
+  is_suspended: boolean
+  suspend_reason_desc: string | null
+  log_send_queue_kb: number
+  redo_queue_kb: number
+  log_send_rate_kb: number
+  redo_rate_kb: number
+  last_commit_time: string | null
+}
+
+export interface AgParams {
+  connection: CollectMetricsRequest
+}
+
+export interface AgGroup {
+  id: string            // = group_id UUID
+  ag_name: string
+  health: AgHealth
+  primary_replica: string
+  serverIds: string[]   // ids of StoredServer that are part of this AG
+}
+
 export interface SqlSentinelAPI {
   scanSubnet(options: ScanOptions): Promise<IpcResult<DiscoveredServer[]>>
   onScanProgress(callback: (progress: ScanProgress) => void): () => void
@@ -240,6 +333,16 @@ export interface SqlSentinelAPI {
   exportInventory(): Promise<IpcResult<string>>
   exportAlerts(): Promise<IpcResult<string>>
   saveCsv(req: SaveCsvRequest): Promise<IpcResult<string | null>>
+  db: {
+    shrinkEstimate(req: ShrinkEstimateParams): Promise<IpcResult<ShrinkEstimate[]>>
+    shrink(req: ShrinkDatabaseParams): Promise<IpcResult<ShrinkResult>>
+    shrinkFile(req: ShrinkFileParams): Promise<IpcResult<ShrinkResult>>
+  }
+  ag: {
+    getGroups(req: AgParams): Promise<IpcResult<AvailabilityGroup[]>>
+    getReplicas(req: AgParams): Promise<IpcResult<AvailabilityReplica[]>>
+    getDatabases(req: AgParams): Promise<IpcResult<AvailabilityDatabase[]>>
+  }
   servers: {
     getAll(): Promise<IpcResult<StoredServer[]>>
     add(params: Omit<StoredServer, 'id' | 'addedAt'>): Promise<IpcResult<ServerAddResult>>

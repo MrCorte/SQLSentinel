@@ -1,0 +1,157 @@
+import * as mssql from 'mssql'
+import type { CollectMetricsRequest } from '../ipc/types'
+import type { AvailabilityGroup, AvailabilityReplica, AvailabilityDatabase } from './types'
+
+// ---------------------------------------------------------------------------
+// Connection helper — AG queries always run against master
+// ---------------------------------------------------------------------------
+
+function buildConfig(conn: CollectMetricsRequest): mssql.config {
+  const base: mssql.config = {
+    server: conn.ip,
+    port: conn.port,
+    database: 'master',
+    requestTimeout: 15_000,
+    options: {
+      encrypt: false,
+      trustServerCertificate: true,
+      connectTimeout: 10_000
+    }
+  }
+
+  if (conn.useWindowsAuth) {
+    return {
+      ...base,
+      authentication: {
+        type: 'ntlm',
+        options: { domain: '', userName: '', password: '' }
+      }
+    }
+  }
+
+  return {
+    ...base,
+    authentication: {
+      type: 'default',
+      options: {
+        userName: conn.username ?? '',
+        password: conn.password ?? ''
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// getAvailabilityGroups
+// ---------------------------------------------------------------------------
+
+export async function getAvailabilityGroups(
+  conn: CollectMetricsRequest
+): Promise<AvailabilityGroup[]> {
+  const pool = await mssql.connect(buildConfig(conn))
+  try {
+    const result = await pool.request().query<AvailabilityGroup>(`
+      SELECT
+        CAST(ag.group_id AS nvarchar(36))       AS group_id,
+        ag.name                                  AS ag_name,
+        ag.failure_condition_level,
+        ag.health_check_timeout,
+        ISNULL(ags.primary_replica, '')          AS primary_replica,
+        ISNULL(ags.synchronization_health_desc, 'NOT_HEALTHY') AS ag_health
+      FROM sys.availability_groups ag
+      LEFT JOIN sys.dm_hadr_availability_group_states ags
+        ON ag.group_id = ags.group_id
+    `)
+    return result.recordset
+  } finally {
+    await pool.close()
+  }
+}
+
+// ---------------------------------------------------------------------------
+// getAvailabilityReplicas
+// ---------------------------------------------------------------------------
+
+export async function getAvailabilityReplicas(
+  conn: CollectMetricsRequest
+): Promise<AvailabilityReplica[]> {
+  const pool = await mssql.connect(buildConfig(conn))
+  try {
+    const result = await pool.request().query<AvailabilityReplica>(`
+      SELECT
+        CAST(ar.replica_id AS nvarchar(36))                         AS replica_id,
+        ag.name                                                      AS ag_name,
+        CAST(ag.group_id AS nvarchar(36))                           AS group_id,
+        ar.replica_server_name,
+        ar.availability_mode_desc,
+        ar.failover_mode_desc,
+        ISNULL(ar.endpoint_url, '')                                  AS endpoint_url,
+        ISNULL(ars.role_desc, 'RESOLVING')                           AS role_desc,
+        ISNULL(ars.synchronization_health_desc, 'NOT_HEALTHY')       AS synchronization_health_desc,
+        ISNULL(ars.connected_state_desc, 'DISCONNECTED')             AS connected_state_desc,
+        ISNULL(ars.operational_state_desc, '')                       AS operational_state_desc,
+        ISNULL(ars.recovery_health_desc, '')                         AS recovery_health_desc
+      FROM sys.availability_groups ag
+      JOIN sys.availability_replicas ar
+        ON ag.group_id = ar.group_id
+      LEFT JOIN sys.dm_hadr_availability_replica_states ars
+        ON ar.replica_id = ars.replica_id
+    `)
+    return result.recordset
+  } finally {
+    await pool.close()
+  }
+}
+
+// ---------------------------------------------------------------------------
+// getAvailabilityDatabases
+// ---------------------------------------------------------------------------
+
+export async function getAvailabilityDatabases(
+  conn: CollectMetricsRequest
+): Promise<AvailabilityDatabase[]> {
+  const pool = await mssql.connect(buildConfig(conn))
+  try {
+    const result = await pool.request().query<{
+      ag_name: string
+      database_name: string
+      synchronization_state_desc: string
+      synchronization_health_desc: string
+      is_suspended: boolean
+      suspend_reason_desc: string | null
+      log_send_queue_kb: number
+      redo_queue_kb: number
+      log_send_rate_kb: number
+      redo_rate_kb: number
+      last_commit_time: Date | null
+    }>(`
+      SELECT
+        ag.name                                                            AS ag_name,
+        db.name                                                            AS database_name,
+        ISNULL(drs.synchronization_state_desc, 'NOT_SYNCHRONIZING')       AS synchronization_state_desc,
+        ISNULL(drs.synchronization_health_desc, 'NOT_HEALTHY')            AS synchronization_health_desc,
+        ISNULL(drs.is_suspended, 0)                                       AS is_suspended,
+        drs.suspend_reason_desc,
+        ISNULL(drs.log_send_queue_size, 0)                                AS log_send_queue_kb,
+        ISNULL(drs.redo_queue_size, 0)                                    AS redo_queue_kb,
+        ISNULL(drs.log_send_rate, 0)                                      AS log_send_rate_kb,
+        ISNULL(drs.redo_rate, 0)                                          AS redo_rate_kb,
+        drs.last_commit_time
+      FROM sys.availability_groups ag
+      JOIN sys.availability_replicas ar
+        ON ag.group_id = ar.group_id
+      JOIN sys.dm_hadr_database_replica_states drs
+        ON ar.replica_id = drs.replica_id
+      JOIN sys.databases db
+        ON drs.database_id = db.database_id
+      WHERE drs.is_local = 1
+    `)
+    return result.recordset.map((r) => ({
+      ...r,
+      is_suspended: Boolean(r.is_suspended),
+      last_commit_time: r.last_commit_time ? r.last_commit_time.toISOString() : null
+    })) as AvailabilityDatabase[]
+  } finally {
+    await pool.close()
+  }
+}

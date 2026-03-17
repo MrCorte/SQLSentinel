@@ -35,7 +35,15 @@ export enum IpcChannel {
   EXPORT_CUSTOM_FIELDS = 'export:customFields',
   EXPORT_INVENTORY = 'export:inventory',
   EXPORT_ALERTS = 'export:alerts',
-  FILE_SAVE_CSV = 'file:saveCsv'
+  FILE_SAVE_CSV = 'file:saveCsv',
+  // DB admin operations
+  DB_SHRINK = 'db:shrink',
+  DB_SHRINK_FILE = 'db:shrinkFile',
+  DB_SHRINK_ESTIMATE = 'db:shrinkEstimate',
+  // Always On Availability Groups
+  AG_GET_GROUPS = 'ag:getGroups',
+  AG_GET_REPLICAS = 'ag:getReplicas',
+  AG_GET_DATABASES = 'ag:getDatabases'
 }
 
 /** Unified result envelope — never throw raw errors to the renderer. */
@@ -154,6 +162,49 @@ export interface ServerUnreachableEvent {
   since: string // ISO 8601
 }
 
+// --- Shrink operation types ---
+
+export interface ShrinkDatabaseParams {
+  connection: CollectMetricsRequest
+  dbName: string
+  targetPercent: number // 0–99
+}
+
+export interface ShrinkFileParams {
+  connection: CollectMetricsRequest
+  dbName: string
+  fileName: string
+  targetSizeMb: number
+  isLog: boolean
+}
+
+export interface ShrinkEstimateParams {
+  connection: CollectMetricsRequest
+  dbName: string
+}
+
+export interface ShrinkEstimate {
+  file_name: string
+  current_mb: number
+  used_mb: number
+  reclaimable_mb: number
+}
+
+export interface ShrinkResult {
+  success: boolean
+  duration_ms: number
+  newSizeMb?: number
+  reclaimedMb?: number
+  error?: string
+}
+
+// --- Always On Availability Groups ---
+
+export interface AgParams {
+  connection: CollectMetricsRequest
+}
+
 // Re-export types so consumers have a single import point
 export type { DiscoveredServer, ScanOptions, ScanProgress }
 export type { ServerMetrics }
+export type { AvailabilityGroup, AvailabilityReplica, AvailabilityDatabase, AgHealth, AgRole } from '../collectors/types'

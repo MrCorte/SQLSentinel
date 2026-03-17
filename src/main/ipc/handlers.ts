@@ -23,7 +23,16 @@ import {
   type IpcResult,
   type Alert,
   type ServerAddResult,
-  type UpdateServerRequest
+  type UpdateServerRequest,
+  type ShrinkDatabaseParams,
+  type ShrinkFileParams,
+  type ShrinkEstimateParams,
+  type ShrinkEstimate,
+  type ShrinkResult,
+  type AgParams,
+  type AvailabilityGroup,
+  type AvailabilityReplica,
+  type AvailabilityDatabase
 } from './types'
 import type { ServerMetrics } from '../collectors/types'
 import { startWorker, stopWorker, getAlerts, acknowledgeAlert, getHistory } from '../metricsWorker'
@@ -32,6 +41,8 @@ import { getCustomFields, setCustomFields, getAllCustomFields } from '../store/d
 import type { DiscoveredServer, ScanOptions } from '../discovery/types'
 import { scanSubnet, scanHost } from '../discovery/tcpScanner'
 import { collectMetrics } from '../collectors/sqlCollector'
+import { getShrinkEstimate, shrinkDatabase, shrinkFile } from '../collectors/dbAdmin'
+import { getAvailabilityGroups, getAvailabilityReplicas, getAvailabilityDatabases } from '../collectors/agCollector'
 import * as serverStore from '../store/serverStore'
 import type { StoredServer } from '../store/serverStore'
 
@@ -322,6 +333,91 @@ export function registerIpcHandlers(): void {
     const csv = [header, ...rows].join('\r\n')
     return { ok: true, data: csv }
   })
+
+  // DB_SHRINK_ESTIMATE — anteprima spazio recuperabile per un database
+  ipcMain.handle(
+    IpcChannel.DB_SHRINK_ESTIMATE,
+    async (_event: IpcMainInvokeEvent, req: ShrinkEstimateParams): Promise<IpcResult<ShrinkEstimate[]>> => {
+      try {
+        const estimates = await getShrinkEstimate(req.connection, req.dbName)
+        return { ok: true, data: estimates }
+      } catch (err) {
+        console.error('[IPC] DB_SHRINK_ESTIMATE:', safeError(err))
+        return { ok: false, error: safeError(err) }
+      }
+    }
+  )
+
+  // DB_SHRINK — shrink intero database
+  ipcMain.handle(
+    IpcChannel.DB_SHRINK,
+    async (_event: IpcMainInvokeEvent, req: ShrinkDatabaseParams): Promise<IpcResult<ShrinkResult>> => {
+      try {
+        const result = await shrinkDatabase(req.connection, req.dbName, req.targetPercent)
+        return { ok: true, data: result }
+      } catch (err) {
+        console.error('[IPC] DB_SHRINK:', safeError(err))
+        return { ok: false, error: safeError(err) }
+      }
+    }
+  )
+
+  // DB_SHRINK_FILE — shrink file specifico (dati o log)
+  ipcMain.handle(
+    IpcChannel.DB_SHRINK_FILE,
+    async (_event: IpcMainInvokeEvent, req: ShrinkFileParams): Promise<IpcResult<ShrinkResult>> => {
+      try {
+        const result = await shrinkFile(req.connection, req.dbName, req.fileName, req.targetSizeMb, req.isLog)
+        return { ok: true, data: result }
+      } catch (err) {
+        console.error('[IPC] DB_SHRINK_FILE:', safeError(err))
+        return { ok: false, error: safeError(err) }
+      }
+    }
+  )
+
+  // AG_GET_GROUPS — availability groups sul server
+  ipcMain.handle(
+    IpcChannel.AG_GET_GROUPS,
+    async (_event: IpcMainInvokeEvent, req: AgParams): Promise<IpcResult<AvailabilityGroup[]>> => {
+      try {
+        const data = await getAvailabilityGroups(req.connection)
+        return { ok: true, data }
+      } catch (err) {
+        // Server non in AG o permessi insufficienti — non è un errore critico
+        console.info('[IPC] AG_GET_GROUPS: no AG or insufficient perms:', safeError(err))
+        return { ok: true, data: [] }
+      }
+    }
+  )
+
+  // AG_GET_REPLICAS — repliche AG
+  ipcMain.handle(
+    IpcChannel.AG_GET_REPLICAS,
+    async (_event: IpcMainInvokeEvent, req: AgParams): Promise<IpcResult<AvailabilityReplica[]>> => {
+      try {
+        const data = await getAvailabilityReplicas(req.connection)
+        return { ok: true, data }
+      } catch (err) {
+        console.info('[IPC] AG_GET_REPLICAS:', safeError(err))
+        return { ok: true, data: [] }
+      }
+    }
+  )
+
+  // AG_GET_DATABASES — database in AG
+  ipcMain.handle(
+    IpcChannel.AG_GET_DATABASES,
+    async (_event: IpcMainInvokeEvent, req: AgParams): Promise<IpcResult<AvailabilityDatabase[]>> => {
+      try {
+        const data = await getAvailabilityDatabases(req.connection)
+        return { ok: true, data }
+      } catch (err) {
+        console.info('[IPC] AG_GET_DATABASES:', safeError(err))
+        return { ok: true, data: [] }
+      }
+    }
+  )
 
   // FILE_SAVE_CSV — apre showSaveDialog e scrive il file
   ipcMain.handle(

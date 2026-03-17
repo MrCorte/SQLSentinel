@@ -20,7 +20,16 @@ import type {
   IpcResult,
   ServerAddResult,
   UpdateServerRequest,
-  ServerUnreachableEvent
+  ServerUnreachableEvent,
+  ShrinkDatabaseParams,
+  ShrinkFileParams,
+  ShrinkEstimateParams,
+  ShrinkEstimate,
+  ShrinkResult,
+  AgParams,
+  AvailabilityGroup,
+  AvailabilityReplica,
+  AvailabilityDatabase
 } from '../main/ipc/types'
 import type { ServerMetrics } from '../main/collectors/types'
 import type { StoredServer } from '../main/store/serverStore'
@@ -30,6 +39,8 @@ export type { DiscoveredServer, ScanOptions, ScanProgress } from '../main/discov
 export type { ManualServerRequest, RemoveServerRequest, CollectMetricsRequest, IpcResult } from '../main/ipc/types'
 export type { WorkerStartRequest, AcknowledgeAlertRequest, HistoryRequest, Alert, AppSettings, SaveSettingsRequest } from '../main/ipc/types'
 export type { DbCustomFields, SaveCsvRequest, ServerAddResult, UpdateServerRequest, ServerUnreachableEvent } from '../main/ipc/types'
+export type { ShrinkDatabaseParams, ShrinkFileParams, ShrinkEstimateParams, ShrinkEstimate, ShrinkResult } from '../main/ipc/types'
+export type { AgParams, AvailabilityGroup, AvailabilityReplica, AvailabilityDatabase, AgHealth, AgRole } from '../main/ipc/types'
 export type { ServerMetrics } from '../main/collectors/types'
 export type { InstanceInfo, DatabaseInfo, SessionInfo, QueryInfo, BackupInfo, WaitStatInfo, DiskVolume, DatabaseFile } from '../main/collectors/types'
 export type { StoredServer } from '../main/store/serverStore'
@@ -65,6 +76,81 @@ let mockStoredServers: StoredServer[] = [
 
 const mockUnreachableListeners: Array<(data: ServerUnreachableEvent) => void> = []
 const mockRecoveredListeners: Array<(serverId: string) => void> = []
+
+// ---------------------------------------------------------------------------
+// Mock AG data
+// ---------------------------------------------------------------------------
+
+const MOCK_AG_GROUPS: AvailabilityGroup[] = [
+  {
+    group_id: 'ag-001-0000-0000-0000-000000000001',
+    ag_name: 'AG-PROD-01',
+    primary_replica: '192.168.1.10',
+    ag_health: 'HEALTHY',
+    failure_condition_level: 3,
+    health_check_timeout: 30000
+  }
+]
+
+const MOCK_AG_REPLICAS: AvailabilityReplica[] = [
+  {
+    replica_id: 'r-001-0000-0000-0000-000000000001',
+    ag_name: 'AG-PROD-01',
+    group_id: 'ag-001-0000-0000-0000-000000000001',
+    replica_server_name: '192.168.1.10',
+    role_desc: 'PRIMARY',
+    availability_mode_desc: 'SYNCHRONOUS_COMMIT',
+    failover_mode_desc: 'AUTOMATIC',
+    synchronization_health_desc: 'HEALTHY',
+    connected_state_desc: 'CONNECTED',
+    operational_state_desc: 'ONLINE',
+    recovery_health_desc: 'ONLINE_IN_PROGRESS',
+    endpoint_url: 'TCP://192.168.1.10:5022'
+  },
+  {
+    replica_id: 'r-002-0000-0000-0000-000000000002',
+    ag_name: 'AG-PROD-01',
+    group_id: 'ag-001-0000-0000-0000-000000000001',
+    replica_server_name: '192.168.1.15',
+    role_desc: 'SECONDARY',
+    availability_mode_desc: 'SYNCHRONOUS_COMMIT',
+    failover_mode_desc: 'AUTOMATIC',
+    synchronization_health_desc: 'HEALTHY',
+    connected_state_desc: 'CONNECTED',
+    operational_state_desc: 'ONLINE',
+    recovery_health_desc: 'ONLINE_IN_PROGRESS',
+    endpoint_url: 'TCP://192.168.1.15:5022'
+  }
+]
+
+const MOCK_AG_DATABASES: AvailabilityDatabase[] = [
+  {
+    ag_name: 'AG-PROD-01',
+    database_name: 'AdventureWorks',
+    synchronization_state_desc: 'SYNCHRONIZED',
+    synchronization_health_desc: 'HEALTHY',
+    is_suspended: false,
+    suspend_reason_desc: null,
+    log_send_queue_kb: 0,
+    redo_queue_kb: 0,
+    log_send_rate_kb: 125,
+    redo_rate_kb: 118,
+    last_commit_time: new Date().toISOString()
+  },
+  {
+    ag_name: 'AG-PROD-01',
+    database_name: 'ReportServer',
+    synchronization_state_desc: 'SYNCHRONIZING',
+    synchronization_health_desc: 'PARTIALLY_HEALTHY',
+    is_suspended: false,
+    suspend_reason_desc: null,
+    log_send_queue_kb: 2048,
+    redo_queue_kb: 1024,
+    log_send_rate_kb: 80,
+    redo_rate_kb: 75,
+    last_commit_time: new Date(Date.now() - 5000).toISOString()
+  }
+]
 
 const MOCK_MEM_TARGET = 8192
 
@@ -301,6 +387,26 @@ const realApi = {
   saveCsv: (req: SaveCsvRequest): Promise<IpcResult<string | null>> =>
     ipcRenderer.invoke(IpcChannel.FILE_SAVE_CSV, req),
 
+  // DB admin (shrink)
+  db: {
+    shrinkEstimate: (req: ShrinkEstimateParams): Promise<IpcResult<ShrinkEstimate[]>> =>
+      ipcRenderer.invoke(IpcChannel.DB_SHRINK_ESTIMATE, req),
+    shrink: (req: ShrinkDatabaseParams): Promise<IpcResult<ShrinkResult>> =>
+      ipcRenderer.invoke(IpcChannel.DB_SHRINK, req),
+    shrinkFile: (req: ShrinkFileParams): Promise<IpcResult<ShrinkResult>> =>
+      ipcRenderer.invoke(IpcChannel.DB_SHRINK_FILE, req)
+  },
+
+  // Always On Availability Groups
+  ag: {
+    getGroups: (req: AgParams): Promise<IpcResult<AvailabilityGroup[]>> =>
+      ipcRenderer.invoke(IpcChannel.AG_GET_GROUPS, req),
+    getReplicas: (req: AgParams): Promise<IpcResult<AvailabilityReplica[]>> =>
+      ipcRenderer.invoke(IpcChannel.AG_GET_REPLICAS, req),
+    getDatabases: (req: AgParams): Promise<IpcResult<AvailabilityDatabase[]>> =>
+      ipcRenderer.invoke(IpcChannel.AG_GET_DATABASES, req)
+  },
+
   // Persistent server store
   servers: {
     getAll: (): Promise<IpcResult<StoredServer[]>> =>
@@ -468,6 +574,37 @@ const mockApi = {
   saveCsv: (_req: SaveCsvRequest): Promise<IpcResult<string | null>> =>
     Promise.resolve({ ok: true, data: null }),
 
+  db: {
+    shrinkEstimate: (_req: ShrinkEstimateParams): Promise<IpcResult<ShrinkEstimate[]>> =>
+      Promise.resolve({
+        ok: true,
+        data: [
+          { file_name: 'AdventureWorks', current_mb: 248, used_mb: 181, reclaimable_mb: 67 },
+          { file_name: 'AdventureWorks_log', current_mb: 64, used_mb: 12, reclaimable_mb: 52 }
+        ]
+      }),
+    shrink: (_req: ShrinkDatabaseParams): Promise<IpcResult<ShrinkResult>> =>
+      new Promise((resolve) =>
+        setTimeout(() => resolve({ ok: true, data: { success: true, duration_ms: 3200 } }), 2000)
+      ),
+    shrinkFile: (_req: ShrinkFileParams): Promise<IpcResult<ShrinkResult>> =>
+      new Promise((resolve) =>
+        setTimeout(
+          () => resolve({ ok: true, data: { success: true, duration_ms: 1800, newSizeMb: 12, reclaimedMb: 52 } }),
+          2000
+        )
+      )
+  },
+
+  ag: {
+    getGroups: (_req: AgParams): Promise<IpcResult<AvailabilityGroup[]>> =>
+      Promise.resolve({ ok: true, data: MOCK_AG_GROUPS }),
+    getReplicas: (_req: AgParams): Promise<IpcResult<AvailabilityReplica[]>> =>
+      Promise.resolve({ ok: true, data: MOCK_AG_REPLICAS }),
+    getDatabases: (_req: AgParams): Promise<IpcResult<AvailabilityDatabase[]>> =>
+      Promise.resolve({ ok: true, data: MOCK_AG_DATABASES })
+  },
+
   servers: {
     getAll: (): Promise<IpcResult<StoredServer[]>> =>
       Promise.resolve({ ok: true, data: [...mockStoredServers] }),
@@ -552,6 +689,22 @@ const bridgeApi = {
   exportInventory:     () => api.exportInventory(),
   exportAlerts:        () => api.exportAlerts(),
   saveCsv:             (r: SaveCsvRequest) => api.saveCsv(r),
+  db: {
+    shrinkEstimate: (r: ShrinkEstimateParams): Promise<IpcResult<ShrinkEstimate[]>> =>
+      isMock ? api.db.shrinkEstimate(r) : ipcRenderer.invoke(IpcChannel.DB_SHRINK_ESTIMATE, r),
+    shrink: (r: ShrinkDatabaseParams): Promise<IpcResult<ShrinkResult>> =>
+      isMock ? api.db.shrink(r) : ipcRenderer.invoke(IpcChannel.DB_SHRINK, r),
+    shrinkFile: (r: ShrinkFileParams): Promise<IpcResult<ShrinkResult>> =>
+      isMock ? api.db.shrinkFile(r) : ipcRenderer.invoke(IpcChannel.DB_SHRINK_FILE, r),
+  },
+  ag: {
+    getGroups: (r: AgParams): Promise<IpcResult<AvailabilityGroup[]>> =>
+      isMock ? api.ag.getGroups(r) : ipcRenderer.invoke(IpcChannel.AG_GET_GROUPS, r),
+    getReplicas: (r: AgParams): Promise<IpcResult<AvailabilityReplica[]>> =>
+      isMock ? api.ag.getReplicas(r) : ipcRenderer.invoke(IpcChannel.AG_GET_REPLICAS, r),
+    getDatabases: (r: AgParams): Promise<IpcResult<AvailabilityDatabase[]>> =>
+      isMock ? api.ag.getDatabases(r) : ipcRenderer.invoke(IpcChannel.AG_GET_DATABASES, r),
+  },
   servers: {
     getAll:  () => api.servers.getAll(),
     add:     (p: Omit<StoredServer, 'id' | 'addedAt'>) => api.servers.add(p),

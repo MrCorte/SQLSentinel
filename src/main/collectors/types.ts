@@ -95,3 +95,48 @@ export interface ServerMetrics {
   diskVolumes: DiskVolume[]
   databaseFiles: DatabaseFile[]
 }
+
+// ---------------------------------------------------------------------------
+// Always On Availability Groups
+// ---------------------------------------------------------------------------
+
+export type AgHealth = 'HEALTHY' | 'PARTIALLY_HEALTHY' | 'NOT_HEALTHY'
+export type AgRole = 'PRIMARY' | 'SECONDARY' | 'RESOLVING'
+
+export interface AvailabilityGroup {
+  group_id: string
+  ag_name: string
+  primary_replica: string
+  ag_health: AgHealth
+  failure_condition_level: number
+  health_check_timeout: number
+}
+
+export interface AvailabilityReplica {
+  replica_id: string
+  ag_name: string
+  group_id: string
+  replica_server_name: string
+  role_desc: AgRole
+  availability_mode_desc: 'SYNCHRONOUS_COMMIT' | 'ASYNCHRONOUS_COMMIT'
+  failover_mode_desc: 'AUTOMATIC' | 'MANUAL'
+  synchronization_health_desc: AgHealth
+  connected_state_desc: 'CONNECTED' | 'DISCONNECTED'
+  operational_state_desc: string
+  recovery_health_desc: string
+  endpoint_url: string
+}
+
+export interface AvailabilityDatabase {
+  ag_name: string
+  database_name: string
+  synchronization_state_desc: 'SYNCHRONIZED' | 'SYNCHRONIZING' | 'NOT_SYNCHRONIZING'
+  synchronization_health_desc: AgHealth
+  is_suspended: boolean
+  suspend_reason_desc: string | null
+  log_send_queue_kb: number
+  redo_queue_kb: number
+  log_send_rate_kb: number
+  redo_rate_kb: number
+  last_commit_time: string | null
+}

@@ -26,6 +26,8 @@ import DragHandleIcon from '@mui/icons-material/DragHandle'
 import { keyframes } from '@mui/system'
 import type { StoredServer } from '../../../preload/index'
 import { useGroupsStore } from '../store/groupsStore'
+import { useAgStore } from '../store/agStore'
+import type { AgGroupState } from '../store/agStore'
 import type { ServerGroup } from '../types/index'
 import { getServerDisplayName } from '../types/index'
 import { tokens } from '../styles/tokens'
@@ -231,6 +233,107 @@ function GroupHeader({
 }
 
 // ---------------------------------------------------------------------------
+// AgGroupHeader
+// ---------------------------------------------------------------------------
+
+function agHealthColor(health: AgGroupState['health']): string {
+  if (health === 'HEALTHY') return '#107c10'
+  if (health === 'PARTIALLY_HEALTHY') return '#d83b01'
+  return '#a4262c'
+}
+
+function AgGroupHeader({
+  ag,
+  isSelected,
+  onClick
+}: {
+  ag: AgGroupState
+  isSelected: boolean
+  onClick: () => void
+}): React.JSX.Element {
+  const color = agHealthColor(ag.health)
+  return (
+    <Box
+      onClick={onClick}
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 0.75,
+        px: 1.5,
+        py: 0.75,
+        pl: 2.5,
+        cursor: 'pointer',
+        bgcolor: isSelected ? tokens.color.bgSidebarSelected : '#1e2a3a',
+        borderLeft: `3px solid ${color}`,
+        '&:hover': { bgcolor: isSelected ? tokens.color.primaryHover : '#243040' },
+        transition: 'background 150ms'
+      }}
+    >
+      <Typography
+        sx={{
+          fontSize: 11,
+          color: isSelected ? '#fff' : '#a0c4d8',
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+          fontWeight: 700,
+          flex: 1,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap'
+        }}
+      >
+        🔗 {ag.ag_name}
+      </Typography>
+      <Typography
+        sx={{
+          fontSize: 10,
+          color,
+          fontWeight: 700,
+          bgcolor: `${color}22`,
+          px: 0.75,
+          py: 0.125,
+          borderRadius: 0.5,
+          whiteSpace: 'nowrap',
+          flexShrink: 0
+        }}
+      >
+        {ag.health === 'HEALTHY' ? '● HEALTHY' : ag.health === 'PARTIALLY_HEALTHY' ? '◐ PARTIAL' : '○ UNHEALTHY'}
+      </Typography>
+    </Box>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// RoleBadge
+// ---------------------------------------------------------------------------
+
+function RoleBadge({ role }: { role: 'PRIMARY' | 'SECONDARY' | 'RESOLVING' }): React.JSX.Element {
+  const styles: Record<string, { bg: string; color: string; label: string }> = {
+    PRIMARY:   { bg: '#dff6dd', color: '#107c10', label: 'PRIMARY' },
+    SECONDARY: { bg: '#f3f2f1', color: '#605e5c', label: 'SECONDARY' },
+    RESOLVING: { bg: '#fed9cc', color: '#d83b01', label: 'RESOLVING' }
+  }
+  const s = styles[role] ?? styles.RESOLVING
+  return (
+    <Typography
+      component="span"
+      sx={{
+        fontSize: 9,
+        fontWeight: 700,
+        bgcolor: s.bg,
+        color: s.color,
+        px: 0.5,
+        py: 0.125,
+        borderRadius: 0.5,
+        flexShrink: 0
+      }}
+    >
+      {s.label}
+    </Typography>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // ServerItem
 // ---------------------------------------------------------------------------
 
@@ -239,6 +342,7 @@ interface ServerItemProps {
   alias: string | undefined
   isSelected: boolean
   searchText: string
+  inAgGroup?: boolean
   onSelect: () => void
   onContextMenu: (e: React.MouseEvent, server: StoredServer) => void
 }
@@ -248,6 +352,7 @@ function ServerItem({
   alias,
   isSelected,
   searchText,
+  inAgGroup,
   onSelect,
   onContextMenu
 }: ServerItemProps): React.JSX.Element {
@@ -256,6 +361,8 @@ function ServerItem({
   const tooltipTitle = server.unreachable
     ? `Non raggiungibile${server.unreachableSince ? ` dal ${new Date(server.unreachableSince).toLocaleString('it-IT')}` : ''}`
     : realAddr
+
+  const roleIcon = server.agRole === 'PRIMARY' ? '★ ' : server.agRole === 'SECONDARY' ? '○ ' : ''
 
   return (
     <Tooltip
@@ -275,7 +382,7 @@ function ServerItem({
           display: 'flex',
           alignItems: 'center',
           gap: 1,
-          pl: 3.5,
+          pl: inAgGroup ? 4.5 : 3.5,
           pr: 1.5,
           py: 0.875,
           cursor: 'pointer',
@@ -301,8 +408,10 @@ function ServerItem({
             whiteSpace: 'nowrap'
           }}
         >
+          {inAgGroup && roleIcon}
           {searchText ? highlightText(displayName, searchText) : displayName}
         </Typography>
+        {inAgGroup && server.agRole && <RoleBadge role={server.agRole} />}
       </Box>
     </Tooltip>
   )
@@ -559,7 +668,9 @@ export interface SidebarProps {
   servers: StoredServer[]
   serversError: string | null
   selectedServer: StoredServer | null
+  selectedAgName: string | null
   onSelectServer: (server: StoredServer) => void
+  onSelectAg: (agName: string) => void
   onRemoveServer: (server: StoredServer) => void
 }
 
@@ -567,11 +678,14 @@ export function Sidebar({
   servers,
   serversError,
   selectedServer,
+  selectedAgName,
   onSelectServer,
+  onSelectAg,
   onRemoveServer
 }: SidebarProps): React.JSX.Element {
   const { groups, serverGroups, serverAliases, toggleCollapse, setServerGroup, setServerAlias } =
     useGroupsStore()
+  const agGroups = useAgStore((s) => s.agGroups)
 
   const [searchText, setSearchText] = useState('')
   const [groupManagerOpen, setGroupManagerOpen] = useState(false)
@@ -747,6 +861,16 @@ export function Sidebar({
               const groupServers = serversByGroupId.get(group.id) ?? []
               if (groupServers.length === 0) return null
               const onlineCount = groupServers.filter((s) => !s.unreachable).length
+
+              // Partition servers: those in an AG vs standalone
+              const agGroupsInThisGroup = Object.values(agGroups).filter((ag) =>
+                ag.serverIds.some((sid) => groupServers.some((s) => s.id === sid))
+              )
+              const serversInAnyAg = new Set(
+                agGroupsInThisGroup.flatMap((ag) => ag.serverIds)
+              )
+              const standaloneServers = groupServers.filter((s) => !serversInAnyAg.has(s.id))
+
               return (
                 <Box key={group.id}>
                   <GroupHeader
@@ -761,7 +885,34 @@ export function Sidebar({
                       transition: 'max-height 200ms ease'
                     }}
                   >
-                    {groupServers.map((s) => (
+                    {/* AG sub-groups */}
+                    {agGroupsInThisGroup.map((ag) => {
+                      const agServers = groupServers.filter((s) => ag.serverIds.includes(s.id))
+                      return (
+                        <Box key={ag.ag_name}>
+                          <AgGroupHeader
+                            ag={ag}
+                            isSelected={selectedAgName === ag.ag_name}
+                            onClick={() => onSelectAg(ag.ag_name)}
+                          />
+                          {agServers.map((s) => (
+                            <ServerItem
+                              key={s.id}
+                              server={s}
+                              alias={serverAliases[serverLabel(s)]}
+                              isSelected={selectedServer ? selectedServer.id === s.id : false}
+                              searchText=""
+                              inAgGroup
+                              onSelect={() => onSelectServer(s)}
+                              onContextMenu={handleContextMenu}
+                            />
+                          ))}
+                        </Box>
+                      )
+                    })}
+
+                    {/* Standalone (non-AG) servers in this group */}
+                    {standaloneServers.map((s) => (
                       <ServerItem
                         key={s.id}
                         server={s}

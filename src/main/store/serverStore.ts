@@ -18,6 +18,9 @@ export interface StoredServer {
   lastSeen?: string         // ISO 8601 — last successful connection
   unreachable?: boolean     // true while health-check reports failure
   unreachableSince?: string // ISO 8601 — timestamp of first failure
+  // Always On AG membership — populated at runtime, refreshed on startup
+  agGroupId?: string        // group_id UUID if this server belongs to an AG
+  agRole?: 'PRIMARY' | 'SECONDARY' | 'RESOLVING'
 }
 
 // ---------------------------------------------------------------------------

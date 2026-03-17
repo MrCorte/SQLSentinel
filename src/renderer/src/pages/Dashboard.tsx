@@ -20,9 +20,11 @@ import type { StoredServer, CollectMetricsRequest } from '../../../preload/index
 import { useMetrics } from '../hooks/useMetrics'
 import { useWorker } from '../context/useWorker'
 import { MetricsPanel } from '../components/MetricsPanel'
+import { AgDashboard } from '../components/AgDashboard'
 import { Sidebar } from '../components/Sidebar'
 import { useGroupsStore } from '../store/groupsStore'
 import { useServersStore } from '../store/serversStore'
+import { useAgStore } from '../store/agStore'
 import { getServerDisplayName } from '../types/index'
 import { tokens } from '../styles/tokens'
 
@@ -51,7 +53,9 @@ function toCollectRequest(server: StoredServer): CollectMetricsRequest {
 
 export function Dashboard(): React.JSX.Element {
   const { servers, initialized, removeServer, updateServer } = useServersStore()
+  const { detectAgsForServer } = useAgStore()
   const [selectedServer, setSelectedServer] = useState<StoredServer | null>(null)
+  const [selectedAgName, setSelectedAgName] = useState<string | null>(null)
   const [retriggering, setRetriggering] = useState(false)
 
   const { intervalSeconds, setIntervalSeconds, setConnection, getHistory, pushSnapshot } =
@@ -95,6 +99,24 @@ export function Dashboard(): React.JSX.Element {
     if (!selectedServerId) return
     refresh()
   }, [selectedServerId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-detect AG membership for each server after store loads
+  useEffect(() => {
+    if (!initialized) return
+    for (const s of servers) {
+      detectAgsForServer(s.id, toCollectRequest(s))
+    }
+  }, [initialized]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSelectServer = useCallback((server: StoredServer): void => {
+    setSelectedServer(server)
+    setSelectedAgName(null)
+  }, [])
+
+  const handleSelectAg = useCallback((agName: string): void => {
+    setSelectedAgName(agName)
+    setSelectedServer(null)
+  }, [])
 
   const stablePushSnapshot = useCallback(pushSnapshot, [pushSnapshot])
   const stableReceiveMetrics = useCallback(receiveMetrics, [receiveMetrics])
@@ -160,7 +182,9 @@ export function Dashboard(): React.JSX.Element {
         servers={servers}
         serversError={null}
         selectedServer={selectedServer}
-        onSelectServer={setSelectedServer}
+        selectedAgName={selectedAgName}
+        onSelectServer={handleSelectServer}
+        onSelectAg={handleSelectAg}
         onRemoveServer={handleRemoveServer}
       />
 
@@ -176,8 +200,26 @@ export function Dashboard(): React.JSX.Element {
           bgcolor: tokens.color.bgApp
         }}
       >
-        {!selectedServer && (
-          <Alert severity="info">Seleziona un server dalla lista per visualizzare le metriche.</Alert>
+        {!selectedServer && !selectedAgName && (
+          <Alert severity="info">Seleziona un server o un Availability Group dalla lista.</Alert>
+        )}
+
+        {/* AG Dashboard */}
+        {selectedAgName && !selectedServer && connection === null && (
+          (() => {
+            // Use any available server connection for AG queries (prefer the first one)
+            const anyConn = servers.length > 0 ? toCollectRequest(servers[0]) : null
+            if (!anyConn) return (
+              <Alert severity="warning">
+                Nessun server disponibile per interrogare l&apos;AG. Aggiungere prima almeno un server.
+              </Alert>
+            )
+            return (
+              <Box sx={{ flex: 1, overflow: 'auto' }}>
+                <AgDashboard agName={selectedAgName} connection={anyConn} />
+              </Box>
+            )
+          })()
         )}
 
         {selectedServer && (
@@ -326,6 +368,7 @@ export function Dashboard(): React.JSX.Element {
                   metrics={metrics}
                   history={history}
                   serverId={selectedServerId ?? ''}
+                  connection={connection!}
                 />
               </Box>
             ) : (

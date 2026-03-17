@@ -6,6 +6,17 @@ import Database from 'better-sqlite3'
 let _db: Database.Database | null = null
 
 const DDL = `
+  CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS db_custom_fields (
+    id        TEXT PRIMARY KEY,
+    alias     TEXT,
+    referente TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS servers (
     id                TEXT    PRIMARY KEY,
     ip                TEXT    NOT NULL,

@@ -39,6 +39,7 @@ function makeMetrics(overrides: Partial<ServerMetrics> = {}): ServerMetrics {
       version: 'SQL Server 2019',
       edition: 'Enterprise',
       memoryUsedMb: 4096,
+      memoryTargetMb: 8192,
       cpuUsagePercent: 15,
       uptimeDays: 30
     },
@@ -55,6 +56,9 @@ function makeMetrics(overrides: Partial<ServerMetrics> = {}): ServerMetrics {
         lastLogBackup: null
       }
     ],
+    waitStats: [],
+    diskVolumes: [],
+    databaseFiles: [],
     ...overrides
   }
 }

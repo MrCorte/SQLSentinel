@@ -52,8 +52,14 @@ export interface InstanceInfo {
   version: string
   edition: string
   memoryUsedMb: number
+  memoryTargetMb: number
   cpuUsagePercent: number
   uptimeDays: number
+}
+
+export interface HistoryRequest {
+  ip: string
+  port: number
 }
 
 export interface DatabaseInfo {
@@ -62,6 +68,8 @@ export interface DatabaseInfo {
   recoveryModel: string
   sizeMb: number
   logSizeMb: number
+  alias?: string
+  referente?: string
 }
 
 export interface SessionInfo {
@@ -89,6 +97,69 @@ export interface BackupInfo {
   lastLogBackup: Date | null
 }
 
+export interface WaitStatInfo {
+  waitType: string
+  waitTimeMs: number
+  maxWaitTimeMs: number
+  signalWaitTimeMs: number
+  waitingTasksCount: number
+  waitPercent: number
+}
+
+export interface StoredServer {
+  id: string
+  ip: string
+  port: number
+  instanceName?: string
+  useWindowsAuth: boolean
+  username?: string
+  password?: string
+  addedAt: string           // ISO 8601
+  lastSeen?: string         // ISO 8601
+  unreachable?: boolean
+  unreachableSince?: string // ISO 8601
+}
+
+export interface ServerAddResult {
+  success: boolean
+  reason?: string
+  server?: StoredServer
+}
+
+export interface UpdateServerRequest {
+  id: string
+  patch: Partial<StoredServer>
+}
+
+export interface ServerUnreachableEvent {
+  serverId: string
+  ip: string
+  port: number
+  since: string // ISO 8601
+}
+
+export interface DiskVolume {
+  volume_mount_point: string
+  logical_volume_name: string
+  total_gb: number
+  free_gb: number
+  used_gb: number
+  free_pct: number
+}
+
+export interface DatabaseFile {
+  database_name: string
+  file_name: string
+  type_desc: 'ROWS' | 'LOG'
+  physical_name: string
+  size_mb: number
+  used_mb: number
+  free_mb: number
+  max_mb: number | null
+  is_percent_growth: boolean
+  growth: number
+}
+
 export interface ServerMetrics {
   collectedAt: Date
   instanceInfo: InstanceInfo
@@ -96,6 +167,54 @@ export interface ServerMetrics {
   activeSessions: SessionInfo[]
   topQueries: QueryInfo[]
   backupStatus: BackupInfo[]
+  waitStats: WaitStatInfo[]
+  diskVolumes: DiskVolume[]
+  databaseFiles: DatabaseFile[]
+}
+
+export type AlertCategory =
+  | 'cpu_high'
+  | 'blocking_sessions'
+  | 'database_offline'
+  | 'backup_overdue'
+  | 'disk_space_low'
+export type AlertSeverity = 'WARNING' | 'CRITICAL'
+
+export interface Alert {
+  id: string
+  serverId: string
+  category: AlertCategory
+  severity: AlertSeverity
+  message: string
+  detectedAt: Date
+  acknowledgedAt: Date | null
+}
+
+export interface WorkerStartRequest {
+  intervalSeconds: number
+  servers: CollectMetricsRequest[]
+}
+
+export interface AcknowledgeAlertRequest {
+  alertId: string
+}
+
+export interface AppSettings {
+  retentionMinutes: number
+}
+
+export interface SaveSettingsRequest {
+  retentionMinutes?: number
+}
+
+export interface DbCustomFields {
+  alias?: string
+  referente?: string
+}
+
+export interface SaveCsvRequest {
+  filename: string
+  content: string
 }
 
 export interface SqlSentinelAPI {
@@ -105,6 +224,30 @@ export interface SqlSentinelAPI {
   getServers(): Promise<IpcResult<DiscoveredServer[]>>
   removeServer(req: RemoveServerRequest): Promise<IpcResult<null>>
   collectMetrics(req: CollectMetricsRequest): Promise<IpcResult<ServerMetrics>>
+  workerStart(req: WorkerStartRequest): Promise<IpcResult<null>>
+  workerStop(): Promise<IpcResult<null>>
+  getAlerts(): Promise<IpcResult<Alert[]>>
+  acknowledgeAlert(req: AcknowledgeAlertRequest): Promise<IpcResult<null>>
+  getHistory(req: HistoryRequest): Promise<IpcResult<ServerMetrics[]>>
+  onMetricsUpdated(callback: (data: { serverId: string; metrics: ServerMetrics }) => void): () => void
+  onAlertNew(callback: (alert: Alert) => void): () => void
+  getSettings(): Promise<IpcResult<AppSettings>>
+  saveSettings(req: SaveSettingsRequest): Promise<IpcResult<null>>
+  getDbCustomFields(req: { serverId: string; dbName: string }): Promise<IpcResult<DbCustomFields>>
+  setDbCustomFields(req: { serverId: string; dbName: string; fields: DbCustomFields }): Promise<IpcResult<null>>
+  getAllDbCustomFields(): Promise<IpcResult<Record<string, DbCustomFields>>>
+  exportCustomFields(): Promise<IpcResult<string>>
+  exportInventory(): Promise<IpcResult<string>>
+  exportAlerts(): Promise<IpcResult<string>>
+  saveCsv(req: SaveCsvRequest): Promise<IpcResult<string | null>>
+  servers: {
+    getAll(): Promise<IpcResult<StoredServer[]>>
+    add(params: Omit<StoredServer, 'id' | 'addedAt'>): Promise<IpcResult<ServerAddResult>>
+    update(req: UpdateServerRequest): Promise<IpcResult<null>>
+    remove(id: string): Promise<IpcResult<null>>
+  }
+  onServerUnreachable(callback: (data: ServerUnreachableEvent) => void): () => void
+  onServerRecovered(callback: (serverId: string) => void): () => void
 }
 
 declare global {

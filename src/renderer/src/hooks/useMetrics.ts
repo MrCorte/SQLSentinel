@@ -1,41 +1,58 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { CollectMetricsRequest, ServerMetrics } from '../../../preload/index'
 
-const MAX_HISTORY = 60 // punti di history per i grafici
-
 export interface MetricsHistoryPoint {
   timestamp: number // ms epoch
   memoryUsedMb: number
+  memoryPercent: number // memoryUsedMb / memoryTargetMb * 100
   cpuUsagePercent: number
 }
 
-export function useMetrics(connection: CollectMetricsRequest | null) {
+export function metricsToHistoryPoint(m: ServerMetrics): MetricsHistoryPoint {
+  const target = m.instanceInfo.memoryTargetMb
+  return {
+    timestamp: new Date(m.collectedAt).getTime(),
+    memoryUsedMb: m.instanceInfo.memoryUsedMb,
+    memoryPercent: target > 0 ? Math.min(100, (m.instanceInfo.memoryUsedMb / target) * 100) : 0,
+    cpuUsagePercent: m.instanceInfo.cpuUsagePercent
+  }
+}
+
+interface UseMetricsOptions {
+  /** Called whenever metrics are received (push or manual refresh) — used to feed historyMap in WorkerContext */
+  onReceived?: (serverId: string, m: ServerMetrics) => void
+}
+
+export function useMetrics(
+  connection: CollectMetricsRequest | null,
+  options?: UseMetricsOptions
+) {
   const [metrics, setMetrics] = useState<ServerMetrics | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [history, setHistory] = useState<MetricsHistoryPoint[]>([])
-  const [autoRefreshSeconds, setAutoRefreshSeconds] = useState(0) // 0 = disabilitato
 
   const connectionRef = useRef(connection)
   connectionRef.current = connection
 
+  const onReceivedRef = useRef(options?.onReceived)
+  onReceivedRef.current = options?.onReceived
+
+  /** Called by Dashboard when a push metric arrives via onMetricsUpdated */
+  const receiveMetrics = useCallback((m: ServerMetrics) => {
+    setMetrics(m)
+  }, [])
+
   const refresh = useCallback(async (): Promise<void> => {
-    if (!connectionRef.current) return
+    const conn = connectionRef.current
+    if (!conn) return
     setIsLoading(true)
     setError(null)
     try {
-      const result = await window.sqlSentinel.collectMetrics(connectionRef.current)
+      const result = await window.sqlSentinel.collectMetrics(conn)
       if (result.ok) {
         setMetrics(result.data)
-        setHistory((prev) => {
-          const point: MetricsHistoryPoint = {
-            timestamp: new Date(result.data.collectedAt).getTime(),
-            memoryUsedMb: result.data.instanceInfo.memoryUsedMb,
-            cpuUsagePercent: result.data.instanceInfo.cpuUsagePercent
-          }
-          const updated = [...prev, point]
-          return updated.length > MAX_HISTORY ? updated.slice(updated.length - MAX_HISTORY) : updated
-        })
+        const serverId = `${conn.ip}:${conn.port}`
+        onReceivedRef.current?.(serverId, result.data)
       } else {
         setError(result.error)
       }
@@ -46,21 +63,11 @@ export function useMetrics(connection: CollectMetricsRequest | null) {
     }
   }, [])
 
-  // Auto-refresh
+  // Resetta solo l'errore al cambio server — le metriche rimangono visibili
+  // fino all'arrivo dei nuovi dati (evita blank screen durante il caricamento)
   useEffect(() => {
-    if (autoRefreshSeconds <= 0 || !connection) return
-    const id = setInterval(() => {
-      refresh()
-    }, autoRefreshSeconds * 1000)
-    return () => clearInterval(id)
-  }, [autoRefreshSeconds, connection, refresh])
-
-  // Reset state quando cambia il server selezionato
-  useEffect(() => {
-    setMetrics(null)
-    setHistory([])
     setError(null)
   }, [connection?.ip, connection?.port])
 
-  return { metrics, isLoading, error, history, refresh, autoRefreshSeconds, setAutoRefreshSeconds }
+  return { metrics, isLoading, error, refresh, receiveMetrics }
 }

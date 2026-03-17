@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useGroupsStore } from '../store/groupsStore'
 import {
   Box,
   Stack,
@@ -35,6 +36,7 @@ function parsePorts(input: string): number[] {
 
 export function Discovery(): React.JSX.Element {
   const { servers, isScanning, progress, error, scan, addServer } = useDiscovery()
+  const { setServerGroup, setServerAlias } = useGroupsStore()
 
   // --- Form stato scan ---
   const [cidr, setCidr] = useState('192.168.1.0/24')
@@ -87,6 +89,9 @@ export function Discovery(): React.JSX.Element {
       username: data.username || undefined,
       password: data.password || undefined
     })
+    const sid = `${data.ip}:${data.port}`
+    if (data.groupId) setServerGroup(sid, data.groupId)
+    if (data.alias?.trim()) setServerAlias(sid, data.alias.trim())
     setDialogOpen(false)
   }
 

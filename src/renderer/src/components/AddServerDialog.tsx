@@ -9,8 +9,14 @@ import {
   FormControlLabel,
   Switch,
   Stack,
-  Typography
+  Typography,
+  Box,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel
 } from '@mui/material'
+import { useGroupsStore } from '../store/groupsStore'
 
 export interface AddServerFormData {
   ip: string
@@ -19,6 +25,8 @@ export interface AddServerFormData {
   useWindowsAuth: boolean
   username: string
   password: string
+  groupId?: string
+  alias?: string
 }
 
 interface Props {
@@ -41,45 +49,50 @@ const EMPTY_FORM: AddServerFormData = {
   instanceName: '',
   useWindowsAuth: true,
   username: '',
-  password: ''
+  password: '',
+  groupId: undefined,
+  alias: undefined
 }
 
-export function AddServerDialog({ open, initialIp, initialPort, onClose, onSave }: Props): React.JSX.Element {
+export function AddServerDialog({
+  open,
+  initialIp,
+  initialPort,
+  onClose,
+  onSave
+}: Props): React.JSX.Element {
   const [form, setForm] = useState<AddServerFormData>(EMPTY_FORM)
   const [errors, setErrors] = useState<FormErrors>({})
 
-  // Pre-compila ip/porta quando il dialog viene aperto da una riga della tabella
+  const groups = useGroupsStore((state) => state.groups)
+  const sortedGroups = [...groups].sort((a, b) => a.order - b.order)
+
   useEffect(() => {
     if (open) {
-      setForm({ ...EMPTY_FORM, ip: initialIp ?? '', port: initialPort ?? 1433 })
+      setForm({
+        ...EMPTY_FORM,
+        ip: initialIp ?? '',
+        port: initialPort ?? 1433,
+        groupId: sortedGroups[0]?.id
+      })
       setErrors({})
     }
-  }, [open, initialIp, initialPort])
+  }, [open, initialIp, initialPort]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const validate = (): boolean => {
     const newErrors: FormErrors = {}
-
-    if (!form.ip.trim()) {
-      newErrors.ip = 'IP o hostname obbligatorio'
-    }
-
+    if (!form.ip.trim()) newErrors.ip = 'IP o hostname obbligatorio'
     const portNum = Number(form.port)
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535)
       newErrors.port = 'Porta deve essere un numero tra 1 e 65535'
-    }
-
-    if (!form.useWindowsAuth && !form.username.trim()) {
+    if (!form.useWindowsAuth && !form.username.trim())
       newErrors.username = 'Username obbligatorio per autenticazione SQL Server'
-    }
-
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
   const handleSave = (): void => {
-    if (validate()) {
-      onSave({ ...form, port: Number(form.port) })
-    }
+    if (validate()) onSave({ ...form, port: Number(form.port) })
   }
 
   const set = <K extends keyof AddServerFormData>(key: K, value: AddServerFormData[K]): void => {
@@ -123,6 +136,46 @@ export function AddServerDialog({ open, initialIp, initialPort, onClose, onSave 
             />
           </Stack>
 
+          <TextField
+            label="Nome (opzionale)"
+            value={form.alias ?? ''}
+            onChange={(e) => set('alias', e.target.value || undefined)}
+            placeholder="es. SQL-PROD-01"
+            helperText="Se vuoto, verrà mostrato IP:Porta"
+            fullWidth
+          />
+
+          <FormControl size="small" fullWidth>
+            <InputLabel>Gruppo</InputLabel>
+            <Select
+              label="Gruppo"
+              value={form.groupId ?? ''}
+              onChange={(e) => set('groupId', e.target.value || undefined)}
+            >
+              <MenuItem value="">Nessun gruppo</MenuItem>
+              {sortedGroups.map((g) => (
+                <MenuItem key={g.id} value={g.id}>
+                  <Box
+                    component="span"
+                    sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}
+                  >
+                    <Box
+                      component="span"
+                      sx={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: '50%',
+                        bgcolor: g.color,
+                        display: 'inline-block'
+                      }}
+                    />
+                    {g.name}
+                  </Box>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
           <FormControlLabel
             control={
               <Switch
@@ -130,7 +183,11 @@ export function AddServerDialog({ open, initialIp, initialPort, onClose, onSave 
                 onChange={(e) => set('useWindowsAuth', e.target.checked)}
               />
             }
-            label={form.useWindowsAuth ? 'Autenticazione Windows (NTLM)' : 'Autenticazione SQL Server'}
+            label={
+              form.useWindowsAuth
+                ? 'Autenticazione Windows (NTLM)'
+                : 'Autenticazione SQL Server'
+            }
           />
 
           {!form.useWindowsAuth && (

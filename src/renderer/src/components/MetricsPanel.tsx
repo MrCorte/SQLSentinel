@@ -1,52 +1,117 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Box,
   Tabs,
   Tab,
   Typography,
   Stack,
-  Paper,
-  Chip
+  Chip,
+  Tooltip,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField
 } from '@mui/material'
+import EditIcon from '@mui/icons-material/Edit'
 import { DataGrid } from '@mui/x-data-grid'
 import type { GridColDef } from '@mui/x-data-grid'
-import type { ServerMetrics, DatabaseInfo, SessionInfo, QueryInfo, BackupInfo } from '../../../preload/index'
+import type {
+  ServerMetrics,
+  DatabaseInfo,
+  SessionInfo,
+  QueryInfo,
+  BackupInfo,
+  WaitStatInfo,
+  DbCustomFields
+} from '../../../preload/index'
 import { MemoryChart } from './MemoryChart'
+import { DisksTab } from './tabs/DisksTab'
 import type { MetricsHistoryPoint } from '../hooks/useMetrics'
+import { tokens } from '../styles/tokens'
 
 interface Props {
   metrics: ServerMetrics
   history: MetricsHistoryPoint[]
+  serverId: string
 }
 
 // -----------------------------------------------------------------------
 // Tab Panoramica
 // -----------------------------------------------------------------------
 
-function InfoCard({ label, value }: { label: string; value: string }): React.JSX.Element {
+function kpiAccent(type: 'blue' | 'health', value: number): string {
+  if (type === 'blue') return tokens.color.primary
+  if (value > 80) return tokens.color.error
+  if (value > 60) return tokens.color.warning
+  return tokens.color.success
+}
+
+function KpiCard({ label, value, accent }: { label: string; value: string; accent: string }): React.JSX.Element {
   return (
-    <Paper variant="outlined" sx={{ p: 1.5, minWidth: 160 }}>
-      <Typography variant="caption" color="text.secondary" display="block">
+    <Box
+      sx={{
+        bgcolor: tokens.color.bgCard,
+        border: `1px solid ${tokens.color.border}`,
+        borderTop: `3px solid ${accent}`,
+        borderRadius: tokens.radius.sm,
+        px: '20px',
+        py: '16px',
+        minWidth: 150,
+        flex: '1 1 150px',
+        boxShadow: tokens.shadow.card
+      }}
+    >
+      <Typography
+        sx={{
+          fontSize: 11,
+          fontWeight: tokens.font.weightSemibold,
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+          color: tokens.color.textSecondary,
+          mb: '8px',
+          display: 'block'
+        }}
+      >
         {label}
       </Typography>
-      <Typography variant="body1" fontWeight={600}>
+      <Typography
+        sx={{
+          fontSize: 18,
+          fontWeight: 600,
+          color: '#201f1e',
+          lineHeight: 1.2
+        }}
+      >
         {value}
       </Typography>
-    </Paper>
+    </Box>
   )
 }
 
-function TabPanoramica({ metrics, history }: Props): React.JSX.Element {
+function TabPanoramica({ metrics, history }: Omit<Props, 'serverId'>): React.JSX.Element {
   const info = metrics.instanceInfo
+  const memPercent = info.memoryTargetMb > 0 ? (info.memoryUsedMb / info.memoryTargetMb) * 100 : 0
+
   return (
     <Stack spacing={2}>
-      <Stack direction="row" spacing={1.5} flexWrap="wrap">
-        <InfoCard label="Versione" value={info.version} />
-        <InfoCard label="Edizione" value={info.edition} />
-        <InfoCard label="Memoria usata" value={`${info.memoryUsedMb.toLocaleString('it-IT')} MB`} />
-        <InfoCard label="CPU" value={`${info.cpuUsagePercent.toFixed(1)} %`} />
-        <InfoCard label="Uptime" value={`${info.uptimeDays.toFixed(1)} giorni`} />
-      </Stack>
+      <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+        <KpiCard label="Versione" value={info.version} accent={kpiAccent('blue', 0)} />
+        <KpiCard label="Edizione" value={info.edition} accent={kpiAccent('blue', 0)} />
+        <KpiCard
+          label="Memoria usata"
+          value={`${info.memoryUsedMb.toLocaleString('it-IT')} MB`}
+          accent={kpiAccent('health', memPercent > 90 ? 90 : memPercent > 70 ? 70 : 0)}
+        />
+        <KpiCard
+          label="CPU"
+          value={`${info.cpuUsagePercent.toFixed(1)} %`}
+          accent={kpiAccent('health', info.cpuUsagePercent)}
+        />
+        <KpiCard label="Uptime" value={`${info.uptimeDays.toFixed(1)} giorni`} accent={kpiAccent('blue', 0)} />
+      </Box>
       {history.length > 1 && <MemoryChart history={history} />}
       {history.length <= 1 && (
         <Typography variant="body2" color="text.secondary">
@@ -58,36 +123,359 @@ function TabPanoramica({ metrics, history }: Props): React.JSX.Element {
 }
 
 // -----------------------------------------------------------------------
+// Helpers condivisi
+// -----------------------------------------------------------------------
+
+function NameCell({ value }: { value: string }): React.JSX.Element {
+  return (
+    <Tooltip title={value} placement="top" arrow disableInteractive>
+      <Typography variant="body2" noWrap sx={{ width: '100%' }}>
+        {value}
+      </Typography>
+    </Tooltip>
+  )
+}
+
+// -----------------------------------------------------------------------
+// Tab Database — edit dialog
+// -----------------------------------------------------------------------
+
+interface DbEditDialogProps {
+  open: boolean
+  dbName: string
+  initial: DbCustomFields
+  onClose: () => void
+  onSave: (fields: DbCustomFields) => void
+}
+
+function DbEditDialog({
+  open,
+  dbName,
+  initial,
+  onClose,
+  onSave
+}: DbEditDialogProps): React.JSX.Element {
+  const [alias, setAlias] = useState(initial.alias ?? '')
+  const [referente, setReferente] = useState(initial.referente ?? '')
+
+  // Sync when a different row is opened
+  useEffect(() => {
+    setAlias(initial.alias ?? '')
+    setReferente(initial.referente ?? '')
+  }, [dbName, initial.alias, initial.referente])
+
+  function handleSave(): void {
+    onSave({
+      alias: alias.trim() || undefined,
+      referente: referente.trim() || undefined
+    })
+  }
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>Modifica — {dbName}</DialogTitle>
+      <DialogContent
+        sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}
+      >
+        <TextField
+          label="Alias"
+          placeholder="Nome alternativo (opzionale)"
+          value={alias}
+          onChange={(e) => setAlias(e.target.value)}
+          size="small"
+          fullWidth
+        />
+        <TextField
+          label="Referente"
+          placeholder="Responsabile (opzionale)"
+          value={referente}
+          onChange={(e) => setReferente(e.target.value)}
+          size="small"
+          fullWidth
+        />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>Annulla</Button>
+        <Button variant="contained" onClick={handleSave}>
+          Salva
+        </Button>
+      </DialogActions>
+    </Dialog>
+  )
+}
+
+// -----------------------------------------------------------------------
 // Tab Database
 // -----------------------------------------------------------------------
 
-const dbColumns: GridColDef<DatabaseInfo>[] = [
-  { field: 'name', headerName: 'Database', flex: 1 },
-  { field: 'stateDesc', headerName: 'Stato', width: 110 },
-  { field: 'recoveryModel', headerName: 'Recovery', width: 100 },
-  {
-    field: 'sizeMb',
-    headerName: 'Dati (MB)',
-    width: 110,
-    type: 'number',
-    align: 'right',
-    headerAlign: 'right',
-    valueFormatter: (v: number) => v.toLocaleString('it-IT')
-  },
-  {
-    field: 'logSizeMb',
-    headerName: 'Log (MB)',
-    width: 110,
-    type: 'number',
-    align: 'right',
-    headerAlign: 'right',
-    valueFormatter: (v: number) => v.toLocaleString('it-IT')
+type DatabaseRow = DatabaseInfo
+
+function dbRowClass(db: DatabaseRow): string {
+  if (db.stateDesc === 'OFFLINE') return 'row-db-offline'
+  if (
+    ['SUSPECT', 'EMERGENCY', 'RESTORING', 'RECOVERING', 'RECOVERY_PENDING'].includes(db.stateDesc)
+  ) {
+    return 'row-db-warning'
   }
-]
+  return ''
+}
+
+const GRID_HEADER_SX = {
+  '& .MuiDataGrid-columnHeader': {
+    bgcolor: tokens.color.bgApp,
+    fontSize: tokens.font.sizeXs,
+    fontWeight: tokens.font.weightSemibold,
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+    color: tokens.color.textSecondary
+  },
+  '& .MuiDataGrid-columnHeaders': {
+    borderBottom: `2px solid ${tokens.color.primary}`
+  }
+} as const
+
+const DB_SX = {
+  border: 0,
+  ...GRID_HEADER_SX,
+  '& .row-db-offline': {
+    bgcolor: tokens.color.errorLight,
+    color: tokens.color.error,
+    '&:hover': { bgcolor: '#fcc' }
+  },
+  '& .row-db-warning': {
+    bgcolor: tokens.color.warningLight,
+    color: tokens.color.warning,
+    '&:hover': { bgcolor: '#fecba1' }
+  }
+} as const
+
+function StatoCell({ stateDesc }: { stateDesc: string }): React.JSX.Element {
+  let bgcolor = tokens.color.bgApp
+  let color = tokens.color.textSecondary
+  let borderColor = tokens.color.border
+
+  if (stateDesc === 'ONLINE') {
+    bgcolor = tokens.color.successLight
+    color = tokens.color.success
+    borderColor = tokens.color.success
+  } else if (stateDesc === 'OFFLINE') {
+    bgcolor = tokens.color.errorLight
+    color = tokens.color.error
+    borderColor = tokens.color.error
+  } else if (['RESTORING', 'RECOVERING', 'RECOVERY_PENDING', 'SUSPECT', 'EMERGENCY'].includes(stateDesc)) {
+    bgcolor = tokens.color.warningLight
+    color = tokens.color.warning
+    borderColor = tokens.color.warning
+  }
+
+  return (
+    <Box
+      component="span"
+      sx={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        px: '10px',
+        py: '2px',
+        borderRadius: '12px',
+        border: `1px solid ${borderColor}`,
+        bgcolor,
+        fontSize: 11,
+        fontWeight: 600,
+        color,
+        letterSpacing: '0.3px',
+        lineHeight: 1.4
+      }}
+    >
+      {stateDesc}
+    </Box>
+  )
+}
+
+function TabDatabase({
+  metrics,
+  serverId
+}: {
+  metrics: ServerMetrics
+  serverId: string
+}): React.JSX.Element {
+  const [customFields, setCustomFields] = useState<Record<string, DbCustomFields>>({})
+  const [editingDb, setEditingDb] = useState<DatabaseRow | null>(null)
+
+  useEffect(() => {
+    window.sqlSentinel
+      .getAllDbCustomFields()
+      .then((r) => {
+        if (r.ok) setCustomFields(r.data)
+        else console.error('[TabDatabase] getAllDbCustomFields error:', r.error)
+      })
+      .catch((err) => console.error('[TabDatabase] getAllDbCustomFields threw:', err))
+  }, [])
+
+  const databases: DatabaseRow[] = useMemo(
+    () =>
+      (metrics.databases ?? []).map((db) => {
+        const cf = customFields[`${serverId}/${db.name}`]
+        return {
+          ...db,
+          alias: cf?.alias ?? db.alias,
+          referente: cf?.referente ?? db.referente
+        }
+      }),
+    [metrics.databases, customFields, serverId]
+  )
+
+  console.log('[TabDatabase] databases:', databases)
+  console.log('[TabDatabase] customFields:', customFields)
+
+  const handleSave = useCallback(
+    async (fields: DbCustomFields) => {
+      if (!editingDb) return
+      const result = await window.sqlSentinel.setDbCustomFields({
+        serverId,
+        dbName: editingDb.name,
+        fields
+      })
+      if (result.ok) {
+        setCustomFields((prev) => ({
+          ...prev,
+          [`${serverId}/${editingDb.name}`]: fields
+        }))
+        setEditingDb(null)
+      }
+    },
+    [editingDb, serverId]
+  )
+
+  const columns: GridColDef<DatabaseRow>[] = useMemo(
+    () => [
+      {
+        field: 'name',
+        headerName: 'Database',
+        flex: 1,
+        renderCell: (p) => <NameCell value={p.value as string} />
+      },
+      {
+        field: 'stateDesc',
+        headerName: 'Stato',
+        width: 130,
+        renderCell: (p) => <StatoCell stateDesc={p.value as string} />
+      },
+      {
+        field: 'alias',
+        headerName: 'Alias',
+        width: 130,
+        renderCell: (p) => (
+          <Typography
+            variant="body2"
+            color={p.value ? 'text.primary' : 'text.disabled'}
+            noWrap
+          >
+            {(p.value as string | undefined) || '—'}
+          </Typography>
+        )
+      },
+      {
+        field: 'referente',
+        headerName: 'Referente',
+        width: 130,
+        renderCell: (p) => (
+          <Typography
+            variant="body2"
+            color={p.value ? 'text.primary' : 'text.disabled'}
+            noWrap
+          >
+            {(p.value as string | undefined) || '—'}
+          </Typography>
+        )
+      },
+      { field: 'recoveryModel', headerName: 'Recovery', width: 100 },
+      {
+        field: 'sizeMb',
+        headerName: 'Dati (MB)',
+        headerAlign: 'right',
+        width: 110,
+        type: 'number',
+        align: 'right',
+        valueFormatter: (v: number) => v.toLocaleString('it-IT')
+      },
+      {
+        field: 'logSizeMb',
+        headerName: 'Log (MB)',
+        width: 110,
+        type: 'number',
+        align: 'right',
+        headerAlign: 'right',
+        valueFormatter: (v: number) => v.toLocaleString('it-IT')
+      },
+      {
+        field: 'actions',
+        headerName: 'Azioni',
+        width: 70,
+        sortable: false,
+        filterable: false,
+        renderCell: (p) => (
+          <IconButton size="small" onClick={() => setEditingDb(p.row as DatabaseRow)}>
+            <EditIcon fontSize="small" />
+          </IconButton>
+        )
+      }
+    ],
+    [] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
+  return (
+    <>
+      <DataGrid<DatabaseRow>
+        rows={databases}
+        columns={columns}
+        getRowId={(r) => r.name}
+        density="compact"
+        disableRowSelectionOnClick
+        pageSizeOptions={[25, 50]}
+        initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+        getRowClassName={(p) => dbRowClass(p.row as DatabaseRow)}
+        sx={DB_SX}
+      />
+      {editingDb && (
+        <DbEditDialog
+          open
+          dbName={editingDb.name}
+          initial={{
+            alias: editingDb.alias,
+            referente: editingDb.referente
+          }}
+          onClose={() => setEditingDb(null)}
+          onSave={handleSave}
+        />
+      )}
+    </>
+  )
+}
 
 // -----------------------------------------------------------------------
 // Tab Sessioni
 // -----------------------------------------------------------------------
+
+function sessionRowClass(session: SessionInfo): string {
+  if (session.status === 'suspended' && session.waitTimeMs > 5000) return 'row-session-critical'
+  if (session.blockingSessionId > 0) return 'row-session-blocked'
+  return ''
+}
+
+const SESSION_SX = {
+  border: 0,
+  ...GRID_HEADER_SX,
+  '& .row-session-critical': {
+    bgcolor: tokens.color.errorLight,
+    color: tokens.color.error,
+    '&:hover': { bgcolor: '#fcc' }
+  },
+  '& .row-session-blocked': {
+    bgcolor: tokens.color.warningLight,
+    color: tokens.color.warning,
+    '&:hover': { bgcolor: '#fecba1' }
+  }
+} as const
 
 const sessionColumns: GridColDef<SessionInfo>[] = [
   { field: 'sessionId', headerName: 'SID', width: 70, type: 'number' },
@@ -97,14 +485,25 @@ const sessionColumns: GridColDef<SessionInfo>[] = [
     headerName: 'Bloccato da',
     width: 105,
     type: 'number',
-    renderCell: (params) =>
-      params.value > 0 ? (
-        <Chip label={params.value} size="small" color="error" />
+    renderCell: (p) =>
+      p.value > 0 ? (
+        <Chip label={p.value} size="small" color="error" />
       ) : (
         <Typography variant="body2">—</Typography>
       )
   },
-  { field: 'waitType', headerName: 'Wait type', flex: 1 },
+  {
+    field: 'waitType',
+    headerName: 'Wait type',
+    flex: 1,
+    renderCell: (p) => (
+      <Tooltip title={p.value as string} placement="top" arrow disableInteractive>
+        <Typography variant="body2" noWrap sx={{ width: '100%' }}>
+          {p.value || '—'}
+        </Typography>
+      </Tooltip>
+    )
+  },
   { field: 'waitTimeMs', headerName: 'Wait (ms)', width: 95, type: 'number' },
   { field: 'cpuTime', headerName: 'CPU (ms)', width: 95, type: 'number' },
   { field: 'logicalReads', headerName: 'Letture logiche', width: 130, type: 'number' }
@@ -118,25 +517,30 @@ const MS_PER_HOUR = 3_600_000
 
 function backupCellStyle(date: Date | null): React.CSSProperties {
   if (!date) return { color: '#d32f2f', fontWeight: 600 }
-  const ageH = (Date.now() - new Date(date).getTime()) / MS_PER_HOUR
-  if (ageH > 24) return { color: '#d32f2f', fontWeight: 600 }
+  if ((Date.now() - new Date(date).getTime()) / MS_PER_HOUR > 24) {
+    return { color: '#d32f2f', fontWeight: 600 }
+  }
   return {}
 }
 
 function formatBackupDate(date: Date | null): string {
-  if (!date) return 'Mai'
-  return new Date(date).toLocaleString('it-IT')
+  return date ? new Date(date).toLocaleString('it-IT') : 'Mai'
 }
 
 const backupColumns: GridColDef<BackupInfo>[] = [
-  { field: 'databaseName', headerName: 'Database', flex: 1 },
+  {
+    field: 'databaseName',
+    headerName: 'Database',
+    flex: 1,
+    renderCell: (p) => <NameCell value={p.value as string} />
+  },
   {
     field: 'lastFullBackup',
     headerName: 'Ultimo Full',
     width: 175,
-    renderCell: (params) => (
-      <span style={backupCellStyle(params.value as Date | null)}>
-        {formatBackupDate(params.value as Date | null)}
+    renderCell: (p) => (
+      <span style={backupCellStyle(p.value as Date | null)}>
+        {formatBackupDate(p.value as Date | null)}
       </span>
     )
   },
@@ -144,9 +548,9 @@ const backupColumns: GridColDef<BackupInfo>[] = [
     field: 'lastDiffBackup',
     headerName: 'Ultimo Diff',
     width: 175,
-    renderCell: (params) => (
-      <span style={backupCellStyle(params.value as Date | null)}>
-        {formatBackupDate(params.value as Date | null)}
+    renderCell: (p) => (
+      <span style={backupCellStyle(p.value as Date | null)}>
+        {formatBackupDate(p.value as Date | null)}
       </span>
     )
   },
@@ -154,9 +558,9 @@ const backupColumns: GridColDef<BackupInfo>[] = [
     field: 'lastLogBackup',
     headerName: 'Ultimo Log',
     width: 175,
-    renderCell: (params) => (
-      <span style={backupCellStyle(params.value as Date | null)}>
-        {formatBackupDate(params.value as Date | null)}
+    renderCell: (p) => (
+      <span style={backupCellStyle(p.value as Date | null)}>
+        {formatBackupDate(p.value as Date | null)}
       </span>
     )
   }
@@ -167,11 +571,18 @@ const backupColumns: GridColDef<BackupInfo>[] = [
 // -----------------------------------------------------------------------
 
 const queryColumns: GridColDef<QueryInfo>[] = [
-  { field: 'queryText', headerName: 'Query', flex: 1, renderCell: (params) => (
-    <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 11 }} noWrap title={params.value as string}>
-      {params.value}
-    </Typography>
-  )},
+  {
+    field: 'queryText',
+    headerName: 'Query',
+    flex: 1,
+    renderCell: (p) => (
+      <Tooltip title={p.value as string} placement="top" arrow disableInteractive>
+        <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 11 }} noWrap>
+          {p.value}
+        </Typography>
+      </Tooltip>
+    )
+  },
   { field: 'executionCount', headerName: 'Esecuzioni', width: 105, type: 'number' },
   { field: 'totalElapsedTimeMs', headerName: 'Elapsed tot (ms)', width: 140, type: 'number' },
   { field: 'avgCpuTimeMs', headerName: 'Avg CPU (ms)', width: 120, type: 'number' },
@@ -179,41 +590,139 @@ const queryColumns: GridColDef<QueryInfo>[] = [
 ]
 
 // -----------------------------------------------------------------------
+// Tab Wait Stats
+// -----------------------------------------------------------------------
+
+function WaitPercentCell({ value }: { value: number }): React.JSX.Element {
+  const color = value > 20 ? '#ef4444' : value > 10 ? '#f97316' : '#22c55e'
+  return (
+    <Box sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
+      <Box sx={{ flex: 1, bgcolor: '#1e293b', borderRadius: 0.5, height: 8, overflow: 'hidden' }}>
+        <Box sx={{ width: `${Math.min(100, value)}%`, bgcolor: color, height: '100%' }} />
+      </Box>
+      <Typography variant="caption" sx={{ minWidth: 42, textAlign: 'right', color }}>
+        {value.toFixed(1)}%
+      </Typography>
+    </Box>
+  )
+}
+
+const waitStatColumns: GridColDef<WaitStatInfo>[] = [
+  {
+    field: 'waitType',
+    headerName: 'Wait Type',
+    flex: 1,
+    renderCell: (p) => (
+      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>
+        {p.value as string}
+      </Typography>
+    )
+  },
+  {
+    field: 'waitPercent',
+    headerName: 'Wait %',
+    width: 170,
+    type: 'number',
+    renderCell: (p) => <WaitPercentCell value={p.value as number} />
+  },
+  {
+    field: 'waitTimeMs',
+    headerName: 'Wait Time (ms)',
+    width: 130,
+    type: 'number',
+    align: 'right',
+    headerAlign: 'right',
+    valueFormatter: (v: number) => v.toLocaleString('it-IT')
+  },
+  {
+    field: 'maxWaitTimeMs',
+    headerName: 'Max Wait (ms)',
+    width: 130,
+    type: 'number',
+    align: 'right',
+    headerAlign: 'right',
+    valueFormatter: (v: number) => v.toLocaleString('it-IT')
+  },
+  {
+    field: 'signalWaitTimeMs',
+    headerName: 'Signal Wait (ms)',
+    width: 140,
+    type: 'number',
+    align: 'right',
+    headerAlign: 'right',
+    valueFormatter: (v: number) => v.toLocaleString('it-IT')
+  },
+  {
+    field: 'waitingTasksCount',
+    headerName: 'Tasks in attesa',
+    width: 130,
+    type: 'number',
+    align: 'right',
+    headerAlign: 'right'
+  }
+]
+
+// -----------------------------------------------------------------------
 // Componente principale
 // -----------------------------------------------------------------------
 
-export function MetricsPanel({ metrics, history }: Props): React.JSX.Element {
+export function MetricsPanel({ metrics, history, serverId }: Props): React.JSX.Element {
   const [tab, setTab] = useState(0)
+
+  const databases = metrics?.databases ?? []
+  const activeSessions = metrics?.activeSessions ?? []
+  const backupStatus = metrics?.backupStatus ?? []
+  const diskVolumes = metrics?.diskVolumes ?? []
+  const databaseFiles = metrics?.databaseFiles ?? []
+  const topQueries = metrics?.topQueries ?? []
+  const waitStats = metrics?.waitStats ?? []
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Tabs value={tab} onChange={(_e, v) => setTab(v as number)} sx={{ borderBottom: 1, borderColor: 'divider' }}>
-        <Tab label="Panoramica" />
-        <Tab label={`Database (${metrics.databases.length})`} />
-        <Tab label={`Sessioni (${metrics.activeSessions.length})`} />
-        <Tab label="Backup" />
-        <Tab label={`Top Query (${metrics.topQueries.length})`} />
-      </Tabs>
+      <Box
+        sx={{
+          bgcolor: tokens.color.bgCard,
+          borderBottom: `1px solid ${tokens.color.border}`
+        }}
+      >
+        <Tabs
+          value={tab}
+          onChange={(_e, v) => setTab(v as number)}
+          sx={{
+            minHeight: 36,
+            '& .MuiTab-root': {
+              minHeight: 36,
+              fontSize: tokens.font.sizeBase,
+              fontWeight: tokens.font.weightSemibold,
+              color: tokens.color.textSecondary,
+              py: 0,
+              textTransform: 'none',
+              '&.Mui-selected': { color: tokens.color.primary }
+            },
+            '& .MuiTabs-indicator': {
+              backgroundColor: tokens.color.primary,
+              height: 2
+            }
+          }}
+        >
+          <Tab label="Panoramica" />
+          <Tab label={`Database (${databases.length})`} />
+          <Tab label={`Sessioni (${activeSessions.length})`} />
+          <Tab label="Backup" />
+          <Tab label={`Dischi (${diskVolumes.length})`} />
+          <Tab label={`Top Query (${topQueries.length})`} />
+          <Tab label={`Wait Stats (${waitStats.length})`} />
+        </Tabs>
+      </Box>
 
       <Box sx={{ flex: 1, overflow: 'auto', pt: 2 }}>
         {tab === 0 && <TabPanoramica metrics={metrics} history={history} />}
 
-        {tab === 1 && (
-          <DataGrid<DatabaseInfo>
-            rows={metrics.databases}
-            columns={dbColumns}
-            getRowId={(r) => r.name}
-            density="compact"
-            disableRowSelectionOnClick
-            pageSizeOptions={[25, 50]}
-            initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
-            sx={{ border: 0 }}
-          />
-        )}
+        {tab === 1 && <TabDatabase metrics={metrics} serverId={serverId} />}
 
         {tab === 2 && (
           <DataGrid<SessionInfo>
-            rows={metrics.activeSessions}
+            rows={activeSessions}
             columns={sessionColumns}
             getRowId={(r) => r.sessionId}
             density="compact"
@@ -221,13 +730,14 @@ export function MetricsPanel({ metrics, history }: Props): React.JSX.Element {
             pageSizeOptions={[25, 50]}
             initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
             localeText={{ noRowsLabel: 'Nessuna sessione attiva' }}
-            sx={{ border: 0 }}
+            getRowClassName={(p) => sessionRowClass(p.row as SessionInfo)}
+            sx={SESSION_SX}
           />
         )}
 
         {tab === 3 && (
           <DataGrid<BackupInfo>
-            rows={metrics.backupStatus}
+            rows={backupStatus}
             columns={backupColumns}
             getRowId={(r) => r.databaseName}
             density="compact"
@@ -235,13 +745,17 @@ export function MetricsPanel({ metrics, history }: Props): React.JSX.Element {
             pageSizeOptions={[25, 50]}
             initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
             localeText={{ noRowsLabel: 'Nessun dato backup disponibile' }}
-            sx={{ border: 0 }}
+            sx={{ border: 0, ...GRID_HEADER_SX }}
           />
         )}
 
         {tab === 4 && (
+          <DisksTab diskVolumes={diskVolumes} databaseFiles={databaseFiles} />
+        )}
+
+        {tab === 5 && (
           <DataGrid<QueryInfo>
-            rows={metrics.topQueries.map((q, i) => ({ ...q, _idx: i }))}
+            rows={topQueries.map((q, i) => ({ ...q, _idx: i }))}
             columns={queryColumns}
             getRowId={(r) => (r as QueryInfo & { _idx: number })._idx}
             density="compact"
@@ -249,7 +763,21 @@ export function MetricsPanel({ metrics, history }: Props): React.JSX.Element {
             pageSizeOptions={[25, 50]}
             initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
             localeText={{ noRowsLabel: 'Nessuna query disponibile' }}
-            sx={{ border: 0 }}
+            sx={{ border: 0, ...GRID_HEADER_SX }}
+          />
+        )}
+
+        {tab === 6 && (
+          <DataGrid<WaitStatInfo>
+            rows={waitStats}
+            columns={waitStatColumns}
+            getRowId={(r) => r.waitType}
+            density="compact"
+            disableRowSelectionOnClick
+            pageSizeOptions={[25, 50]}
+            initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+            localeText={{ noRowsLabel: 'Nessun dato wait stats disponibile' }}
+            sx={{ border: 0, ...GRID_HEADER_SX }}
           />
         )}
       </Box>

@@ -251,3 +251,151 @@ Pagina principale con layout sidebar + area destra:
 
 #### `src/renderer/src/App.tsx`
 Sostituito `<Discovery />` diretto con navigazione a 2 tab MUI: "Discovery" e "Dashboard". La Discovery usa `overflow: auto`, la Dashboard usa `overflow: hidden` (layout interno gestisce lo scroll).
+
+---
+
+## 2026-03-17 — MetricsWorker, Sistema di Alert, Badge notifiche
+
+### Nuovi file
+
+#### `src/main/metricsWorker.ts`
+Worker che gira nel main process (Electron) con `setInterval`. Responsabilità:
+- Raccolta periodica metriche per tutti i server configurati (via `collectMetrics`).
+- History per server con rolling buffer di 20 snapshot (`Map<serverId, ServerMetrics[]>`).
+- Push al renderer via `BrowserWindow.getAllWindows()[0].webContents.send()`:
+  - `IpcChannel.METRICS_UPDATED` — `{ serverId, metrics }` ad ogni raccolta riuscita.
+  - `IpcChannel.ALERT_NEW` — `Alert` quando un nuovo alert viene generato.
+- Motore di alerting con soglie:
+  - **CPU > 90%** → CRITICAL | **> 70%** → WARNING (categoria `cpu_high`)
+  - **Sessioni bloccate ≥ 5** → CRITICAL | **≥ 1** → WARNING (categoria `blocking_sessions`)
+  - **Database OFFLINE** → CRITICAL (categoria `database_offline`)
+  - **Backup full assente o > 24h** → WARNING (categoria `backup_overdue`)
+- Deduplicazione alert: non genera un nuovo alert se esiste già uno aperto (non riconosciuto) con lo stesso `serverId:category:severity`.
+- API pubblica: `startWorker(req)`, `stopWorker()`, `getAlerts()`, `acknowledgeAlert(id)`, `getHistory(ip, port)`.
+- Intervallo min 30s, max 300s.
+
+#### `src/renderer/src/components/AlertsDrawer.tsx`
+Drawer MUI ancorato a destra (larghezza 400px) con lista alert. Features:
+- Alert aperti mostrati prima (CRITICAL sopra WARNING, via sort).
+- Alert riconosciuti in sezione separata con opacità ridotta.
+- Pulsante "Ack" per ciascun alert aperto → chiama `acknowledgeAlert`.
+- Icona colored per severità (ErrorOutlineIcon / WarningAmberIcon).
+- Chip categoria + serverId + messaggio + timestamp.
+
+### File modificati
+
+#### `src/main/ipc/types.ts`
+Aggiunti canali IPC:
+- `METRICS_UPDATED`, `ALERT_NEW` (push-only main → renderer)
+- `WORKER_START`, `WORKER_STOP`, `ALERTS_GET_ALL`, `ALERTS_ACKNOWLEDGE`
+
+Aggiunti tipi: `AlertCategory`, `AlertSeverity`, `Alert`, `WorkerStartRequest`, `AcknowledgeAlertRequest`.
+
+#### `src/main/ipc/handlers.ts`
+Registrati 4 nuovi handler: `WORKER_START`, `WORKER_STOP`, `ALERTS_GET_ALL`, `ALERTS_ACKNOWLEDGE`.
+
+#### `src/preload/index.d.ts`
+Aggiunti: `Alert`, `WorkerStartRequest`, `AcknowledgeAlertRequest`.
+`SqlSentinelAPI` estesa con: `workerStart`, `workerStop`, `getAlerts`, `acknowledgeAlert`, `onMetricsUpdated`, `onAlertNew`.
+
+#### `src/preload/index.ts`
+Implementazioni reali (IPC) e mock per i 6 nuovi metodi API. Mock `getAlerts()` restituisce 3 alert pre-impostati (CRITICAL + 2 WARNING). Mock `onMetricsUpdated` e `onAlertNew` restituiscono no-op unsubscribe.
+
+#### `src/renderer/src/hooks/useMetrics.ts`
+- Rimosso `autoRefreshSeconds`/`setAutoRefreshSeconds` e relativo `setInterval` interno (ora gestito dal worker nel main process).
+- Aggiunto `pushMetrics(m: ServerMetrics)` per iniettare metriche arrivate via push dal worker.
+- Refactored history update in `addHistoryPoint` helper condiviso da `refresh` e `pushMetrics`.
+
+#### `src/renderer/src/pages/Dashboard.tsx`
+- `autoRefreshSeconds` ora è stato locale del componente.
+- `useEffect` che chiama `workerStart`/`workerStop` al variare di `autoRefreshSeconds` o server selezionato.
+- `useEffect` che si sottoscrive a `onMetricsUpdated` e filtra per `serverId` corrente → chiama `pushMetrics`.
+- Rimosso import `autoRefreshSeconds` e `setAutoRefreshSeconds` da `useMetrics`.
+
+#### `src/renderer/src/App.tsx`
+- Stato `alerts: Alert[]` caricato all'avvio da `getAlerts()`.
+- Sottoscrizione a `onAlertNew` per aggiungere alert in tempo reale.
+- `handleAcknowledge(alertId)` chiama `acknowledgeAlert` e aggiorna stato locale.
+- `IconButton` con `Badge` MUI nella tab bar: mostra conteggio alert CRITICAL non riconosciuti, colore `error`.
+- Click sul badge apre `AlertsDrawer`.
+
+---
+
+## FASE 5 — Persistenza server + alert irraggiungibilità (2026-03-17)
+
+### File creati
+
+#### `src/main/store/serverStore.ts`
+Store persistente per i server monitorati tramite `electron-store@8` (JSON su disco).
+- `StoredServer` — tipo principale con: `id` (UUID), `ip`, `port`, `instanceName?`, `useWindowsAuth`, `username?`, `password?`, `addedAt` (ISO 8601), `lastSeen?`, `unreachable?`, `unreachableSince?`.
+- API pubblica: `getAll()`, `getById(id)`, `getByIpPort(ip, port)`, `add(params)`, `update(id, patch)`, `remove(id)`, `upsertByIpPort(params)`.
+- Il file JSON viene salvato come `sql-sentinel-data.json` nella directory dati dell'app Electron.
+- `add()` impedisce duplicati per ip:porta.
+- `upsertByIpPort()` usato dal flusso `ADD_SERVER_MANUAL`: inserisce o aggiorna senza duplicati.
+
+#### `src/renderer/src/store/serversStore.ts`
+Zustand store lato renderer (no persist middleware — electron-store è source of truth).
+- `servers: StoredServer[]` — lista in memoria, inizializzata da `loadServers()`.
+- `addServer`, `removeServer`, `updateServer` — chiamano IPC e aggiornano lo stato locale.
+- `initialized: boolean` — indica se `loadServers()` ha completato.
+
+### File modificati
+
+#### `src/main/ipc/types.ts`
+Aggiunti canali IPC al enum `IpcChannel`:
+- `SERVERS_GET_ALL`, `SERVERS_ADD`, `SERVERS_UPDATE`, `SERVERS_REMOVE_BY_ID`
+- `SERVER_UNREACHABLE`, `SERVER_RECOVERED` (push main → renderer)
+
+Aggiunti tipi/interfacce: `ServerAddResult`, `UpdateServerRequest`, `ServerUnreachableEvent`.
+Re-export di `StoredServer` da `serverStore`.
+
+#### `src/main/ipc/handlers.ts`
+- Rimosso `let knownServers: DiscoveredServer[]` (stato in-memory).
+- Import `* as serverStore` dal nuovo store.
+- `toDiscovered(s: StoredServer): DiscoveredServer` — adapter backward-compat per canali legacy.
+- `ADD_SERVER_MANUAL` ora chiama `serverStore.upsertByIpPort()` per persistere.
+- `GET_SERVERS` ora serve da `serverStore.getAll().map(toDiscovered)`.
+- `REMOVE_SERVER` lookup per ip:porta via `serverStore.getByIpPort()`, poi rimozione per ID.
+- Nuovi handler: `SERVERS_GET_ALL`, `SERVERS_ADD`, `SERVERS_UPDATE`, `SERVERS_REMOVE_BY_ID`.
+- `EXPORT_INVENTORY` aggiornato per usare `serverStore.getAll()`.
+
+#### `src/main/index.ts`
+- Ref `mainWindow` spostata a livello di modulo (necessaria per push eventi dall'health check).
+- `healthCheckAll()` — loop TCP probe (via `scanHost`) su tutti i server salvati ogni 60s:
+  - Se server recuperato: aggiorna `unreachable: false`, `lastSeen`, push `server:recovered`.
+  - Se server irraggiungibile: aggiorna `unreachable: true`, `unreachableSince`, push `server:unreachable`.
+  - Prima esecuzione dopo 5s dall'avvio app.
+
+#### `src/preload/index.ts`
+- Re-export di `ServerAddResult`, `UpdateServerRequest`, `ServerUnreachableEvent` da `../main/ipc/types`.
+- Mock `mockStoredServers[]` con 2 server pre-impostati.
+- `servers.*` API (reale + mock): `getAll`, `add`, `update`, `remove`.
+- `onServerUnreachable` / `onServerRecovered` (reale + mock).
+
+#### `src/preload/index.d.ts`
+Aggiunte interfacce: `StoredServer`, `ServerAddResult`, `UpdateServerRequest`, `ServerUnreachableEvent`.
+`SqlSentinelAPI` estesa con `servers.*` e `onServerUnreachable`/`onServerRecovered`.
+
+#### `src/renderer/src/components/Sidebar.tsx`
+- Tipo `servers` e `selectedServer` cambiati da `DiscoveredServer` a `StoredServer`.
+- `StatusDot` usa prop `unreachable?: boolean` (in precedenza `reachable: boolean | null`):
+  - Pulsazione CSS (keyframes `@mui/system`) quando `unreachable === true` (1.5s ease-in-out, opacity 1→0.25→1).
+- Tooltip mostra "Non raggiungibile dal {data}" quando unreachable.
+- React key usa `s.id` (UUID) invece di `serverLabel(s)`.
+- Comparazione selezione usa `selectedServer.id === s.id`.
+
+#### `src/renderer/src/App.tsx`
+- `loadServers()` chiamato al mount dal `useServersStore`.
+- Sottoscrizione a `onServerUnreachable` → `updateServer(serverId, { unreachable: true, unreachableSince })`.
+- Sottoscrizione a `onServerRecovered` → `updateServer(serverId, { unreachable: false, lastSeen })`.
+
+#### `src/renderer/src/pages/Dashboard.tsx`
+- Rimosso stato locale `servers: DiscoveredServer[]` → usa `useServersStore`.
+- `selectedServer` tipizzato come `StoredServer | null`.
+- `toCollectRequest()` aggiornato per usare `useWindowsAuth`, `username`, `password` da `StoredServer`.
+- `handleRemoveServer` chiama `removeServer(server.id)` dallo store.
+- Auto-selezione primo server quando store è inizializzato.
+- Sync `selectedServer` se aggiornato nello store (es. `unreachable` cambia).
+- **Banner irraggiungibilità**: pannello rosso sotto toolbar se server selezionato è `unreachable`:
+  - Mostra "Server non raggiungibile — ultimo contatto: {data localizzata}".
+  - Pulsante "Riprova ora": chiama `collectMetrics` direttamente; se ok → aggiorna store (`unreachable: false`, `lastSeen`) e inietta le metriche nel pannello.

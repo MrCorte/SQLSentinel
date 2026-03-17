@@ -6,7 +6,10 @@ import type {
   DatabaseInfo,
   SessionInfo,
   QueryInfo,
-  BackupInfo
+  BackupInfo,
+  WaitStatInfo,
+  DiskVolume,
+  DatabaseFile
 } from './types'
 
 // --- Tipi interni per le righe restituite dalle query T-SQL ---
@@ -15,6 +18,7 @@ interface InstanceInfoRow {
   version: string
   edition: string
   memory_used_mb: number
+  memory_target_mb: number
   cpu_usage_percent: number
   uptime_days: number
 }
@@ -50,6 +54,15 @@ interface BackupInfoRow {
   last_full_backup: Date | null
   last_diff_backup: Date | null
   last_log_backup: Date | null
+}
+
+interface WaitStatRow {
+  wait_type: string
+  wait_time_ms: number
+  max_wait_time_ms: number
+  signal_wait_time_ms: number
+  waiting_tasks_count: number
+  wait_percent: number
 }
 
 // --- Configurazione connessione ---
@@ -108,6 +121,13 @@ async function queryInstanceInfo(pool: mssql.ConnectionPool): Promise<InstanceIn
       CAST(@@VERSION AS NVARCHAR(MAX))           AS version,
       CAST(SERVERPROPERTY('Edition') AS NVARCHAR(128)) AS edition,
       pm.physical_memory_in_use_kb / 1024        AS memory_used_mb,
+      -- Target memory da SQL Server Memory Manager (KB → MB)
+      ISNULL((
+        SELECT TOP 1 cntr_value / 1024
+        FROM sys.dm_os_performance_counters
+        WHERE counter_name = N'Target Server Memory (KB)'
+          AND object_name LIKE N'%Memory Manager%'
+      ), pm.physical_memory_in_use_kb / 1024)    AS memory_target_mb,
       -- Percentuale CPU SQL Server dall'ultimo campione del ring buffer
       ISNULL((
         SELECT TOP 1
@@ -133,6 +153,7 @@ async function queryInstanceInfo(pool: mssql.ConnectionPool): Promise<InstanceIn
     version: row.version,
     edition: row.edition ?? '',
     memoryUsedMb: Number(row.memory_used_mb),
+    memoryTargetMb: Number(row.memory_target_mb),
     cpuUsagePercent: Number(row.cpu_usage_percent),
     uptimeDays: Number(row.uptime_days)
   }
@@ -153,7 +174,8 @@ async function queryDatabases(pool: mssql.ConnectionPool): Promise<DatabaseInfo[
       CAST(SUM(CASE WHEN mf.type = 1 THEN mf.size * 8.0 / 1024 ELSE 0 END)
            AS DECIMAL(18,2))                                                    AS log_size_mb
     FROM sys.databases d
-    INNER JOIN sys.master_files mf ON d.database_id = mf.database_id
+    LEFT JOIN sys.master_files mf ON d.database_id = mf.database_id
+    WHERE d.database_id > 4
     GROUP BY d.name, d.state_desc, d.recovery_model_desc
     ORDER BY d.name
   `
@@ -241,16 +263,18 @@ async function queryTopQueries(pool: mssql.ConnectionPool): Promise<QueryInfo[]>
  * Fonte: msdb.dbo.backupset GROUP BY database_name, type
  */
 async function queryBackupStatus(pool: mssql.ConnectionPool): Promise<BackupInfo[]> {
+  // LEFT JOIN: tutti i DB user-level compaiono anche se non hanno mai avuto un backup
   const sql = `
     SELECT
-      bs.database_name                                                          AS database_name,
+      d.name                                                                    AS database_name,
       MAX(CASE WHEN bs.type = 'D' THEN bs.backup_finish_date ELSE NULL END)    AS last_full_backup,
       MAX(CASE WHEN bs.type = 'I' THEN bs.backup_finish_date ELSE NULL END)    AS last_diff_backup,
       MAX(CASE WHEN bs.type = 'L' THEN bs.backup_finish_date ELSE NULL END)    AS last_log_backup
-    FROM msdb.dbo.backupset bs
-    WHERE bs.backup_finish_date >= DATEADD(DAY, -7, GETDATE())
-    GROUP BY bs.database_name
-    ORDER BY bs.database_name
+    FROM sys.databases d
+    LEFT JOIN msdb.dbo.backupset bs ON d.name = bs.database_name
+    WHERE d.database_id > 4
+    GROUP BY d.name
+    ORDER BY d.name
   `
 
   const result = await pool.request().query<BackupInfoRow>(sql)
@@ -263,10 +287,153 @@ async function queryBackupStatus(pool: mssql.ConnectionPool): Promise<BackupInfo
   }))
 }
 
+/**
+ * Top 20 wait types per wait time totale, escluse le idle waits.
+ * Fonte: sys.dm_os_wait_stats
+ */
+async function queryWaitStats(pool: mssql.ConnectionPool): Promise<WaitStatInfo[]> {
+  const sql = `
+    SELECT TOP 20
+      wait_type,
+      wait_time_ms,
+      max_wait_time_ms,
+      signal_wait_time_ms,
+      waiting_tasks_count,
+      CAST(wait_time_ms * 100.0 /
+        NULLIF(SUM(wait_time_ms) OVER(), 0) AS DECIMAL(5,2)) AS wait_percent
+    FROM sys.dm_os_wait_stats
+    WHERE wait_type NOT IN (
+      'SLEEP_TASK','BROKER_TO_FLUSH','BROKER_TASK_STOP',
+      'CLR_AUTO_EVENT','CLR_MANUAL_EVENT','DISPATCHER_QUEUE_SEMAPHORE',
+      'FT_IFTS_SCHEDULER_IDLE_WAIT','HADR_WORK_QUEUE','LAZYWRITER_SLEEP',
+      'LOGMGR_QUEUE','ONDEMAND_TASK_QUEUE','REQUEST_FOR_DEADLOCK_SEARCH',
+      'RESOURCE_QUEUE','SERVER_IDLE_CHECK','SLEEP_DBSTARTUP',
+      'SLEEP_DBRECOVER','SLEEP_DBNULL','SLEEP_DBOPEN',
+      'SLEEP_MASTERDBREADY','SLEEP_MASTERMDREADY','SLEEP_MASTERUPGRADED',
+      'SLEEP_MSDBSTARTUP','SLEEP_SYSTEMTASK','SLEEP_TEMPDBSTARTUP',
+      'SNI_HTTP_ACCEPT','SP_SERVER_DIAGNOSTICS_SLEEP',
+      'SQLTRACE_BUFFER_FLUSH','SQLTRACE_INCREMENTAL_FLUSH_SLEEP',
+      'WAITFOR','XE_DISPATCHER_WAIT','XE_TIMER_EVENT',
+      'BROKER_EVENTHANDLER','CHECKPOINT_QUEUE',
+      'DBMIRROR_EVENTS_QUEUE','SQLTRACE_WAIT_ENTRIES',
+      'WAIT_XTP_OFFLINE_CKPT_NEW_LOG'
+    )
+    AND wait_time_ms > 0
+    ORDER BY wait_time_ms DESC
+  `
+
+  const result = await pool.request().query<WaitStatRow>(sql)
+
+  return result.recordset.map((row) => ({
+    waitType: row.wait_type,
+    waitTimeMs: Number(row.wait_time_ms),
+    maxWaitTimeMs: Number(row.max_wait_time_ms),
+    signalWaitTimeMs: Number(row.signal_wait_time_ms),
+    waitingTasksCount: Number(row.waiting_tasks_count),
+    waitPercent: Number(row.wait_percent)
+  }))
+}
+
+interface DiskVolumeRow {
+  volume_mount_point: string
+  logical_volume_name: string
+  total_gb: number
+  free_gb: number
+  used_gb: number
+  free_pct: number
+}
+
+interface DatabaseFileRow {
+  database_name: string
+  file_name: string
+  type_desc: string
+  physical_name: string
+  size_mb: number
+  used_mb: number
+  free_mb: number
+  max_mb: number | null
+  is_percent_growth: boolean
+  growth: number
+}
+
+/**
+ * Volumi disco su cui risiedono i file di SQL Server.
+ * Fonte: sys.master_files CROSS APPLY sys.dm_os_volume_stats
+ */
+async function queryDiskVolumes(pool: mssql.ConnectionPool): Promise<DiskVolume[]> {
+  const sql = `
+    SELECT DISTINCT
+      vs.volume_mount_point,
+      vs.logical_volume_name,
+      CAST(vs.total_bytes / 1073741824.0 AS DECIMAL(10,2))             AS total_gb,
+      CAST(vs.available_bytes / 1073741824.0 AS DECIMAL(10,2))         AS free_gb,
+      CAST((vs.total_bytes - vs.available_bytes) /
+           1073741824.0 AS DECIMAL(10,2))                              AS used_gb,
+      CAST((vs.available_bytes * 100.0) /
+           vs.total_bytes AS DECIMAL(5,2))                             AS free_pct
+    FROM sys.master_files mf
+    CROSS APPLY sys.dm_os_volume_stats(mf.database_id, mf.file_id) vs
+    ORDER BY vs.volume_mount_point
+  `
+
+  const result = await pool.request().query<DiskVolumeRow>(sql)
+  return result.recordset.map((row) => ({
+    volume_mount_point: row.volume_mount_point,
+    logical_volume_name: row.logical_volume_name ?? '',
+    total_gb: Number(row.total_gb),
+    free_gb: Number(row.free_gb),
+    used_gb: Number(row.used_gb),
+    free_pct: Number(row.free_pct)
+  }))
+}
+
+/**
+ * File fisici dei database utente con info di occupazione e autogrowth.
+ * Fonte: sys.master_files JOIN sys.databases
+ * Nota: used_mb e free_mb possono essere 0 per DB non in contesto corrente.
+ */
+async function queryDatabaseFiles(pool: mssql.ConnectionPool): Promise<DatabaseFile[]> {
+  const sql = `
+    SELECT
+      db.name                                                                      AS database_name,
+      mf.name                                                                      AS file_name,
+      mf.type_desc,
+      mf.physical_name,
+      CAST(mf.size * 8 / 1024.0 AS DECIMAL(10,2))                                AS size_mb,
+      ISNULL(CAST(FILEPROPERTY(mf.name, 'SpaceUsed') * 8 / 1024.0
+               AS DECIMAL(10,2)), 0)                                               AS used_mb,
+      ISNULL(CAST((mf.size - FILEPROPERTY(mf.name, 'SpaceUsed')) * 8 / 1024.0
+               AS DECIMAL(10,2)), 0)                                               AS free_mb,
+      CASE WHEN mf.max_size = -1 THEN NULL
+           ELSE CAST(mf.max_size * 8 / 1024.0 AS DECIMAL(10,2))
+      END                                                                          AS max_mb,
+      mf.is_percent_growth,
+      mf.growth
+    FROM sys.master_files mf
+    JOIN sys.databases db ON mf.database_id = db.database_id
+    WHERE db.database_id > 4
+    ORDER BY db.name, mf.type_desc DESC
+  `
+
+  const result = await pool.request().query<DatabaseFileRow>(sql)
+  return result.recordset.map((row) => ({
+    database_name: row.database_name,
+    file_name: row.file_name,
+    type_desc: row.type_desc as 'ROWS' | 'LOG',
+    physical_name: row.physical_name,
+    size_mb: Number(row.size_mb),
+    used_mb: Number(row.used_mb),
+    free_mb: Number(row.free_mb),
+    max_mb: row.max_mb !== null ? Number(row.max_mb) : null,
+    is_percent_growth: Boolean(row.is_percent_growth),
+    growth: Number(row.growth)
+  }))
+}
+
 // --- Valori di default per query fallite ---
 
 function defaultInstanceInfo(): InstanceInfo {
-  return { version: 'unknown', edition: 'unknown', memoryUsedMb: 0, cpuUsagePercent: 0, uptimeDays: 0 }
+  return { version: 'unknown', edition: 'unknown', memoryUsedMb: 0, memoryTargetMb: 0, cpuUsagePercent: 0, uptimeDays: 0 }
 }
 
 // --- Entry point pubblico ---
@@ -284,7 +451,16 @@ export async function collectMetrics(connection: ServerConnection): Promise<Serv
   try {
     pool = await mssql.connect(config)
 
-    const [instanceInfo, databases, activeSessions, topQueries, backupStatus] = await Promise.all([
+    const [
+      instanceInfo,
+      databases,
+      activeSessions,
+      topQueries,
+      backupStatus,
+      waitStats,
+      diskVolumes,
+      databaseFiles
+    ] = await Promise.all([
       queryInstanceInfo(pool).catch((err: Error) => {
         console.error('[collector] instance info:', err.message)
         return defaultInstanceInfo()
@@ -304,10 +480,32 @@ export async function collectMetrics(connection: ServerConnection): Promise<Serv
       queryBackupStatus(pool).catch((err: Error) => {
         console.error('[collector] backup status:', err.message)
         return [] as BackupInfo[]
+      }),
+      queryWaitStats(pool).catch((err: Error) => {
+        console.error('[collector] wait stats:', err.message)
+        return [] as WaitStatInfo[]
+      }),
+      queryDiskVolumes(pool).catch((err: Error) => {
+        console.error('[collector] disk volumes:', err.message)
+        return [] as DiskVolume[]
+      }),
+      queryDatabaseFiles(pool).catch((err: Error) => {
+        console.error('[collector] database files:', err.message)
+        return [] as DatabaseFile[]
       })
     ])
 
-    return { collectedAt: new Date(), instanceInfo, databases, activeSessions, topQueries, backupStatus }
+    return {
+      collectedAt: new Date(),
+      instanceInfo,
+      databases,
+      activeSessions,
+      topQueries,
+      backupStatus,
+      waitStats,
+      diskVolumes,
+      databaseFiles
+    }
   } finally {
     if (pool) {
       await pool.close().catch((err: Error) => console.error('[collector] pool close:', err.message))

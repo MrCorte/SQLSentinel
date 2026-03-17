@@ -1,15 +1,90 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import type { BrowserWindow as BrowserWindowType } from 'electron'
 import { join } from 'path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerIpcHandlers } from './ipc/handlers'
 import { initDb, closeDb, defaultDbPath } from './store/database'
+import { IpcChannel } from './ipc/types'
+import * as serverStore from './store/serverStore'
+import { scanHost } from './discovery/tcpScanner'
+
+const isDev = !app.isPackaged
+
+// Module-level reference so the health checker can push events to the renderer
+let mainWindow: BrowserWindow | null = null
+
+function watchWindowShortcuts(window: BrowserWindowType): void {
+  const { webContents } = window
+  webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return
+    if (isDev) {
+      // F12 — apri/chiudi DevTools in sviluppo
+      if (input.code === 'F12') {
+        if (webContents.isDevToolsOpened()) {
+          webContents.closeDevTools()
+        } else {
+          webContents.openDevTools({ mode: 'undocked' })
+        }
+      }
+    } else {
+      // Blocca Ctrl+R (reload) e Ctrl+Shift+I (DevTools) in produzione
+      if (input.code === 'KeyR' && (input.control || input.meta)) event.preventDefault()
+      if (input.code === 'KeyI' && ((input.alt && input.meta) || (input.control && input.shift))) {
+        event.preventDefault()
+      }
+    }
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Health check — TCP probe every 60 s, push events to renderer
+// ---------------------------------------------------------------------------
+
+async function healthCheckAll(): Promise<void> {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  const servers = serverStore.getAll()
+  for (const server of servers) {
+    try {
+      // TCP probe with 5 s timeout — no SQL credentials needed
+      await scanHost(server.ip, server.port, 5000)
+      if (server.unreachable) {
+        // Was marked unreachable — now back online
+        serverStore.update(server.id, {
+          unreachable: false,
+          unreachableSince: undefined,
+          lastSeen: new Date().toISOString()
+        })
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IpcChannel.SERVER_RECOVERED, server.id)
+        }
+        console.log('[HealthCheck] RECOVERED:', `${server.ip}:${server.port}`)
+      } else {
+        serverStore.update(server.id, { lastSeen: new Date().toISOString() })
+      }
+    } catch {
+      if (!server.unreachable) {
+        // First failure — mark as unreachable and notify renderer
+        const since = new Date().toISOString()
+        serverStore.update(server.id, { unreachable: true, unreachableSince: since })
+        if (!mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IpcChannel.SERVER_UNREACHABLE, {
+            serverId: server.id,
+            ip: server.ip,
+            port: server.port,
+            since
+          })
+        }
+        console.warn('[HealthCheck] UNREACHABLE:', `${server.ip}:${server.port}`)
+      }
+    }
+  }
+}
 
 function createWindow(): void {
-  // Create the browser window.
-  const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    title: 'SQL Sentinel',
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -22,7 +97,11 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
+    mainWindow!.setTitle('SQL Sentinel')
+    mainWindow!.show()
+    if (isDev) {
+      mainWindow!.webContents.openDevTools({ mode: 'detach' })
+    }
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -30,55 +109,46 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+  if (isDev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
-  // Inizializza SQLite — deve essere il primo statement prima di qualsiasi IPC handler
+  // Inizializza SQLite — prima di qualsiasi IPC handler
   initDb(defaultDbPath(app.getPath('appData')))
 
-  // Set app user model id for windows
-  electronApp.setAppUserModelId('com.electron')
+  // App User Model ID per Windows (notifiche, taskbar)
+  if (process.platform === 'win32') {
+    app.setAppUserModelId('com.sqlsentinel')
+  }
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
   app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
+    watchWindowShortcuts(window)
   })
 
-  // IPC test
   ipcMain.on('ping', () => console.log('pong'))
 
   registerIpcHandlers()
 
   createWindow()
 
+  // Start health check: first run after 5 s, then every 60 s
+  setTimeout(() => {
+    healthCheckAll()
+    setInterval(healthCheckAll, 60_000)
+  }, 5_000)
+
   app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   closeDb()
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.

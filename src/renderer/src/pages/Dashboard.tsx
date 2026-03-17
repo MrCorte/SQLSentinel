@@ -1,40 +1,47 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Box,
   Stack,
-  Paper,
   Typography,
   Button,
-  List,
-  ListItemButton,
-  ListItemText,
   Alert,
   Select,
   MenuItem,
   FormControl,
   InputLabel,
   CircularProgress,
-  Divider
+  IconButton,
+  Tooltip
 } from '@mui/material'
-import type { DiscoveredServer, CollectMetricsRequest } from '../../../preload/index'
+import EditIcon from '@mui/icons-material/Edit'
+import WarningAmberIcon from '@mui/icons-material/WarningAmber'
+import RefreshIcon from '@mui/icons-material/Refresh'
+import type { StoredServer, CollectMetricsRequest } from '../../../preload/index'
 import { useMetrics } from '../hooks/useMetrics'
+import { useWorker } from '../context/useWorker'
 import { MetricsPanel } from '../components/MetricsPanel'
-import { ServerStatusChip } from '../components/ServerStatusChip'
+import { Sidebar } from '../components/Sidebar'
+import { useGroupsStore } from '../store/groupsStore'
+import { useServersStore } from '../store/serversStore'
+import { getServerDisplayName } from '../types/index'
+import { tokens } from '../styles/tokens'
 
 // -----------------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------------
 
-function serverLabel(s: DiscoveredServer): string {
+function serverLabel(s: StoredServer): string {
   return `${s.ip}:${s.port}`
 }
 
-function toCollectRequest(server: DiscoveredServer): CollectMetricsRequest {
-  // Windows Auth di default — le credenziali vengono gestite in FASE futura
+function toCollectRequest(server: StoredServer): CollectMetricsRequest {
   return {
     ip: server.ip,
     port: server.port,
-    useWindowsAuth: true
+    instanceName: server.instanceName,
+    useWindowsAuth: server.useWindowsAuth,
+    username: server.username,
+    password: server.password
   }
 }
 
@@ -43,67 +50,132 @@ function toCollectRequest(server: DiscoveredServer): CollectMetricsRequest {
 // -----------------------------------------------------------------------
 
 export function Dashboard(): React.JSX.Element {
-  const [servers, setServers] = useState<DiscoveredServer[]>([])
-  const [serversError, setServersError] = useState<string | null>(null)
-  const [selectedServer, setSelectedServer] = useState<DiscoveredServer | null>(null)
+  const { servers, initialized, removeServer, updateServer } = useServersStore()
+  const [selectedServer, setSelectedServer] = useState<StoredServer | null>(null)
+  const [retriggering, setRetriggering] = useState(false)
+
+  const { intervalSeconds, setIntervalSeconds, setConnection, getHistory, pushSnapshot } =
+    useWorker()
+  const { serverAliases, setServerAlias } = useGroupsStore()
+
+  // Inline alias editing
+  const [editingAlias, setEditingAlias] = useState(false)
+  const [aliasInput, setAliasInput] = useState('')
+  const aliasInputRef = useRef<HTMLInputElement | null>(null)
 
   const connection = selectedServer ? toCollectRequest(selectedServer) : null
-  const { metrics, isLoading, error, history, refresh, autoRefreshSeconds, setAutoRefreshSeconds } =
-    useMetrics(connection)
+  const selectedServerId = selectedServer ? serverLabel(selectedServer) : null
 
-  // Carica la lista server all'avvio
+  const { metrics, isLoading, error, refresh, receiveMetrics } = useMetrics(connection, {
+    onReceived: pushSnapshot
+  })
+
+  const history = selectedServerId ? getHistory(selectedServerId) : []
+  console.log('[Dashboard] reading history for', selectedServerId, 'punti:', history.length)
+
+  // Auto-select first server when store initializes
   useEffect(() => {
-    window.sqlSentinel.getServers().then((result) => {
-      if (result.ok) {
-        setServers(result.data)
-        if (result.data.length > 0) setSelectedServer(result.data[0])
-      } else {
-        setServersError(result.error)
-      }
+    if (initialized && servers.length > 0 && selectedServer === null) {
+      setSelectedServer(servers[0])
+    }
+  }, [initialized, servers.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep selectedServer in sync if the server entry is updated in the store
+  useEffect(() => {
+    if (!selectedServer) return
+    const updated = servers.find((s) => s.id === selectedServer.id)
+    if (updated && updated !== selectedServer) setSelectedServer(updated)
+  }, [servers]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setConnection(connection)
+  }, [connection?.ip, connection?.port]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!selectedServerId) return
+    refresh()
+  }, [selectedServerId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const stablePushSnapshot = useCallback(pushSnapshot, [pushSnapshot])
+  const stableReceiveMetrics = useCallback(receiveMetrics, [receiveMetrics])
+
+  useEffect(() => {
+    const unsub = window.sqlSentinel.onMetricsUpdated(({ serverId, metrics: m }) => {
+      stablePushSnapshot(serverId, m)
+      if (serverId === selectedServerId) stableReceiveMetrics(m)
     })
+    return unsub
+  }, [selectedServerId, stablePushSnapshot, stableReceiveMetrics])
+
+  // Inline alias edit helpers
+  const startEditAlias = useCallback((): void => {
+    if (!selectedServer) return
+    setAliasInput(serverAliases[serverLabel(selectedServer)] ?? '')
+    setEditingAlias(true)
+    setTimeout(() => aliasInputRef.current?.select(), 0)
+  }, [selectedServer, serverAliases])
+
+  const confirmEditAlias = useCallback((): void => {
+    if (!selectedServer) return
+    setServerAlias(serverLabel(selectedServer), aliasInput)
+    setEditingAlias(false)
+  }, [selectedServer, aliasInput, setServerAlias])
+
+  const cancelEditAlias = useCallback((): void => {
+    setEditingAlias(false)
   }, [])
+
+  // Remove server via store (persists to electron-store)
+  const handleRemoveServer = useCallback(
+    async (server: StoredServer): Promise<void> => {
+      await removeServer(server.id)
+      if (selectedServer?.id === server.id) setSelectedServer(null)
+    },
+    [selectedServer, removeServer]
+  )
+
+  // Immediate health check for the selected server
+  const handleRetryNow = useCallback(async (): Promise<void> => {
+    if (!selectedServer) return
+    setRetriggering(true)
+    try {
+      const result = await window.sqlSentinel.collectMetrics(toCollectRequest(selectedServer))
+      if (result.ok) {
+        await updateServer(selectedServer.id, {
+          unreachable: false,
+          unreachableSince: undefined,
+          lastSeen: new Date().toISOString()
+        })
+        receiveMetrics(result.data)
+      }
+    } finally {
+      setRetriggering(false)
+    }
+  }, [selectedServer, updateServer, receiveMetrics])
 
   return (
     <Box sx={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-      {/* ---- Lista server (sidebar sinistra) ---- */}
-      <Paper
-        variant="outlined"
-        square
-        sx={{ width: 220, display: 'flex', flexDirection: 'column', flexShrink: 0, overflow: 'hidden' }}
-      >
-        <Typography variant="subtitle2" sx={{ p: 1.5, pb: 0.5, fontWeight: 700 }}>
-          Server monitorati
-        </Typography>
-        <Divider />
-        {serversError && (
-          <Alert severity="error" sx={{ m: 1 }}>
-            {serversError}
-          </Alert>
-        )}
-        {servers.length === 0 && !serversError && (
-          <Typography variant="body2" color="text.secondary" sx={{ p: 1.5 }}>
-            Nessun server trovato. Usare la pagina Discovery per aggiungere server.
-          </Typography>
-        )}
-        <List dense sx={{ flex: 1, overflow: 'auto' }}>
-          {servers.map((s) => (
-            <ListItemButton
-              key={serverLabel(s)}
-              selected={selectedServer ? serverLabel(selectedServer) === serverLabel(s) : false}
-              onClick={() => setSelectedServer(s)}
-            >
-              <ListItemText
-                primary={serverLabel(s)}
-                secondary={<ServerStatusChip reachable={s.reachable} responseTimeMs={s.responseTimeMs} />}
-                secondaryTypographyProps={{ component: 'div' }}
-              />
-            </ListItemButton>
-          ))}
-        </List>
-      </Paper>
+      {/* ---- Sidebar ---- */}
+      <Sidebar
+        servers={servers}
+        serversError={null}
+        selectedServer={selectedServer}
+        onSelectServer={setSelectedServer}
+        onRemoveServer={handleRemoveServer}
+      />
 
-      {/* ---- Area metriche (destra) ---- */}
-      <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', p: 2, gap: 1.5 }}>
+      {/* ---- Area metriche ---- */}
+      <Box
+        sx={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          p: 2,
+          gap: 1.5,
+          bgcolor: tokens.color.bgApp
+        }}
+      >
         {!selectedServer && (
           <Alert severity="info">Seleziona un server dalla lista per visualizzare le metriche.</Alert>
         )}
@@ -112,16 +184,80 @@ export function Dashboard(): React.JSX.Element {
           <>
             {/* Toolbar */}
             <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
-              <Typography variant="h6" sx={{ flex: 1, fontWeight: 700 }}>
-                {serverLabel(selectedServer)}
-              </Typography>
+              {/* Server title — alias + IP subtitle + inline edit */}
+              <Box sx={{ flex: 1, display: 'flex', alignItems: 'baseline', gap: 1, minWidth: 0 }}>
+                {editingAlias ? (
+                  <Box
+                    component="input"
+                    ref={aliasInputRef}
+                    value={aliasInput}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      setAliasInput(e.target.value)
+                    }
+                    onKeyDown={(e: React.KeyboardEvent) => {
+                      if (e.key === 'Enter') confirmEditAlias()
+                      if (e.key === 'Escape') cancelEditAlias()
+                    }}
+                    onBlur={confirmEditAlias}
+                    placeholder={serverLabel(selectedServer)}
+                    sx={{
+                      background: 'transparent',
+                      border: 'none',
+                      borderBottom: `2px solid ${tokens.color.primary}`,
+                      fontSize: tokens.font.sizeLg,
+                      fontWeight: tokens.font.weightSemibold,
+                      color: tokens.color.textPrimary,
+                      outline: 'none',
+                      minWidth: 200,
+                      fontFamily: 'inherit',
+                      p: 0
+                    }}
+                  />
+                ) : (
+                  <>
+                    <Typography
+                      sx={{
+                        fontSize: tokens.font.sizeLg,
+                        fontWeight: tokens.font.weightSemibold,
+                        color: tokens.color.textPrimary,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {getServerDisplayName({
+                        ip: selectedServer.ip,
+                        port: selectedServer.port,
+                        alias: serverAliases[serverLabel(selectedServer)]
+                      })}
+                    </Typography>
+                    {serverAliases[serverLabel(selectedServer)] && (
+                      <Typography
+                        component="span"
+                        sx={{ fontSize: 12, color: '#605e5c', whiteSpace: 'nowrap', flexShrink: 0 }}
+                      >
+                        {serverLabel(selectedServer)}
+                      </Typography>
+                    )}
+                  </>
+                )}
+                <Tooltip title="Rinomina">
+                  <IconButton
+                    size="small"
+                    onClick={startEditAlias}
+                    sx={{ color: tokens.color.textSecondary, flexShrink: 0 }}
+                  >
+                    <EditIcon sx={{ fontSize: 14 }} />
+                  </IconButton>
+                </Tooltip>
+              </Box>
 
               <FormControl size="small" sx={{ minWidth: 160 }}>
                 <InputLabel>Auto-refresh</InputLabel>
                 <Select
                   label="Auto-refresh"
-                  value={autoRefreshSeconds}
-                  onChange={(e) => setAutoRefreshSeconds(e.target.value as number)}
+                  value={intervalSeconds}
+                  onChange={(e) => setIntervalSeconds(e.target.value as number)}
                 >
                   <MenuItem value={0}>Disabilitato</MenuItem>
                   <MenuItem value={30}>Ogni 30 s</MenuItem>
@@ -135,24 +271,68 @@ export function Dashboard(): React.JSX.Element {
                 variant="contained"
                 onClick={refresh}
                 disabled={isLoading}
-                startIcon={isLoading ? <CircularProgress size={16} color="inherit" /> : undefined}
+                startIcon={isLoading ? <CircularProgress size={14} color="inherit" /> : undefined}
               >
                 {isLoading ? 'Raccolta...' : 'Aggiorna metriche'}
               </Button>
             </Stack>
 
-            {/* Errore raccolta */}
+            {/* Unreachable banner */}
+            {selectedServer.unreachable && (
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1.5,
+                  px: 2,
+                  py: 1,
+                  bgcolor: '#3d1a1a',
+                  border: `1px solid ${tokens.color.error}`,
+                  borderRadius: 1
+                }}
+              >
+                <WarningAmberIcon sx={{ color: tokens.color.error, fontSize: 18, flexShrink: 0 }} />
+                <Typography sx={{ fontSize: 13, color: tokens.color.error, flex: 1 }}>
+                  Server non raggiungibile
+                  {selectedServer.unreachableSince
+                    ? ` — ultimo contatto: ${new Date(selectedServer.unreachableSince).toLocaleString('it-IT')}`
+                    : ''}
+                </Typography>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="error"
+                  startIcon={
+                    retriggering ? (
+                      <CircularProgress size={12} color="inherit" />
+                    ) : (
+                      <RefreshIcon sx={{ fontSize: 14 }} />
+                    )
+                  }
+                  onClick={handleRetryNow}
+                  disabled={retriggering}
+                  sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                >
+                  Riprova ora
+                </Button>
+              </Box>
+            )}
+
             {error && <Alert severity="error">{error}</Alert>}
 
-            {/* Pannello metriche */}
             {metrics ? (
               <Box sx={{ flex: 1, overflow: 'hidden' }}>
-                <MetricsPanel metrics={metrics} history={history} />
+                <MetricsPanel
+                  metrics={metrics}
+                  history={history}
+                  serverId={selectedServerId ?? ''}
+                />
               </Box>
             ) : (
-              !isLoading && !error && (
+              !isLoading &&
+              !error && (
                 <Alert severity="info">
-                  Premi "Aggiorna metriche" per raccogliere i dati dal server selezionato.
+                  Premi &quot;Aggiorna metriche&quot; per raccogliere i dati dal server.
                 </Alert>
               )
             )}

@@ -102,12 +102,13 @@ export const ServerHistoryChart = memo(function ServerHistoryChart({ serverId }:
         />
 
         <Tooltip
-          formatter={(value: number, name: string) => {
+          formatter={(value, name) => {
+            const pct = typeof value === 'number' ? value : 0
             if (name === 'memory') {
               const mbLabel = memoryUsedMb != null ? ` (${memoryUsedMb.toLocaleString('it-IT')} MB)` : ''
-              return [`${value}%${mbLabel}`, 'Memoria']
+              return [`${pct}%${mbLabel}`, 'Memoria'] as [string, string]
             }
-            return [`${value}%`, 'CPU']
+            return [`${pct}%`, 'CPU'] as [string, string]
           }}
           labelFormatter={(label) => `Ore ${label}`}
           contentStyle={{ fontSize: 12 }}

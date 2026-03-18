@@ -1,27 +1,53 @@
 import { BrowserWindow } from 'electron'
 import { IpcChannel } from './ipc/types'
-import type { Alert, AlertCategory, AlertSeverity, WorkerStartRequest, CollectMetricsRequest } from './ipc/types'
+import type { Alert, AlertCategory, AlertSeverity, WorkerStartRequest, CollectMetricsRequest, ServerHealthPayload } from './ipc/types'
 import { collectMetrics } from './collectors/sqlCollector'
 import type { ServerMetrics } from './collectors/types'
 import { getAllCustomFields } from './store/dbCustomFields'
+import { shouldSendDelta } from './deltaUtils'
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const MAX_HISTORY = 20
-const MIN_INTERVAL_S = 30
-const MAX_INTERVAL_S = 300
+const BATCH_SIZE = 10
+const INTERVAL_ACTIVE_MS  = 60_000
+const INTERVAL_IDLE_MS    = 300_000
+const INTERVAL_OFFLINE_MS = 600_000
+const BACKOFF_CAP_MS      = 3_600_000 // 1 hour max back-off
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface PollJob {
+  server: CollectMetricsRequest
+  nextRun: number
+  priority: number // 0=active, 1=idle, 2=offline
+  lastFailed: boolean
+  failCount: number       // consecutive failures — drives exponential back-off
+  lastSuccess: number | null  // ms timestamp of last successful collect
+}
 
 // ---------------------------------------------------------------------------
 // Module-level state
 // ---------------------------------------------------------------------------
 
-let timerId: ReturnType<typeof setInterval> | null = null
-let currentServers: CollectMetricsRequest[] = []
+const jobs = new Map<string, PollJob>()
+let running = 0
+let tickHandle: ReturnType<typeof setTimeout> | null = null
+let activeServerId: string | null = null
+let activeIntervalMs = INTERVAL_ACTIVE_MS
+// Debounce handle for setActiveServer to prevent burst-fetching on rapid navigation
+let activeDebounce: ReturnType<typeof setTimeout> | null = null
+
 const metricsHistory = new Map<string, ServerMetrics[]>()
 let storedAlerts: Alert[] = []
 let alertCounter = 0
+
+// Track previous metrics for delta computation
+const previousMetrics = new Map<string, ServerMetrics>()
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -39,6 +65,34 @@ function pushToRenderer(channel: string, data: unknown): void {
   BrowserWindow.getAllWindows().forEach((w) => {
     if (!w.isDestroyed()) w.webContents.send(channel, data)
   })
+}
+
+// ---------------------------------------------------------------------------
+// Delta computation
+// ---------------------------------------------------------------------------
+
+function computeDelta(sid: string, fresh: ServerMetrics): ServerMetrics {
+  const prev = previousMetrics.get(sid)
+  previousMetrics.set(sid, fresh)
+  if (!prev) return fresh // first time: send full
+
+  const freshNames = new Set(fresh.databases.map((d) => d.name))
+  const removedDbs = prev.databases.map((d) => d.name).filter((n) => !freshNames.has(n))
+
+  const changedDbs = fresh.databases.filter((db) => {
+    const prevDb = prev.databases.find((d) => d.name === db.name)
+    return (
+      !prevDb ||
+      prevDb.sizeMb    !== db.sizeMb    ||
+      prevDb.logSizeMb !== db.logSizeMb ||
+      prevDb.stateDesc !== db.stateDesc
+    )
+  })
+
+  if (shouldSendDelta(changedDbs.length + removedDbs.length, fresh.databases.length + removedDbs.length)) {
+    return { ...fresh, databases: changedDbs, isDelta: true, removedDbs }
+  }
+  return fresh
 }
 
 // ---------------------------------------------------------------------------
@@ -133,39 +187,85 @@ function processAlerts(sid: string, metrics: ServerMetrics): void {
 }
 
 // ---------------------------------------------------------------------------
-// Collection tick
+// Poll job execution
 // ---------------------------------------------------------------------------
 
-async function tick(): Promise<void> {
-  // Carica i campi custom una volta per tick (better-sqlite3 è sincrono)
+async function runJob(sid: string, job: PollJob): Promise<void> {
   const allCustomFields = getAllCustomFields()
+  try {
+    const metrics = await collectMetrics(job.server)
 
-  for (const server of currentServers) {
-    const sid = serverId(server.ip, server.port)
-    try {
-      const metrics = await collectMetrics(server)
-
-      // Merge campi custom (alias, referente) nei DatabaseInfo prima di pushare al renderer
-      const enrichedMetrics: ServerMetrics = {
-        ...metrics,
-        databases: metrics.databases.map((db) => ({
-          ...db,
-          ...(allCustomFields[`${sid}/${db.name}`] ?? {})
-        }))
-      }
-
-      // Rolling history
-      const hist = metricsHistory.get(sid) ?? []
-      hist.push(enrichedMetrics)
-      if (hist.length > MAX_HISTORY) hist.shift()
-      metricsHistory.set(sid, hist)
-
-      pushToRenderer(IpcChannel.METRICS_UPDATED, { serverId: sid, metrics: enrichedMetrics })
-      processAlerts(sid, enrichedMetrics)
-    } catch (err) {
-      console.error(`[Worker] ${sid}:`, err instanceof Error ? err.message : err)
+    // Merge campi custom (alias, referente) nei DatabaseInfo prima di pushare al renderer
+    const enrichedMetrics: ServerMetrics = {
+      ...metrics,
+      databases: metrics.databases.map((db) => ({
+        ...db,
+        ...(allCustomFields[`${sid}/${db.name}`] ?? {})
+      }))
     }
+
+    // Rolling history
+    const hist = metricsHistory.get(sid) ?? []
+    hist.push(enrichedMetrics)
+    if (hist.length > MAX_HISTORY) hist.shift()
+    metricsHistory.set(sid, hist)
+
+    const delta = computeDelta(sid, enrichedMetrics)
+    pushToRenderer(IpcChannel.METRICS_UPDATED, { serverId: sid, metrics: delta })
+    processAlerts(sid, enrichedMetrics)
+
+    // Reset circuit-breaker on success
+    job.lastFailed  = false
+    job.failCount   = 0
+    job.lastSuccess = Date.now()
+    job.nextRun     = Date.now() + (sid === activeServerId ? activeIntervalMs : INTERVAL_IDLE_MS)
+  } catch (err) {
+    console.error(`[Worker] ${sid}:`, err instanceof Error ? err.message : err)
+    job.lastFailed = true
+    job.failCount  = (job.failCount ?? 0) + 1
+    // Exponential back-off: 600s, 1200s, 2400s … capped at 1h
+    const backoff = INTERVAL_OFFLINE_MS * Math.pow(2, job.failCount - 1)
+    job.nextRun = Date.now() + Math.min(backoff, BACKOFF_CAP_MS)
+  } finally {
+    // Always push health state so the UI can show retry info
+    const health: ServerHealthPayload = {
+      serverId:    sid,
+      failCount:   job.failCount,
+      nextRetry:   job.nextRun,
+      lastSuccess: job.lastSuccess
+    }
+    pushToRenderer(IpcChannel.SERVER_HEALTH_UPDATE, health)
   }
+}
+
+// ---------------------------------------------------------------------------
+// Scheduler
+// ---------------------------------------------------------------------------
+
+function scheduleTick(): void {
+  if (tickHandle) clearTimeout(tickHandle)
+  if (jobs.size === 0) return
+
+  const now = Date.now()
+  const dueSorted = [...jobs.values()]
+    .filter((j) => j.nextRun <= now)
+    .sort((a, b) => a.priority - b.priority)
+
+  for (const job of dueSorted) {
+    if (running >= BATCH_SIZE) break
+    running++
+    const sid = serverId(job.server.ip, job.server.port)
+    runJob(sid, job).finally(() => {
+      // Guard against negative counter when stopWorker() races an in-flight job
+      if (running > 0) running--
+      scheduleTick()
+    })
+  }
+
+  // Schedule next tick at the nearest nextRun
+  const nextMs = Math.min(...[...jobs.values()].map((j) => j.nextRun))
+  const delay = Math.max(nextMs - Date.now(), 1_000)
+  tickHandle = setTimeout(scheduleTick, delay)
 }
 
 // ---------------------------------------------------------------------------
@@ -174,20 +274,93 @@ async function tick(): Promise<void> {
 
 export function startWorker(req: WorkerStartRequest): void {
   stopWorker()
-  const interval = Math.max(MIN_INTERVAL_S, Math.min(MAX_INTERVAL_S, req.intervalSeconds))
-  currentServers = req.servers
-  timerId = setInterval(() => {
-    tick().catch(console.error)
-  }, interval * 1000)
-  // Collect immediately on start
-  tick().catch(console.error)
+  activeIntervalMs = Math.max(30_000, Math.min(300_000, req.intervalSeconds * 1000))
+  if (req.activeServerId) activeServerId = req.activeServerId
+  for (const srv of req.servers) {
+    const sid = serverId(srv.ip, srv.port)
+    jobs.set(sid, {
+      server: srv,
+      nextRun: Date.now(),
+      priority: sid === activeServerId ? 0 : 1,
+      lastFailed: false,
+      failCount: 0,
+      lastSuccess: null
+    })
+  }
+  scheduleTick()
+}
+
+export function setActiveServer(sid: string): void {
+  activeServerId = sid
+
+  // Update priorities synchronously so the next tick respects the change
+  for (const [id, job] of jobs) {
+    if (id === sid) {
+      job.priority = 0
+    } else if (job.priority === 0) {
+      job.priority = job.lastFailed ? 2 : 1
+    }
+  }
+
+  // Debounce the "fetch immediately" trigger — prevents burst when user
+  // scrolls quickly through the server list (each click would otherwise
+  // schedule an instant fetch, filling all BATCH_SIZE slots)
+  if (activeDebounce) clearTimeout(activeDebounce)
+  activeDebounce = setTimeout(() => {
+    activeDebounce = null
+    const job = jobs.get(sid)
+    if (job) {
+      job.nextRun = Date.now()
+      scheduleTick()
+    }
+  }, 300)
 }
 
 export function stopWorker(): void {
-  if (timerId !== null) {
-    clearInterval(timerId)
-    timerId = null
+  if (tickHandle)      { clearTimeout(tickHandle); tickHandle = null }
+  if (activeDebounce)  { clearTimeout(activeDebounce); activeDebounce = null }
+  jobs.clear()
+  running = 0
+  previousMetrics.clear()
+}
+
+/**
+ * UPSERT the server list without a full restart.
+ * - New servers are added and scheduled immediately.
+ * - Removed servers are dropped (in-flight jobs for them will be no-ops since
+ *   the job reference is gone from the map).
+ * - Existing servers retain their failCount / lastSuccess state.
+ */
+export function syncServers(servers: CollectMetricsRequest[]): void {
+  const incoming = new Set(servers.map((s) => serverId(s.ip, s.port)))
+
+  // Add new servers
+  for (const srv of servers) {
+    const sid = serverId(srv.ip, srv.port)
+    if (!jobs.has(sid)) {
+      jobs.set(sid, {
+        server: srv,
+        nextRun: Date.now(),
+        priority: sid === activeServerId ? 0 : 1,
+        lastFailed: false,
+        failCount: 0,
+        lastSuccess: null
+      })
+    } else {
+      // Keep state but refresh credentials (may have changed)
+      jobs.get(sid)!.server = srv
+    }
   }
+
+  // Remove deleted servers
+  for (const sid of jobs.keys()) {
+    if (!incoming.has(sid)) {
+      jobs.delete(sid)
+      previousMetrics.delete(sid)
+    }
+  }
+
+  scheduleTick()
 }
 
 export function getAlerts(): Alert[] {
@@ -203,4 +376,31 @@ export function acknowledgeAlert(alertId: string): boolean {
 
 export function getHistory(ip: string, port: number): ServerMetrics[] {
   return [...(metricsHistory.get(serverId(ip, port)) ?? [])]
+}
+
+// ---------------------------------------------------------------------------
+// Test helpers — NOT for production use
+// ---------------------------------------------------------------------------
+
+export type { PollJob }
+
+/**
+ * Resets ALL module-level state.
+ * Call this in beforeEach / afterEach of unit tests to get a clean slate.
+ */
+export function __resetForTests(): void {
+  stopWorker()           // clears jobs, running, tickHandle, activeDebounce, previousMetrics
+  metricsHistory.clear()
+  storedAlerts = []
+  alertCounter = 0
+  activeServerId = null
+}
+
+/**
+ * Returns a direct reference to the PollJob for a given "ip:port" key.
+ * Useful for asserting priority, failCount, nextRun etc. in tests.
+ * Returns undefined if the job does not exist (e.g. after stopWorker).
+ */
+export function __getJobForTest(sid: string): PollJob | undefined {
+  return jobs.get(sid)
 }

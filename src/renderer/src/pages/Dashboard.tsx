@@ -19,12 +19,13 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import type { StoredServer, CollectMetricsRequest } from '../../../preload/index'
 import { useMetrics } from '../hooks/useMetrics'
 import { useWorker } from '../context/useWorker'
-import { MetricsPanel } from '../components/MetricsPanel'
 import { AgDashboard } from '../components/AgDashboard'
+import { ServerDashboard } from '../components/ServerDashboard'
 import { Sidebar } from '../components/Sidebar'
 import { useGroupsStore } from '../store/groupsStore'
 import { useServersStore } from '../store/serversStore'
 import { useAgStore } from '../store/agStore'
+import { useAppStore } from '../store/appStore'
 import { getServerDisplayName } from '../types/index'
 import { tokens } from '../styles/tokens'
 
@@ -33,12 +34,12 @@ import { tokens } from '../styles/tokens'
 // -----------------------------------------------------------------------
 
 function serverLabel(s: StoredServer): string {
-  return `${s.ip}:${s.port}`
+  return `${s.ip ?? s.host}:${s.port}`
 }
 
 function toCollectRequest(server: StoredServer): CollectMetricsRequest {
   return {
-    ip: server.ip,
+    ip: server.ip ?? server.host,
     port: server.port,
     instanceName: server.instanceName,
     useWindowsAuth: server.useWindowsAuth,
@@ -56,6 +57,19 @@ export function Dashboard(): React.JSX.Element {
   const { detectAgsForServer } = useAgStore()
   const [selectedServer, setSelectedServer] = useState<StoredServer | null>(null)
   const [selectedAgName, setSelectedAgName] = useState<string | null>(null)
+
+  // Handle navigation from Inventory: select a specific server when pending
+  const pendingServerId = useAppStore((s) => s.pendingServerId)
+  const setPendingServerId = useAppStore((s) => s.setPendingServerId)
+  useEffect(() => {
+    if (!pendingServerId) return
+    const srv = servers.find((s) => s.id === pendingServerId)
+    if (srv) {
+      setSelectedServer(srv)
+      setSelectedAgName(null)
+      setPendingServerId(null)
+    }
+  }, [pendingServerId, servers, setPendingServerId])
   const [retriggering, setRetriggering] = useState(false)
 
   const { intervalSeconds, setIntervalSeconds, setConnection, getHistory, pushSnapshot } =
@@ -268,7 +282,7 @@ export function Dashboard(): React.JSX.Element {
                       }}
                     >
                       {getServerDisplayName({
-                        ip: selectedServer.ip,
+                        ip: selectedServer.ip ?? selectedServer.host,
                         port: selectedServer.port,
                         alias: serverAliases[serverLabel(selectedServer)]
                       })}
@@ -363,11 +377,11 @@ export function Dashboard(): React.JSX.Element {
             {error && <Alert severity="error">{error}</Alert>}
 
             {metrics ? (
-              <Box sx={{ flex: 1, overflow: 'hidden' }}>
-                <MetricsPanel
+              <Box sx={{ flex: 1, overflow: 'auto' }}>
+                <ServerDashboard
+                  server={selectedServer}
                   metrics={metrics}
                   history={history}
-                  serverId={selectedServerId ?? ''}
                   connection={connection!}
                 />
               </Box>

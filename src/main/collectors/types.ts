@@ -94,6 +94,10 @@ export interface ServerMetrics {
   waitStats: WaitStatInfo[]
   diskVolumes: DiskVolume[]
   databaseFiles: DatabaseFile[]
+  /** Present only on delta updates pushed to renderer — merge instead of replace */
+  isDelta?: boolean
+  /** Names of databases that were dropped since the previous snapshot (delta only) */
+  removedDbs?: string[]
 }
 
 // ---------------------------------------------------------------------------

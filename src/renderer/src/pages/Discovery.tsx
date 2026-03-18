@@ -36,12 +36,12 @@ function parsePorts(input: string): number[] {
 // -----------------------------------------------------------------------
 
 export function Discovery(): React.JSX.Element {
-  const { servers, isScanning, progress, error, scan, addServer } = useDiscovery()
+  const { servers, isScanning, progress, error, scan } = useDiscovery()
   const { setServerGroup, setServerAlias } = useGroupsStore()
   const savedServers = useServersStore((s) => s.servers)
 
   const isAlreadySaved = (row: DiscoveryRow): boolean =>
-    savedServers.some((s) => s.ip === row.ip && s.port === row.port)
+    savedServers.some((s) => (s.host ?? s.ip) === row.ip && s.port === row.port)
 
   // --- Form stato scan ---
   const [cidr, setCidr] = useState('192.168.1.0/24')
@@ -86,14 +86,17 @@ export function Discovery(): React.JSX.Element {
   }
 
   const handleDialogSave = async (data: AddServerFormData): Promise<void> => {
-    await addServer({
-      ip: data.ip,
+    console.log('[Discovery] handleDialogSave — data:', JSON.stringify(data))
+    const result = await useServersStore.getState().addServer({
+      host: data.ip,
       port: data.port,
       instanceName: data.instanceName || undefined,
       useWindowsAuth: data.useWindowsAuth,
       username: data.username || undefined,
       password: data.password || undefined
     })
+    console.log('[Discovery] addServer result:', JSON.stringify(result))
+    console.log('[Discovery] store dopo add:', useServersStore.getState().servers.length, 'server')
     const sid = `${data.ip}:${data.port}`
     if (data.groupId) setServerGroup(sid, data.groupId)
     if (data.alias?.trim()) setServerAlias(sid, data.alias.trim())

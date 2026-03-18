@@ -108,7 +108,8 @@ export interface WaitStatInfo {
 
 export interface StoredServer {
   id: string
-  ip: string
+  host: string              // canonical address — obbligatorio
+  ip?: string               // legacy alias; popolato dalla normalizzazione in serversStore.ts
   port: number
   instanceName?: string
   useWindowsAuth: boolean
@@ -172,6 +173,8 @@ export interface ServerMetrics {
   waitStats: WaitStatInfo[]
   diskVolumes: DiskVolume[]
   databaseFiles: DatabaseFile[]
+  /** Present only on delta updates from main process — merge instead of replace */
+  isDelta?: boolean
 }
 
 export type AlertCategory =
@@ -195,6 +198,27 @@ export interface Alert {
 export interface WorkerStartRequest {
   intervalSeconds: number
   servers: CollectMetricsRequest[]
+  activeServerId?: string
+}
+
+export interface WorkerSetActiveRequest {
+  serverId: string
+}
+
+export interface WorkerSyncServersRequest {
+  servers: CollectMetricsRequest[]
+}
+
+export interface ServerHealthPayload {
+  serverId: string
+  failCount: number
+  nextRetry: number
+  lastSuccess: number | null
+}
+
+export interface ExportInventoryCsvRequest {
+  rows: string[][]
+  headers: string[]
 }
 
 export interface AcknowledgeAlertRequest {
@@ -319,6 +343,9 @@ export interface SqlSentinelAPI {
   collectMetrics(req: CollectMetricsRequest): Promise<IpcResult<ServerMetrics>>
   workerStart(req: WorkerStartRequest): Promise<IpcResult<null>>
   workerStop(): Promise<IpcResult<null>>
+  workerSetActive(req: WorkerSetActiveRequest): Promise<IpcResult<null>>
+  workerSyncServers(req: WorkerSyncServersRequest): Promise<IpcResult<null>>
+  onServerHealthUpdate(callback: (health: ServerHealthPayload) => void): () => void
   getAlerts(): Promise<IpcResult<Alert[]>>
   acknowledgeAlert(req: AcknowledgeAlertRequest): Promise<IpcResult<null>>
   getHistory(req: HistoryRequest): Promise<IpcResult<ServerMetrics[]>>
@@ -332,6 +359,7 @@ export interface SqlSentinelAPI {
   exportCustomFields(): Promise<IpcResult<string>>
   exportInventory(): Promise<IpcResult<string>>
   exportAlerts(): Promise<IpcResult<string>>
+  exportInventoryCsv(req: ExportInventoryCsvRequest): Promise<IpcResult<string | null>>
   saveCsv(req: SaveCsvRequest): Promise<IpcResult<string | null>>
   db: {
     shrinkEstimate(req: ShrinkEstimateParams): Promise<IpcResult<ShrinkEstimate[]>>
@@ -344,10 +372,11 @@ export interface SqlSentinelAPI {
     getDatabases(req: AgParams): Promise<IpcResult<AvailabilityDatabase[]>>
   }
   servers: {
-    getAll(): Promise<IpcResult<StoredServer[]>>
-    add(params: Omit<StoredServer, 'id' | 'addedAt'>): Promise<IpcResult<ServerAddResult>>
-    update(req: UpdateServerRequest): Promise<IpcResult<null>>
-    remove(id: string): Promise<IpcResult<null>>
+    getAll(): Promise<StoredServer[]>
+    add(params: Omit<StoredServer, 'id' | 'addedAt'>): Promise<ServerAddResult>
+    update(id: string, patch: Partial<StoredServer>): Promise<{ success: boolean }>
+    remove(id: string): Promise<{ success: boolean }>
+    clearMocks(): Promise<{ success: boolean; removed: number; remaining: number }>
   }
   onServerUnreachable(callback: (data: ServerUnreachableEvent) => void): () => void
   onServerRecovered(callback: (serverId: string) => void): () => void

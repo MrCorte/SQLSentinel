@@ -1,5 +1,7 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron'
-import { writeFileSync } from 'node:fs'
+import { ipcMain, dialog, app, BrowserWindow } from 'electron'
+import { buildCsvContent } from '../csvUtils'
+import { writeFileSync, promises as fsPromises } from 'node:fs'
+import path from 'node:path'
 import type { IpcMainInvokeEvent } from 'electron'
 import {
   IpcChannel,
@@ -7,6 +9,9 @@ import {
   type RemoveServerRequest,
   type CollectMetricsRequest,
   type WorkerStartRequest,
+  type WorkerSetActiveRequest,
+  type WorkerSyncServersRequest,
+  type ExportInventoryCsvRequest,
   type AcknowledgeAlertRequest,
   type HistoryRequest,
   type SaveSettingsRequest,
@@ -23,7 +28,6 @@ import {
   type IpcResult,
   type Alert,
   type ServerAddResult,
-  type UpdateServerRequest,
   type ShrinkDatabaseParams,
   type ShrinkFileParams,
   type ShrinkEstimateParams,
@@ -35,7 +39,7 @@ import {
   type AvailabilityDatabase
 } from './types'
 import type { ServerMetrics } from '../collectors/types'
-import { startWorker, stopWorker, getAlerts, acknowledgeAlert, getHistory } from '../metricsWorker'
+import { startWorker, stopWorker, setActiveServer, syncServers, getAlerts, acknowledgeAlert, getHistory } from '../metricsWorker'
 import { getSettings, saveSettings } from '../store/settings'
 import { getCustomFields, setCustomFields, getAllCustomFields } from '../store/dbCustomFields'
 import type { DiscoveredServer, ScanOptions } from '../discovery/types'
@@ -53,7 +57,7 @@ function serverKey(ip: string, port: number): string {
 /** Convert StoredServer → DiscoveredServer shape for legacy callers */
 function toDiscovered(s: StoredServer): DiscoveredServer {
   return {
-    ip: s.ip,
+    ip: s.host,
     port: s.port,
     reachable: !s.unreachable,
     responseTimeMs: 0,
@@ -89,7 +93,7 @@ export function registerIpcHandlers(): void {
       try {
         const probed = await scanHost(req.ip, req.port, 2000)
         serverStore.upsertByIpPort({
-          ip: probed.ip,
+          host: probed.ip,
           port: probed.port,
           instanceName: req.instanceName,
           useWindowsAuth: true
@@ -120,40 +124,74 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // SERVERS_GET_ALL — returns StoredServer[] from electron-store
+  // SERVERS_GET_ALL — returns StoredServer[] directly (flat array, no IpcResult wrapper)
   ipcMain.handle(
     IpcChannel.SERVERS_GET_ALL,
-    async (): Promise<IpcResult<StoredServer[]>> => {
-      return { ok: true, data: serverStore.getAll() }
+    (): StoredServer[] => {
+      try {
+        return serverStore.getAll()
+      } catch (err) {
+        console.error('[IPC] SERVERS_GET_ALL:', safeError(err))
+        return []
+      }
     }
   )
 
-  // SERVERS_ADD — adds a server to electron-store (validates no duplicates)
+  // SERVERS_ADD — returns { success, reason?, server? } directly (flat, no IpcResult wrapper)
   ipcMain.handle(
     IpcChannel.SERVERS_ADD,
-    async (_event: IpcMainInvokeEvent, params: Omit<StoredServer, 'id' | 'addedAt'>): Promise<IpcResult<ServerAddResult>> => {
-      const result = serverStore.add(params)
-      return { ok: true, data: result }
+    (_event: IpcMainInvokeEvent, params: Omit<StoredServer, 'id' | 'addedAt'>): ServerAddResult => {
+      try {
+        return serverStore.add(params)
+      } catch (err) {
+        console.error('[IPC] SERVERS_ADD:', safeError(err))
+        return { success: false, reason: safeError(err) }
+      }
     }
   )
 
-  // SERVERS_UPDATE — patches a server in electron-store
+  // SERVERS_UPDATE — takes (id, patch) as separate args (flat response)
   ipcMain.handle(
     IpcChannel.SERVERS_UPDATE,
-    async (_event: IpcMainInvokeEvent, req: UpdateServerRequest): Promise<IpcResult<null>> => {
-      serverStore.update(req.id, req.patch)
-      return { ok: true, data: null }
+    (_event: IpcMainInvokeEvent, id: string, patch: Partial<StoredServer>): { success: boolean } => {
+      try {
+        serverStore.update(id, patch)
+        return { success: true }
+      } catch (err) {
+        console.error('[IPC] SERVERS_UPDATE:', safeError(err))
+        return { success: false }
+      }
     }
   )
 
-  // SERVERS_REMOVE_BY_ID — removes a server from electron-store by UUID
+  // SERVERS_REMOVE_BY_ID — removes a server from electron-store by UUID (flat response)
   ipcMain.handle(
     IpcChannel.SERVERS_REMOVE_BY_ID,
-    async (_event: IpcMainInvokeEvent, id: string): Promise<IpcResult<null>> => {
-      serverStore.remove(id)
-      return { ok: true, data: null }
+    (_event: IpcMainInvokeEvent, id: string): { success: boolean } => {
+      try {
+        serverStore.remove(id)
+        return { success: true }
+      } catch (err) {
+        console.error('[IPC] SERVERS_REMOVE_BY_ID:', safeError(err))
+        return { success: false }
+      }
     }
   )
+
+  // SERVERS_CLEAR_MOCKS — rimuove server con id che inizia con 'mock-' (usati dal preload mock)
+  ipcMain.handle('servers:clearMocks', (): { success: boolean; removed: number; remaining: number } => {
+    try {
+      const before = serverStore.getAll()
+      const mocks = before.filter((s) => s.id.startsWith('mock-'))
+      mocks.forEach((s) => serverStore.remove(s.id))
+      const after = serverStore.getAll()
+      console.log(`[clearMocks] rimossi ${mocks.length} mock, rimasti: ${after.length}`)
+      return { success: true, removed: mocks.length, remaining: after.length }
+    } catch (err) {
+      console.error('[IPC] servers:clearMocks:', safeError(err))
+      return { success: false, removed: 0, remaining: -1 }
+    }
+  })
 
   // COLLECT_METRICS — connects to SQL Server and collects all metrics
   ipcMain.handle(
@@ -203,6 +241,18 @@ export function registerIpcHandlers(): void {
   // WORKER_STOP — ferma il worker
   ipcMain.handle(IpcChannel.WORKER_STOP, async (): Promise<IpcResult<null>> => {
     stopWorker()
+    return { ok: true, data: null }
+  })
+
+  // WORKER_SET_ACTIVE — segnala quale server è "attivo" (polling più frequente)
+  ipcMain.handle(IpcChannel.WORKER_SET_ACTIVE, (_e, req: WorkerSetActiveRequest): IpcResult<null> => {
+    setActiveServer(req.serverId)
+    return { ok: true, data: null }
+  })
+
+  // WORKER_SYNC_SERVERS — UPSERT server list without full restart
+  ipcMain.handle(IpcChannel.WORKER_SYNC_SERVERS, (_e, req: WorkerSyncServersRequest): IpcResult<null> => {
+    syncServers(req.servers)
     return { ok: true, data: null }
   })
 
@@ -290,13 +340,13 @@ export function registerIpcHandlers(): void {
     const all = getAllCustomFields()
     const header = 'ip,porta,raggiungibile,aggiunto_il,database'
     const rows = serverStore.getAll().map((s) => {
-      const sid = serverKey(s.ip, s.port)
+      const sid = serverKey(s.host, s.port)
       const dbEntries = Object.entries(all)
         .filter(([key]) => key.startsWith(sid + '/'))
         .map(([key]) => key.slice(sid.length + 1))
         .join('; ')
       return [
-        s.ip,
+        s.host,
         String(s.port),
         s.unreachable ? 'NO' : 'SI',
         s.addedAt,
@@ -415,6 +465,27 @@ export function registerIpcHandlers(): void {
       } catch (err) {
         console.info('[IPC] AG_GET_DATABASES:', safeError(err))
         return { ok: true, data: [] }
+      }
+    }
+  )
+
+  // EXPORT_INVENTORY_CSV — apre showSaveDialog e scrive il CSV inventario con BOM UTF-8
+  ipcMain.handle(
+    IpcChannel.EXPORT_INVENTORY_CSV,
+    async (_e, req: ExportInventoryCsvRequest): Promise<IpcResult<string | null>> => {
+      try {
+        const result = await dialog.showSaveDialog({
+          title: 'Salva inventario CSV',
+          defaultPath: path.join(app.getPath('downloads'), `inventario-sql-${new Date().toISOString().slice(0, 10)}.csv`),
+          filters: [{ name: 'CSV', extensions: ['csv'] }]
+        })
+        if (result.canceled || !result.filePath) return { ok: true, data: null }
+        const content = buildCsvContent(req.headers, req.rows)
+        await fsPromises.writeFile(result.filePath, content, 'utf8')
+        return { ok: true, data: result.filePath }
+      } catch (err) {
+        console.error('[IPC] EXPORT_INVENTORY_CSV:', safeError(err))
+        return { ok: false, error: safeError(err) }
       }
     }
   )

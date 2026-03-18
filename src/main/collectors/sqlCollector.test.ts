@@ -44,10 +44,10 @@ const BACKUP_ROW = {
 /** Determina quale recordset restituire in base al contenuto SQL */
 function recordsetForSql(sql: string): unknown[] {
   if (sql.includes('dm_os_process_memory')) return [INSTANCE_ROW]
-  if (sql.includes('sys.databases')) return [DB_ROW]
   if (sql.includes('dm_exec_requests')) return []
   if (sql.includes('dm_exec_query_stats')) return []
-  if (sql.includes('backupset')) return [BACKUP_ROW]
+  if (sql.includes('backupset')) return [BACKUP_ROW]   // prima di sys.databases (la query fa JOIN)
+  if (sql.includes('sys.databases')) return [DB_ROW]
   return []
 }
 

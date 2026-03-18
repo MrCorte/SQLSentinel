@@ -1,4 +1,5 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   Box,
   Typography,
@@ -23,11 +24,14 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
 import DragHandleIcon from '@mui/icons-material/DragHandle'
+import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import { keyframes } from '@mui/system'
 import type { StoredServer } from '../../../preload/index'
 import { useGroupsStore } from '../store/groupsStore'
+import { useMetricsStore } from '../store/metricsStore'
 import { useAgStore } from '../store/agStore'
 import type { AgGroupState } from '../store/agStore'
+import { useServersStore } from '../store/serversStore'
 import type { ServerGroup } from '../types/index'
 import { getServerDisplayName } from '../types/index'
 import { tokens } from '../styles/tokens'
@@ -57,7 +61,7 @@ const pulseAnim = keyframes({
 // ---------------------------------------------------------------------------
 
 function serverLabel(s: StoredServer): string {
-  return `${s.ip}:${s.port}`
+  return `${s.ip ?? s.host}:${s.port}`
 }
 
 function highlightText(text: string, query: string): React.JSX.Element {
@@ -356,8 +360,9 @@ function ServerItem({
   onSelect,
   onContextMenu
 }: ServerItemProps): React.JSX.Element {
-  const displayName = getServerDisplayName({ ip: server.ip, port: server.port, alias })
+  const displayName = getServerDisplayName({ ip: server.ip ?? server.host, port: server.port, alias })
   const realAddr = serverLabel(server)
+  const health = useMetricsStore((s) => s.serverHealth[realAddr])
   const tooltipTitle = server.unreachable
     ? `Non raggiungibile${server.unreachableSince ? ` dal ${new Date(server.unreachableSince).toLocaleString('it-IT')}` : ''}`
     : realAddr
@@ -412,6 +417,15 @@ function ServerItem({
           {searchText ? highlightText(displayName, searchText) : displayName}
         </Typography>
         {inAgGroup && server.agRole && <RoleBadge role={server.agRole} />}
+        {health && health.failCount > 0 && (
+          <Tooltip
+            title={`${health.failCount} ${health.failCount === 1 ? 'tentativo fallito' : 'tentativi falliti'} — prossimo retry: ${new Date(health.nextRetry).toLocaleTimeString('it-IT')}`}
+            placement="right"
+            arrow
+          >
+            <WarningAmberIcon sx={{ fontSize: 13, color: '#d83b01', flexShrink: 0 }} />
+          </Tooltip>
+        )}
       </Box>
     </Tooltip>
   )
@@ -661,6 +675,172 @@ function GroupManagerDialog({
 }
 
 // ---------------------------------------------------------------------------
+// SidebarItem type (used by VirtualServerList)
+// ---------------------------------------------------------------------------
+
+export type SidebarItem =
+  | { kind: 'group'; group: ServerGroup; onlineCount: number }
+  | { kind: 'server'; server: StoredServer; inAgGroup: boolean }
+  | { kind: 'ag'; agName: string; agInfo: AgGroupState }
+  | { kind: 'ungrouped-header' }
+  | { kind: 'search-server'; server: StoredServer }
+  | { kind: 'no-results' }
+
+/**
+ * Returns the estimated row height (px) for a given sidebar item kind.
+ * Exported for unit testing without rendering the full component.
+ *   group / ungrouped-header → 40 px (section headers)
+ *   everything else          → 36 px (server rows)
+ */
+export function getSidebarItemSize(item: SidebarItem | undefined): number {
+  if (!item) return 36
+  return item.kind === 'group' || item.kind === 'ungrouped-header' ? 40 : 36
+}
+
+// ---------------------------------------------------------------------------
+// VirtualServerList — virtualized flat list of all sidebar items
+// ---------------------------------------------------------------------------
+
+interface VirtualServerListProps {
+  flatItems: SidebarItem[]
+  servers: StoredServer[]
+  serversError: string | null
+  selectedServer: StoredServer | null
+  selectedAgName: string | null
+  searchText: string
+  serverAliases: Record<string, string>
+  onSelectServer: (server: StoredServer) => void
+  onSelectAg: (agName: string) => void
+  onToggleCollapse: (groupId: string) => void
+  onContextMenu: (e: React.MouseEvent, server: StoredServer) => void
+}
+
+function VirtualServerList({
+  flatItems,
+  servers,
+  serversError,
+  selectedServer,
+  selectedAgName,
+  searchText,
+  serverAliases,
+  onSelectServer,
+  onSelectAg,
+  onToggleCollapse,
+  onContextMenu
+}: VirtualServerListProps): React.JSX.Element {
+  const parentRef = useRef<HTMLDivElement>(null)
+
+  const virtualizer = useVirtualizer({
+    count: flatItems.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: (i) => getSidebarItemSize(flatItems[i]),
+    overscan: 10
+  })
+
+  return (
+    <Box ref={parentRef} sx={{ flex: 1, overflow: 'auto', py: 0.5 }}>
+      {serversError && (
+        <Alert severity="error" sx={{ mx: 1, mb: 0.5, fontSize: 11 }}>
+          {serversError}
+        </Alert>
+      )}
+
+      {servers.length === 0 && !serversError && (
+        <Typography sx={{ px: 2, py: 1.5, fontSize: 12, color: '#666', lineHeight: 1.5 }}>
+          Nessun server.
+          <br />
+          Usa Discovery per aggiungerne.
+        </Typography>
+      )}
+
+      {flatItems.length > 0 && (
+        <Box
+          sx={{
+            height: `${virtualizer.getTotalSize()}px`,
+            width: '100%',
+            position: 'relative'
+          }}
+        >
+          {virtualizer.getVirtualItems().map((vItem) => {
+            const item = flatItems[vItem.index]
+            return (
+              <Box
+                key={vItem.key}
+                data-index={vItem.index}
+                ref={virtualizer.measureElement}
+                sx={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${vItem.start}px)`
+                }}
+              >
+                {item.kind === 'group' && (
+                  <GroupHeader
+                    group={item.group}
+                    onlineCount={item.onlineCount}
+                    onClick={() => onToggleCollapse(item.group.id)}
+                  />
+                )}
+                {item.kind === 'ag' && (
+                  <AgGroupHeader
+                    ag={item.agInfo}
+                    isSelected={selectedAgName === item.agName}
+                    onClick={() => onSelectAg(item.agName)}
+                  />
+                )}
+                {item.kind === 'server' && (
+                  <ServerItem
+                    server={item.server}
+                    alias={serverAliases[serverLabel(item.server)]}
+                    isSelected={selectedServer ? selectedServer.id === item.server.id : false}
+                    searchText=""
+                    inAgGroup={item.inAgGroup}
+                    onSelect={() => onSelectServer(item.server)}
+                    onContextMenu={onContextMenu}
+                  />
+                )}
+                {item.kind === 'ungrouped-header' && (
+                  <Typography
+                    sx={{
+                      px: 1.5,
+                      py: 0.75,
+                      fontSize: 10,
+                      color: '#666',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.8px',
+                      fontWeight: 600
+                    }}
+                  >
+                    Senza gruppo
+                  </Typography>
+                )}
+                {item.kind === 'search-server' && (
+                  <ServerItem
+                    server={item.server}
+                    alias={serverAliases[serverLabel(item.server)]}
+                    isSelected={selectedServer ? selectedServer.id === item.server.id : false}
+                    searchText={searchText}
+                    onSelect={() => onSelectServer(item.server)}
+                    onContextMenu={onContextMenu}
+                  />
+                )}
+                {item.kind === 'no-results' && (
+                  <Typography sx={{ px: 2, py: 1, fontSize: 12, color: '#666' }}>
+                    Nessun risultato.
+                  </Typography>
+                )}
+              </Box>
+            )
+          })}
+        </Box>
+      )}
+    </Box>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Sidebar (main export)
 // ---------------------------------------------------------------------------
 
@@ -686,6 +866,9 @@ export function Sidebar({
   const { groups, serverGroups, serverAliases, toggleCollapse, setServerGroup, setServerAlias } =
     useGroupsStore()
   const agGroups = useAgStore((s) => s.agGroups)
+  // Debug: verifica reattività store vs props
+  const storeServers = useServersStore((s) => s.servers)
+  console.log('[Sidebar] render — props:', servers.length, 'store:', storeServers.length)
 
   const [searchText, setSearchText] = useState('')
   const [groupManagerOpen, setGroupManagerOpen] = useState(false)
@@ -734,6 +917,54 @@ export function Sidebar({
     }
   }
   const ungrouped = servers.filter((s) => !serverGroups[serverLabel(s)])
+
+  // ---------------------------------------------------------------------------
+  // Flat item list for virtualization
+  // ---------------------------------------------------------------------------
+
+  const flatItems = useMemo((): SidebarItem[] => {
+    if (searchText) {
+      if (filteredServers.length === 0) return [{ kind: 'no-results' }]
+      return filteredServers.map((s) => ({ kind: 'search-server', server: s }))
+    }
+
+    const items: SidebarItem[] = []
+    for (const group of sortedGroups) {
+      const groupServers = serversByGroupId.get(group.id) ?? []
+      if (groupServers.length === 0) continue
+      const onlineCount = groupServers.filter((s) => !s.unreachable).length
+
+      items.push({ kind: 'group', group, onlineCount })
+
+      if (!group.collapsed) {
+        const agGroupsInThisGroup = Object.values(agGroups).filter((ag) =>
+          ag.serverIds.some((sid) => groupServers.some((s) => s.id === sid))
+        )
+        const serversInAnyAg = new Set(agGroupsInThisGroup.flatMap((ag) => ag.serverIds))
+        const standaloneServers = groupServers.filter((s) => !serversInAnyAg.has(s.id))
+
+        for (const ag of agGroupsInThisGroup) {
+          items.push({ kind: 'ag', agName: ag.ag_name, agInfo: ag })
+          const agServers = groupServers.filter((s) => ag.serverIds.includes(s.id))
+          for (const s of agServers) {
+            items.push({ kind: 'server', server: s, inAgGroup: true })
+          }
+        }
+        for (const s of standaloneServers) {
+          items.push({ kind: 'server', server: s, inAgGroup: false })
+        }
+      }
+    }
+
+    if (ungrouped.length > 0) {
+      items.push({ kind: 'ungrouped-header' })
+      for (const s of ungrouped) {
+        items.push({ kind: 'server', server: s, inAgGroup: false })
+      }
+    }
+
+    return items
+  }, [searchText, filteredServers, sortedGroups, serversByGroupId, agGroups, ungrouped])
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, server: StoredServer): void => {
@@ -819,147 +1050,20 @@ export function Sidebar({
         <SearchBar value={searchText} onChange={setSearchText} />
       </Box>
 
-      {/* Server list */}
-      <Box sx={{ flex: 1, overflow: 'auto', py: 0.5 }}>
-        {serversError && (
-          <Alert severity="error" sx={{ mx: 1, mb: 0.5, fontSize: 11 }}>
-            {serversError}
-          </Alert>
-        )}
-
-        {servers.length === 0 && !serversError && (
-          <Typography sx={{ px: 2, py: 1.5, fontSize: 12, color: '#666', lineHeight: 1.5 }}>
-            Nessun server.
-            <br />
-            Usa Discovery per aggiungerne.
-          </Typography>
-        )}
-
-        {/* Search mode: flat filtered list */}
-        {searchText ? (
-          filteredServers.length > 0 ? (
-            filteredServers.map((s) => (
-              <ServerItem
-                key={s.id}
-                server={s}
-                alias={serverAliases[serverLabel(s)]}
-                isSelected={selectedServer ? selectedServer.id === s.id : false}
-                searchText={searchText}
-                onSelect={() => onSelectServer(s)}
-                onContextMenu={handleContextMenu}
-              />
-            ))
-          ) : (
-            <Typography sx={{ px: 2, py: 1, fontSize: 12, color: '#666' }}>
-              Nessun risultato.
-            </Typography>
-          )
-        ) : (
-          /* Normal mode: grouped */
-          <>
-            {sortedGroups.map((group) => {
-              const groupServers = serversByGroupId.get(group.id) ?? []
-              if (groupServers.length === 0) return null
-              const onlineCount = groupServers.filter((s) => !s.unreachable).length
-
-              // Partition servers: those in an AG vs standalone
-              const agGroupsInThisGroup = Object.values(agGroups).filter((ag) =>
-                ag.serverIds.some((sid) => groupServers.some((s) => s.id === sid))
-              )
-              const serversInAnyAg = new Set(
-                agGroupsInThisGroup.flatMap((ag) => ag.serverIds)
-              )
-              const standaloneServers = groupServers.filter((s) => !serversInAnyAg.has(s.id))
-
-              return (
-                <Box key={group.id}>
-                  <GroupHeader
-                    group={group}
-                    onlineCount={onlineCount}
-                    onClick={() => toggleCollapse(group.id)}
-                  />
-                  <Box
-                    sx={{
-                      maxHeight: group.collapsed ? 0 : 9999,
-                      overflow: 'hidden',
-                      transition: 'max-height 200ms ease'
-                    }}
-                  >
-                    {/* AG sub-groups */}
-                    {agGroupsInThisGroup.map((ag) => {
-                      const agServers = groupServers.filter((s) => ag.serverIds.includes(s.id))
-                      return (
-                        <Box key={ag.ag_name}>
-                          <AgGroupHeader
-                            ag={ag}
-                            isSelected={selectedAgName === ag.ag_name}
-                            onClick={() => onSelectAg(ag.ag_name)}
-                          />
-                          {agServers.map((s) => (
-                            <ServerItem
-                              key={s.id}
-                              server={s}
-                              alias={serverAliases[serverLabel(s)]}
-                              isSelected={selectedServer ? selectedServer.id === s.id : false}
-                              searchText=""
-                              inAgGroup
-                              onSelect={() => onSelectServer(s)}
-                              onContextMenu={handleContextMenu}
-                            />
-                          ))}
-                        </Box>
-                      )
-                    })}
-
-                    {/* Standalone (non-AG) servers in this group */}
-                    {standaloneServers.map((s) => (
-                      <ServerItem
-                        key={s.id}
-                        server={s}
-                        alias={serverAliases[serverLabel(s)]}
-                        isSelected={selectedServer ? selectedServer.id === s.id : false}
-                        searchText=""
-                        onSelect={() => onSelectServer(s)}
-                        onContextMenu={handleContextMenu}
-                      />
-                    ))}
-                  </Box>
-                </Box>
-              )
-            })}
-
-            {/* Ungrouped section */}
-            {ungrouped.length > 0 && (
-              <Box>
-                <Typography
-                  sx={{
-                    px: 1.5,
-                    py: 0.75,
-                    fontSize: 10,
-                    color: '#666',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.8px',
-                    fontWeight: 600
-                  }}
-                >
-                  Senza gruppo
-                </Typography>
-                {ungrouped.map((s) => (
-                  <ServerItem
-                    key={s.id}
-                    server={s}
-                    alias={serverAliases[serverLabel(s)]}
-                    isSelected={selectedServer ? selectedServer.id === s.id : false}
-                    searchText=""
-                    onSelect={() => onSelectServer(s)}
-                    onContextMenu={handleContextMenu}
-                  />
-                ))}
-              </Box>
-            )}
-          </>
-        )}
-      </Box>
+      {/* Server list — virtualized */}
+      <VirtualServerList
+        flatItems={flatItems}
+        servers={servers}
+        serversError={serversError}
+        selectedServer={selectedServer}
+        selectedAgName={selectedAgName}
+        searchText={searchText}
+        serverAliases={serverAliases}
+        onSelectServer={onSelectServer}
+        onSelectAg={onSelectAg}
+        onToggleCollapse={toggleCollapse}
+        onContextMenu={handleContextMenu}
+      />
 
       {/* Context menu */}
       <Menu

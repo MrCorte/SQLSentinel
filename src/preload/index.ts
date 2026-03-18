@@ -8,6 +8,10 @@ import type {
   RemoveServerRequest,
   CollectMetricsRequest,
   WorkerStartRequest,
+  WorkerSetActiveRequest,
+  WorkerSyncServersRequest,
+  ServerHealthPayload,
+  ExportInventoryCsvRequest,
   AcknowledgeAlertRequest,
   HistoryRequest,
   SaveSettingsRequest,
@@ -19,7 +23,6 @@ import type {
   Alert,
   IpcResult,
   ServerAddResult,
-  UpdateServerRequest,
   ServerUnreachableEvent,
   ShrinkDatabaseParams,
   ShrinkFileParams,
@@ -37,7 +40,7 @@ import type { StoredServer } from '../main/store/serverStore'
 // Re-export types so the renderer can import them from this file.
 export type { DiscoveredServer, ScanOptions, ScanProgress } from '../main/discovery/types'
 export type { ManualServerRequest, RemoveServerRequest, CollectMetricsRequest, IpcResult } from '../main/ipc/types'
-export type { WorkerStartRequest, AcknowledgeAlertRequest, HistoryRequest, Alert, AppSettings, SaveSettingsRequest } from '../main/ipc/types'
+export type { WorkerStartRequest, WorkerSetActiveRequest, WorkerSyncServersRequest, ExportInventoryCsvRequest, AcknowledgeAlertRequest, HistoryRequest, Alert, AppSettings, SaveSettingsRequest, ServerHealthPayload } from '../main/ipc/types'
 export type { DbCustomFields, SaveCsvRequest, ServerAddResult, UpdateServerRequest, ServerUnreachableEvent } from '../main/ipc/types'
 export type { ShrinkDatabaseParams, ShrinkFileParams, ShrinkEstimateParams, ShrinkEstimate, ShrinkResult } from '../main/ipc/types'
 export type { AgParams, AvailabilityGroup, AvailabilityReplica, AvailabilityDatabase, AgHealth, AgRole } from '../main/ipc/types'
@@ -58,7 +61,7 @@ const MOCK_SERVERS: DiscoveredServer[] = [
 let mockStoredServers: StoredServer[] = [
   {
     id: 'mock-server-1',
-    ip: '192.168.1.10',
+    host: '192.168.1.10',
     port: 1433,
     useWindowsAuth: true,
     addedAt: new Date(Date.now() - 30 * 86_400_000).toISOString(),
@@ -66,7 +69,7 @@ let mockStoredServers: StoredServer[] = [
   },
   {
     id: 'mock-server-2',
-    ip: '192.168.1.15',
+    host: '192.168.1.15',
     port: 1433,
     useWindowsAuth: true,
     addedAt: new Date(Date.now() - 10 * 86_400_000).toISOString(),
@@ -336,6 +339,18 @@ const realApi = {
   workerStop: (): Promise<IpcResult<null>> =>
     ipcRenderer.invoke(IpcChannel.WORKER_STOP),
 
+  workerSetActive: (req: WorkerSetActiveRequest): Promise<IpcResult<null>> =>
+    ipcRenderer.invoke(IpcChannel.WORKER_SET_ACTIVE, req),
+
+  workerSyncServers: (req: WorkerSyncServersRequest): Promise<IpcResult<null>> =>
+    ipcRenderer.invoke(IpcChannel.WORKER_SYNC_SERVERS, req),
+
+  onServerHealthUpdate: (callback: (health: ServerHealthPayload) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, health: ServerHealthPayload) => callback(health)
+    ipcRenderer.on(IpcChannel.SERVER_HEALTH_UPDATE, listener)
+    return () => ipcRenderer.removeListener(IpcChannel.SERVER_HEALTH_UPDATE, listener)
+  },
+
   getAlerts: (): Promise<IpcResult<Alert[]>> =>
     ipcRenderer.invoke(IpcChannel.ALERTS_GET_ALL),
 
@@ -384,6 +399,9 @@ const realApi = {
   exportAlerts: (): Promise<IpcResult<string>> =>
     ipcRenderer.invoke(IpcChannel.EXPORT_ALERTS),
 
+  exportInventoryCsv: (req: ExportInventoryCsvRequest): Promise<IpcResult<string | null>> =>
+    ipcRenderer.invoke(IpcChannel.EXPORT_INVENTORY_CSV, req),
+
   saveCsv: (req: SaveCsvRequest): Promise<IpcResult<string | null>> =>
     ipcRenderer.invoke(IpcChannel.FILE_SAVE_CSV, req),
 
@@ -407,15 +425,15 @@ const realApi = {
       ipcRenderer.invoke(IpcChannel.AG_GET_DATABASES, req)
   },
 
-  // Persistent server store
+  // Persistent server store — main process returns flat values (no IpcResult wrapper)
   servers: {
-    getAll: (): Promise<IpcResult<StoredServer[]>> =>
+    getAll: (): Promise<StoredServer[]> =>
       ipcRenderer.invoke(IpcChannel.SERVERS_GET_ALL),
-    add: (params: Omit<StoredServer, 'id' | 'addedAt'>): Promise<IpcResult<ServerAddResult>> =>
+    add: (params: Omit<StoredServer, 'id' | 'addedAt'>): Promise<ServerAddResult> =>
       ipcRenderer.invoke(IpcChannel.SERVERS_ADD, params),
-    update: (req: UpdateServerRequest): Promise<IpcResult<null>> =>
-      ipcRenderer.invoke(IpcChannel.SERVERS_UPDATE, req),
-    remove: (id: string): Promise<IpcResult<null>> =>
+    update: (id: string, patch: Partial<StoredServer>): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke(IpcChannel.SERVERS_UPDATE, id, patch),
+    remove: (id: string): Promise<{ success: boolean }> =>
       ipcRenderer.invoke(IpcChannel.SERVERS_REMOVE_BY_ID, id)
   },
 
@@ -430,6 +448,19 @@ const realApi = {
     const listener = (_event: IpcRendererEvent, serverId: string) => callback(serverId)
     ipcRenderer.on(IpcChannel.SERVER_RECOVERED, listener)
     return () => ipcRenderer.removeListener(IpcChannel.SERVER_RECOVERED, listener)
+  },
+
+  // App visibility — window blur / focus
+  onAppBackground: (callback: () => void): (() => void) => {
+    const listener = () => callback()
+    ipcRenderer.on(IpcChannel.APP_BACKGROUND, listener)
+    return () => ipcRenderer.removeListener(IpcChannel.APP_BACKGROUND, listener)
+  },
+
+  onAppForeground: (callback: () => void): (() => void) => {
+    const listener = () => callback()
+    ipcRenderer.on(IpcChannel.APP_FOREGROUND, listener)
+    return () => ipcRenderer.removeListener(IpcChannel.APP_FOREGROUND, listener)
   },
 }
 
@@ -478,7 +509,8 @@ const mockApi = {
       mockWorkerMem = vary(mockWorkerMem, MOCK_MEM_TARGET * 0.02, 0, MOCK_MEM_TARGET)
       const metrics = mockMetrics(mockWorkerCpu, mockWorkerMem)
       for (const srv of req.servers) {
-        const sid = `${srv.ip}:${srv.port}`
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sid = `${(srv as any).host ?? srv.ip}:${srv.port}`
         console.log('[MockWorker] pushing metrics to', sid, `cpu=${metrics.instanceInfo.cpuUsagePercent.toFixed(1)}%`)
         mockMetricsListeners.forEach((cb) => cb({ serverId: sid, metrics }))
       }
@@ -494,6 +526,14 @@ const mockApi = {
     }
     return Promise.resolve({ ok: true, data: null })
   },
+
+  workerSetActive: (_req: WorkerSetActiveRequest): Promise<IpcResult<null>> =>
+    Promise.resolve({ ok: true, data: null }),
+
+  workerSyncServers: (_req: WorkerSyncServersRequest): Promise<IpcResult<null>> =>
+    Promise.resolve({ ok: true, data: null }),
+
+  onServerHealthUpdate: (_callback: (health: ServerHealthPayload) => void): (() => void) => () => {},
 
   getAlerts: (): Promise<IpcResult<Alert[]>> => {
     const now = new Date()
@@ -571,6 +611,9 @@ const mockApi = {
   exportAlerts: (): Promise<IpcResult<string>> =>
     Promise.resolve({ ok: true, data: 'id,serverId,categoria,severita,messaggio,rilevato_il,acknowledged_il\r\n' }),
 
+  exportInventoryCsv: (_req: ExportInventoryCsvRequest): Promise<IpcResult<string | null>> =>
+    Promise.resolve({ ok: true, data: null }),
+
   saveCsv: (_req: SaveCsvRequest): Promise<IpcResult<string | null>> =>
     Promise.resolve({ ok: true, data: null }),
 
@@ -606,31 +649,34 @@ const mockApi = {
   },
 
   servers: {
-    getAll: (): Promise<IpcResult<StoredServer[]>> =>
-      Promise.resolve({ ok: true, data: [...mockStoredServers] }),
+    getAll: (): Promise<StoredServer[]> =>
+      Promise.resolve([...mockStoredServers]),
 
-    add: (params: Omit<StoredServer, 'id' | 'addedAt'>): Promise<IpcResult<ServerAddResult>> => {
-      const dup = mockStoredServers.some((s) => s.ip === params.ip && s.port === params.port)
-      if (dup) return Promise.resolve({ ok: true, data: { success: false, reason: 'duplicate' } })
+    add: (params: Omit<StoredServer, 'id' | 'addedAt'>): Promise<ServerAddResult> => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const addr = params.host ?? (params as any).ip ?? ''
+      const dup = mockStoredServers.some((s) => s.host === addr && s.port === params.port)
+      if (dup) return Promise.resolve({ success: false, reason: 'duplicate' })
       const server: StoredServer = {
         ...params,
+        host: addr,
         id: `mock-${Date.now()}`,
         addedAt: new Date().toISOString()
       }
       mockStoredServers = [...mockStoredServers, server]
-      return Promise.resolve({ ok: true, data: { success: true, server } })
+      return Promise.resolve({ success: true, server })
     },
 
-    update: (req: UpdateServerRequest): Promise<IpcResult<null>> => {
+    update: (id: string, patch: Partial<StoredServer>): Promise<{ success: boolean }> => {
       mockStoredServers = mockStoredServers.map((s) =>
-        s.id === req.id ? { ...s, ...req.patch } : s
+        s.id === id ? { ...s, ...patch } : s
       )
-      return Promise.resolve({ ok: true, data: null })
+      return Promise.resolve({ success: true })
     },
 
-    remove: (id: string): Promise<IpcResult<null>> => {
+    remove: (id: string): Promise<{ success: boolean }> => {
       mockStoredServers = mockStoredServers.filter((s) => s.id !== id)
-      return Promise.resolve({ ok: true, data: null })
+      return Promise.resolve({ success: true })
     }
   },
 
@@ -649,6 +695,9 @@ const mockApi = {
       if (idx >= 0) mockRecoveredListeners.splice(idx, 1)
     }
   },
+
+  onAppBackground: (_callback: () => void): (() => void) => () => {},
+  onAppForeground: (_callback: () => void): (() => void) => () => {},
 }
 
 // ---------------------------------------------------------------------------
@@ -675,6 +724,9 @@ const bridgeApi = {
   collectMetrics:      (r: CollectMetricsRequest) => api.collectMetrics(r),
   workerStart:         (r: WorkerStartRequest) => api.workerStart(r),
   workerStop:          () => api.workerStop(),
+  workerSetActive:        (r: WorkerSetActiveRequest) => api.workerSetActive(r),
+  workerSyncServers:      (r: WorkerSyncServersRequest) => api.workerSyncServers(r),
+  onServerHealthUpdate:   (cb: (h: ServerHealthPayload) => void) => api.onServerHealthUpdate(cb),
   getAlerts:           () => api.getAlerts(),
   acknowledgeAlert:    (r: AcknowledgeAlertRequest) => api.acknowledgeAlert(r),
   getHistory:          (r: HistoryRequest) => api.getHistory(r),
@@ -688,6 +740,7 @@ const bridgeApi = {
   exportCustomFields:  () => api.exportCustomFields(),
   exportInventory:     () => api.exportInventory(),
   exportAlerts:        () => api.exportAlerts(),
+  exportInventoryCsv:  (r: ExportInventoryCsvRequest) => api.exportInventoryCsv(r),
   saveCsv:             (r: SaveCsvRequest) => api.saveCsv(r),
   db: {
     shrinkEstimate: (r: ShrinkEstimateParams): Promise<IpcResult<ShrinkEstimate[]>> =>
@@ -705,14 +758,20 @@ const bridgeApi = {
     getDatabases: (r: AgParams): Promise<IpcResult<AvailabilityDatabase[]>> =>
       isMock ? api.ag.getDatabases(r) : ipcRenderer.invoke(IpcChannel.AG_GET_DATABASES, r),
   },
+  // servers: sempre IPC reale, mai mockato — il mock CRUD crea record con id 'mock-*'
+  // che sopravvivono al riavvio e inquinano electron-store
   servers: {
-    getAll:  () => api.servers.getAll(),
-    add:     (p: Omit<StoredServer, 'id' | 'addedAt'>) => api.servers.add(p),
-    update:  (r: UpdateServerRequest) => api.servers.update(r),
-    remove:  (id: string) => api.servers.remove(id),
+    getAll:     () => realApi.servers.getAll(),
+    add:        (p: Omit<StoredServer, 'id' | 'addedAt'>) => realApi.servers.add(p),
+    update:     (id: string, patch: Partial<StoredServer>) => realApi.servers.update(id, patch),
+    remove:     (id: string) => realApi.servers.remove(id),
+    clearMocks: (): Promise<{ success: boolean; removed: number; remaining: number }> =>
+      ipcRenderer.invoke('servers:clearMocks'),
   },
   onServerUnreachable: (cb: (d: ServerUnreachableEvent) => void) => api.onServerUnreachable(cb),
   onServerRecovered:   (cb: (id: string) => void) => api.onServerRecovered(cb),
+  onAppBackground:     (cb: () => void) => api.onAppBackground(cb),
+  onAppForeground:     (cb: () => void) => api.onAppForeground(cb),
 }
 
 if (process.contextIsolated) {

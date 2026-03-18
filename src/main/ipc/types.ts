@@ -24,6 +24,9 @@ export enum IpcChannel {
   ALERT_NEW = 'metrics:alert-new', // push-only: main → renderer
   WORKER_START = 'worker:start',
   WORKER_STOP = 'worker:stop',
+  WORKER_SET_ACTIVE = 'worker:setActive',
+  WORKER_SYNC_SERVERS = 'worker:syncServers',
+  SERVER_HEALTH_UPDATE = 'server:healthUpdate', // push-only: main → renderer
   ALERTS_GET_ALL = 'alerts:get-all',
   ALERTS_ACKNOWLEDGE = 'alerts:acknowledge',
   METRICS_HISTORY = 'metrics:history',
@@ -43,7 +46,11 @@ export enum IpcChannel {
   // Always On Availability Groups
   AG_GET_GROUPS = 'ag:getGroups',
   AG_GET_REPLICAS = 'ag:getReplicas',
-  AG_GET_DATABASES = 'ag:getDatabases'
+  AG_GET_DATABASES = 'ag:getDatabases',
+  EXPORT_INVENTORY_CSV = 'export:inventoryCsv',
+  // App visibility — pushed from main to renderer on window blur/focus
+  APP_BACKGROUND = 'app:background',
+  APP_FOREGROUND = 'app:foreground'
 }
 
 /** Unified result envelope — never throw raw errors to the renderer. */
@@ -92,6 +99,28 @@ export interface Alert {
 export interface WorkerStartRequest {
   intervalSeconds: number
   servers: CollectMetricsRequest[]
+  activeServerId?: string
+}
+
+export interface WorkerSetActiveRequest {
+  serverId: string
+}
+
+export interface WorkerSyncServersRequest {
+  servers: CollectMetricsRequest[]
+}
+
+/** Pushed to renderer after every poll attempt (success or failure). */
+export interface ServerHealthPayload {
+  serverId: string
+  failCount: number
+  nextRetry: number       // ms timestamp
+  lastSuccess: number | null  // ms timestamp
+}
+
+export interface ExportInventoryCsvRequest {
+  rows: string[][]
+  headers: string[]
 }
 
 export interface AcknowledgeAlertRequest {

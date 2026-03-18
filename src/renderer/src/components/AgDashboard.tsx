@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import {
   Box,
   Typography,
@@ -6,13 +6,17 @@ import {
   Chip,
   Divider,
   CircularProgress,
-  Tooltip
+  Tooltip,
+  Snackbar,
+  Alert
 } from '@mui/material'
 import { DataGrid } from '@mui/x-data-grid'
 import type { GridColDef } from '@mui/x-data-grid'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import type { CollectMetricsRequest, AvailabilityReplica, AvailabilityDatabase } from '../../../preload/index'
 import { useAgStore } from '../store/agStore'
+import { useServersStore } from '../store/serversStore'
+import { useAppStore } from '../store/appStore'
 import { tokens } from '../styles/tokens'
 
 // ---------------------------------------------------------------------------
@@ -47,85 +51,116 @@ function syncStateBg(s: string): string {
 // ReplicaCard
 // ---------------------------------------------------------------------------
 
-function ReplicaCard({ replica }: { replica: AvailabilityReplica }): React.JSX.Element {
+interface ReplicaCardProps {
+  replica: AvailabilityReplica
+  onNavigate: (replica: AvailabilityReplica) => void
+}
+
+function ReplicaCard({ replica, onNavigate }: ReplicaCardProps): React.JSX.Element {
+  const [hovered, setHovered] = useState(false)
   const isPrimary = replica.role_desc === 'PRIMARY'
   const isConnected = replica.connected_state_desc === 'CONNECTED'
 
   return (
-    <Box
-      sx={{
-        bgcolor: tokens.color.bgCard,
-        border: `1px solid ${isPrimary ? tokens.color.primary : tokens.color.border}`,
-        borderTop: `3px solid ${isPrimary ? tokens.color.primary : tokens.color.border}`,
-        borderRadius: tokens.radius.sm,
-        p: 1.5,
-        minWidth: 220,
-        flex: '1 1 220px',
-        boxShadow: tokens.shadow.card
-      }}
-    >
-      {/* Header */}
-      <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
-        <Typography sx={{ fontSize: 13, fontWeight: 700, color: tokens.color.textPrimary, flex: 1 }}>
-          {isPrimary ? '★ ' : '○ '}
-          {replica.replica_server_name}
-        </Typography>
-        <Chip
-          label={replica.role_desc}
-          size="small"
-          sx={{
-            fontSize: 9,
-            height: 18,
-            fontWeight: 700,
-            bgcolor: isPrimary ? tokens.color.successLight : '#f3f2f1',
-            color: isPrimary ? tokens.color.success : '#605e5c'
-          }}
-        />
-      </Stack>
-
-      <Divider sx={{ mb: 1 }} />
-
-      <Stack spacing={0.5}>
-        <Stack direction="row" justifyContent="space-between">
-          <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>Modalità</Typography>
-          <Typography variant="caption" sx={{ color: tokens.color.textPrimary, fontWeight: 600 }}>
-            {replica.availability_mode_desc === 'SYNCHRONOUS_COMMIT' ? 'SYNC' : 'ASYNC'}
-            {' — '}
-            {replica.failover_mode_desc === 'AUTOMATIC' ? 'AUTO' : 'MANUAL'}
+    <Tooltip title={`Apri dashboard: ${replica.replica_server_name}`} arrow>
+      <Box
+        onClick={() => onNavigate(replica)}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        sx={{
+          bgcolor: tokens.color.bgCard,
+          border: `1px solid ${isPrimary ? tokens.color.primary : tokens.color.border}`,
+          borderTop: `3px solid ${isPrimary ? tokens.color.primary : tokens.color.border}`,
+          borderRadius: tokens.radius.sm,
+          p: 1.5,
+          minWidth: 220,
+          flex: '1 1 220px',
+          boxShadow: hovered ? '0 4px 12px rgba(0,0,0,0.15)' : tokens.shadow.card,
+          transform: hovered ? 'translateY(-1px)' : 'none',
+          transition: 'box-shadow 200ms, transform 200ms',
+          cursor: 'pointer',
+          position: 'relative'
+        }}
+      >
+        {/* Header */}
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
+          <Typography sx={{ fontSize: 13, fontWeight: 700, color: tokens.color.textPrimary, flex: 1 }}>
+            {isPrimary ? '★ ' : '○ '}
+            {replica.replica_server_name}
           </Typography>
+          <Chip
+            label={replica.role_desc}
+            size="small"
+            sx={{
+              fontSize: 9,
+              height: 18,
+              fontWeight: 700,
+              bgcolor: isPrimary ? tokens.color.successLight : '#f3f2f1',
+              color: isPrimary ? tokens.color.success : '#605e5c'
+            }}
+          />
         </Stack>
 
-        <Stack direction="row" justifyContent="space-between">
-          <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>Connessione</Typography>
-          <Typography
-            variant="caption"
-            sx={{ color: isConnected ? tokens.color.success : tokens.color.error, fontWeight: 600 }}
-          >
-            {replica.connected_state_desc} {isConnected ? '✅' : '❌'}
-          </Typography>
-        </Stack>
+        <Divider sx={{ mb: 1 }} />
 
-        <Stack direction="row" justifyContent="space-between">
-          <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>Sync health</Typography>
-          <Typography
-            variant="caption"
-            sx={{ color: healthColor(replica.synchronization_health_desc), fontWeight: 600 }}
-          >
-            {replica.synchronization_health_desc === 'HEALTHY' ? '✅ HEALTHY' :
-             replica.synchronization_health_desc === 'PARTIALLY_HEALTHY' ? '⚠ PARTIAL' : '❌ UNHEALTHY'}
-          </Typography>
-        </Stack>
-
-        {replica.operational_state_desc && (
+        <Stack spacing={0.5}>
           <Stack direction="row" justifyContent="space-between">
-            <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>Stato op.</Typography>
-            <Typography variant="caption" sx={{ color: tokens.color.textPrimary }}>
-              {replica.operational_state_desc}
+            <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>Modalità</Typography>
+            <Typography variant="caption" sx={{ color: tokens.color.textPrimary, fontWeight: 600 }}>
+              {replica.availability_mode_desc === 'SYNCHRONOUS_COMMIT' ? 'SYNC' : 'ASYNC'}
+              {' — '}
+              {replica.failover_mode_desc === 'AUTOMATIC' ? 'AUTO' : 'MANUAL'}
             </Typography>
           </Stack>
-        )}
-      </Stack>
-    </Box>
+
+          <Stack direction="row" justifyContent="space-between">
+            <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>Connessione</Typography>
+            <Typography
+              variant="caption"
+              sx={{ color: isConnected ? tokens.color.success : tokens.color.error, fontWeight: 600 }}
+            >
+              {replica.connected_state_desc} {isConnected ? '✅' : '❌'}
+            </Typography>
+          </Stack>
+
+          <Stack direction="row" justifyContent="space-between">
+            <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>Sync health</Typography>
+            <Typography
+              variant="caption"
+              sx={{ color: healthColor(replica.synchronization_health_desc), fontWeight: 600 }}
+            >
+              {replica.synchronization_health_desc === 'HEALTHY' ? '✅ HEALTHY' :
+               replica.synchronization_health_desc === 'PARTIALLY_HEALTHY' ? '⚠ PARTIAL' : '❌ UNHEALTHY'}
+            </Typography>
+          </Stack>
+
+          {replica.operational_state_desc && (
+            <Stack direction="row" justifyContent="space-between">
+              <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>Stato op.</Typography>
+              <Typography variant="caption" sx={{ color: tokens.color.textPrimary }}>
+                {replica.operational_state_desc}
+              </Typography>
+            </Stack>
+          )}
+        </Stack>
+
+        {/* Freccia "→ Dashboard" visibile solo al hover */}
+        <Typography
+          sx={{
+            position: 'absolute',
+            bottom: 8,
+            right: 8,
+            fontSize: 11,
+            color: tokens.color.primary,
+            fontWeight: 600,
+            opacity: hovered ? 1 : 0,
+            transition: 'opacity 200ms'
+          }}
+        >
+          → Dashboard
+        </Typography>
+      </Box>
+    </Tooltip>
   )
 }
 
@@ -159,7 +194,11 @@ const DB_GRID_SX = {
 
 export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
   const { agDetails, updateAgDetails } = useAgStore()
+  const servers = useServersStore((s) => s.servers)
+  const setPendingServerId = useAppStore((s) => s.setPendingServerId)
   const detail = agDetails[agName]
+
+  const [snackbarMsg, setSnackbarMsg] = useState<string | null>(null)
 
   // Fetch details on mount and every 60s
   useEffect(() => {
@@ -167,6 +206,21 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
     const timer = setInterval(() => updateAgDetails(connection), 60_000)
     return () => clearInterval(timer)
   }, [agName, connection.ip, connection.port]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleNavigateToServer = useCallback((replica: AvailabilityReplica): void => {
+    const nameBase = replica.replica_server_name.split('\\')[0].toLowerCase()
+    const match = servers.find((s) => {
+      const addr = (s.host ?? s.ip ?? '').toLowerCase()
+      return addr === nameBase || addr.includes(nameBase) || nameBase.includes(addr)
+    })
+    if (match) {
+      setPendingServerId(match.id)
+    } else {
+      setSnackbarMsg(
+        `Server "${replica.replica_server_name}" non presente nella lista server monitorati. Aggiungilo prima dalla Discovery.`
+      )
+    }
+  }, [servers, setPendingServerId])
 
   if (!detail) {
     return (
@@ -326,7 +380,7 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
             mb: 1.5
           }}
         >
-          Repliche
+          Repliche — clicca per aprire il dashboard del server
         </Typography>
         {detail.replicas.length === 0 ? (
           <Typography variant="body2" sx={{ color: tokens.color.textSecondary }}>
@@ -335,7 +389,7 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
         ) : (
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
             {detail.replicas.map((r) => (
-              <ReplicaCard key={r.replica_id} replica={r} />
+              <ReplicaCard key={r.replica_id} replica={r} onNavigate={handleNavigateToServer} />
             ))}
           </Box>
         )}
@@ -382,6 +436,18 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
           />
         )}
       </Box>
+
+      {/* Toast warning — server non monitorato */}
+      <Snackbar
+        open={snackbarMsg !== null}
+        autoHideDuration={5000}
+        onClose={() => setSnackbarMsg(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="warning" onClose={() => setSnackbarMsg(null)} sx={{ width: '100%' }}>
+          {snackbarMsg}
+        </Alert>
+      </Snackbar>
     </Box>
   )
 }

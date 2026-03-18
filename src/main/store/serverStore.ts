@@ -7,7 +7,8 @@ import { randomUUID } from 'node:crypto'
 
 export interface StoredServer {
   id: string
-  ip: string
+  host: string              // canonical address — obbligatorio
+  ip?: string               // legacy alias kept for migration; normalizeServer() strips it
   port: number
   instanceName?: string
   useWindowsAuth: boolean
@@ -21,6 +22,18 @@ export interface StoredServer {
   // Always On AG membership — populated at runtime, refreshed on startup
   agGroupId?: string        // group_id UUID if this server belongs to an AG
   agRole?: 'PRIMARY' | 'SECONDARY' | 'RESOLVING'
+}
+
+/**
+ * Normalize a raw stored record: resolves host from either 'host' or legacy 'ip' field.
+ * Strips 'ip' from output so new records are stored with 'host' only.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeServer(s: any): StoredServer {
+  const host: string = s.host ?? s.ip ?? ''
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { ip: _ip, ...rest } = s
+  return { ...rest, host }
 }
 
 // ---------------------------------------------------------------------------
@@ -39,31 +52,55 @@ const store = new Store<Schema>({
 // ---------------------------------------------------------------------------
 
 export function getAll(): StoredServer[] {
-  return store.get('servers', [])
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (store.get('servers', []) as any[]).map(normalizeServer)
 }
 
 export function getById(id: string): StoredServer | undefined {
-  return store.get('servers', []).find((s) => s.id === id)
+  return getAll().find((s) => s.id === id)
 }
 
-export function getByIpPort(ip: string, port: number): StoredServer | undefined {
-  return store.get('servers', []).find((s) => s.ip === ip && s.port === port)
+export function getByIpPort(host: string, port: number): StoredServer | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return getAll().find((s) => ((s as any).host ?? (s as any).ip) === host && s.port === port)
 }
 
 export function add(
-  params: Omit<StoredServer, 'id' | 'addedAt'>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  params: any
 ): { success: boolean; reason?: string; server?: StoredServer } {
+  const normalized = normalizeServer(params)
+  if (!normalized.host) return { success: false, reason: 'missing host' }
   const servers = store.get('servers', [])
-  if (servers.some((s) => s.ip === params.ip && s.port === params.port)) {
+  // Duplicate check: accept both host and legacy ip from stored records
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (servers.some((s: any) => (s.host ?? s.ip) === normalized.host && s.port === normalized.port)) {
     return { success: false, reason: 'duplicate' }
   }
   const server: StoredServer = {
-    ...params,
+    ...normalized,
     id: randomUUID(),
     addedAt: new Date().toISOString()
   }
   store.set('servers', [...servers, server])
   return { success: true, server }
+}
+
+/**
+ * One-shot migration: fix any records that have ip but no host.
+ * Safe to call on every boot — no-op if data is already normalized.
+ */
+export function migrateHostField(): void {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const raw = store.get('servers', []) as any[]
+    const needsMigration = raw.some((s) => !s.host)
+    if (!needsMigration) return
+    store.set('servers', raw.map(normalizeServer))
+    console.log('[serverStore] migrated', raw.length, 'servers ip→host')
+  } catch (err) {
+    console.error('[serverStore] migration error:', err)
+  }
 }
 
 export function update(id: string, patch: Partial<StoredServer>): void {
@@ -83,20 +120,23 @@ export function remove(id: string): void {
 }
 
 /**
- * Insert-or-update by ip:port.
+ * Insert-or-update by host:port.
  * Used when ADD_SERVER_MANUAL completes — ensures the server is persisted
  * without creating duplicates.
  */
-export function upsertByIpPort(params: Omit<StoredServer, 'id' | 'addedAt'>): StoredServer {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function upsertByIpPort(params: any): StoredServer {
+  const normalized = normalizeServer(params)
   const servers = store.get('servers', [])
-  const idx = servers.findIndex((s) => s.ip === params.ip && s.port === params.port)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const idx = servers.findIndex((s: any) => (s.host ?? s.ip) === normalized.host && s.port === normalized.port)
   if (idx >= 0) {
-    servers[idx] = { ...servers[idx], ...params }
+    servers[idx] = { ...servers[idx], ...normalized }
     store.set('servers', servers)
-    return servers[idx]
+    return normalizeServer(servers[idx])
   }
   const server: StoredServer = {
-    ...params,
+    ...normalized,
     id: randomUUID(),
     addedAt: new Date().toISOString()
   }

@@ -3,6 +3,7 @@ import type { CollectMetricsRequest, ServerMetrics } from '../../../preload/inde
 import { metricsToHistoryPoint } from '../hooks/useMetrics'
 import type { MetricsHistoryPoint } from '../hooks/useMetrics'
 import { WorkerContext } from './WorkerContextDef'
+import { useMetricsStore } from '../store/metricsStore'
 
 // Re-export for consumers that import WorkerContextValue from this file
 export type { WorkerContextValue } from './WorkerContextDef'
@@ -22,6 +23,8 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
 
   const pushSnapshot = useCallback(
     (serverId: string, m: ServerMetrics) => {
+      // Apply delta or full update to the metrics store
+      useMetricsStore.getState().applyDelta(serverId, m)
       const map = historyMapRef.current
       const existing = map.get(serverId) ?? []
       const newPoint = metricsToHistoryPoint(m)
@@ -72,28 +75,17 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
     [historyVersion] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
-  // Gestisce workerStart / workerStop in base allo stato.
+  // Notifica il main process quale server è "attivo" (riceve polling più frequente).
+  // Il worker globale viene avviato da App.tsx con tutti i server.
   // NON ha cleanup su unmount: il worker deve sopravvivere alla navigazione.
   useEffect(() => {
-    if (intervalSeconds <= 0 || !connection) {
-      console.log(
-        '[WorkerContext] workerStop — intervalSeconds=',
-        intervalSeconds,
-        'connection=',
-        connection?.ip
-      )
-      window.sqlSentinel.workerStop()
-      return
-    }
+    if (!connection) return
     console.log(
-      '[WorkerContext] workerStart — intervalSeconds=',
-      intervalSeconds,
-      'server=',
+      '[WorkerContext] workerSetActive — server=',
       `${connection.ip}:${connection.port}`
     )
-    window.sqlSentinel.workerStart({ intervalSeconds, servers: [connection] })
-    // Nessun cleanup: il worker rimane attivo anche se Dashboard si smonta
-  }, [intervalSeconds, connection?.ip, connection?.port]) // eslint-disable-line react-hooks/exhaustive-deps
+    window.sqlSentinel.workerSetActive({ serverId: `${connection.ip}:${connection.port}` })
+  }, [connection?.ip, connection?.port]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <WorkerContext.Provider

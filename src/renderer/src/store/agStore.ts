@@ -84,10 +84,10 @@ export const useAgStore = create<AgStore>((set, get) => ({
         for (const replica of agReplicas) {
           const nameBase = replica.replica_server_name.split('\\')[0].toLowerCase()
           const matched = allServers.find(
-            (s) =>
-              s.ip.toLowerCase() === nameBase ||
-              nameBase.includes(s.ip.toLowerCase()) ||
-              s.ip.toLowerCase().includes(nameBase)
+            (s) => {
+              const addr = (s.ip ?? s.host).toLowerCase()
+              return addr === nameBase || nameBase.includes(addr) || addr.includes(nameBase)
+            }
           )
           if (matched) serverIds.add(matched.id)
         }
@@ -95,10 +95,11 @@ export const useAgStore = create<AgStore>((set, get) => ({
         // Determine the role of this specific server in this AG
         const myReplica = agReplicas.find((r) => {
           const nameBase = r.replica_server_name.split('\\')[0].toLowerCase()
+          const connAddr = connection.ip.toLowerCase()
           return (
-            nameBase === connection.ip.toLowerCase() ||
-            connection.ip.toLowerCase().includes(nameBase) ||
-            nameBase.includes(connection.ip.toLowerCase())
+            nameBase === connAddr ||
+            connAddr.includes(nameBase) ||
+            nameBase.includes(connAddr)
           )
         })
 

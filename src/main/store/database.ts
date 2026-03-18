@@ -39,8 +39,11 @@ const DDL = `
     FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
   );
 
-  CREATE INDEX IF NOT EXISTS idx_metrics_server_id    ON metrics_snapshots(server_id);
-  CREATE INDEX IF NOT EXISTS idx_metrics_collected_at ON metrics_snapshots(collected_at);
+  -- Drop legacy single-column indexes replaced by the composite below
+  DROP INDEX IF EXISTS idx_metrics_server_id;
+  DROP INDEX IF EXISTS idx_metrics_collected_at;
+  -- Composite index covers all query patterns: WHERE server_id = ? ORDER BY collected_at DESC
+  CREATE INDEX IF NOT EXISTS idx_metrics_server_collected ON metrics_snapshots(server_id, collected_at DESC);
 `
 
 /**

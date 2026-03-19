@@ -16,7 +16,8 @@ import {
   TextField,
   List,
   ListItem,
-  Alert
+  Alert,
+  Chip
 } from '@mui/material'
 import SettingsIcon from '@mui/icons-material/Settings'
 import SearchIcon from '@mui/icons-material/Search'
@@ -35,6 +36,7 @@ import { useServersStore } from '../store/serversStore'
 import type { ServerGroup } from '../types/index'
 import { getServerDisplayName } from '../types/index'
 import { tokens } from '../styles/tokens'
+import { HOSTING_BADGE } from '../constants/hosting'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -417,6 +419,25 @@ function ServerItem({
           {searchText ? highlightText(displayName, searchText) : displayName}
         </Typography>
         {inAgGroup && server.agRole && <RoleBadge role={server.agRole} />}
+        {(() => {
+          const badge = HOSTING_BADGE[server.hostingType ?? 'on-premise']
+          return (
+            <Chip
+              label={badge.label}
+              size="small"
+              sx={{
+                height: 16,
+                fontSize: 9,
+                fontWeight: 700,
+                backgroundColor: badge.color,
+                color: '#fff',
+                borderRadius: '3px',
+                flexShrink: 0,
+                '& .MuiChip-label': { px: '4px' }
+              }}
+            />
+          )
+        })()}
         {health && health.failCount > 0 && (
           <Tooltip
             title={`${health.failCount} ${health.failCount === 1 ? 'tentativo fallito' : 'tentativi falliti'} — prossimo retry: ${new Date(health.nextRetry).toLocaleTimeString('it-IT')}`}

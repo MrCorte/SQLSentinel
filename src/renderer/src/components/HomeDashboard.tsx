@@ -19,6 +19,7 @@ import { useAgStore } from '../store/agStore'
 import { useAlertsStore } from '../store/alertsStore'
 import { tokens } from '../styles/tokens'
 import type { StoredServer, Alert } from '../../../preload/index'
+import { HOSTING_BADGE } from '../constants/hosting'
 
 // ---------------------------------------------------------------------------
 // Props
@@ -492,6 +493,7 @@ export function HomeDashboard({
                 {[
                   'SERVER',
                   'AMBIENTE',
+                  'INFRASTRUTTURA',
                   'TIPO',
                   'CPU%',
                   'MEM%',
@@ -598,6 +600,32 @@ export function HomeDashboard({
                       ) : (
                         '—'
                       )}
+                    </td>
+                    <td
+                      style={{
+                        padding: '5px 8px',
+                        borderBottom: `1px solid ${tokens.color.border}`,
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {(() => {
+                        const hBadge = HOSTING_BADGE[s.hostingType ?? 'on-premise']
+                        return (
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              backgroundColor: hBadge.color,
+                              color: '#fff',
+                              fontWeight: 700,
+                              fontSize: 10,
+                              borderRadius: 3,
+                              padding: '1px 5px'
+                            }}
+                          >
+                            {hBadge.label}
+                          </span>
+                        )
+                      })()}
                     </td>
                     <td
                       style={{

@@ -16,6 +16,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import type { CollectMetricsRequest, AvailabilityReplica, AvailabilityDatabase } from '../../../preload/index'
 import { useAgStore } from '../store/agStore'
 import { useServersStore } from '../store/serversStore'
+import { useGroupsStore } from '../store/groupsStore'
 import { useAppStore } from '../store/appStore'
 import { tokens } from '../styles/tokens'
 
@@ -53,10 +54,11 @@ function syncStateBg(s: string): string {
 
 interface ReplicaCardProps {
   replica: AvailabilityReplica
+  displayName: string
   onNavigate: (replica: AvailabilityReplica) => void
 }
 
-function ReplicaCard({ replica, onNavigate }: ReplicaCardProps): React.JSX.Element {
+function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): React.JSX.Element {
   const [hovered, setHovered] = useState(false)
   const isPrimary = replica.role_desc === 'PRIMARY'
   const isConnected = replica.connected_state_desc === 'CONNECTED'
@@ -84,10 +86,17 @@ function ReplicaCard({ replica, onNavigate }: ReplicaCardProps): React.JSX.Eleme
       >
         {/* Header */}
         <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
-          <Typography sx={{ fontSize: 13, fontWeight: 700, color: tokens.color.textPrimary, flex: 1 }}>
-            {isPrimary ? '★ ' : '○ '}
-            {replica.replica_server_name}
-          </Typography>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography sx={{ fontSize: 13, fontWeight: 700, color: tokens.color.textPrimary }}>
+              {isPrimary ? '★ ' : '○ '}
+              {displayName}
+            </Typography>
+            {displayName !== replica.replica_server_name && (
+              <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>
+                {replica.replica_server_name}
+              </Typography>
+            )}
+          </Box>
           <Chip
             label={replica.role_desc}
             size="small"
@@ -119,7 +128,7 @@ function ReplicaCard({ replica, onNavigate }: ReplicaCardProps): React.JSX.Eleme
               variant="caption"
               sx={{ color: isConnected ? tokens.color.success : tokens.color.error, fontWeight: 600 }}
             >
-              {replica.connected_state_desc} {isConnected ? '✅' : '❌'}
+              {isConnected ? '✅' : '❌'} {replica.connected_state_desc}
             </Typography>
           </Stack>
 
@@ -195,6 +204,7 @@ const DB_GRID_SX = {
 export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
   const { agDetails, updateAgDetails } = useAgStore()
   const servers = useServersStore((s) => s.servers)
+  const serverAliases = useGroupsStore((s) => s.serverAliases)
   const setPendingServerId = useAppStore((s) => s.setPendingServerId)
   const detail = agDetails[agName]
 
@@ -206,6 +216,17 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
     const timer = setInterval(() => updateAgDetails(connection), 60_000)
     return () => clearInterval(timer)
   }, [agName, connection.ip, connection.port]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const getDisplayName = useCallback((replicaServerName: string): string => {
+    const nameBase = replicaServerName.split('\\')[0].toLowerCase()
+    const match = servers.find((s) => {
+      const addr = (s.host ?? s.ip ?? '').toLowerCase()
+      return addr === nameBase || addr.includes(nameBase) || nameBase.includes(addr)
+    })
+    if (!match) return replicaServerName
+    const srvKey = `${match.host ?? match.ip}:${match.port}`
+    return serverAliases[srvKey] || match.host || replicaServerName
+  }, [servers, serverAliases])
 
   const handleNavigateToServer = useCallback((replica: AvailabilityReplica): void => {
     const nameBase = replica.replica_server_name.split('\\')[0].toLowerCase()
@@ -389,7 +410,12 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
         ) : (
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
             {detail.replicas.map((r) => (
-              <ReplicaCard key={r.replica_id} replica={r} onNavigate={handleNavigateToServer} />
+              <ReplicaCard
+                key={r.replica_id}
+                replica={r}
+                displayName={getDisplayName(r.replica_server_name)}
+                onNavigate={handleNavigateToServer}
+              />
             ))}
           </Box>
         )}

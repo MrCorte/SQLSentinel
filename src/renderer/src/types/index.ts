@@ -39,6 +39,7 @@ export interface ServerSummary {
   isAg: boolean
   agName?: string
   agRole?: 'PRIMARY' | 'SECONDARY' | 'RESOLVING'
+  hostingType?: 'on-premise' | 'cloud'
 }
 
 export interface AgClusterSummary {

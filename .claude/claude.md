@@ -18,7 +18,6 @@ raggiungibili dalla VM locale. Sviluppata da un DBA SQL Server.
 - Conseguenza: usare SOLO connessioni TCP dirette (porta 1433)
 - Named instances con porte dinamiche: NON auto-discoverable
 - Permettere sempre aggiunta manuale host:porta:istanza
-- ogni volta che applichi dei cambiamenti/modifiche o aggiunte documenta tutto su un file documentazione.md
 
 ## Discovery SQL Server
 1. TCP scan porta 1433 su subnet (net.Socket, timeout 500ms)

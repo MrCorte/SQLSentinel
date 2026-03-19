@@ -17,6 +17,8 @@ import {
   InputLabel
 } from '@mui/material'
 import { useGroupsStore } from '../store/groupsStore'
+import { HOSTING_OPTIONS } from '../constants/hosting'
+import type { ServerHostingType } from '../constants/hosting'
 
 export interface AddServerFormData {
   ip: string
@@ -27,6 +29,7 @@ export interface AddServerFormData {
   password: string
   groupId?: string
   alias?: string
+  hostingType: ServerHostingType
 }
 
 interface Props {
@@ -51,7 +54,8 @@ const EMPTY_FORM: AddServerFormData = {
   username: '',
   password: '',
   groupId: undefined,
-  alias: undefined
+  alias: undefined,
+  hostingType: 'on-premise'
 }
 
 export function AddServerDialog({
@@ -170,6 +174,24 @@ export function AddServerDialog({
                       }}
                     />
                     {g.name}
+                  </Box>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <FormControl size="small" fullWidth>
+            <InputLabel>Tipo infrastruttura</InputLabel>
+            <Select
+              label="Tipo infrastruttura"
+              value={form.hostingType}
+              onChange={(e) => set('hostingType', e.target.value as ServerHostingType)}
+            >
+              {HOSTING_OPTIONS.map((opt) => (
+                <MenuItem key={opt.value} value={opt.value}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {opt.icon}
+                    {opt.label}
                   </Box>
                 </MenuItem>
               ))}

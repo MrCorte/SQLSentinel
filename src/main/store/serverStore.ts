@@ -5,6 +5,8 @@ import { randomUUID } from 'node:crypto'
 // Type — must stay JSON-serialisable (strings for dates, no Date objects)
 // ---------------------------------------------------------------------------
 
+export type ServerHostingType = 'on-premise' | 'cloud'
+
 export interface StoredServer {
   id: string
   host: string              // canonical address — obbligatorio
@@ -22,6 +24,7 @@ export interface StoredServer {
   // Always On AG membership — populated at runtime, refreshed on startup
   agGroupId?: string        // group_id UUID if this server belongs to an AG
   agRole?: 'PRIMARY' | 'SECONDARY' | 'RESOLVING'
+  hostingType?: ServerHostingType
 }
 
 /**

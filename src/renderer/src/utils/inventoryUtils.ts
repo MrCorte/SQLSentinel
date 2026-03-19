@@ -42,7 +42,8 @@ function buildServerSummary(
     unreachable: srv.unreachable ?? false,
     isAg: !!srv.agGroupId,
     agName: ag?.ag_name,
-    agRole: srv.agRole
+    agRole: srv.agRole,
+    hostingType: srv.hostingType
   }
 }
 

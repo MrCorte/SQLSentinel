@@ -399,3 +399,50 @@ Aggiunte interfacce: `StoredServer`, `ServerAddResult`, `UpdateServerRequest`, `
 - **Banner irraggiungibilità**: pannello rosso sotto toolbar se server selezionato è `unreachable`:
   - Mostra "Server non raggiungibile — ultimo contatto: {data localizzata}".
   - Pulsante "Riprova ora": chiama `collectMetrics` direttamente; se ok → aggiorna store (`unreachable: false`, `lastSeen`) e inietta le metriche nel pannello.
+
+## Campo hostingType (on-premise | cloud) — 2026-03-19
+
+### Scopo
+Permette di classificare ogni server SQL come on-premise o cloud, con badge visivo e modifica inline.
+
+### File modificati
+
+#### `src/main/store/serverStore.ts`
+- Aggiunto `export type ServerHostingType = 'on-premise' | 'cloud'`
+- Aggiunto campo opzionale `hostingType?: ServerHostingType` a `StoredServer`
+- Retrocompatibile: i server esistenti senza il campo usano il default `'on-premise'`
+
+#### `src/renderer/src/types/index.ts`
+- Aggiunto `hostingType?: 'on-premise' | 'cloud'` a `ServerSummary`
+
+#### `src/renderer/src/constants/hosting.tsx` — NUOVO
+- `ServerHostingType` — tipo re-esportato
+- `HOSTING_OPTIONS` — array `[{ value, label, icon }]` per i Select MUI
+- `HOSTING_BADGE` — mappa `Record<ServerHostingType, { label, color }>` per i badge
+
+#### `src/renderer/src/components/AddServerDialog.tsx`
+- Aggiunto `hostingType: ServerHostingType` a `AddServerFormData` e `EMPTY_FORM`
+- Aggiunto `<Select>` "Tipo infrastruttura" dopo il campo Gruppo
+
+#### `src/renderer/src/components/Sidebar.tsx`
+- Import `Chip` da MUI, import `HOSTING_BADGE`
+- `ServerItem`: badge `<Chip>` ON-PREM / CLOUD accanto all'alias (flexShrink: 0)
+
+#### `src/renderer/src/components/ServerDashboard.tsx`
+- Import `useState`, `Select`, `MenuItem`, `Chip`, `Tooltip`, `Box`
+- Import `useServersStore`, `HOSTING_OPTIONS`, `HOSTING_BADGE`
+- Aggiunto header con badge cliccabile: click apre `<Select>` per modifica inline; onBlur chiude senza salvare
+
+#### `src/renderer/src/components/HomeDashboard.tsx`
+- Import `HOSTING_BADGE`
+- Aggiunta colonna `INFRASTRUTTURA` nella tabella server (tra AMBIENTE e TIPO)
+- Badge `<span>` con colore e label per ogni riga
+
+#### `src/renderer/src/utils/inventoryUtils.ts`
+- `buildServerSummary`: aggiunto `hostingType: srv.hostingType` nel return
+
+#### `src/renderer/src/utils/csvExportUtils.ts`
+- Aggiunto colonna `Tipo Infrastruttura` (indice 16) in tutte e 4 le varianti di riga (standalone placeholder, standalone per-DB, AG placeholder, AG per-DB)
+
+#### `src/renderer/src/pages/Inventory.tsx`
+- Aggiunto `'Tipo Infrastruttura'` all'array `headers` del CSV export

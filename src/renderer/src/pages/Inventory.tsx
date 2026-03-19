@@ -302,6 +302,37 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
     })
   }, [allRows, search, filterEnv, filterType, filterState, filterHost])
 
+  // ── Filtered KPI stats (derived from filteredRows, zero extra pass) ────
+  const filteredStats = useMemo(() => {
+    const standaloneRows = filteredRows.filter((r) => r.type === 'standalone')
+    const clusterRows    = filteredRows.filter((r) => r.type === 'ag-cluster')
+    const replicaRows    = filteredRows.filter((r) => r.type === 'ag-replica')
+
+    const agServers = clusterRows.length > 0
+      ? clusterRows.reduce((sum, r) => sum + (r.replicaCount ?? 1), 0)
+      : replicaRows.length
+
+    const servers    = standaloneRows.length + agServers
+    const standalone = standaloneRows.length
+    const agClusters = clusterRows.length
+
+    // When only replica rows are visible (ag-primary/ag-secondary filter), use those for DB stats
+    const dbSourceRows =
+      clusterRows.length > 0 || standaloneRows.length > 0
+        ? [...standaloneRows, ...clusterRows]
+        : replicaRows
+
+    const databases  = dbSourceRows.reduce((sum, r) => sum + r.dbCount, 0)
+    const onlineDbs  = dbSourceRows.reduce((sum, r) => sum + r.onlineCount, 0)
+    const offlineDbs = dbSourceRows.reduce((sum, r) => sum + r.offlineCount, 0)
+
+    return { servers, standalone, agClusters, agServers, databases, onlineDbs, offlineDbs }
+  }, [filteredRows])
+
+  const hasActiveFilters =
+    search !== '' || filterEnv !== 'all' || filterType !== 'all' ||
+    filterState !== 'all' || filterHost !== 'all'
+
   // Sort: keep replica rows attached to their parent cluster header
   const sortedRows = useMemo(() => {
     const hasHierarchy = filteredRows.some((r) => r.depth === 0) && filteredRows.some((r) => r.depth === 1)
@@ -478,21 +509,28 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
         </Box>
 
         {/* ── KPI cards ── */}
-        <Box sx={{ display: 'flex', gap: 1.5, mb: 3, flexWrap: 'wrap' }}>
-          <KpiCard label="Server"     value={String(totals.servers)}           accentColor="#0078d4" />
-          <KpiCard label="Standalone" value={String(totals.standaloneServers)}  accentColor="#0078d4" />
+        <Box sx={{ display: 'flex', gap: 1.5, mb: hasActiveFilters ? 1 : 3, flexWrap: 'wrap' }}>
+          <KpiCard label="Server"     value={String(filteredStats.servers)}    accentColor="#0078d4" />
+          <KpiCard label="Standalone" value={String(filteredStats.standalone)} accentColor="#0078d4" />
           <KpiCard
             label="AG Cluster"
-            value={totals.agClusters > 0 ? `${totals.agClusters} (${totals.agServers} nodi)` : '0'}
+            value={filteredStats.agClusters > 0 ? `${filteredStats.agClusters} (${filteredStats.agServers} nodi)` : '0'}
             accentColor="#8764b8"
           />
-          <KpiCard label="Database" value={String(totals.databases)}  accentColor="#0078d4" />
-          <KpiCard label="Online"   value={String(totals.onlineDbs)}  accentColor="#107c10" />
+          <KpiCard label="Database" value={String(filteredStats.databases)}  accentColor="#0078d4" />
+          <KpiCard label="Online"   value={String(filteredStats.onlineDbs)}  accentColor="#107c10" />
           <KpiCard
-            label="Offline" value={String(totals.offlineDbs)}
-            accentColor={totals.offlineDbs > 0 ? '#a4262c' : '#107c10'}
+            label="Offline" value={String(filteredStats.offlineDbs)}
+            accentColor={filteredStats.offlineDbs > 0 ? '#a4262c' : '#107c10'}
           />
         </Box>
+
+        {/* ── Filter indicator ── */}
+        {hasActiveFilters && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+            Risultati filtrati: {filteredStats.servers} di {totals.servers} server
+          </Typography>
+        )}
 
         {/* ── Empty placeholder ── */}
         {inventory.groups.length === 0 && (

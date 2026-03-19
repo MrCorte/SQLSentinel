@@ -48,6 +48,11 @@ export interface CollectMetricsRequest {
 
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string }
 
+export interface ServerInfo {
+  machineName: string
+  instanceName: string | null
+}
+
 export interface InstanceInfo {
   version: string
   edition: string
@@ -340,6 +345,7 @@ export interface SqlSentinelAPI {
   addServerManual(req: ManualServerRequest): Promise<IpcResult<DiscoveredServer>>
   getServers(): Promise<IpcResult<DiscoveredServer[]>>
   removeServer(req: RemoveServerRequest): Promise<IpcResult<null>>
+  detectServerInfo(req: CollectMetricsRequest): Promise<IpcResult<ServerInfo>>
   collectMetrics(req: CollectMetricsRequest): Promise<IpcResult<ServerMetrics>>
   workerStart(req: WorkerStartRequest): Promise<IpcResult<null>>
   workerStop(): Promise<IpcResult<null>>

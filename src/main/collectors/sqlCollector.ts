@@ -1,6 +1,7 @@
 import * as mssql from 'mssql'
 import type {
   ServerConnection,
+  ServerInfo,
   ServerMetrics,
   InstanceInfo,
   DatabaseInfo,
@@ -436,7 +437,32 @@ function defaultInstanceInfo(): InstanceInfo {
   return { version: 'unknown', edition: 'unknown', memoryUsedMb: 0, memoryTargetMb: 0, cpuUsagePercent: 0, uptimeDays: 0 }
 }
 
-// --- Entry point pubblico ---
+// --- Entry points pubblici ---
+
+/**
+ * Esegue una connessione di test e recupera MachineName e InstanceName.
+ * Usato dal form "Aggiungi server" per auto-popolare alias e istanza.
+ * La connessione viene sempre chiusa nel finally.
+ */
+export async function detectServerInfo(connection: ServerConnection): Promise<ServerInfo> {
+  const config = buildConfig(connection)
+  let pool: mssql.ConnectionPool | null = null
+  try {
+    pool = await mssql.connect(config)
+    const result = await pool.request().query<{ machine_name: string; instance_name: string | null }>(`
+      SELECT
+        CAST(SERVERPROPERTY('MachineName')  AS NVARCHAR(128)) AS machine_name,
+        CAST(SERVERPROPERTY('InstanceName') AS NVARCHAR(128)) AS instance_name
+    `)
+    const row = result.recordset[0]
+    return {
+      machineName:  row?.machine_name  ?? '',
+      instanceName: row?.instance_name ?? null
+    }
+  } finally {
+    await pool?.close()
+  }
+}
 
 /**
  * Raccoglie tutte le metriche dal server SQL indicato.

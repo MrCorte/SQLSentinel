@@ -8,6 +8,11 @@ export interface ServerConnection {
   useWindowsAuth: boolean
 }
 
+export interface ServerInfo {
+  machineName: string
+  instanceName: string | null
+}
+
 export interface InstanceInfo {
   version: string
   edition: string

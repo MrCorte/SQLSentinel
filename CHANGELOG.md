@@ -5,6 +5,25 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Changed — 2026-03-19 18:30
+- Inventario: KPI cards aggiornate dinamicamente in base ai filtri attivi; `filteredStats` useMemo derivato da `filteredRows` (zero passate extra); contatori Server/Standalone/AG Cluster/Database/Online/Offline riflettono solo le righe visibili dopo il filtraggio
+- Inventario: indicatore testuale "Risultati filtrati: N di M server" visibile sotto le KPI cards quando almeno un filtro è attivo; nascosto quando nessun filtro è applicato
+
+### Changed — 2026-03-19 18:00
+- Sidebar: gruppi AG collassabili — clic sull'header toggle espandi/comprimi; chevron `›` ruota 90° quando espanso; default tutti collassati al primo avvio
+- groupsStore: aggiunto `expandedAGs: string[]` (array JSON-serializzabile, vuoto = tutti collassati) + action `toggleAgCollapse(agName)`
+- Sidebar: `SidebarItem { kind: 'ag' }` ora porta `isExpanded: boolean`; server-rows AG inseriti in flatItems solo quando il gruppo è espanso
+- Sidebar: `AgGroupHeader` riceve `isExpanded` prop; click chiama `onToggleAgCollapse` (non navigazione)
+
+### Added — 2026-03-19 17:20
+- AddServerDialog: pulsante "Testa connessione" che chiama detectServerInfo via IPC; auto-compila alias (se vuoto) con MachineName e instanceName con InstanceName ('' se istanza default); stato visuale idle/loading/success/error con Chip verde o messaggio errore
+- sqlCollector: nuova funzione detectServerInfo(connection) — esegue `SELECT SERVERPROPERTY('MachineName'), SERVERPROPERTY('InstanceName')` su connessione dedicata con finally/close; restituisce `{ machineName, instanceName: null }` per istanza default
+- collectors/types.ts: interfaccia ServerInfo `{ machineName: string, instanceName: string | null }`
+- ipc/types.ts: canale DETECT_SERVER_INFO = 'servers:detectInfo'; re-export ServerInfo
+- ipc/handlers.ts: handler DETECT_SERVER_INFO che chiama detectServerInfo e restituisce IpcResult<ServerInfo>
+- preload/index.ts: detectServerInfo aggiunto a realApi, mockApi (stub con delay 800ms) e bridgeApi
+- preload/index.d.ts: interfaccia ServerInfo e firma detectServerInfo in SqlSentinelAPI
+
 ### Changed — 2026-03-19 16:30
 - Inventario: righe AG cluster espandibili con repliche figlie (ag-cluster/ag-replica hierarchy), Espandi/Comprimi tutti, sorting gerarchico che mantiene le repliche sotto il cluster padre, counter mostra solo righe depth=0
 

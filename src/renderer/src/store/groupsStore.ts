@@ -13,6 +13,7 @@ interface GroupsState {
   groups: ServerGroup[]
   serverGroups: Record<string, string> // serverId (ip:port) → groupId
   serverAliases: Record<string, string> // serverId → display alias
+  expandedAGs: string[] // ag_names that are expanded (empty = all collapsed)
   addGroup: (name: string, color: string) => void
   removeGroup: (id: string) => void
   renameGroup: (id: string, name: string) => void
@@ -20,6 +21,7 @@ interface GroupsState {
   reorderGroups: (newOrder: ServerGroup[]) => void
   setServerGroup: (serverId: string, groupId: string | undefined) => void
   setServerAlias: (serverId: string, alias: string) => void
+  toggleAgCollapse: (agName: string) => void
 }
 
 export const useGroupsStore = create<GroupsState>()(
@@ -28,6 +30,7 @@ export const useGroupsStore = create<GroupsState>()(
       groups: DEFAULT_GROUPS,
       serverGroups: {},
       serverAliases: {},
+      expandedAGs: [],
 
       addGroup: (name, color) =>
         set((state) => ({
@@ -90,6 +93,16 @@ export const useGroupsStore = create<GroupsState>()(
             delete next[serverId]
           }
           return { serverAliases: next }
+        }),
+
+      toggleAgCollapse: (agName) =>
+        set((state) => {
+          const isExpanded = state.expandedAGs.includes(agName)
+          return {
+            expandedAGs: isExpanded
+              ? state.expandedAGs.filter((n) => n !== agName)
+              : [...state.expandedAGs, agName]
+          }
         })
     }),
     { name: 'sql-sentinel-groups' }

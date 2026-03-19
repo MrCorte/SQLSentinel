@@ -251,10 +251,12 @@ function agHealthColor(health: AgGroupState['health']): string {
 function AgGroupHeader({
   ag,
   isSelected,
+  isExpanded,
   onClick
 }: {
   ag: AgGroupState
   isSelected: boolean
+  isExpanded: boolean
   onClick: () => void
 }): React.JSX.Element {
   const color = agHealthColor(ag.health)
@@ -275,6 +277,15 @@ function AgGroupHeader({
         transition: 'background 150ms'
       }}
     >
+      <ChevronRightIcon
+        sx={{
+          fontSize: 14,
+          color: '#7a9ab8',
+          transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+          transition: 'transform 200ms ease',
+          flexShrink: 0
+        }}
+      />
       <Typography
         sx={{
           fontSize: 11,
@@ -702,7 +713,7 @@ function GroupManagerDialog({
 export type SidebarItem =
   | { kind: 'group'; group: ServerGroup; onlineCount: number }
   | { kind: 'server'; server: StoredServer; inAgGroup: boolean }
-  | { kind: 'ag'; agName: string; agInfo: AgGroupState }
+  | { kind: 'ag'; agName: string; agInfo: AgGroupState; isExpanded: boolean }
   | { kind: 'ungrouped-header' }
   | { kind: 'search-server'; server: StoredServer }
   | { kind: 'no-results' }
@@ -733,6 +744,7 @@ interface VirtualServerListProps {
   onSelectServer: (server: StoredServer) => void
   onSelectAg: (agName: string) => void
   onToggleCollapse: (groupId: string) => void
+  onToggleAgCollapse: (agName: string) => void
   onContextMenu: (e: React.MouseEvent, server: StoredServer) => void
 }
 
@@ -747,6 +759,7 @@ function VirtualServerList({
   onSelectServer,
   onSelectAg,
   onToggleCollapse,
+  onToggleAgCollapse,
   onContextMenu
 }: VirtualServerListProps): React.JSX.Element {
   const parentRef = useRef<HTMLDivElement>(null)
@@ -808,7 +821,8 @@ function VirtualServerList({
                   <AgGroupHeader
                     ag={item.agInfo}
                     isSelected={selectedAgName === item.agName}
-                    onClick={() => onSelectAg(item.agName)}
+                    isExpanded={item.isExpanded}
+                    onClick={() => onToggleAgCollapse(item.agName)}
                   />
                 )}
                 {item.kind === 'server' && (
@@ -884,8 +898,16 @@ export function Sidebar({
   onSelectAg,
   onRemoveServer
 }: SidebarProps): React.JSX.Element {
-  const { groups, serverGroups, serverAliases, toggleCollapse, setServerGroup, setServerAlias } =
-    useGroupsStore()
+  const {
+    groups,
+    serverGroups,
+    serverAliases,
+    expandedAGs,
+    toggleCollapse,
+    toggleAgCollapse,
+    setServerGroup,
+    setServerAlias
+  } = useGroupsStore()
   const agGroups = useAgStore((s) => s.agGroups)
   // Debug: verifica reattività store vs props
   const storeServers = useServersStore((s) => s.servers)
@@ -965,10 +987,13 @@ export function Sidebar({
         const standaloneServers = groupServers.filter((s) => !serversInAnyAg.has(s.id))
 
         for (const ag of agGroupsInThisGroup) {
-          items.push({ kind: 'ag', agName: ag.ag_name, agInfo: ag })
-          const agServers = groupServers.filter((s) => ag.serverIds.includes(s.id))
-          for (const s of agServers) {
-            items.push({ kind: 'server', server: s, inAgGroup: true })
+          const isExpanded = expandedAGs.includes(ag.ag_name)
+          items.push({ kind: 'ag', agName: ag.ag_name, agInfo: ag, isExpanded })
+          if (isExpanded) {
+            const agServers = groupServers.filter((s) => ag.serverIds.includes(s.id))
+            for (const s of agServers) {
+              items.push({ kind: 'server', server: s, inAgGroup: true })
+            }
           }
         }
         for (const s of standaloneServers) {
@@ -985,7 +1010,7 @@ export function Sidebar({
     }
 
     return items
-  }, [searchText, filteredServers, sortedGroups, serversByGroupId, agGroups, ungrouped])
+  }, [searchText, filteredServers, sortedGroups, serversByGroupId, agGroups, ungrouped, expandedAGs])
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, server: StoredServer): void => {
@@ -1083,6 +1108,7 @@ export function Sidebar({
         onSelectServer={onSelectServer}
         onSelectAg={onSelectAg}
         onToggleCollapse={toggleCollapse}
+        onToggleAgCollapse={toggleAgCollapse}
         onContextMenu={handleContextMenu}
       />
 

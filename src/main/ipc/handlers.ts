@@ -44,7 +44,7 @@ import { getSettings, saveSettings } from '../store/settings'
 import { getCustomFields, setCustomFields, getAllCustomFields } from '../store/dbCustomFields'
 import type { DiscoveredServer, ScanOptions } from '../discovery/types'
 import { scanSubnet, scanHost } from '../discovery/tcpScanner'
-import { collectMetrics } from '../collectors/sqlCollector'
+import { collectMetrics, detectServerInfo } from '../collectors/sqlCollector'
 import { getShrinkEstimate, shrinkDatabase, shrinkFile } from '../collectors/dbAdmin'
 import { getAvailabilityGroups, getAvailabilityReplicas, getAvailabilityDatabases } from '../collectors/agCollector'
 import * as serverStore from '../store/serverStore'
@@ -192,6 +192,27 @@ export function registerIpcHandlers(): void {
       return { success: false, removed: 0, remaining: -1 }
     }
   })
+
+  // DETECT_SERVER_INFO — test connection + retrieve MachineName / InstanceName
+  ipcMain.handle(
+    IpcChannel.DETECT_SERVER_INFO,
+    async (_event: IpcMainInvokeEvent, req: CollectMetricsRequest): Promise<IpcResult<import('./types').ServerInfo>> => {
+      try {
+        const info = await detectServerInfo({
+          ip: req.ip,
+          port: req.port,
+          instanceName: req.instanceName,
+          useWindowsAuth: req.useWindowsAuth,
+          username: req.username,
+          password: req.password
+        })
+        return { ok: true, data: info }
+      } catch (err) {
+        console.error('[IPC] DETECT_SERVER_INFO:', safeError(err))
+        return { ok: false, error: safeError(err) }
+      }
+    }
+  )
 
   // COLLECT_METRICS — connects to SQL Server and collects all metrics
   ipcMain.handle(

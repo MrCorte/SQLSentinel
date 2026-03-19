@@ -34,7 +34,7 @@ import type {
   AvailabilityReplica,
   AvailabilityDatabase
 } from '../main/ipc/types'
-import type { ServerMetrics } from '../main/collectors/types'
+import type { ServerMetrics, ServerInfo } from '../main/collectors/types'
 import type { StoredServer } from '../main/store/serverStore'
 
 // Re-export types so the renderer can import them from this file.
@@ -45,6 +45,7 @@ export type { DbCustomFields, SaveCsvRequest, ServerAddResult, UpdateServerReque
 export type { ShrinkDatabaseParams, ShrinkFileParams, ShrinkEstimateParams, ShrinkEstimate, ShrinkResult } from '../main/ipc/types'
 export type { AgParams, AvailabilityGroup, AvailabilityReplica, AvailabilityDatabase, AgHealth, AgRole } from '../main/ipc/types'
 export type { ServerMetrics } from '../main/collectors/types'
+export type { ServerInfo } from '../main/collectors/types'
 export type { InstanceInfo, DatabaseInfo, SessionInfo, QueryInfo, BackupInfo, WaitStatInfo, DiskVolume, DatabaseFile } from '../main/collectors/types'
 export type { StoredServer } from '../main/store/serverStore'
 
@@ -330,6 +331,9 @@ const realApi = {
   removeServer: (req: RemoveServerRequest): Promise<IpcResult<null>> =>
     ipcRenderer.invoke(IpcChannel.REMOVE_SERVER, req),
 
+  detectServerInfo: (req: CollectMetricsRequest): Promise<IpcResult<ServerInfo>> =>
+    ipcRenderer.invoke(IpcChannel.DETECT_SERVER_INFO, req),
+
   collectMetrics: (req: CollectMetricsRequest): Promise<IpcResult<ServerMetrics>> =>
     ipcRenderer.invoke(IpcChannel.COLLECT_METRICS, req),
 
@@ -496,6 +500,14 @@ const mockApi = {
 
   removeServer: (_req: RemoveServerRequest): Promise<IpcResult<null>> =>
     Promise.resolve({ ok: true, data: null }),
+
+  detectServerInfo: (req: CollectMetricsRequest): Promise<IpcResult<ServerInfo>> =>
+    new Promise((resolve) =>
+      setTimeout(() =>
+        resolve({ ok: true, data: { machineName: req.ip.replace(/\./g, '-'), instanceName: null } }),
+        800
+      )
+    ),
 
   collectMetrics: (_req: CollectMetricsRequest): Promise<IpcResult<ServerMetrics>> =>
     Promise.resolve({ ok: true, data: mockMetrics(mockWorkerCpu, mockWorkerMem) }),
@@ -721,6 +733,7 @@ const bridgeApi = {
   addServerManual:     (r: ManualServerRequest) => api.addServerManual(r),
   getServers:          () => api.getServers(),
   removeServer:        (r: RemoveServerRequest) => api.removeServer(r),
+  detectServerInfo:    (r: CollectMetricsRequest) => api.detectServerInfo(r),
   collectMetrics:      (r: CollectMetricsRequest) => api.collectMetrics(r),
   workerStart:         (r: WorkerStartRequest) => api.workerStart(r),
   workerStop:          () => api.workerStop(),

@@ -14,8 +14,12 @@ import {
   Select,
   MenuItem,
   FormControl,
-  InputLabel
+  InputLabel,
+  CircularProgress,
+  Chip
 } from '@mui/material'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import ErrorIcon from '@mui/icons-material/Error'
 import { useGroupsStore } from '../store/groupsStore'
 import { HOSTING_OPTIONS } from '../constants/hosting'
 import type { ServerHostingType } from '../constants/hosting'
@@ -67,6 +71,8 @@ export function AddServerDialog({
 }: Props): React.JSX.Element {
   const [form, setForm] = useState<AddServerFormData>(EMPTY_FORM)
   const [errors, setErrors] = useState<FormErrors>({})
+  const [testState, setTestState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [testLabel, setTestLabel] = useState('')
 
   const groups = useGroupsStore((state) => state.groups)
   const sortedGroups = [...groups].sort((a, b) => a.order - b.order)
@@ -80,6 +86,8 @@ export function AddServerDialog({
         groupId: sortedGroups[0]?.id
       })
       setErrors({})
+      setTestState('idle')
+      setTestLabel('')
     }
   }, [open, initialIp, initialPort]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -93,6 +101,43 @@ export function AddServerDialog({
       newErrors.username = 'Username obbligatorio per autenticazione SQL Server'
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
+  }
+
+  const handleTestConnection = async (): Promise<void> => {
+    if (!form.ip.trim()) {
+      setErrors((e) => ({ ...e, ip: 'IP o hostname obbligatorio' }))
+      return
+    }
+    setTestState('loading')
+    setTestLabel('')
+    try {
+      const result = await window.sqlSentinel.detectServerInfo({
+        ip: form.ip.trim(),
+        port: Number(form.port),
+        instanceName: form.instanceName || undefined,
+        useWindowsAuth: form.useWindowsAuth,
+        username: form.username || undefined,
+        password: form.password || undefined
+      })
+      if (!result.ok) {
+        setTestState('error')
+        setTestLabel(result.error)
+        return
+      }
+      const { machineName, instanceName } = result.data
+      // Auto-fill alias only if the field is empty
+      if (!form.alias?.trim()) {
+        setForm((prev) => ({ ...prev, alias: machineName }))
+      }
+      // Auto-fill instanceName (empty string when default instance)
+      setForm((prev) => ({ ...prev, instanceName: instanceName ?? '' }))
+      const label = instanceName ? `${machineName}\\${instanceName}` : machineName
+      setTestState('success')
+      setTestLabel(label)
+    } catch (err) {
+      setTestState('error')
+      setTestLabel(err instanceof Error ? err.message : String(err))
+    }
   }
 
   const handleSave = (): void => {
@@ -140,12 +185,39 @@ export function AddServerDialog({
             />
           </Stack>
 
+          {/* Test connection status */}
+          {testState !== 'idle' && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {testState === 'loading' && (
+                <>
+                  <CircularProgress size={16} />
+                  <Typography variant="caption" color="text.secondary">Connessione in corso…</Typography>
+                </>
+              )}
+              {testState === 'success' && (
+                <Chip
+                  icon={<CheckCircleIcon />}
+                  label={`Connesso — ${testLabel}`}
+                  size="small"
+                  color="success"
+                  variant="outlined"
+                />
+              )}
+              {testState === 'error' && (
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+                  <ErrorIcon fontSize="small" color="error" sx={{ mt: '2px', flexShrink: 0 }} />
+                  <Typography variant="caption" color="error.main">{testLabel}</Typography>
+                </Box>
+              )}
+            </Box>
+          )}
+
           <TextField
             label="Nome (opzionale)"
             value={form.alias ?? ''}
             onChange={(e) => set('alias', e.target.value || undefined)}
             placeholder="es. SQL-PROD-01"
-            helperText="Se vuoto, verrà mostrato IP:Porta"
+            helperText={testState === 'success' ? 'Auto-compilato da MachineName — modificabile' : 'Se vuoto, verrà mostrato IP:Porta'}
             fullWidth
           />
 
@@ -239,6 +311,13 @@ export function AddServerDialog({
 
       <DialogActions>
         <Button onClick={onClose}>Annulla</Button>
+        <Button
+          onClick={handleTestConnection}
+          disabled={testState === 'loading'}
+          startIcon={testState === 'loading' ? <CircularProgress size={14} color="inherit" /> : undefined}
+        >
+          Testa connessione
+        </Button>
         <Button variant="contained" onClick={handleSave}>
           Salva
         </Button>

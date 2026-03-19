@@ -50,7 +50,9 @@ export enum IpcChannel {
   EXPORT_INVENTORY_CSV = 'export:inventoryCsv',
   // App visibility — pushed from main to renderer on window blur/focus
   APP_BACKGROUND = 'app:background',
-  APP_FOREGROUND = 'app:foreground'
+  APP_FOREGROUND = 'app:foreground',
+  // Server detection — MachineName + InstanceName via SERVERPROPERTY
+  DETECT_SERVER_INFO = 'servers:detectInfo'
 }
 
 /** Unified result envelope — never throw raw errors to the renderer. */
@@ -236,4 +238,5 @@ export interface AgParams {
 // Re-export types so consumers have a single import point
 export type { DiscoveredServer, ScanOptions, ScanProgress }
 export type { ServerMetrics }
+export type { ServerInfo } from '../collectors/types'
 export type { AvailabilityGroup, AvailabilityReplica, AvailabilityDatabase, AgHealth, AgRole } from '../collectors/types'

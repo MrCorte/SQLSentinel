@@ -22,6 +22,7 @@ import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useServersStore } from '../store/serversStore'
 import { useMetricsStore } from '../store/metricsStore'
+import { useRefreshAllServers } from '../hooks/useRefreshAllServers'
 import { useGroupsStore } from '../store/groupsStore'
 import { useAppStore } from '../store/appStore'
 import { computeInventory } from '../utils/inventoryUtils'
@@ -244,8 +245,7 @@ interface InventoryProps {
 }
 
 export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.Element {
-  const [refreshing,        setRefreshing]        = useState(false)
-  const [lastRefresh,       setLastRefresh]        = useState<Date | null>(null)
+  const { refreshing, lastRefresh, handleRefresh } = useRefreshAllServers()
   const [search,            setSearch]             = useState('')
   const [filterEnv,         setFilterEnv]          = useState('all')
   const [filterType,        setFilterType]         = useState<'all' | 'standalone' | 'ag-primary' | 'ag-secondary'>('all')
@@ -407,33 +407,6 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
     },
     [toggleCluster, onNavigateToDashboard]
   )
-
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true)
-    const servers = useServersStore.getState().servers
-    await Promise.allSettled(
-      servers.map(async (srv) => {
-        try {
-          const conn = {
-            ip: srv.ip ?? srv.host,
-            port: srv.port,
-            instanceName: srv.instanceName,
-            useWindowsAuth: srv.useWindowsAuth,
-            username: srv.username,
-            password: srv.password
-          }
-          const result = await window.sqlSentinel.collectMetrics(conn)
-          if (result.ok) {
-            useMetricsStore.getState().setMetrics(`${srv.ip ?? srv.host}:${srv.port}`, result.data)
-          }
-        } catch {
-          // Server unreachable — skip
-        }
-      })
-    )
-    setRefreshing(false)
-    setLastRefresh(new Date())
-  }, [])
 
   const handleExportCsv = useCallback(async () => {
     const { serverAliases } = useGroupsStore.getState()

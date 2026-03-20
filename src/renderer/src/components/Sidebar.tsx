@@ -757,7 +757,7 @@ function VirtualServerList({
   searchText,
   serverAliases,
   onSelectServer,
-  onSelectAg,
+  onSelectAg: _onSelectAg,
   onToggleCollapse,
   onToggleAgCollapse,
   onContextMenu

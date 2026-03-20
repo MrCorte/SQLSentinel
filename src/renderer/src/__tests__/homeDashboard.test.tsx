@@ -255,7 +255,8 @@ describe('AREA 4 — getSidebarItemSize (estimateSize virtualizer)', () => {
         health: 'HEALTHY',
         primary_replica: '10.0.0.1',
         serverIds: []
-      }
+      },
+      isExpanded: false
     }
     expect(getSidebarItemSize(item)).toBe(36)
   })

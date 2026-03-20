@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { Box, Typography, Button } from '@mui/material'
+import { Box, Typography, Button, CircularProgress, Tooltip as MuiTooltip } from '@mui/material'
+import RefreshIcon from '@mui/icons-material/Refresh'
 import {
   PieChart,
   Pie,
@@ -17,6 +18,7 @@ import { useMetricsStore } from '../store/metricsStore'
 import { useGroupsStore } from '../store/groupsStore'
 import { useAgStore } from '../store/agStore'
 import { useAlertsStore } from '../store/alertsStore'
+import { useRefreshAllServers } from '../hooks/useRefreshAllServers'
 import { tokens } from '../styles/tokens'
 import type { StoredServer, Alert } from '../../../preload/index'
 import { HOSTING_BADGE } from '../constants/hosting'
@@ -115,6 +117,7 @@ export function HomeDashboard({
   const { groups, serverGroups, serverAliases } = useGroupsStore()
   const { agGroups } = useAgStore()
   const alerts = useAlertsStore((s) => s.alerts)
+  const { refreshing, handleRefresh } = useRefreshAllServers()
 
   // ---- Derived metrics (memoized) — must be before any early return ----
   const {
@@ -234,9 +237,25 @@ export function HomeDashboard({
         >
           Home Dashboard
         </Typography>
-        <Typography sx={{ fontSize: tokens.font.sizeSm, color: tokens.color.textSecondary }}>
-          Aggiornato: {lastUpdate ? formatTime(lastUpdate) : '—'}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Typography sx={{ fontSize: tokens.font.sizeSm, color: tokens.color.textSecondary }}>
+            Aggiornato: {lastUpdate ? formatTime(lastUpdate) : '—'}
+          </Typography>
+          <MuiTooltip title="Aggiorna metriche da tutti i server">
+            <span>
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={refreshing ? <CircularProgress size={14} color="inherit" /> : <RefreshIcon />}
+                onClick={handleRefresh}
+                disabled={refreshing}
+                sx={{ fontSize: 12, bgcolor: tokens.color.primary }}
+              >
+                {refreshing ? 'Aggiornamento…' : 'Aggiorna metriche'}
+              </Button>
+            </span>
+          </MuiTooltip>
+        </Box>
       </Box>
 
       {/* ---- Row 2: KPI Cards ---- */}

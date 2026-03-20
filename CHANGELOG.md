@@ -5,6 +5,10 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Added — 2026-03-20
+- HomeDashboard: bottone "Aggiorna metriche" nell'header (top-right, accanto al timestamp) — stesso stile del bottone già presente in Inventario (MUI Button `variant="contained"`, `RefreshIcon`, spinner durante il refresh, disabled mentre in corso)
+- Hook `useRefreshAllServers` (`src/renderer/src/hooks/useRefreshAllServers.ts`) — logica refresh-all estratta da Inventory in un hook condiviso; ritorna `{ refreshing, lastRefresh, handleRefresh }`; usato sia da Inventory sia da HomeDashboard per evitare duplicazione
+
 ### Fixed — 2026-03-20
 - Sidebar: eliminato il doppio render dei server standalone — la split `agServersInGroup` / `standaloneServers` è ora mutuamente esclusiva basata su `agGroupId != null`; il loop figli AG usa `agServersInGroup.filter(s => s.agGroupId === ag.id)` invece di `ag.serverIds.includes(s.id)`, evitando che server senza `agGroupId` (matchati solo per euristica hostname) compaiano sia dentro il gruppo AG sia fuori come standalone
 - Sidebar: server standalone non più inglobati dentro un gruppo AG; un server viene considerato "membro di un AG" solo se ha `agGroupId` valorizzato (confermato dalla propria detection), non per sola corrispondenza euristica del nome replica in `agStore`

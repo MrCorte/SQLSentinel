@@ -5,6 +5,26 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed — 2026-03-20
+- Sidebar: eliminato il doppio render dei server standalone — la split `agServersInGroup` / `standaloneServers` è ora mutuamente esclusiva basata su `agGroupId != null`; il loop figli AG usa `agServersInGroup.filter(s => s.agGroupId === ag.id)` invece di `ag.serverIds.includes(s.id)`, evitando che server senza `agGroupId` (matchati solo per euristica hostname) compaiano sia dentro il gruppo AG sia fuori come standalone
+- Sidebar: server standalone non più inglobati dentro un gruppo AG; un server viene considerato "membro di un AG" solo se ha `agGroupId` valorizzato (confermato dalla propria detection), non per sola corrispondenza euristica del nome replica in `agStore`
+
+### Changed — 2026-03-20
+- `database.ts`: aggiunto `PRAGMA synchronous = NORMAL` — riduce fsync da 2 a 1 per transazione, sicuro con WAL mode, ~2x più veloce di `FULL` (default)
+- `database.ts`: aggiunto `PRAGMA cache_size = -8192` — cache pagine portata a 8 MB (default: 2 MB)
+- `database.ts`: aggiunto `PRAGMA temp_store = MEMORY` — tabelle temporanee allocate in RAM
+- `database.ts`: aggiunto indice `idx_metrics_cleanup ON metrics_snapshots(collected_at)` — copre la query `DELETE WHERE collected_at < ?` in `metricsRepository.cleanup()` che non può usare il composito `(server_id, collected_at)` per assenza del filtro su `server_id`; i due indici rimangono complementari: il composito per `findLatest`/`findHistory`, il standalone per il purge
+
+### Analysis — 2026-03-20
+- Audit schema SQLite completo via MCP: identificate 6 ottimizzazioni su 4 tabelle
+- `db_custom_fields.id` è una PK concatenata opaca (`server_id/db_name`) — migration proposta verso colonne `(server_id, db_name)` + indice `idx_db_custom_server` per query export/merge
+- `metrics_snapshots`: FK `REFERENCES servers(id)` inutilizzabile (tabella `servers` SQLite sempre vuota — server gestiti via electron-store); migration proposta per rimuovere FK e sbloccare la tabella
+- `metrics_snapshots`: indice composito `(server_id, collected_at DESC)` non copre `cleanup()` (no `server_id` nel WHERE) — proposto `idx_metrics_collected_at` dedicato al purge
+- `metrics_snapshots.collected_at TEXT`: possibile migrazione a `REAL` epoch per ridurre storage e velocizzare comparazioni range
+- PRAGMA mancanti: `synchronous=NORMAL` (sicuro con WAL, ~2x più veloce), `cache_size=-8192` (8MB), `temp_store=MEMORY`
+- Architectural debt: `servers` SQLite + `serverRepository.ts` sono dead code — server gestiti esclusivamente via electron-store (`serverStore.ts`); stesso per `metricsRepository.ts` (worker usa Map in-memory)
+- Tutte le migration SQL documentate con script eseguibili
+
 ### Changed — 2026-03-19 18:30
 - Inventario: KPI cards aggiornate dinamicamente in base ai filtri attivi; `filteredStats` useMemo derivato da `filteredRows` (zero passate extra); contatori Server/Standalone/AG Cluster/Database/Online/Offline riflettono solo le righe visibili dopo il filtraggio
 - Inventario: indicatore testuale "Risultati filtrati: N di M server" visibile sotto le KPI cards quando almeno un filtro è attivo; nascosto quando nessun filtro è applicato

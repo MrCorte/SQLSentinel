@@ -983,14 +983,18 @@ export function Sidebar({
         const agGroupsInThisGroup = Object.values(agGroups).filter((ag) =>
           ag.serverIds.some((sid) => groupServers.some((s) => s.id === sid))
         )
-        const serversInAnyAg = new Set(agGroupsInThisGroup.flatMap((ag) => ag.serverIds))
-        const standaloneServers = groupServers.filter((s) => !serversInAnyAg.has(s.id))
+        // Split servers into mutually exclusive sets based on agGroupId.
+        // agGroupId is set only when the server itself confirmed AG membership —
+        // servers matched by name heuristics in agStore but never self-confirmed
+        // are treated as standalone and must not appear inside any AG group.
+        const agServersInGroup = groupServers.filter((s) => s.agGroupId != null)
+        const standaloneServers = groupServers.filter((s) => s.agGroupId == null)
 
         for (const ag of agGroupsInThisGroup) {
           const isExpanded = expandedAGs.includes(ag.ag_name)
           items.push({ kind: 'ag', agName: ag.ag_name, agInfo: ag, isExpanded })
           if (isExpanded) {
-            const agServers = groupServers.filter((s) => ag.serverIds.includes(s.id))
+            const agServers = agServersInGroup.filter((s) => s.agGroupId === ag.id)
             for (const s of agServers) {
               items.push({ kind: 'server', server: s, inAgGroup: true })
             }

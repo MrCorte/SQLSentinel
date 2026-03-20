@@ -42,8 +42,10 @@ const DDL = `
   -- Drop legacy single-column indexes replaced by the composite below
   DROP INDEX IF EXISTS idx_metrics_server_id;
   DROP INDEX IF EXISTS idx_metrics_collected_at;
-  -- Composite index covers all query patterns: WHERE server_id = ? ORDER BY collected_at DESC
+  -- Composite index: WHERE server_id = ? ORDER BY collected_at DESC  (findLatest, findHistory)
   CREATE INDEX IF NOT EXISTS idx_metrics_server_collected ON metrics_snapshots(server_id, collected_at DESC);
+  -- Standalone index: WHERE collected_at < ? without server_id  (cleanup/purge)
+  CREATE INDEX IF NOT EXISTS idx_metrics_cleanup ON metrics_snapshots(collected_at);
 `
 
 /**
@@ -62,6 +64,10 @@ export function initDb(dbPath: string): Database.Database {
   // WAL mode: scritture non bloccano le letture
   _db.pragma('journal_mode = WAL')
   _db.pragma('foreign_keys = ON')
+  // Performance tuning — sicuri con WAL
+  _db.pragma('synchronous  = NORMAL') // 2 fsync → 1 per transazione; nessun rischio di corruzione con WAL
+  _db.pragma('cache_size   = -8192')  // 8 MB (default: 2 MB)
+  _db.pragma('temp_store   = MEMORY') // tabelle temporanee in RAM
 
   _db.exec(DDL)
 

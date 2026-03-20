@@ -117,6 +117,7 @@ export interface StoredServer {
   ip?: string               // legacy alias; popolato dalla normalizzazione in serversStore.ts
   port: number
   instanceName?: string
+  machineName?: string      // SERVERPROPERTY('MachineName') — usato per raggruppare istanze multiple sulla stessa macchina fisica
   useWindowsAuth: boolean
   username?: string
   password?: string

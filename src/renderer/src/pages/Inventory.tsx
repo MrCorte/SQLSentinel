@@ -82,35 +82,38 @@ function KpiCard({ label, value, accentColor }: KpiCardProps): React.JSX.Element
 // Row types
 // ---------------------------------------------------------------------------
 
-type InventoryRowType = 'standalone' | 'ag-cluster' | 'ag-replica'
+type InventoryRowType = 'standalone' | 'ag-cluster' | 'ag-replica' | 'machine-header'
 
 interface InventoryRow {
-  id:           string
-  type:         InventoryRowType
-  depth:        number
-  serverLabel:  string
-  host:         string
-  port:         number
-  envId:        string
-  envName:      string
-  envColor:     string
-  hostingType:  ServerHostingType
-  version:      string
-  unreachable:  boolean
-  dbCount:      number
-  onlineCount:  number
-  offlineCount: number
-  totalDataMb:  number
-  totalLogMb:   number
-  // ag-cluster
-  agName?:      string
-  agHealthy?:   boolean
-  replicaCount?:number
-  clusterKey?:  string
+  id:            string
+  type:          InventoryRowType
+  depth:         number
+  serverLabel:   string
+  host:          string
+  port:          number
+  envId:         string
+  envName:       string
+  envColor:      string
+  hostingType:   ServerHostingType
+  version:       string
+  unreachable:   boolean
+  dbCount:       number
+  onlineCount:   number
+  offlineCount:  number
+  totalDataMb:   number
+  totalLogMb:    number
+  machineName?:  string
+  instanceName?: string
+  // ag-cluster + machine-header
+  agName?:       string
+  agHealthy?:    boolean
+  replicaCount?: number
+  instanceCount?: number
+  clusterKey?:   string
   // standalone + ag-replica
-  serverId?:    string
-  agRole?:      'PRIMARY' | 'SECONDARY'
-  uptimeDays?:  number
+  serverId?:     string
+  agRole?:       'PRIMARY' | 'SECONDARY'
+  uptimeDays?:   number
 }
 
 // ---------------------------------------------------------------------------
@@ -124,15 +127,16 @@ interface ColDef {
 }
 
 const COLUMNS: ColDef[] = [
-  { key: 'serverLabel',  label: 'SERVER',   width: '22%' },
-  { key: 'envName',      label: 'AMBIENTE', width: '11%' },
-  { key: 'type',         label: 'TIPO',     width: '10%' },
-  { key: 'hostingType',  label: 'HOSTING',  width: '8%'  },
-  { key: 'dbCount',      label: 'DB',       width: '6%'  },
-  { key: 'onlineCount',  label: 'ONLINE',   width: '7%'  },
-  { key: 'offlineCount', label: 'OFFLINE',  width: '7%'  },
+  { key: 'serverLabel',  label: 'SERVER',   width: '20%' },
+  { key: 'envName',      label: 'AMBIENTE', width: '9%'  },
+  { key: 'type',         label: 'TIPO',     width: '9%'  },
+  { key: 'machineName',  label: 'MACCHINA', width: '10%' },
+  { key: 'hostingType',  label: 'HOSTING',  width: '7%'  },
+  { key: 'dbCount',      label: 'DB',       width: '5%'  },
+  { key: 'onlineCount',  label: 'ONLINE',   width: '6%'  },
+  { key: 'offlineCount', label: 'OFFLINE',  width: '6%'  },
   { key: 'totalDataMb',  label: 'DATI',     width: '9%'  },
-  { key: 'version',      label: 'VERSIONE', width: '14%' },
+  { key: 'version',      label: 'VERSIONE', width: '13%' },
   { key: 'unreachable',  label: 'STATO',    width: '6%'  },
 ]
 
@@ -142,7 +146,7 @@ const GRID_TEMPLATE = COLUMNS.map((c) => c.width).join(' ')
 // Row flattener
 // ---------------------------------------------------------------------------
 
-function buildRows(invGroups: GroupInventory[], expandedClusters: Set<string>): InventoryRow[] {
+function buildRows(invGroups: GroupInventory[], expandedClusters: Set<string>, expandedMachines: Set<string>): InventoryRow[] {
   const rows: InventoryRow[] = []
 
   for (const group of invGroups) {
@@ -150,27 +154,91 @@ function buildRows(invGroups: GroupInventory[], expandedClusters: Set<string>): 
     const envName  = group.groupName
     const envColor = group.groupColor
 
-    // ── Standalone ──────────────────────────────────────────────────────
+    // ── Standalone — group by machineName if 2+ instances on same machine ──
+    const machineMap = new Map<string, typeof group.standaloneServers>()
     for (const srv of group.standaloneServers) {
-      rows.push({
-        id:           srv.serverId,
-        type:         'standalone',
-        depth:        0,
-        serverLabel:  srv.displayName,
-        host:         srv.ip,
-        port:         srv.port,
-        envId, envName, envColor,
-        hostingType:  (srv.hostingType ?? 'on-premise') as ServerHostingType,
-        version:      srv.version,
-        unreachable:  srv.unreachable,
-        dbCount:      srv.dbCount,
-        onlineCount:  srv.onlineCount,
-        offlineCount: srv.offlineCount,
-        totalDataMb:  srv.totalDataMb,
-        totalLogMb:   srv.totalLogMb,
-        serverId:     srv.serverId,
-        uptimeDays:   srv.uptimeDays,
-      })
+      const key = srv.machineName ?? srv.ip
+      if (!machineMap.has(key)) machineMap.set(key, [])
+      machineMap.get(key)!.push(srv)
+    }
+    for (const [machineName, instances] of machineMap) {
+      if (instances.length >= 2) {
+        const machineKey = `${envId}__machine__${machineName}`
+        const isExpanded = expandedMachines.has(machineKey)
+        // Machine header row: aggregate stats from all instances
+        rows.push({
+          id:            machineKey,
+          type:          'machine-header',
+          depth:         0,
+          serverLabel:   machineName,
+          host:          machineName,
+          port:          1433,
+          envId, envName, envColor,
+          hostingType:   (instances[0]?.hostingType ?? 'on-premise') as ServerHostingType,
+          version:       instances[0]?.version ?? '—',
+          unreachable:   instances.every((s) => s.unreachable),
+          dbCount:       instances.reduce((s, x) => s + x.dbCount, 0),
+          onlineCount:   instances.reduce((s, x) => s + x.onlineCount, 0),
+          offlineCount:  instances.reduce((s, x) => s + x.offlineCount, 0),
+          totalDataMb:   instances.reduce((s, x) => s + x.totalDataMb, 0),
+          totalLogMb:    instances.reduce((s, x) => s + x.totalLogMb, 0),
+          machineName,
+          instanceCount: instances.length,
+          clusterKey:    machineKey,
+        })
+        // Instance rows (depth=1) — only when expanded
+        if (isExpanded) {
+          for (const srv of instances) {
+            const instanceLabel = srv.instanceName ? `\\${srv.instanceName}` : '(default)'
+            rows.push({
+              id:            `${machineKey}__${srv.serverId}`,
+              type:          'standalone',
+              depth:         1,
+              serverLabel:   instanceLabel,
+              host:          srv.ip,
+              port:          srv.port,
+              envId, envName, envColor,
+              hostingType:   (srv.hostingType ?? 'on-premise') as ServerHostingType,
+              version:       srv.version,
+              unreachable:   srv.unreachable,
+              dbCount:       srv.dbCount,
+              onlineCount:   srv.onlineCount,
+              offlineCount:  srv.offlineCount,
+              totalDataMb:   srv.totalDataMb,
+              totalLogMb:    srv.totalLogMb,
+              machineName,
+              instanceName:  srv.instanceName,
+              serverId:      srv.serverId,
+              uptimeDays:    srv.uptimeDays,
+              clusterKey:    machineKey,
+            })
+          }
+        }
+      } else {
+        // Single instance on this machine — render normally
+        const srv = instances[0]
+        rows.push({
+          id:           srv.serverId,
+          type:         'standalone',
+          depth:        0,
+          serverLabel:  srv.displayName,
+          host:         srv.ip,
+          port:         srv.port,
+          envId, envName, envColor,
+          hostingType:  (srv.hostingType ?? 'on-premise') as ServerHostingType,
+          version:      srv.version,
+          unreachable:  srv.unreachable,
+          dbCount:      srv.dbCount,
+          onlineCount:  srv.onlineCount,
+          offlineCount: srv.offlineCount,
+          totalDataMb:  srv.totalDataMb,
+          totalLogMb:   srv.totalLogMb,
+          machineName,
+          instanceName: srv.instanceName,
+          serverId:     srv.serverId,
+          uptimeDays:   srv.uptimeDays,
+        })
+      }
     }
 
     // ── AG clusters ─────────────────────────────────────────────────────
@@ -251,15 +319,19 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
   const [filterType,        setFilterType]         = useState<'all' | 'standalone' | 'ag-primary' | 'ag-secondary'>('all')
   const [filterState,       setFilterState]        = useState<'all' | 'online' | 'offline'>('all')
   const [filterHost,        setFilterHost]         = useState<'all' | 'on-premise' | 'cloud'>('all')
+  const [filterAlias,       setFilterAlias]        = useState('all')
+  const [filterReferente,   setFilterReferente]    = useState('all')
   const [sortKey,           setSortKey]            = useState<keyof InventoryRow>('envName')
   const [sortDir,           setSortDir]            = useState<'asc' | 'desc'>('asc')
   const [expandedClusters,  setExpandedClusters]   = useState<Set<string>>(new Set())
+  const [expandedMachines,  setExpandedMachines]   = useState<Set<string>>(new Set())
   const parentRef = useRef<HTMLDivElement>(null)
 
   // Store subscriptions
   useServersStore((s) => s.servers)
-  useMetricsStore((s) => s.metricsMap)
-  const envGroups = useGroupsStore((s) => s.groups)
+  const metricsMap    = useMetricsStore((s) => s.metricsMap)
+  const envGroups     = useGroupsStore((s) => s.groups)
+  const serverAliases = useGroupsStore((s) => s.serverAliases)
 
   const inventory = computeInventory()
   const { totals } = inventory
@@ -272,10 +344,61 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
     [inventory.groups]
   )
 
+  const allMachineKeys = useMemo(
+    () => {
+      const keys: string[] = []
+      for (const g of inventory.groups) {
+        const envId = g.groupId ?? '__ungrouped__'
+        const machineMap = new Map<string, number>()
+        for (const srv of g.standaloneServers) {
+          const key = srv.machineName ?? srv.ip
+          machineMap.set(key, (machineMap.get(key) ?? 0) + 1)
+        }
+        for (const [machineName, count] of machineMap) {
+          if (count >= 2) keys.push(`${envId}__machine__${machineName}`)
+        }
+      }
+      return keys
+    },
+    [inventory.groups]
+  )
+
+  // ── Alias / Referente dropdown options (from full unfiltered data) ──────
+  const aliasOptions = useMemo(
+    () => [...new Set(Object.values(serverAliases).filter(Boolean))].sort(),
+    [serverAliases]
+  )
+
+  const referenteOptions = useMemo(() => {
+    const refs: string[] = []
+    for (const m of Object.values(metricsMap)) {
+      for (const db of m.databases ?? []) {
+        if (db.referente) refs.push(db.referente)
+      }
+    }
+    return [...new Set(refs)].sort()
+  }, [metricsMap])
+
   // ── Rows ────────────────────────────────────────────────────────────────
+  // When filtering by AG role / alias / referente, all clusters and machines
+  // must be expanded so leaf rows are present in allRows.
+  const needsFullExpand = filterAlias !== 'all' || filterReferente !== 'all'
+
+  const effectiveExpanded = useMemo(() => {
+    if (filterType === 'ag-primary' || filterType === 'ag-secondary' || needsFullExpand) {
+      return new Set(allClusterKeys)
+    }
+    return expandedClusters
+  }, [filterType, needsFullExpand, allClusterKeys, expandedClusters])
+
+  const effectiveExpandedMachines = useMemo(() => {
+    if (filterType === 'standalone' || needsFullExpand) return new Set(allMachineKeys)
+    return expandedMachines
+  }, [filterType, needsFullExpand, allMachineKeys, expandedMachines])
+
   const allRows = useMemo(
-    () => buildRows(inventory.groups, expandedClusters),
-    [inventory.groups, expandedClusters]
+    () => buildRows(inventory.groups, effectiveExpanded, effectiveExpandedMachines),
+    [inventory.groups, effectiveExpanded, effectiveExpandedMachines]
   )
 
   const filteredRows = useMemo(() => {
@@ -283,7 +406,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
     return allRows.filter((row) => {
       // Type filter
       if (filterType !== 'all') {
-        if (filterType === 'standalone' && row.type !== 'standalone')                          return false
+        if (filterType === 'standalone' && row.type !== 'standalone' && row.type !== 'machine-header') return false
         if (filterType === 'ag-primary'   && !(row.type === 'ag-replica' && row.agRole === 'PRIMARY'))   return false
         if (filterType === 'ag-secondary' && !(row.type === 'ag-replica' && row.agRole === 'SECONDARY')) return false
       }
@@ -298,28 +421,47 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
       if (filterState === 'online'  &&  row.unreachable)           return false
       if (filterState === 'offline' && !row.unreachable)           return false
       if (filterHost  !== 'all' && row.hostingType !== filterHost) return false
+      // Alias filter — only meaningful on leaf rows; headers excluded
+      if (filterAlias !== 'all') {
+        if (row.type !== 'standalone' && row.type !== 'ag-replica') return false
+        const key = `${row.host}:${row.port}`
+        if (serverAliases[key] !== filterAlias) return false
+      }
+      // Referente filter — leaf rows only; matches if any DB of this server has the referente
+      if (filterReferente !== 'all') {
+        if (row.type !== 'standalone' && row.type !== 'ag-replica') return false
+        const key = `${row.host}:${row.port}`
+        const dbs = metricsMap[key]?.databases ?? []
+        if (!dbs.some((db) => db.referente === filterReferente)) return false
+      }
       return true
     })
-  }, [allRows, search, filterEnv, filterType, filterState, filterHost])
+  }, [allRows, search, filterEnv, filterType, filterState, filterHost, filterAlias, filterReferente, serverAliases, metricsMap])
 
   // ── Filtered KPI stats (derived from filteredRows, zero extra pass) ────
   const filteredStats = useMemo(() => {
-    const standaloneRows = filteredRows.filter((r) => r.type === 'standalone')
+    // depth=0 standalone rows only (excludes depth=1 instances under machine-header)
+    const standaloneRows = filteredRows.filter((r) => r.type === 'standalone' && r.depth === 0)
+    const machineRows    = filteredRows.filter((r) => r.type === 'machine-header')
     const clusterRows    = filteredRows.filter((r) => r.type === 'ag-cluster')
     const replicaRows    = filteredRows.filter((r) => r.type === 'ag-replica')
+
+    // Machine-grouped instances counted from the header's instanceCount
+    const machineInstances = machineRows.reduce((s, r) => s + (r.instanceCount ?? 0), 0)
 
     const agServers = clusterRows.length > 0
       ? clusterRows.reduce((sum, r) => sum + (r.replicaCount ?? 1), 0)
       : replicaRows.length
 
-    const servers    = standaloneRows.length + agServers
-    const standalone = standaloneRows.length
+    const servers    = standaloneRows.length + machineInstances + agServers
+    const standalone = standaloneRows.length + machineInstances
     const agClusters = clusterRows.length
 
     // When only replica rows are visible (ag-primary/ag-secondary filter), use those for DB stats
+    // Machine-header rows already aggregate DB stats from their instances
     const dbSourceRows =
-      clusterRows.length > 0 || standaloneRows.length > 0
-        ? [...standaloneRows, ...clusterRows]
+      clusterRows.length > 0 || standaloneRows.length > 0 || machineRows.length > 0
+        ? [...standaloneRows, ...machineRows, ...clusterRows]
         : replicaRows
 
     const databases  = dbSourceRows.reduce((sum, r) => sum + r.dbCount, 0)
@@ -331,11 +473,17 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
 
   const hasActiveFilters =
     search !== '' || filterEnv !== 'all' || filterType !== 'all' ||
-    filterState !== 'all' || filterHost !== 'all'
+    filterState !== 'all' || filterHost !== 'all' ||
+    filterAlias !== 'all' || filterReferente !== 'all'
 
   // Sort: keep replica rows attached to their parent cluster header
   const sortedRows = useMemo(() => {
-    const hasHierarchy = filteredRows.some((r) => r.depth === 0) && filteredRows.some((r) => r.depth === 1)
+    // Only treat as hierarchical when there are actual parent header rows visible.
+    // This prevents orphaned depth=1 rows from being silently dropped when
+    // alias/referente filters show leaf rows without their parent headers.
+    const hasHierarchy =
+      filteredRows.some((r) => r.depth === 1) &&
+      filteredRows.some((r) => r.depth === 0 && (r.type === 'ag-cluster' || r.type === 'machine-header'))
 
     const compareFn = (a: InventoryRow, b: InventoryRow): number => {
       const va = a[sortKey] ?? ''
@@ -364,7 +512,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
     const result: InventoryRow[] = []
     for (const row of topLevel) {
       result.push(row)
-      if (row.type === 'ag-cluster' && row.clusterKey) {
+      if ((row.type === 'ag-cluster' || row.type === 'machine-header') && row.clusterKey) {
         result.push(...(childrenMap.get(row.clusterKey) ?? []))
       }
     }
@@ -388,24 +536,38 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
     })
   }, [])
 
+  const toggleMachine = useCallback((machineKey: string) => {
+    setExpandedMachines((prev) => {
+      const next = new Set(prev)
+      next.has(machineKey) ? next.delete(machineKey) : next.add(machineKey)
+      return next
+    })
+  }, [])
+
   const handleToggleAll = useCallback(() => {
-    setExpandedClusters(
-      expandedClusters.size === allClusterKeys.length
-        ? new Set()
-        : new Set(allClusterKeys)
-    )
-  }, [expandedClusters, allClusterKeys])
+    const totalExpandable = allClusterKeys.length + allMachineKeys.length
+    const totalExpanded   = expandedClusters.size + expandedMachines.size
+    if (totalExpanded === totalExpandable) {
+      setExpandedClusters(new Set())
+      setExpandedMachines(new Set())
+    } else {
+      setExpandedClusters(new Set(allClusterKeys))
+      setExpandedMachines(new Set(allMachineKeys))
+    }
+  }, [expandedClusters, expandedMachines, allClusterKeys, allMachineKeys])
 
   const handleRowClick = useCallback(
     (row: InventoryRow) => {
       if (row.type === 'ag-cluster') {
         toggleCluster(row.clusterKey!)
+      } else if (row.type === 'machine-header') {
+        toggleMachine(row.clusterKey!)
       } else if (row.serverId) {
         useAppStore.getState().setPendingServerId(row.serverId)
         onNavigateToDashboard()
       }
     },
-    [toggleCluster, onNavigateToDashboard]
+    [toggleCluster, toggleMachine, onNavigateToDashboard]
   )
 
   const handleExportCsv = useCallback(async () => {
@@ -440,6 +602,8 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
     setFilterType('all')
     setFilterState('all')
     setFilterHost('all')
+    setFilterAlias('all')
+    setFilterReferente('all')
   }, [])
 
   return (
@@ -564,6 +728,26 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                 <MenuItem value="cloud">Cloud</MenuItem>
               </Select>
 
+              {aliasOptions.length > 0 && (
+                <Select size="small" value={filterAlias}
+                  onChange={(e) => setFilterAlias(e.target.value)} sx={{ minWidth: 150 }}>
+                  <MenuItem value="all">Tutti gli alias</MenuItem>
+                  {aliasOptions.map((a) => (
+                    <MenuItem key={a} value={a}>{a}</MenuItem>
+                  ))}
+                </Select>
+              )}
+
+              {referenteOptions.length > 0 && (
+                <Select size="small" value={filterReferente}
+                  onChange={(e) => setFilterReferente(e.target.value)} sx={{ minWidth: 160 }}>
+                  <MenuItem value="all">Tutti i referenti</MenuItem>
+                  {referenteOptions.map((r) => (
+                    <MenuItem key={r} value={r}>{r}</MenuItem>
+                  ))}
+                </Select>
+              )}
+
               <Button
                 size="small" variant="text" color="inherit"
                 startIcon={<FilterListIcon />}
@@ -572,13 +756,13 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                 Reset
               </Button>
 
-              {allClusterKeys.length > 0 && (
+              {(allClusterKeys.length > 0 || allMachineKeys.length > 0) && (
                 <Button
                   size="small" variant="text" color="inherit"
                   onClick={handleToggleAll}
                   sx={{ ml: 0 }}
                 >
-                  {expandedClusters.size > 0 ? 'Comprimi tutti' : 'Espandi tutti'}
+                  {expandedClusters.size > 0 || expandedMachines.size > 0 ? 'Comprimi tutti' : 'Espandi tutti'}
                 </Button>
               )}
 
@@ -639,8 +823,8 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                   <Box sx={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}>
                     {rowVirtualizer.getVirtualItems().map((vRow) => {
                       const row = sortedRows[vRow.index]
-                      // Indent replica rows only when hierarchical view (filterType === 'all')
-                      const isHierarchical = filterType === 'all'
+                      // Indent depth-1 rows only when their parent header is visible
+                      const isHierarchical = filterType === 'all' && filterAlias === 'all' && filterReferente === 'all'
                       const pl = row.depth === 1 && isHierarchical ? 4 : 2
 
                       return (
@@ -660,27 +844,39 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                             cursor: 'pointer',
                             borderBottom: '1px solid #f0f0f0',
                             bgcolor:
-                              row.type === 'ag-cluster' ? '#f6f4fb' :
-                              row.type === 'ag-replica' ? '#fafafa'  :
-                              row.unreachable           ? '#fde7e9'  : 'white',
+                              row.type === 'machine-header' ? '#edf2f7' :
+                              row.type === 'ag-cluster'     ? '#f6f4fb' :
+                              row.type === 'ag-replica'     ? '#fafafa' :
+                              row.unreachable               ? '#fde7e9' : 'white',
                             '&:hover': {
                               bgcolor:
-                                row.type === 'ag-cluster' ? '#ede8f5' :
-                                row.unreachable           ? '#fad4d4' : '#f3f2f1'
+                                row.type === 'machine-header' ? '#dce7f0' :
+                                row.type === 'ag-cluster'     ? '#ede8f5' :
+                                row.unreachable               ? '#fad4d4' : '#f3f2f1'
                             },
                           }}
                         >
                           {/* ── SERVER ── */}
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
-                            {/* Expand / collapse toggle for cluster */}
+                            {/* Expand / collapse toggle for ag-cluster */}
                             {row.type === 'ag-cluster' && (
                               expandedClusters.has(row.clusterKey!)
                                 ? <ExpandMoreIcon fontSize="small" sx={{ color: tokens.color.textSecondary, flexShrink: 0 }} />
                                 : <ChevronRightIcon fontSize="small" sx={{ color: tokens.color.textSecondary, flexShrink: 0 }} />
                             )}
+                            {/* Expand / collapse toggle for machine-header */}
+                            {row.type === 'machine-header' && (
+                              expandedMachines.has(row.clusterKey!)
+                                ? <ExpandMoreIcon fontSize="small" sx={{ color: '#4a6fa5', flexShrink: 0 }} />
+                                : <ChevronRightIcon fontSize="small" sx={{ color: '#4a6fa5', flexShrink: 0 }} />
+                            )}
                             {/* Cluster icon */}
                             {row.type === 'ag-cluster' && (
                               <AccountTreeIcon fontSize="small" sx={{ color: '#8764b8', flexShrink: 0 }} />
+                            )}
+                            {/* Machine icon */}
+                            {row.type === 'machine-header' && (
+                              <Typography sx={{ fontSize: 14, flexShrink: 0 }}>🖥</Typography>
                             )}
                             {/* Role star / circle for replicas */}
                             {row.type === 'ag-replica' && (
@@ -690,16 +886,25 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                             )}
 
                             <Box sx={{ minWidth: 0 }}>
-                              <Typography variant="body2" fontWeight={row.type === 'ag-cluster' ? 700 : 500} noWrap>
+                              <Typography
+                                variant="body2"
+                                fontWeight={row.type === 'ag-cluster' || row.type === 'machine-header' ? 700 : 500}
+                                noWrap
+                                sx={row.type === 'machine-header' ? { color: '#2d5a8a' } : undefined}
+                              >
                                 {row.serverLabel}
                               </Typography>
                               {row.type === 'ag-cluster' ? (
                                 <Typography variant="caption" color="text.secondary" noWrap>
                                   {row.replicaCount} repliche · Primary: {row.host || '—'}
                                 </Typography>
+                              ) : row.type === 'machine-header' ? (
+                                <Typography variant="caption" sx={{ color: '#4a6fa5' }} noWrap>
+                                  {row.instanceCount} istanze
+                                </Typography>
                               ) : (
                                 <Typography variant="caption" color="text.secondary" noWrap>
-                                  {row.host}:{row.port}
+                                  {row.port !== 1433 ? `${row.host}:${row.port}` : row.host}
                                 </Typography>
                               )}
                             </Box>
@@ -713,9 +918,18 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
 
                           {/* ── TIPO ── */}
                           <Typography variant="caption">
-                            {row.type === 'standalone'   ? 'Standalone'   :
-                             row.type === 'ag-cluster'   ? 'AG Cluster'   :
-                             row.agRole === 'PRIMARY'    ? 'AG Primary'   : 'AG Secondary'}
+                            {row.type === 'machine-header' ? 'Multi-istanza' :
+                             row.type === 'standalone'     ? 'Standalone'    :
+                             row.type === 'ag-cluster'     ? 'AG Cluster'    :
+                             row.agRole === 'PRIMARY'      ? 'AG Primary'    : 'AG Secondary'}
+                          </Typography>
+
+                          {/* ── MACCHINA ── */}
+                          <Typography
+                            variant="caption" color="text.secondary"
+                            sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                          >
+                            {row.machineName || '—'}
                           </Typography>
 
                           {/* ── HOSTING ── */}
@@ -774,6 +988,16 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                               sx={{
                                 height: 20, fontSize: 10, fontWeight: 700, borderRadius: '3px',
                                 bgcolor: row.agHealthy ? '#107c10' : '#a4262c',
+                                color: '#fff', width: 'fit-content'
+                              }}
+                            />
+                          ) : row.type === 'machine-header' ? (
+                            <Chip
+                              label={row.unreachable ? 'OFFLINE' : 'OK'}
+                              size="small"
+                              sx={{
+                                height: 20, fontSize: 10, fontWeight: 700, borderRadius: '3px',
+                                bgcolor: row.unreachable ? '#a4262c' : '#4a6fa5',
                                 color: '#fff', width: 'fit-content'
                               }}
                             />

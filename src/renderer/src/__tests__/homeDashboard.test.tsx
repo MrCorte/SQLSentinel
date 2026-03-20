@@ -240,7 +240,8 @@ describe('AREA 4 — getSidebarItemSize (estimateSize virtualizer)', () => {
     const item: SidebarItem = {
       kind: 'server',
       server: makeStoredServer('10.0.0.1'),
-      inAgGroup: false
+      inAgGroup: false,
+      inMachineGroup: false
     }
     expect(getSidebarItemSize(item)).toBe(36)
   })

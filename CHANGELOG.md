@@ -5,11 +5,50 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed — 2026-03-20 (mock bugs)
+- `useMockData`: cambiato da `[initialized]` a `[]` deps — il seeding avviene al mount senza attendere `loadServers()` (che in mock mode non viene mai chiamato)
+- `useMockData`: `useServersStore.setState` ora imposta `initialized: true` assieme ai server mock, così non è più necessario attendere `loadServers()`
+- `useMockData`: `serverGroups` e `serverAliases` ora vengono MERGIATI (`{ ...state.serverGroups, ...MOCK_SERVER_GROUPS }`) invece di sostituiti — i group-assignment dei server reali non vengono più cancellati dal localStorage quando si usa VITE_USE_MOCK=true
+- `App.tsx`: aggiunto guard `if (USE_MOCK) return` nell'effect `loadServers` — in mock mode il caricamento reale da electron-store viene completamente saltato, così i server mock non vengono sovrascritti
+- `App.tsx`: aggiunto guard `if (USE_MOCK) return` nell'effect `workerSyncServers` — in mock mode gli IP mock (10.0.x.x) non vengono passati al worker
+
+### Added — 2026-03-20 (quinquies)
+- Mock data set realistici per testare tutti i filtri dell'Inventario (`VITE_USE_MOCK=true` in `.env.development`)
+  - `src/renderer/src/mocks/servers.mock.ts` — 12 server mock (`MOCK_SERVERS`, `MOCK_SERVER_GROUPS`, `MOCK_SERVER_ALIASES`, `MOCK_METRICS_MAP`, `MOCK_AG_GROUPS`); copertura: 3 ambienti (Prod/Coll/Dev), 2 AG cluster, 3 machine-header (SQLPROD03, SQLPROD04, SQLDEV01), 4 referenti (Andrea Cortesi / Mario Rossi / Luca Bianchi / Sara Verdi + null), hosting cloud/on-premise, 3 server irraggiungibili
+  - `src/renderer/src/hooks/useMockData.ts` — hook che semina `serversStore`, `groupsStore` (serverGroups + serverAliases + expandedAGs + expandedMachines), `metricsStore` (metricsMap) e `agStore` (agGroups) dopo `serversStore.initialized === true`; no-op quando `VITE_USE_MOCK !== 'true'`
+  - `App.tsx`: `useMockData()` chiamato in `AppInner` (prima di ogni altro hook)
+  - `env.d.ts`: aggiunta `VITE_USE_MOCK: string` a `ImportMetaEnv`
+  - `.env.development`: aggiunto `VITE_USE_MOCK=true`
+  - `.env.production` (nuovo): `VITE_USE_MOCK=false`
+
 ### Added — 2026-03-20
 - HomeDashboard: bottone "Aggiorna metriche" nell'header (top-right, accanto al timestamp) — stesso stile del bottone già presente in Inventario (MUI Button `variant="contained"`, `RefreshIcon`, spinner durante il refresh, disabled mentre in corso)
 - Hook `useRefreshAllServers` (`src/renderer/src/hooks/useRefreshAllServers.ts`) — logica refresh-all estratta da Inventory in un hook condiviso; ritorna `{ refreshing, lastRefresh, handleRefresh }`; usato sia da Inventory sia da HomeDashboard per evitare duplicazione
 
+### Added — 2026-03-20 (quater)
+- Inventario: filtri "Alias" e "Referente" nella barra filtri
+  - Dropdown "Tutti gli alias" — opzioni calcolate con `useMemo` dai valori di `serverAliases`; visibile solo se almeno un alias è definito; filtra i server dove `serverAliases[ip:port] === valore`
+  - Dropdown "Tutti i referenti" — opzioni calcolate da `metricsMap.databases[].referente`; visibile solo se almeno un referente è definito; filtra i server dove almeno un DB ha `referente === valore`
+  - Entrambi i filtri si combinano in AND con tutti i filtri esistenti; si attivano solo su righe foglia (`standalone`, `ag-replica`) — header di cluster e macchina non vengono mai mostrati senza figli corrispondenti
+  - Quando attivi, i cluster AG e i gruppi macchina vengono forzatamente espansi (`effectiveExpanded`, `effectiveExpandedMachines`) così tutte le righe foglia sono disponibili per il filtraggio
+  - Bottone "Reset" azzera entrambi i nuovi filtri; `hasActiveFilters` aggiornato di conseguenza
+  - Fix: `hasHierarchy` in `sortedRows` ora richiede la presenza di righe header (depth=0, tipo `ag-cluster` o `machine-header`) per evitare che righe depth=1 orfane vengano silenziosamente perse dall'output
+
+### Added — 2026-03-20 (ter)
+- **Multi-istanza**: supporto al raggruppamento di più istanze SQL Server sulla stessa macchina fisica
+  - `StoredServer.machineName` (opzionale) — popolato automaticamente da `SERVERPROPERTY('MachineName')` al "Testa connessione" nel form di aggiunta server; retrocompat: fallback a `host` per server già salvati
+  - Sidebar: istanze con stesso `machineName` (2+) raggruppate sotto header collassabile "🖥 MACCHINA (N istanze)" — stessa logica degli AG; macchine con una sola istanza non mostrano l'header; espansione persistita in `groupsStore.expandedMachines`; priorità AG > macchina (AG members non entrano nel gruppo macchina)
+  - Inventario: nuova colonna MACCHINA; header `machine-header` collassabile per macchine con 2+ istanze; stato "OK/OFFLINE" sul header macchina; conteggio istanze aggregato nelle KPI; `effectiveExpandedMachines` forza espansione automatica con filtro "Standalone"
+  - `groupsStore`: aggiunto `expandedMachines: string[]` + `toggleMachineCollapse()` (persistito in localStorage)
+
+### Added — 2026-03-20 (bis)
+- Form aggiunta server: campo "Porta" riposizionato sulla stessa riga di "IP / Hostname" (`Stack direction="row"`); "Nome Istanza" spostato su riga separata sotto; aggiunto hint testuale sotto il campo Porta con istruzioni per la porta statica su named instance con SQL Browser disabilitato
+- Visualizzazione porta condizionale: la porta viene mostrata accanto all'host (es. `192.168.1.10:2433`) solo quando ≠ 1433, sia nella sidebar (`getServerDisplayName`) sia nella colonna SERVER dell'Inventario; porta 1433 non visualizzata (implicita)
+
 ### Fixed — 2026-03-20
+- Inventario: filtro "AG Primary" / "AG Secondary" restituiva 0 risultati quando i cluster AG erano collassati — le righe `ag-replica` vengono ora generate su tutti i cluster (indipendentemente dallo stato espanso) quando `filterType` è `ag-primary` o `ag-secondary`, tramite `effectiveExpanded = new Set(allClusterKeys)` passato a `buildRows`
+
+
 - Sidebar: eliminato il doppio render dei server standalone — la split `agServersInGroup` / `standaloneServers` è ora mutuamente esclusiva basata su `agGroupId != null`; il loop figli AG usa `agServersInGroup.filter(s => s.agGroupId === ag.id)` invece di `ag.serverIds.includes(s.id)`, evitando che server senza `agGroupId` (matchati solo per euristica hostname) compaiano sia dentro il gruppo AG sia fuori come standalone
 - Sidebar: server standalone non più inglobati dentro un gruppo AG; un server viene considerato "membro di un AG" solo se ha `agGroupId` valorizzato (confermato dalla propria detection), non per sola corrispondenza euristica del nome replica in `agStore`
 

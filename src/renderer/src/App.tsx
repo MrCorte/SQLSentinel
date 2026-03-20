@@ -15,6 +15,9 @@ import { useAlertsStore } from './store/alertsStore'
 import { useAppStore } from './store/appStore'
 import { useMetricsStore } from './store/metricsStore'
 import { tokens } from './styles/tokens'
+import { useMockData } from './hooks/useMockData'
+
+const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 
 // ---------------------------------------------------------------------------
 // Inner — accede a WorkerContext (deve essere dentro WorkerProvider)
@@ -24,11 +27,15 @@ function AppInner(): React.JSX.Element {
   const [tab, setTab] = useState(0)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
+  useMockData()
+
   const { setRetentionMinutes } = useWorker()
   const { alerts, setAlerts, addAlert, acknowledgeAlert: acknowledgeAlertInStore } = useAlertsStore()
 
-  // Load persisted servers on mount
+  // Load persisted servers on mount — skip in mock mode (useMockData seeds the store)
   useEffect(() => {
+    if (USE_MOCK) return
+
     console.log('[App] init — chiamata loadServers')
     const { loadServers } = useServersStore.getState()
 
@@ -58,7 +65,9 @@ function AppInner(): React.JSX.Element {
   }, [])
 
   // Sync server list with the background worker whenever servers are added/removed
+  // Skip in mock mode — mock IPs (10.0.x.x) are not reachable
   useEffect(() => {
+    if (USE_MOCK) return
     return useServersStore.subscribe((state) => {
       if (!state.initialized) return
       window.sqlSentinel.workerSyncServers({

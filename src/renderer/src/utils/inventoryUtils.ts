@@ -31,6 +31,8 @@ function buildServerSummary(
     displayName: alias?.trim() || serverLabel(srv),
     ip: srv.ip ?? srv.host,
     port: srv.port,
+    instanceName: srv.instanceName,
+    machineName: srv.machineName ?? srv.ip ?? srv.host,
     version: m?.instanceInfo.version ?? '—',
     edition: m?.instanceInfo.edition ?? '—',
     uptimeDays: m?.instanceInfo.uptimeDays ?? 0,

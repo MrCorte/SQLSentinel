@@ -15,7 +15,8 @@ export function getServerDisplayName(server: {
   port: number
   alias?: string
 }): string {
-  return server.alias?.trim() || `${server.ip}:${server.port}`
+  if (server.alias?.trim()) return server.alias.trim()
+  return server.port !== 1433 ? `${server.ip}:${server.port}` : server.ip
 }
 
 // ---------------------------------------------------------------------------
@@ -27,6 +28,8 @@ export interface ServerSummary {
   displayName: string
   ip: string
   port: number
+  instanceName?: string
+  machineName?: string
   version: string
   edition: string
   uptimeDays: number

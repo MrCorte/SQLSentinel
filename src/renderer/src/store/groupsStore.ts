@@ -13,7 +13,8 @@ interface GroupsState {
   groups: ServerGroup[]
   serverGroups: Record<string, string> // serverId (ip:port) → groupId
   serverAliases: Record<string, string> // serverId → display alias
-  expandedAGs: string[] // ag_names that are expanded (empty = all collapsed)
+  expandedAGs: string[]       // ag_names that are expanded (empty = all collapsed)
+  expandedMachines: string[]  // machine names that are expanded in sidebar (empty = all collapsed)
   addGroup: (name: string, color: string) => void
   removeGroup: (id: string) => void
   renameGroup: (id: string, name: string) => void
@@ -22,6 +23,7 @@ interface GroupsState {
   setServerGroup: (serverId: string, groupId: string | undefined) => void
   setServerAlias: (serverId: string, alias: string) => void
   toggleAgCollapse: (agName: string) => void
+  toggleMachineCollapse: (machineName: string) => void
 }
 
 export const useGroupsStore = create<GroupsState>()(
@@ -31,6 +33,7 @@ export const useGroupsStore = create<GroupsState>()(
       serverGroups: {},
       serverAliases: {},
       expandedAGs: [],
+      expandedMachines: [],
 
       addGroup: (name, color) =>
         set((state) => ({
@@ -102,6 +105,16 @@ export const useGroupsStore = create<GroupsState>()(
             expandedAGs: isExpanded
               ? state.expandedAGs.filter((n) => n !== agName)
               : [...state.expandedAGs, agName]
+          }
+        }),
+
+      toggleMachineCollapse: (machineName) =>
+        set((state) => {
+          const isExpanded = state.expandedMachines.includes(machineName)
+          return {
+            expandedMachines: isExpanded
+              ? state.expandedMachines.filter((n) => n !== machineName)
+              : [...state.expandedMachines, machineName]
           }
         })
     }),

@@ -91,9 +91,11 @@ export function Discovery(): React.JSX.Element {
       host: data.ip,
       port: data.port,
       instanceName: data.instanceName || undefined,
+      machineName: data.machineName || undefined,
       useWindowsAuth: data.useWindowsAuth,
       username: data.username || undefined,
-      password: data.password || undefined
+      password: data.password || undefined,
+      hostingType: data.hostingType
     })
     console.log('[Discovery] addServer result:', JSON.stringify(result))
     console.log('[Discovery] store dopo add:', useServersStore.getState().servers.length, 'server')

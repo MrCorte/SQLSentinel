@@ -360,6 +360,7 @@ interface ServerItemProps {
   isSelected: boolean
   searchText: string
   inAgGroup?: boolean
+  inMachineGroup?: boolean
   onSelect: () => void
   onContextMenu: (e: React.MouseEvent, server: StoredServer) => void
 }
@@ -370,6 +371,7 @@ function ServerItem({
   isSelected,
   searchText,
   inAgGroup,
+  inMachineGroup,
   onSelect,
   onContextMenu
 }: ServerItemProps): React.JSX.Element {
@@ -400,7 +402,7 @@ function ServerItem({
           display: 'flex',
           alignItems: 'center',
           gap: 1,
-          pl: inAgGroup ? 4.5 : 3.5,
+          pl: inAgGroup || inMachineGroup ? 4.5 : 3.5,
           pr: 1.5,
           py: 0.875,
           cursor: 'pointer',
@@ -712,8 +714,9 @@ function GroupManagerDialog({
 
 export type SidebarItem =
   | { kind: 'group'; group: ServerGroup; onlineCount: number }
-  | { kind: 'server'; server: StoredServer; inAgGroup: boolean }
+  | { kind: 'server'; server: StoredServer; inAgGroup: boolean; inMachineGroup: boolean }
   | { kind: 'ag'; agName: string; agInfo: AgGroupState; isExpanded: boolean }
+  | { kind: 'machine'; machineName: string; instanceCount: number; isExpanded: boolean }
   | { kind: 'ungrouped-header' }
   | { kind: 'search-server'; server: StoredServer }
   | { kind: 'no-results' }
@@ -721,12 +724,87 @@ export type SidebarItem =
 /**
  * Returns the estimated row height (px) for a given sidebar item kind.
  * Exported for unit testing without rendering the full component.
- *   group / ungrouped-header → 40 px (section headers)
- *   everything else          → 36 px (server rows)
+ *   group / ungrouped-header / machine → 40 px (section headers)
+ *   everything else                    → 36 px (server rows)
  */
 export function getSidebarItemSize(item: SidebarItem | undefined): number {
   if (!item) return 36
-  return item.kind === 'group' || item.kind === 'ungrouped-header' ? 40 : 36
+  return item.kind === 'group' || item.kind === 'ungrouped-header' || item.kind === 'machine'
+    ? 40
+    : 36
+}
+
+// ---------------------------------------------------------------------------
+// MachineHeader — collapsible physical machine group
+// ---------------------------------------------------------------------------
+
+function MachineHeader({
+  machineName,
+  instanceCount,
+  isExpanded,
+  onClick
+}: {
+  machineName: string
+  instanceCount: number
+  isExpanded: boolean
+  onClick: () => void
+}): React.JSX.Element {
+  return (
+    <Box
+      onClick={onClick}
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 0.75,
+        px: 1.5,
+        py: 0.75,
+        pl: 2.5,
+        cursor: 'pointer',
+        bgcolor: '#1a2433',
+        borderLeft: '3px solid #4a6fa5',
+        '&:hover': { bgcolor: '#1f2d40' },
+        transition: 'background 150ms'
+      }}
+    >
+      <ChevronRightIcon
+        sx={{
+          fontSize: 14,
+          color: '#7a9ab8',
+          transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+          transition: 'transform 200ms ease',
+          flexShrink: 0
+        }}
+      />
+      <Typography
+        sx={{
+          fontSize: 11,
+          color: '#a0c4d8',
+          fontWeight: 600,
+          flex: 1,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap'
+        }}
+      >
+        🖥 {machineName}
+      </Typography>
+      <Typography
+        sx={{
+          fontSize: 10,
+          color: '#4a6fa5',
+          fontWeight: 700,
+          bgcolor: '#4a6fa522',
+          px: 0.75,
+          py: 0.125,
+          borderRadius: 0.5,
+          whiteSpace: 'nowrap',
+          flexShrink: 0
+        }}
+      >
+        {instanceCount} istanze
+      </Typography>
+    </Box>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -745,6 +823,7 @@ interface VirtualServerListProps {
   onSelectAg: (agName: string) => void
   onToggleCollapse: (groupId: string) => void
   onToggleAgCollapse: (agName: string) => void
+  onToggleMachineCollapse: (machineName: string) => void
   onContextMenu: (e: React.MouseEvent, server: StoredServer) => void
 }
 
@@ -760,6 +839,7 @@ function VirtualServerList({
   onSelectAg: _onSelectAg,
   onToggleCollapse,
   onToggleAgCollapse,
+  onToggleMachineCollapse,
   onContextMenu
 }: VirtualServerListProps): React.JSX.Element {
   const parentRef = useRef<HTMLDivElement>(null)
@@ -825,6 +905,14 @@ function VirtualServerList({
                     onClick={() => onToggleAgCollapse(item.agName)}
                   />
                 )}
+                {item.kind === 'machine' && (
+                  <MachineHeader
+                    machineName={item.machineName}
+                    instanceCount={item.instanceCount}
+                    isExpanded={item.isExpanded}
+                    onClick={() => onToggleMachineCollapse(item.machineName)}
+                  />
+                )}
                 {item.kind === 'server' && (
                   <ServerItem
                     server={item.server}
@@ -832,6 +920,7 @@ function VirtualServerList({
                     isSelected={selectedServer ? selectedServer.id === item.server.id : false}
                     searchText=""
                     inAgGroup={item.inAgGroup}
+                    inMachineGroup={item.inMachineGroup}
                     onSelect={() => onSelectServer(item.server)}
                     onContextMenu={onContextMenu}
                   />
@@ -857,6 +946,7 @@ function VirtualServerList({
                     alias={serverAliases[serverLabel(item.server)]}
                     isSelected={selectedServer ? selectedServer.id === item.server.id : false}
                     searchText={searchText}
+                    inMachineGroup={false}
                     onSelect={() => onSelectServer(item.server)}
                     onContextMenu={onContextMenu}
                   />
@@ -903,8 +993,10 @@ export function Sidebar({
     serverGroups,
     serverAliases,
     expandedAGs,
+    expandedMachines,
     toggleCollapse,
     toggleAgCollapse,
+    toggleMachineCollapse,
     setServerGroup,
     setServerAlias
   } = useGroupsStore()
@@ -996,25 +1088,63 @@ export function Sidebar({
           if (isExpanded) {
             const agServers = agServersInGroup.filter((s) => s.agGroupId === ag.id)
             for (const s of agServers) {
-              items.push({ kind: 'server', server: s, inAgGroup: true })
+              items.push({ kind: 'server', server: s, inAgGroup: true, inMachineGroup: false })
             }
           }
         }
+
+        // Group standalone servers by machineName (fallback: host)
+        const machineMap = new Map<string, StoredServer[]>()
         for (const s of standaloneServers) {
-          items.push({ kind: 'server', server: s, inAgGroup: false })
+          const key = s.machineName ?? s.ip ?? s.host
+          if (!machineMap.has(key)) machineMap.set(key, [])
+          machineMap.get(key)!.push(s)
+        }
+        for (const [machineName, machineServers] of machineMap) {
+          if (machineServers.length >= 2) {
+            const isExpanded = expandedMachines.includes(machineName)
+            items.push({ kind: 'machine', machineName, instanceCount: machineServers.length, isExpanded })
+            if (isExpanded) {
+              for (const s of machineServers) {
+                items.push({ kind: 'server', server: s, inAgGroup: false, inMachineGroup: true })
+              }
+            }
+          } else {
+            for (const s of machineServers) {
+              items.push({ kind: 'server', server: s, inAgGroup: false, inMachineGroup: false })
+            }
+          }
         }
       }
     }
 
     if (ungrouped.length > 0) {
       items.push({ kind: 'ungrouped-header' })
+      const ungroupedMachineMap = new Map<string, StoredServer[]>()
       for (const s of ungrouped) {
-        items.push({ kind: 'server', server: s, inAgGroup: false })
+        const key = s.machineName ?? s.ip ?? s.host
+        if (!ungroupedMachineMap.has(key)) ungroupedMachineMap.set(key, [])
+        ungroupedMachineMap.get(key)!.push(s)
+      }
+      for (const [machineName, machineServers] of ungroupedMachineMap) {
+        if (machineServers.length >= 2) {
+          const isExpanded = expandedMachines.includes(machineName)
+          items.push({ kind: 'machine', machineName, instanceCount: machineServers.length, isExpanded })
+          if (isExpanded) {
+            for (const s of machineServers) {
+              items.push({ kind: 'server', server: s, inAgGroup: false, inMachineGroup: true })
+            }
+          }
+        } else {
+          for (const s of machineServers) {
+            items.push({ kind: 'server', server: s, inAgGroup: false, inMachineGroup: false })
+          }
+        }
       }
     }
 
     return items
-  }, [searchText, filteredServers, sortedGroups, serversByGroupId, agGroups, ungrouped, expandedAGs])
+  }, [searchText, filteredServers, sortedGroups, serversByGroupId, agGroups, ungrouped, expandedAGs, expandedMachines])
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, server: StoredServer): void => {
@@ -1113,6 +1243,7 @@ export function Sidebar({
         onSelectAg={onSelectAg}
         onToggleCollapse={toggleCollapse}
         onToggleAgCollapse={toggleAgCollapse}
+        onToggleMachineCollapse={toggleMachineCollapse}
         onContextMenu={handleContextMenu}
       />
 

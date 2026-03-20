@@ -28,6 +28,7 @@ export interface AddServerFormData {
   ip: string
   port: number
   instanceName: string
+  machineName?: string
   useWindowsAuth: boolean
   username: string
   password: string
@@ -125,12 +126,13 @@ export function AddServerDialog({
         return
       }
       const { machineName, instanceName } = result.data
-      // Auto-fill alias only if the field is empty
-      if (!form.alias?.trim()) {
-        setForm((prev) => ({ ...prev, alias: machineName }))
-      }
-      // Auto-fill instanceName (empty string when default instance)
-      setForm((prev) => ({ ...prev, instanceName: instanceName ?? '' }))
+      // Auto-fill alias only if the field is empty; always capture machineName
+      setForm((prev) => ({
+        ...prev,
+        machineName,
+        instanceName: instanceName ?? '',
+        alias: prev.alias?.trim() ? prev.alias : machineName
+      }))
       const label = instanceName ? `${machineName}\\${instanceName}` : machineName
       setTestState('success')
       setTestLabel(label)
@@ -154,36 +156,39 @@ export function AddServerDialog({
 
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
-          <TextField
-            label="IP / Hostname"
-            value={form.ip}
-            onChange={(e) => set('ip', e.target.value)}
-            error={!!errors.ip}
-            helperText={errors.ip}
-            fullWidth
-            autoFocus
-            placeholder="es. 192.168.1.10 oppure SQLSERVER01"
-          />
-
-          <Stack direction="row" spacing={2}>
+          <Stack direction="row" spacing={2} alignItems="flex-start">
+            <TextField
+              label="IP / Hostname"
+              value={form.ip}
+              onChange={(e) => set('ip', e.target.value)}
+              error={!!errors.ip}
+              helperText={errors.ip}
+              fullWidth
+              autoFocus
+              placeholder="es. 192.168.1.10 oppure SQLSERVER01"
+            />
             <TextField
               label="Porta"
               type="number"
               value={form.port}
               onChange={(e) => set('port', Number(e.target.value))}
               error={!!errors.port}
-              helperText={errors.port}
-              sx={{ width: 140 }}
+              helperText={
+                errors.port ||
+                'Per named instance con SQL Browser disabilitato, specifica la porta statica (SQL Server Configuration Manager → TCP/IP → IPAll → TCP Port)'
+              }
+              sx={{ width: 140, flexShrink: 0 }}
               inputProps={{ min: 1, max: 65535 }}
             />
-            <TextField
-              label="Nome Istanza (opzionale)"
-              value={form.instanceName}
-              onChange={(e) => set('instanceName', e.target.value)}
-              placeholder="es. SQLEXPRESS"
-              fullWidth
-            />
           </Stack>
+
+          <TextField
+            label="Nome Istanza (opzionale)"
+            value={form.instanceName}
+            onChange={(e) => set('instanceName', e.target.value)}
+            placeholder="es. SQLEXPRESS"
+            fullWidth
+          />
 
           {/* Test connection status */}
           {testState !== 'idle' && (

@@ -2,6 +2,7 @@ import { BrowserWindow } from 'electron'
 import { IpcChannel } from './ipc/types'
 import type { Alert, AlertCategory, AlertSeverity, WorkerStartRequest, CollectMetricsRequest, ServerHealthPayload } from './ipc/types'
 import { collectMetrics } from './collectors/sqlCollector'
+import { detectAndSyncReplicaRoles } from './collectors/agCollector'
 import type { ServerMetrics } from './collectors/types'
 import { getAllCustomFields } from './store/dbCustomFields'
 import { shouldSendDelta } from './deltaUtils'
@@ -213,6 +214,17 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     const delta = computeDelta(sid, enrichedMetrics)
     pushToRenderer(IpcChannel.METRICS_UPDATED, { serverId: sid, metrics: delta })
     processAlerts(sid, enrichedMetrics)
+
+    // AG detection — fire-and-forget: update agGroupId/agName/agRole for all
+    // replicas found from this server; push changed records to renderer.
+    // Errors are swallowed silently (server not in AG / no permissions).
+    detectAndSyncReplicaRoles(job.server)
+      .then((updated) => {
+        if (updated.length > 0) {
+          pushToRenderer(IpcChannel.SERVER_CONFIG_UPDATED, updated)
+        }
+      })
+      .catch(() => {}) // not in AG or insufficient permissions — silent
 
     // Reset circuit-breaker on success
     job.lastFailed  = false

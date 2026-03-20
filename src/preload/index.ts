@@ -454,6 +454,12 @@ const realApi = {
     return () => ipcRenderer.removeListener(IpcChannel.SERVER_RECOVERED, listener)
   },
 
+  onServerConfigUpdated: (callback: (servers: StoredServer[]) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, servers: StoredServer[]) => callback(servers)
+    ipcRenderer.on(IpcChannel.SERVER_CONFIG_UPDATED, listener)
+    return () => ipcRenderer.removeListener(IpcChannel.SERVER_CONFIG_UPDATED, listener)
+  },
+
   // App visibility — window blur / focus
   onAppBackground: (callback: () => void): (() => void) => {
     const listener = () => callback()
@@ -710,6 +716,7 @@ const mockApi = {
 
   onAppBackground: (_callback: () => void): (() => void) => () => {},
   onAppForeground: (_callback: () => void): (() => void) => () => {},
+  onServerConfigUpdated: (_callback: (servers: StoredServer[]) => void): (() => void) => () => {},
 }
 
 // ---------------------------------------------------------------------------
@@ -781,8 +788,9 @@ const bridgeApi = {
     clearMocks: (): Promise<{ success: boolean; removed: number; remaining: number }> =>
       ipcRenderer.invoke('servers:clearMocks'),
   },
-  onServerUnreachable: (cb: (d: ServerUnreachableEvent) => void) => api.onServerUnreachable(cb),
-  onServerRecovered:   (cb: (id: string) => void) => api.onServerRecovered(cb),
+  onServerUnreachable:    (cb: (d: ServerUnreachableEvent) => void) => api.onServerUnreachable(cb),
+  onServerRecovered:      (cb: (id: string) => void) => api.onServerRecovered(cb),
+  onServerConfigUpdated:  (cb: (servers: StoredServer[]) => void) => api.onServerConfigUpdated(cb),
   onAppBackground:     (cb: () => void) => api.onAppBackground(cb),
   onAppForeground:     (cb: () => void) => api.onAppForeground(cb),
 }

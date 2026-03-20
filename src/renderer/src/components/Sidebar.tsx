@@ -1072,21 +1072,31 @@ export function Sidebar({
       items.push({ kind: 'group', group, onlineCount })
 
       if (!group.collapsed) {
-        const agGroupsInThisGroup = Object.values(agGroups).filter((ag) =>
-          ag.serverIds.some((sid) => groupServers.some((s) => s.id === sid))
-        )
-        // Split servers into mutually exclusive sets based on agGroupId.
-        // agGroupId is set only when the server itself confirmed AG membership —
-        // servers matched by name heuristics in agStore but never self-confirmed
-        // are treated as standalone and must not appear inside any AG group.
-        const agServersInGroup = groupServers.filter((s) => s.agGroupId != null)
-        const standaloneServers = groupServers.filter((s) => s.agGroupId == null)
+        // A server is considered an AG member if agName is set (case-insensitive, trimmed).
+        // This is more robust than agGroupId alone: the worker propagates agName to
+        // SECONDARY replicas even before agGroupId is confirmed via self-detection.
+        const isAgMember = (s: StoredServer): boolean => {
+          const k = s.agName?.trim().toLowerCase()
+          return k != null && k !== ''
+        }
+
+        // An AG is "active" in this group if any server in this group belongs to it.
+        const agGroupsInThisGroup = Object.values(agGroups).filter((ag) => {
+          const agKey = ag.ag_name.trim().toLowerCase()
+          return groupServers.some((s) => s.agName?.trim().toLowerCase() === agKey)
+        })
+
+        const agServersInGroup = groupServers.filter(isAgMember)
+        const standaloneServers = groupServers.filter((s) => !isAgMember(s))
 
         for (const ag of agGroupsInThisGroup) {
+          const agKey = ag.ag_name.trim().toLowerCase()
           const isExpanded = expandedAGs.includes(ag.ag_name)
           items.push({ kind: 'ag', agName: ag.ag_name, agInfo: ag, isExpanded })
           if (isExpanded) {
-            const agServers = agServersInGroup.filter((s) => s.agGroupId === ag.id)
+            const agServers = agServersInGroup.filter(
+              (s) => s.agName?.trim().toLowerCase() === agKey
+            )
             for (const s of agServers) {
               items.push({ kind: 'server', server: s, inAgGroup: true, inMachineGroup: false })
             }

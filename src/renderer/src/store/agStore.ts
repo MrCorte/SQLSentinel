@@ -89,7 +89,21 @@ export const useAgStore = create<AgStore>((set, get) => ({
               return addr === nameBase || nameBase.includes(addr) || addr.includes(nameBase)
             }
           )
-          if (matched) serverIds.add(matched.id)
+          if (matched) {
+            serverIds.add(matched.id)
+            // Update ALL matched replicas with agGroupId + agName + agRole —
+            // not just the server currently being detected.
+            // This ensures SECONDARY servers are grouped even if their own
+            // detectAgsForServer() run hasn't succeeded yet.
+            if (matched.id !== serverId) {
+              const replicaRole = replica.role_desc as AgRole
+              useServersStore.getState().updateServer(matched.id, {
+                agGroupId: ag.group_id,
+                agName: ag.ag_name,
+                agRole: replicaRole
+              })
+            }
+          }
         }
 
         // Determine the role of this specific server in this AG
@@ -103,11 +117,11 @@ export const useAgStore = create<AgStore>((set, get) => ({
           )
         })
 
-        // Persist the role back to serversStore so it shows in sidebar
+        // Persist agGroupId + agName + agRole for the current server
         if (myReplica) {
-          const { useServersStore: ss } = await import('./serversStore')
-          ss.getState().updateServer(serverId, {
+          useServersStore.getState().updateServer(serverId, {
             agGroupId: ag.group_id,
+            agName: ag.ag_name,
             agRole: myReplica.role_desc as AgRole
           })
         }

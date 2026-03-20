@@ -125,7 +125,8 @@ export interface StoredServer {
   lastSeen?: string         // ISO 8601
   unreachable?: boolean
   unreachableSince?: string // ISO 8601
-  agGroupId?: string        // group_id if part of an AG
+  agGroupId?: string        // group_id UUID if part of an AG
+  agName?: string           // AG human-readable name, e.g. "AG-PROD-01"
   agRole?: AgRole
 }
 
@@ -387,6 +388,8 @@ export interface SqlSentinelAPI {
   }
   onServerUnreachable(callback: (data: ServerUnreachableEvent) => void): () => void
   onServerRecovered(callback: (serverId: string) => void): () => void
+  /** Pushed by worker when AG detection updates StoredServer records in electron-store */
+  onServerConfigUpdated(callback: (servers: StoredServer[]) => void): () => void
 }
 
 declare global {

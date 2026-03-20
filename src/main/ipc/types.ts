@@ -48,6 +48,8 @@ export enum IpcChannel {
   AG_GET_REPLICAS = 'ag:getReplicas',
   AG_GET_DATABASES = 'ag:getDatabases',
   EXPORT_INVENTORY_CSV = 'export:inventoryCsv',
+  // Push: worker detected AG membership changes — updates StoredServer records
+  SERVER_CONFIG_UPDATED = 'server:configUpdated',
   // App visibility — pushed from main to renderer on window blur/focus
   APP_BACKGROUND = 'app:background',
   APP_FOREGROUND = 'app:foreground',

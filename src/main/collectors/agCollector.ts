@@ -1,6 +1,7 @@
 import * as mssql from 'mssql'
 import type { CollectMetricsRequest } from '../ipc/types'
 import type { AvailabilityGroup, AvailabilityReplica, AvailabilityDatabase } from './types'
+import * as serverStore from '../store/serverStore'
 
 // ---------------------------------------------------------------------------
 // Connection helper — AG queries always run against master
@@ -101,6 +102,83 @@ export async function getAvailabilityReplicas(
   } finally {
     await pool.close()
   }
+}
+
+// ---------------------------------------------------------------------------
+// detectAndSyncReplicaRoles
+// ---------------------------------------------------------------------------
+
+/**
+ * Chiamato dal worker dopo ogni poll riuscito.
+ * Interroga sys.availability_replicas sul server corrente, poi per ogni
+ * replica trovata cerca il server corrispondente in electron-store e aggiorna
+ * agGroupId + agName + agRole.
+ *
+ * Ritorna l'array dei StoredServer effettivamente modificati (per il push
+ * al renderer via SERVER_CONFIG_UPDATED).
+ * Non lancia eccezioni — server non in AG restituisce [].
+ */
+export async function detectAndSyncReplicaRoles(
+  conn: CollectMetricsRequest
+): Promise<serverStore.StoredServer[]> {
+  const pool = await mssql.connect(buildConfig(conn))
+  let replicas: Array<{ agName: string; groupId: string; replicaHost: string; agRole: string }> = []
+  try {
+    const result = await pool.request().query<{
+      agName: string
+      groupId: string
+      replicaHost: string
+      agRole: string
+    }>(`
+      SELECT
+        ag.name                        AS agName,
+        CAST(ag.group_id AS nvarchar(36)) AS groupId,
+        ar.replica_server_name         AS replicaHost,
+        ISNULL(ars.role_desc, 'RESOLVING') AS agRole
+      FROM sys.availability_groups ag
+      JOIN sys.availability_replicas ar
+        ON ag.group_id = ar.group_id
+      LEFT JOIN sys.dm_hadr_availability_replica_states ars
+        ON ar.replica_id = ars.replica_id
+    `)
+    replicas = result.recordset
+  } finally {
+    await pool.close()
+  }
+
+  if (replicas.length === 0) return []
+
+  const allServers = serverStore.getAll()
+  const updated: serverStore.StoredServer[] = []
+
+  for (const replica of replicas) {
+    // Hostname matching: strip instance suffix, compare case-insensitive
+    const replicaBase = replica.replicaHost.split('\\')[0].toLowerCase()
+    const match = allServers.find((s) => {
+      const addr = (s.host ?? '').toLowerCase()
+      return addr === replicaBase || addr.includes(replicaBase) || replicaBase.includes(addr)
+    })
+    if (!match) continue
+
+    const agRole = replica.agRole as 'PRIMARY' | 'SECONDARY' | 'RESOLVING'
+    const patch = {
+      agGroupId: replica.groupId,
+      agName: replica.agName,
+      agRole
+    }
+
+    // Only write if something actually changed — avoid useless electron-store writes
+    if (
+      match.agGroupId !== patch.agGroupId ||
+      match.agName    !== patch.agName    ||
+      match.agRole    !== patch.agRole
+    ) {
+      serverStore.update(match.id, patch)
+      updated.push({ ...match, ...patch })
+    }
+  }
+
+  return updated
 }
 
 // ---------------------------------------------------------------------------

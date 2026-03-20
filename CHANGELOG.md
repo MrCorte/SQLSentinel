@@ -5,6 +5,20 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed — 2026-03-20 (AG secondary grouping)
+- **Causa 1 — propagazione agName ai SECONDARY**: `agStore.detectAgsForServer()` ora chiama `updateServer()` per TUTTI i replica trovati (non solo il server corrente); ogni replica riceve `agGroupId + agName + agRole`; in questo modo quando si aggiunge il PRIMARY, il SECONDARY nello store viene aggiornato automaticamente
+- **Causa 1 bis — worker main process**: aggiunta `detectAndSyncReplicaRoles()` in `agCollector.ts`; interroga `sys.availability_replicas` dopo ogni poll riuscito, trova i server corrispondenti in electron-store e aggiorna `agGroupId + agName + agRole`; modifiche scritte via `serverStore.update()` e propagate al renderer tramite nuovo canale push `SERVER_CONFIG_UPDATED`
+- **Causa 2 — grouping sidebar case-insensitive**: la sidebar ora raggruppa i server per `agName` (trim + toLowerCase) invece di `agGroupId`; un server è considerato membro AG se `agName?.trim()` è non-vuoto; `agGroupsInThisGroup` usa lo stesso match per trovare gli AG headers applicabili; il SECONDARY appare ora sotto il suo AG header anche se `agGroupId` non è ancora valorizzato
+- `StoredServer`: aggiunto campo `agName?: string` in `preload/index.d.ts` e `serverStore.ts`
+- `IpcChannel.SERVER_CONFIG_UPDATED` (`server:configUpdated`): nuovo canale push main→renderer; registrato in `preload/index.ts` (realApi + mockApi stub + bridgeApi); firma in `preload/index.d.ts` (`onServerConfigUpdated`)
+- `App.tsx`: nuovo `useEffect` che ascolta `onServerConfigUpdated` e applica `updateServer()` per ogni server aggiornato
+- `mocks/servers.mock.ts`: aggiunto `agName` ai server mock con `agGroupId` (mock-s01, mock-s02, mock-s07, mock-s08)
+
+### Fixed — 2026-03-20 (mock bugs 2)
+- `App.tsx`: rimosso il guard `if (USE_MOCK) return` dall'effect `loadServers` — `loadServers()` ora viene eseguito sempre, anche con `VITE_USE_MOCK=true`; i server aggiunti manualmente vengono salvati in electron-store e ricaricati al riavvio
+- `useMockData`: aggiunto check `if (existing.length > 0) return` — i mock vengono seminati SOLO se lo store è vuoto (nessun server reale configurato); se l'utente ha aggiunto server reali, questi hanno priorità e i mock non vengono caricati
+- Flusso di aggiunta server garantito invariato in mock mode: `AddServerDialog` → IPC `server:add` → electron-store → `serversStore` → sidebar, senza interferenze dal mock loader
+
 ### Fixed — 2026-03-20 (mock bugs)
 - `useMockData`: cambiato da `[initialized]` a `[]` deps — il seeding avviene al mount senza attendere `loadServers()` (che in mock mode non viene mai chiamato)
 - `useMockData`: `useServersStore.setState` ora imposta `initialized: true` assieme ai server mock, così non è più necessario attendere `loadServers()`

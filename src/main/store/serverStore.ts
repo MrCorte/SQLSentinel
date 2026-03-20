@@ -24,6 +24,7 @@ export interface StoredServer {
   machineName?: string      // SERVERPROPERTY('MachineName') — usato per raggruppare istanze multiple sulla stessa macchina fisica
   // Always On AG membership — populated at runtime, refreshed on startup
   agGroupId?: string        // group_id UUID if this server belongs to an AG
+  agName?: string           // AG name, e.g. "AG-PROD-01" — used for sidebar grouping
   agRole?: 'PRIMARY' | 'SECONDARY' | 'RESOLVING'
   hostingType?: ServerHostingType
 }

@@ -29,6 +29,7 @@ function makeServer(
     instanceName?: string
     machineName: string
     agGroupId?: string
+    agName?: string
     agRole?: 'PRIMARY' | 'SECONDARY'
     hostingType: 'cloud' | 'on-premise'
     unreachable?: boolean
@@ -42,6 +43,7 @@ function makeServer(
     instanceName: opts.instanceName,
     machineName: opts.machineName,
     agGroupId: opts.agGroupId,
+    agName: opts.agName,
     agRole: opts.agRole,
     hostingType: opts.hostingType,
     useWindowsAuth: true,
@@ -99,12 +101,14 @@ export const MOCK_SERVERS: StoredServer[] = [
   makeServer('mock-s01', '10.0.1.1', 1433, {
     machineName: 'SQLPROD01',
     agGroupId: 'mock-ag-prod-01',
+    agName: 'AG-PROD-01',
     agRole: 'PRIMARY',
     hostingType: 'cloud',
   }),
   makeServer('mock-s02', '10.0.1.2', 1433, {
     machineName: 'SQLPROD02',
     agGroupId: 'mock-ag-prod-01',
+    agName: 'AG-PROD-01',
     agRole: 'SECONDARY',
     hostingType: 'cloud',
   }),
@@ -135,12 +139,14 @@ export const MOCK_SERVERS: StoredServer[] = [
   makeServer('mock-s07', '10.0.2.1', 1433, {
     machineName: 'SQLCOLL01',
     agGroupId: 'mock-ag-coll-01',
+    agName: 'AG-COLL-01',
     agRole: 'PRIMARY',
     hostingType: 'cloud',
   }),
   makeServer('mock-s08', '10.0.2.2', 1433, {
     machineName: 'SQLCOLL02',
     agGroupId: 'mock-ag-coll-01',
+    agName: 'AG-COLL-01',
     agRole: 'SECONDARY',
     hostingType: 'on-premise',
   }),

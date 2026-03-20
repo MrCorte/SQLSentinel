@@ -32,10 +32,9 @@ function AppInner(): React.JSX.Element {
   const { setRetentionMinutes } = useWorker()
   const { alerts, setAlerts, addAlert, acknowledgeAlert: acknowledgeAlertInStore } = useAlertsStore()
 
-  // Load persisted servers on mount — skip in mock mode (useMockData seeds the store)
+  // Load persisted servers on mount — runs in both real and mock mode so that
+  // servers added manually while VITE_USE_MOCK=true are preserved across restarts
   useEffect(() => {
-    if (USE_MOCK) return
-
     console.log('[App] init — chiamata loadServers')
     const { loadServers } = useServersStore.getState()
 
@@ -87,6 +86,21 @@ function AppInner(): React.JSX.Element {
   useEffect(() => {
     return window.sqlSentinel.onServerHealthUpdate((health) => {
       useMetricsStore.getState().setServerHealth(health)
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // AG detection push: worker found replica roles — update serversStore in-place
+  useEffect(() => {
+    if (typeof window.sqlSentinel?.onServerConfigUpdated !== 'function') return
+    return window.sqlSentinel.onServerConfigUpdated((updatedServers) => {
+      const { updateServer } = useServersStore.getState()
+      for (const srv of updatedServers) {
+        updateServer(srv.id, {
+          agGroupId: srv.agGroupId,
+          agName: srv.agName,
+          agRole: srv.agRole
+        })
+      }
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 

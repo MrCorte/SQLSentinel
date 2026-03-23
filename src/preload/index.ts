@@ -610,7 +610,13 @@ const mockApi = {
   onAlertNew: (_callback: (alert: Alert) => void): (() => void) => () => {},
 
   getSettings: (): Promise<IpcResult<AppSettings>> =>
-    Promise.resolve({ ok: true, data: { retentionMinutes: 60 } }),
+    Promise.resolve({ ok: true, data: {
+      retentionMinutes: 60,
+      backgroundEnabled: true,
+      backgroundMode: 'light',
+      backgroundIntervalMinutes: 30,
+      backgroundNotifications: true,
+    }}),
 
   saveSettings: (_req: SaveSettingsRequest): Promise<IpcResult<null>> =>
     Promise.resolve({ ok: true, data: null }),

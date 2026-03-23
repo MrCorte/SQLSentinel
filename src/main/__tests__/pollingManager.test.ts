@@ -34,7 +34,7 @@ function makeMetrics(): ServerMetrics {
     collectedAt: new Date(),
     instanceInfo: {
       version: '2019', edition: 'Dev', memoryUsedMb: 100,
-      memoryTargetMb: 200, cpuUsagePercent: 10, uptimeDays: 1
+      memoryTargetMb: 200, cpuUsagePercent: 10, uptimeDays: 1, logicalCpus: 8, physicalCpus: 4
     },
     databases: [], activeSessions: [], topQueries: [],
     backupStatus: [], waitStats: [], diskVolumes: [], databaseFiles: []

@@ -230,7 +230,9 @@ describe('ServerHistoryChart — allineamento indice cpu/memory in chartData', (
           memoryUsedMb: 1000 + i * 50,
           memoryTargetMb: 8192,
           cpuUsagePercent: 10 + i,
-          uptimeDays: 1
+          uptimeDays: 1,
+          logicalCpus: 8,
+          physicalCpus: 4
         },
         databases: [],
         activeSessions: [],
@@ -257,7 +259,9 @@ describe('ServerHistoryChart — allineamento indice cpu/memory in chartData', (
         memoryUsedMb: 4096,
         memoryTargetMb: 8192,
         cpuUsagePercent: 25,
-        uptimeDays: 1
+        uptimeDays: 1,
+        logicalCpus: 8,
+        physicalCpus: 4
       },
       databases: [],
       activeSessions: [],
@@ -281,7 +285,8 @@ describe('ServerHistoryChart — allineamento indice cpu/memory in chartData', (
       instanceInfo: {
         version: '15.0', edition: 'Dev',
         memoryUsedMb: 2048, memoryTargetMb: 8192,
-        cpuUsagePercent: 15, uptimeDays: 1
+        cpuUsagePercent: 15, uptimeDays: 1,
+        logicalCpus: 8, physicalCpus: 4
       },
       databases: [], activeSessions: [], topQueries: [],
       backupStatus: [], waitStats: [], diskVolumes: [], databaseFiles: []

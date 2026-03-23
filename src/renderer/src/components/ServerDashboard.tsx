@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Paper, Box, Tooltip, Chip, Select, MenuItem } from '@mui/material'
 import type { StoredServer, CollectMetricsRequest, ServerMetrics } from '../../../preload/index'
-import type { MetricsHistoryPoint } from '../hooks/useMetrics'
 import { MetricsPanel } from './MetricsPanel'
 import { ServerHistorySection } from './ServerHistoryChart'
 import { useServersStore } from '../store/serversStore'
@@ -11,23 +10,18 @@ import type { ServerHostingType } from '../constants/hosting'
 interface Props {
   server: StoredServer
   metrics: ServerMetrics
-  history: MetricsHistoryPoint[]
   connection: CollectMetricsRequest
 }
 
 /**
  * Per-server dashboard:
  *
- *  1. KPI cards (CPU, Memoria, Uptime, Sessioni)  — rendered inside MetricsPanel → Tab Panoramica
- *  2. Storico CPU / Memoria                       — ring-buffer sparkline (NEW)
- *  3. Tabella database                            — MetricsPanel → Tab Database
- *  4. Sessioni / Blocchi / Job                   — MetricsPanel → tabs
- *
- * The Storico section is injected above the MetricsPanel tabs so it is always
- * visible regardless of which tab is active, giving a permanent at-a-glance
- * history view while the DBA works through the detail tabs below.
+ *  1. Storico CPU / Memoria  — ring-buffer sparkline, always visible above the tabs
+ *  2. KPI cards (Panoramica) — MetricsPanel → Tab Panoramica
+ *  3. Tabella database        — MetricsPanel → Tab Database
+ *  4. Sessioni / Blocchi / Job — MetricsPanel → tabs
  */
-export function ServerDashboard({ server, metrics, history, connection }: Props): React.JSX.Element {
+export function ServerDashboard({ server, metrics, connection }: Props): React.JSX.Element {
   // serverId matches the "ip:port" key used throughout metricsStore / workerStore
   const serverId = `${server.ip ?? server.host}:${server.port}`
   const updateServer = useServersStore((s) => s.updateServer)
@@ -88,7 +82,6 @@ export function ServerDashboard({ server, metrics, history, connection }: Props)
       {/* ── KPI cards + tabs (Panoramica, Database, Sessioni …) ──────── */}
       <MetricsPanel
         metrics={metrics}
-        history={history}
         serverId={serverId}
         connection={connection}
       />

@@ -21,6 +21,6 @@ export function escapeCsvValue(v: string): string {
  * - Every cell is passed through escapeCsvValue.
  */
 export function buildCsvContent(headers: string[], rows: string[][]): string {
-  const lines = [headers, ...rows].map((row) => row.map(escapeCsvValue).join(','))
+  const lines = [headers, ...rows].map((row) => row.map(escapeCsvValue).join(';'))
   return '\uFEFF' + lines.join('\r\n')
 }

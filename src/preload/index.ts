@@ -170,6 +170,8 @@ function mockMetrics(cpu = 18, memUsed = 4096): ServerMetrics {
       memoryTargetMb: MOCK_MEM_TARGET,
       cpuUsagePercent: Math.round(cpu * 10) / 10,
       uptimeDays: 42,
+      logicalCpus: 16,
+      physicalCpus: 8,
     },
     databases: [
       { name: 'AdventureWorks', stateDesc: 'ONLINE', recoveryModel: 'FULL', sizeMb: 248, logSizeMb: 64 },
@@ -403,8 +405,10 @@ const realApi = {
   exportAlerts: (): Promise<IpcResult<string>> =>
     ipcRenderer.invoke(IpcChannel.EXPORT_ALERTS),
 
-  exportInventoryCsv: (req: ExportInventoryCsvRequest): Promise<IpcResult<string | null>> =>
-    ipcRenderer.invoke(IpcChannel.EXPORT_INVENTORY_CSV, req),
+  exportInventoryCsv: (req: ExportInventoryCsvRequest): Promise<IpcResult<string | null>> => {
+    console.log('[PRELOAD] exportInventoryCsv → canale:', IpcChannel.EXPORT_INVENTORY_CSV, 'righe:', req?.rows?.length)
+    return ipcRenderer.invoke(IpcChannel.EXPORT_INVENTORY_CSV, req)
+  },
 
   saveCsv: (req: SaveCsvRequest): Promise<IpcResult<string | null>> =>
     ipcRenderer.invoke(IpcChannel.FILE_SAVE_CSV, req),
@@ -757,11 +761,13 @@ const bridgeApi = {
   getDbCustomFields:   (r: DbCustomFieldsGetRequest) => api.getDbCustomFields(r),
   setDbCustomFields:   (r: DbCustomFieldsSetRequest) => api.setDbCustomFields(r),
   getAllDbCustomFields: () => api.getAllDbCustomFields(),
-  exportCustomFields:  () => api.exportCustomFields(),
-  exportInventory:     () => api.exportInventory(),
-  exportAlerts:        () => api.exportAlerts(),
-  exportInventoryCsv:  (r: ExportInventoryCsvRequest) => api.exportInventoryCsv(r),
-  saveCsv:             (r: SaveCsvRequest) => api.saveCsv(r),
+  // File/CSV exports: sempre IPC reale — le operazioni dialog+writeFile
+  // non funzionano nel mock layer (mockApi restituisce null senza aprire il dialog)
+  exportCustomFields:  () => realApi.exportCustomFields(),
+  exportInventory:     () => realApi.exportInventory(),
+  exportAlerts:        () => realApi.exportAlerts(),
+  exportInventoryCsv:  (r: ExportInventoryCsvRequest) => realApi.exportInventoryCsv(r),
+  saveCsv:             (r: SaveCsvRequest) => realApi.saveCsv(r),
   db: {
     shrinkEstimate: (r: ShrinkEstimateParams): Promise<IpcResult<ShrinkEstimate[]>> =>
       isMock ? api.db.shrinkEstimate(r) : ipcRenderer.invoke(IpcChannel.DB_SHRINK_ESTIMATE, r),

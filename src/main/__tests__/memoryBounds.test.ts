@@ -50,7 +50,9 @@ function makeMetrics(tag: number): ServerMetrics {
       memoryUsedMb: tag,
       memoryTargetMb: 200,
       cpuUsagePercent: tag % 100,
-      uptimeDays: tag
+      uptimeDays: tag,
+      logicalCpus: 8,
+      physicalCpus: 4
     },
     databases: [],
     activeSessions: [],
@@ -280,7 +282,9 @@ function makeServerMetrics(cpu: number, memMb: number): ServerMetrics {
       memoryUsedMb: memMb,
       memoryTargetMb: 8192,
       cpuUsagePercent: cpu,
-      uptimeDays: 1
+      uptimeDays: 1,
+      logicalCpus: 8,
+      physicalCpus: 4
     },
     databases: [],
     activeSessions: [],

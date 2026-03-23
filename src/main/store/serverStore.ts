@@ -26,6 +26,8 @@ export interface StoredServer {
   agGroupId?: string        // group_id UUID if this server belongs to an AG
   agName?: string           // AG name, e.g. "AG-PROD-01" — used for sidebar grouping
   agRole?: 'PRIMARY' | 'SECONDARY' | 'RESOLVING'
+  logicalCpus?: number      // cpu_count from sys.dm_os_sys_info (persisted, rarely changes)
+  physicalCpus?: number     // cpu_count / hyperthread_ratio
   hostingType?: ServerHostingType
 }
 

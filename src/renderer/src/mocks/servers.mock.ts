@@ -70,7 +70,7 @@ function makeDb(
 
 function makeMetrics(
   databases: DatabaseInfo[],
-  opts: { version?: string; uptimeDays?: number; cpu?: number } = {}
+  opts: { version?: string; uptimeDays?: number; cpu?: number; logicalCpus?: number; physicalCpus?: number } = {}
 ): ServerMetrics {
   return {
     collectedAt: new Date(),
@@ -81,6 +81,8 @@ function makeMetrics(
       memoryTargetMb: 8192,
       cpuUsagePercent: opts.cpu ?? 12,
       uptimeDays: opts.uptimeDays ?? 45,
+      logicalCpus: opts.logicalCpus ?? 16,
+      physicalCpus: opts.physicalCpus ?? 8,
     },
     databases,
     activeSessions: [],

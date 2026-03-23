@@ -1,4 +1,31 @@
 import type { StoredServer } from '../../../preload/index'
+
+// ---------------------------------------------------------------------------
+// SQL Server version label from @@VERSION or pure ProductVersion string
+// ---------------------------------------------------------------------------
+
+const SQL_VERSION_MAP: Record<number, string> = {
+  11: 'SQL Server 2012',
+  12: 'SQL Server 2014',
+  13: 'SQL Server 2016',
+  14: 'SQL Server 2017',
+  15: 'SQL Server 2019',
+  16: 'SQL Server 2022',
+}
+
+/**
+ * Ricava la versione major leggibile da qualsiasi formato:
+ *   - "15.0.4375.4"  (ProductVersion puro)
+ *   - "Microsoft SQL Server 2019 (RTM-CU27) - 15.0.4375.4 (X64) ..."  (@@VERSION)
+ * Ritorna '' se la stringa è vuota/sconosciuta.
+ */
+export function getSqlServerVersion(version: string | undefined): string {
+  if (!version) return ''
+  const match = version.match(/\b(\d{2})\.\d+\.\d+/)
+  const major = match ? parseInt(match[1]) : NaN
+  if (isNaN(major)) return ''
+  return SQL_VERSION_MAP[major] ?? `SQL Server (v${major})`
+}
 import type {
   ServerSummary,
   AgClusterSummary,
@@ -45,7 +72,10 @@ function buildServerSummary(
     isAg: !!srv.agGroupId,
     agName: ag?.ag_name,
     agRole: srv.agRole,
-    hostingType: srv.hostingType
+    hostingType: srv.hostingType,
+    // Live metrics take priority; fall back to last persisted value in StoredServer
+    logicalCpus: m?.instanceInfo.logicalCpus || srv.logicalCpus,
+    physicalCpus: m?.instanceInfo.physicalCpus || srv.physicalCpus
   }
 }
 

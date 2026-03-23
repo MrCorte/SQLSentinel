@@ -493,13 +493,19 @@ export function registerIpcHandlers(): void {
   // EXPORT_INVENTORY_CSV — apre showSaveDialog e scrive il CSV inventario con BOM UTF-8
   ipcMain.handle(
     IpcChannel.EXPORT_INVENTORY_CSV,
-    async (_e, req: ExportInventoryCsvRequest): Promise<IpcResult<string | null>> => {
+    async (event: IpcMainInvokeEvent, req: ExportInventoryCsvRequest): Promise<IpcResult<string | null>> => {
       try {
-        const result = await dialog.showSaveDialog({
+        const win =
+          BrowserWindow.fromWebContents(event.sender) ??
+          BrowserWindow.getFocusedWindow() ??
+          BrowserWindow.getAllWindows()[0]
+        console.log('[MAIN] EXPORT_INVENTORY_CSV ricevuto, righe:', req?.rows?.length, 'winId:', win?.id)
+        const result = await dialog.showSaveDialog(win, {
           title: 'Salva inventario CSV',
           defaultPath: path.join(app.getPath('downloads'), `inventario-sql-${new Date().toISOString().slice(0, 10)}.csv`),
           filters: [{ name: 'CSV', extensions: ['csv'] }]
         })
+        console.log('[MAIN] dialog result:', { canceled: result.canceled, filePath: result.filePath })
         if (result.canceled || !result.filePath) return { ok: true, data: null }
         const content = buildCsvContent(req.headers, req.rows)
         await fsPromises.writeFile(result.filePath, content, 'utf8')
@@ -515,8 +521,11 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     IpcChannel.FILE_SAVE_CSV,
     async (event: IpcMainInvokeEvent, req: SaveCsvRequest): Promise<IpcResult<string | null>> => {
-      const win = BrowserWindow.fromWebContents(event.sender)
-      const result = await dialog.showSaveDialog(win ?? undefined!, {
+      const win =
+        BrowserWindow.fromWebContents(event.sender) ??
+        BrowserWindow.getFocusedWindow() ??
+        BrowserWindow.getAllWindows()[0]
+      const result = await dialog.showSaveDialog(win, {
         defaultPath: req.filename,
         filters: [{ name: 'CSV', extensions: ['csv'] }]
       })

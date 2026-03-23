@@ -87,7 +87,7 @@ describe('AREA 5 — buildCsvContent', () => {
     const headers = ['Ambiente', 'Server', 'Database']
     const csv = buildCsvContent(headers, [])
     const firstLine = csv.slice(1).split('\r\n')[0]
-    expect(firstLine).toBe('"Ambiente","Server","Database"')
+    expect(firstLine).toBe('"Ambiente";"Server";"Database"')
   })
 
   it('genera N+1 righe per N righe di dati (header + dati)', () => {
@@ -139,7 +139,9 @@ function makeMetrics(dbs: DatabaseInfo[], backups?: BackupInfo[]): ServerMetrics
       memoryUsedMb: 100,
       memoryTargetMb: 200,
       cpuUsagePercent: 10,
-      uptimeDays: 42
+      uptimeDays: 42,
+      logicalCpus: 8,
+      physicalCpus: 4
     },
     databases: dbs,
     activeSessions: [],

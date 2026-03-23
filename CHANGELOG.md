@@ -5,6 +5,34 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed — 2026-03-23 (export CSV — dialog parent window)
+- **`showSaveDialog` senza finestra padre**: entrambi gli handler `EXPORT_INVENTORY_CSV` e `FILE_SAVE_CSV` in `handlers.ts` usavano `win ?? undefined!` come parent — se `BrowserWindow.fromWebContents` restituisce `null`, il dialog veniva chiamato con `undefined` come primo argomento e non si apriva su Windows; sostituito con catena di fallback `BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]` che garantisce sempre una finestra valida
+
+### Fixed — 2026-03-23 (export CSV — mock mode bypass)
+- **Root cause — `VITE_MOCK_MODE=true` in `.env.development`**: in dev mode il `bridgeApi` nel preload usava `api` (= `mockApi`) per tutte le funzioni di export; `mockApi.saveCsv` e `mockApi.exportInventoryCsv` restituivano `{ ok: true, data: null }` senza aprire alcun dialog → nessun export funzionava
+- **Fix**: `exportCustomFields`, `exportInventory`, `exportAlerts`, `exportInventoryCsv`, `saveCsv` nel `bridgeApi` ora usano sempre `realApi` (bypass del mock), identico al pattern già adottato per `servers.*`; le operazioni file/dialog richiedono IPC reale indipendentemente dalla modalità di sviluppo
+
+### Fixed — 2026-03-23 (export CSV inventario)
+- **Bug 1 — dialog non si apriva**: `EXPORT_INVENTORY_CSV` handler in `handlers.ts` chiamava `dialog.showSaveDialog({...})` senza finestra padre (parametro `_e` ignorato); sostituito con `const win = BrowserWindow.fromWebContents(event.sender)` e `dialog.showSaveDialog(win ?? undefined!, {...})` — allineato al pattern corretto di `FILE_SAVE_CSV`
+- **Bug 2 — separatore sbagliato**: `buildCsvContent` in `csvUtils.ts` usava `,` come separatore di colonna; cambiato in `;` (standard Excel italiano); aggiornato il test `csvExport.test.ts` che verificava il separatore
+- **Bug 3 — filtri non rispettati**: `handleExportCsv` in `Inventory.tsx` esportava sempre l'inventario completo (`inventory`); ora quando `hasActiveFilters` è true, calcola un `allowedServerIds: Set<string>` dalle righe completamente espanse filtrate con gli stessi predicati di `filteredRows` (ma ignora lo stato di collapse per includere figli nascosti); `buildInventoryCsvRows` in `csvExportUtils.ts` accetta ora un parametro opzionale `allowedServerIds?: Set<string>` e salta i server non inclusi nel set
+
+### Removed — 2026-03-23 (grafico duplicato dashboard server)
+- **Grafico "Storico CPU / Memoria" duplicato rimosso** dalla tab Panoramica: rimane solo il grafico `ServerHistorySection` posizionato sopra le tab (sempre visibile), che legge dal ring-buffer di `metricsStore`; il componente `MemoryChart` e il relativo fallback ("Il grafico sarà disponibile…") sono stati rimossi da `TabPanoramica`
+- `MetricsPanel`: rimossi prop `history: MetricsHistoryPoint[]` e import `MemoryChart` / `MetricsHistoryPoint`; `TabPanoramica` ora accetta solo `metrics`
+- `ServerDashboard`: rimosso prop `history` (non più propagato a `MetricsPanel`)
+- `Dashboard.tsx`: rimossi destructuring `getHistory` da `useWorker()`, variabile `history` e relativo `console.log`
+
+### Changed — 2026-03-23 (AG header dual-click zone)
+- **`AgGroupHeader` in Sidebar**: separati i due comportamenti di click sulla riga AG; il chevron (`IconButton` con `e.stopPropagation()`) gestisce solo expand/collapse, mentre la zona nome + badge ha `onClick={onSelect}` e naviga alla AG Dashboard; prop `onClick` sostituita da `onToggleCollapse` + `onSelect`; `onSelectAg` in `VirtualServerList` ora utilizzato (rimosso prefisso `_`)
+
+### Added — 2026-03-23 (filtro versione SQL Server)
+- **Filtro "Versione"** nell'Inventario: dropdown dinamico che mostra le versioni distinte rilevate tra i server connessi (es. "SQL Server 2019", "SQL Server 2022"); si posiziona dopo il filtro Referente, si combina in AND con tutti i filtri esistenti, il bottone Reset lo azzera
+- **`getSqlServerVersion(version)`** in `inventoryUtils.ts`: utility che estrae la versione major leggibile da qualsiasi formato (`@@VERSION` completo o `ProductVersion` numerico puro) tramite regex `\b(\d{2})\.\d+\.\d+`; mappa: 11=2012, 12=2014, 13=2016, 14=2017, 15=2019, 16=2022; fallback `SQL Server (vN)` per versioni sconosciute
+- `versionOptions` calcolato con `useMemo` dalle repliche e dai server standalone in `inventory.groups`; appare nel filter bar solo se presente almeno una versione rilevata
+- Il filtro agisce su ogni riga della tabella virtuale (standalone, ag-replica, ag-cluster header, machine-header) confrontando `getSqlServerVersion(row.version) === selectedVersion`; gli header AG e machine mostrano la versione del PRIMARY / prima istanza
+- `isHierarchical` aggiornato a includere `filterVersion === 'all'` nel controllo indentazione
+
 ### Fixed — 2026-03-20 (AG secondary grouping)
 - **Causa 1 — propagazione agName ai SECONDARY**: `agStore.detectAgsForServer()` ora chiama `updateServer()` per TUTTI i replica trovati (non solo il server corrente); ogni replica riceve `agGroupId + agName + agRole`; in questo modo quando si aggiunge il PRIMARY, il SECONDARY nello store viene aggiornato automaticamente
 - **Causa 1 bis — worker main process**: aggiunta `detectAndSyncReplicaRoles()` in `agCollector.ts`; interroga `sys.availability_replicas` dopo ogni poll riuscito, trova i server corrispondenti in electron-store e aggiorna `agGroupId + agName + agRole`; modifiche scritte via `serverStore.update()` e propagate al renderer tramite nuovo canale push `SERVER_CONFIG_UPDATED`

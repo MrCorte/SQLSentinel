@@ -72,7 +72,7 @@ export function Dashboard(): React.JSX.Element {
   }, [pendingServerId, servers, setPendingServerId])
   const [retriggering, setRetriggering] = useState(false)
 
-  const { intervalSeconds, setIntervalSeconds, setConnection, getHistory, pushSnapshot } =
+  const { intervalSeconds, setIntervalSeconds, setConnection, pushSnapshot } =
     useWorker()
   const { serverAliases, setServerAlias } = useGroupsStore()
 
@@ -87,9 +87,6 @@ export function Dashboard(): React.JSX.Element {
   const { metrics, isLoading, error, refresh, receiveMetrics } = useMetrics(connection, {
     onReceived: pushSnapshot
   })
-
-  const history = selectedServerId ? getHistory(selectedServerId) : []
-  console.log('[Dashboard] reading history for', selectedServerId, 'punti:', history.length)
 
   // Auto-select first server when store initializes
   useEffect(() => {
@@ -381,7 +378,6 @@ export function Dashboard(): React.JSX.Element {
                 <ServerDashboard
                   server={selectedServer}
                   metrics={metrics}
-                  history={history}
                   connection={connection!}
                 />
               </Box>

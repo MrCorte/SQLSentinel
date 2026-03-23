@@ -25,7 +25,7 @@ import { useMetricsStore } from '../store/metricsStore'
 import { useRefreshAllServers } from '../hooks/useRefreshAllServers'
 import { useGroupsStore } from '../store/groupsStore'
 import { useAppStore } from '../store/appStore'
-import { computeInventory } from '../utils/inventoryUtils'
+import { computeInventory, getSqlServerVersion } from '../utils/inventoryUtils'
 import { buildInventoryCsvRows } from '../utils/csvExportUtils'
 import type { GroupInventory } from '../types/index'
 import type { DbCustomFields } from '../../../preload/index'
@@ -114,6 +114,8 @@ interface InventoryRow {
   serverId?:     string
   agRole?:       'PRIMARY' | 'SECONDARY'
   uptimeDays?:   number
+  logicalCpus?:  number
+  physicalCpus?: number
 }
 
 // ---------------------------------------------------------------------------
@@ -130,13 +132,14 @@ const COLUMNS: ColDef[] = [
   { key: 'serverLabel',  label: 'SERVER',   width: '20%' },
   { key: 'envName',      label: 'AMBIENTE', width: '9%'  },
   { key: 'type',         label: 'TIPO',     width: '9%'  },
-  { key: 'machineName',  label: 'MACCHINA', width: '10%' },
+  { key: 'machineName',  label: 'MACCHINA', width: '9%'  },
   { key: 'hostingType',  label: 'HOSTING',  width: '7%'  },
   { key: 'dbCount',      label: 'DB',       width: '5%'  },
   { key: 'onlineCount',  label: 'ONLINE',   width: '6%'  },
   { key: 'offlineCount', label: 'OFFLINE',  width: '6%'  },
-  { key: 'totalDataMb',  label: 'DATI',     width: '9%'  },
-  { key: 'version',      label: 'VERSIONE', width: '13%' },
+  { key: 'totalDataMb',  label: 'DATI',     width: '8%'  },
+  { key: 'version',      label: 'VERSIONE', width: '11%' },
+  { key: 'logicalCpus',  label: 'CPU',      width: '6%'  },
   { key: 'unreachable',  label: 'STATO',    width: '6%'  },
 ]
 
@@ -185,6 +188,8 @@ function buildRows(invGroups: GroupInventory[], expandedClusters: Set<string>, e
           machineName,
           instanceCount: instances.length,
           clusterKey:    machineKey,
+          logicalCpus:   instances.reduce((s, x) => s + (x.logicalCpus ?? 0), 0) || undefined,
+          physicalCpus:  instances.reduce((s, x) => s + (x.physicalCpus ?? 0), 0) || undefined,
         })
         // Instance rows (depth=1) — only when expanded
         if (isExpanded) {
@@ -211,6 +216,8 @@ function buildRows(invGroups: GroupInventory[], expandedClusters: Set<string>, e
               serverId:      srv.serverId,
               uptimeDays:    srv.uptimeDays,
               clusterKey:    machineKey,
+              logicalCpus:   srv.logicalCpus,
+              physicalCpus:  srv.physicalCpus,
             })
           }
         }
@@ -237,6 +244,8 @@ function buildRows(invGroups: GroupInventory[], expandedClusters: Set<string>, e
           instanceName: srv.instanceName,
           serverId:     srv.serverId,
           uptimeDays:   srv.uptimeDays,
+          logicalCpus:  srv.logicalCpus,
+          physicalCpus: srv.physicalCpus,
         })
       }
     }
@@ -268,6 +277,8 @@ function buildRows(invGroups: GroupInventory[], expandedClusters: Set<string>, e
         offlineCount: primary?.offlineCount ?? ag.offlineCount,
         totalDataMb:  primary?.totalDataMb  ?? ag.totalDataMb,
         totalLogMb:   primary?.totalLogMb   ?? ag.totalLogMb,
+        logicalCpus:  primary?.logicalCpus,
+        physicalCpus: primary?.physicalCpus,
       })
 
       // Replica child rows — only when expanded
@@ -295,6 +306,8 @@ function buildRows(invGroups: GroupInventory[], expandedClusters: Set<string>, e
                             : 'SECONDARY',
             uptimeDays:   srv.uptimeDays,
             clusterKey,
+            logicalCpus:  srv.logicalCpus,
+            physicalCpus: srv.physicalCpus,
           })
         }
       }
@@ -321,6 +334,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
   const [filterHost,        setFilterHost]         = useState<'all' | 'on-premise' | 'cloud'>('all')
   const [filterAlias,       setFilterAlias]        = useState('all')
   const [filterReferente,   setFilterReferente]    = useState('all')
+  const [filterVersion,     setFilterVersion]      = useState('all')
   const [sortKey,           setSortKey]            = useState<keyof InventoryRow>('envName')
   const [sortDir,           setSortDir]            = useState<'asc' | 'desc'>('asc')
   const [expandedClusters,  setExpandedClusters]   = useState<Set<string>>(new Set())
@@ -379,6 +393,23 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
     return [...new Set(refs)].sort()
   }, [metricsMap])
 
+  const versionOptions = useMemo(() => {
+    const versions = new Set<string>()
+    for (const g of inventory.groups) {
+      for (const ag of g.agClusters) {
+        for (const r of ag.replicas) {
+          const v = getSqlServerVersion(r.version)
+          if (v) versions.add(v)
+        }
+      }
+      for (const srv of g.standaloneServers) {
+        const v = getSqlServerVersion(srv.version)
+        if (v) versions.add(v)
+      }
+    }
+    return [...versions].sort()
+  }, [inventory.groups])
+
   // ── Rows ────────────────────────────────────────────────────────────────
   // When filtering by AG role / alias / referente, all clusters and machines
   // must be expanded so leaf rows are present in allRows.
@@ -434,9 +465,11 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
         const dbs = metricsMap[key]?.databases ?? []
         if (!dbs.some((db) => db.referente === filterReferente)) return false
       }
+      // Version filter — applied to every row; headers carry the primary/first-instance version
+      if (filterVersion !== 'all' && getSqlServerVersion(row.version) !== filterVersion) return false
       return true
     })
-  }, [allRows, search, filterEnv, filterType, filterState, filterHost, filterAlias, filterReferente, serverAliases, metricsMap])
+  }, [allRows, search, filterEnv, filterType, filterState, filterHost, filterAlias, filterReferente, filterVersion, serverAliases, metricsMap])
 
   // ── Filtered KPI stats (derived from filteredRows, zero extra pass) ────
   const filteredStats = useMemo(() => {
@@ -474,7 +507,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
   const hasActiveFilters =
     search !== '' || filterEnv !== 'all' || filterType !== 'all' ||
     filterState !== 'all' || filterHost !== 'all' ||
-    filterAlias !== 'all' || filterReferente !== 'all'
+    filterAlias !== 'all' || filterReferente !== 'all' || filterVersion !== 'all'
 
   // Sort: keep replica rows attached to their parent cluster header
   const sortedRows = useMemo(() => {
@@ -575,15 +608,52 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
     const { metricsMap }    = useMetricsStore.getState()
     const cfResult          = await window.sqlSentinel.getAllDbCustomFields()
     const dbCustomFields: Record<string, DbCustomFields> = cfResult.ok ? cfResult.data : {}
+
+    // When filters are active, restrict export to servers visible in the filtered table.
+    // We use a fully-expanded row set so collapsed AG/machine children are always included.
+    let allowedServerIds: Set<string> | undefined
+    if (hasActiveFilters) {
+      const fullyExpanded = buildRows(
+        inventory.groups,
+        new Set(allClusterKeys),
+        new Set(allMachineKeys)
+      )
+      const q = search.toLowerCase()
+      const matched = fullyExpanded.filter((row) => {
+        if (row.type !== 'standalone' && row.type !== 'ag-replica') return false
+        if (filterType !== 'all') {
+          if (filterType === 'standalone' && row.type !== 'standalone') return false
+          if (filterType === 'ag-primary'   && !(row.type === 'ag-replica' && row.agRole === 'PRIMARY'))   return false
+          if (filterType === 'ag-secondary' && !(row.type === 'ag-replica' && row.agRole === 'SECONDARY')) return false
+        }
+        if (q && !row.serverLabel.toLowerCase().includes(q) && !row.host.toLowerCase().includes(q) && !(row.agName ?? '').toLowerCase().includes(q)) return false
+        if (filterEnv   !== 'all' && row.envId      !== filterEnv)  return false
+        if (filterState === 'online'  &&  row.unreachable)           return false
+        if (filterState === 'offline' && !row.unreachable)           return false
+        if (filterHost  !== 'all' && row.hostingType !== filterHost) return false
+        if (filterAlias !== 'all' && serverAliases[`${row.host}:${row.port}`] !== filterAlias) return false
+        if (filterReferente !== 'all') {
+          const dbs = metricsMap[`${row.host}:${row.port}`]?.databases ?? []
+          if (!dbs.some((db) => db.referente === filterReferente)) return false
+        }
+        if (filterVersion !== 'all' && getSqlServerVersion(row.version) !== filterVersion) return false
+        return true
+      })
+      allowedServerIds = new Set(matched.map((r) => r.serverId!))
+    }
+
     const headers = [
       'Ambiente', 'Tipo', 'AG Nome', 'Server', 'Alias', 'Referente', 'Ruolo AG',
       'Database', 'Stato DB', 'Dati (MB)', 'Log (MB)',
       'Ultimo Backup Full', 'Ultimo Backup Log',
-      'Versione SQL', 'Uptime Server (giorni)', 'Stato Server', 'Tipo Infrastruttura'
+      'Versione SQL', 'Uptime Server (giorni)', 'Stato Server', 'Tipo Infrastruttura',
+      'CPU Logici', 'CPU Fisici'
     ]
-    const exportRows = buildInventoryCsvRows(inventory, serverAliases, metricsMap, dbCustomFields)
-    await window.sqlSentinel.exportInventoryCsv({ headers, rows: exportRows })
-  }, [inventory])
+    const exportRows = buildInventoryCsvRows(inventory, serverAliases, metricsMap, dbCustomFields, allowedServerIds)
+    console.log('[RENDERER] exportInventoryCsv chiamato, righe:', exportRows.length, 'headers:', headers.length)
+    const result = await window.sqlSentinel.exportInventoryCsv({ headers, rows: exportRows })
+    console.log('[RENDERER] exportInventoryCsv result:', JSON.stringify(result))
+  }, [inventory, hasActiveFilters, search, filterEnv, filterType, filterState, filterHost, filterAlias, filterReferente, filterVersion, allClusterKeys, allMachineKeys])
 
   const handleSort = useCallback((key: keyof InventoryRow) => {
     setSortKey((prev) => {
@@ -604,6 +674,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
     setFilterHost('all')
     setFilterAlias('all')
     setFilterReferente('all')
+    setFilterVersion('all')
   }, [])
 
   return (
@@ -748,6 +819,16 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                 </Select>
               )}
 
+              {versionOptions.length > 0 && (
+                <Select size="small" value={filterVersion}
+                  onChange={(e) => setFilterVersion(e.target.value)} sx={{ minWidth: 165 }}>
+                  <MenuItem value="all">Tutte le versioni</MenuItem>
+                  {versionOptions.map((v) => (
+                    <MenuItem key={v} value={v}>{v}</MenuItem>
+                  ))}
+                </Select>
+              )}
+
               <Button
                 size="small" variant="text" color="inherit"
                 startIcon={<FilterListIcon />}
@@ -824,7 +905,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                     {rowVirtualizer.getVirtualItems().map((vRow) => {
                       const row = sortedRows[vRow.index]
                       // Indent depth-1 rows only when their parent header is visible
-                      const isHierarchical = filterType === 'all' && filterAlias === 'all' && filterReferente === 'all'
+                      const isHierarchical = filterType === 'all' && filterAlias === 'all' && filterReferente === 'all' && filterVersion === 'all'
                       const pl = row.depth === 1 && isHierarchical ? 4 : 2
 
                       return (
@@ -978,6 +1059,15 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                             sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                           >
                             {row.version || '—'}
+                          </Typography>
+
+                          {/* ── CPU ── */}
+                          <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+                            {row.logicalCpus
+                              ? row.physicalCpus
+                                ? `${row.physicalCpus}C / ${row.logicalCpus}T`
+                                : `${row.logicalCpus} vCPU`
+                              : '—'}
                           </Typography>
 
                           {/* ── STATO ── */}

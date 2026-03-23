@@ -43,6 +43,8 @@ export interface ServerSummary {
   agName?: string
   agRole?: 'PRIMARY' | 'SECONDARY' | 'RESOLVING'
   hostingType?: 'on-premise' | 'cloud'
+  logicalCpus?: number
+  physicalCpus?: number
 }
 
 export interface AgClusterSummary {

@@ -252,70 +252,89 @@ function AgGroupHeader({
   ag,
   isSelected,
   isExpanded,
-  onClick
+  onToggleCollapse,
+  onSelect
 }: {
   ag: AgGroupState
   isSelected: boolean
   isExpanded: boolean
-  onClick: () => void
+  onToggleCollapse: () => void
+  onSelect: () => void
 }): React.JSX.Element {
   const color = agHealthColor(ag.health)
   return (
     <Box
-      onClick={onClick}
       sx={{
         display: 'flex',
         alignItems: 'center',
-        gap: 0.75,
-        px: 1.5,
-        py: 0.75,
-        pl: 2.5,
-        cursor: 'pointer',
+        pl: 1.5,
+        pr: 1,
         bgcolor: isSelected ? tokens.color.bgSidebarSelected : '#1e2a3a',
         borderLeft: `3px solid ${color}`,
-        '&:hover': { bgcolor: isSelected ? tokens.color.primaryHover : '#243040' },
         transition: 'background 150ms'
       }}
     >
-      <ChevronRightIcon
+      {/* ZONA 1 — solo expand/collapse */}
+      <IconButton
+        size="small"
+        onClick={(e) => { e.stopPropagation(); onToggleCollapse() }}
+        sx={{ p: 0.25, color: '#7a9ab8', flexShrink: 0 }}
+      >
+        <ChevronRightIcon
+          sx={{
+            fontSize: 14,
+            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+            transition: 'transform 200ms ease'
+          }}
+        />
+      </IconButton>
+
+      {/* ZONA 2 — naviga alla AG Dashboard */}
+      <Box
+        onClick={onSelect}
         sx={{
-          fontSize: 14,
-          color: '#7a9ab8',
-          transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
-          transition: 'transform 200ms ease',
-          flexShrink: 0
-        }}
-      />
-      <Typography
-        sx={{
-          fontSize: 11,
-          color: isSelected ? '#fff' : '#a0c4d8',
-          textTransform: 'uppercase',
-          letterSpacing: '0.5px',
-          fontWeight: 700,
           flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.75,
+          py: 0.75,
+          pl: 0.5,
+          cursor: 'pointer',
           overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap'
+          '&:hover': { opacity: 0.85 }
         }}
       >
-        🔗 {ag.ag_name}
-      </Typography>
-      <Typography
-        sx={{
-          fontSize: 10,
-          color,
-          fontWeight: 700,
-          bgcolor: `${color}22`,
-          px: 0.75,
-          py: 0.125,
-          borderRadius: 0.5,
-          whiteSpace: 'nowrap',
-          flexShrink: 0
-        }}
-      >
-        {ag.health === 'HEALTHY' ? '● HEALTHY' : ag.health === 'PARTIALLY_HEALTHY' ? '◐ PARTIAL' : '○ UNHEALTHY'}
-      </Typography>
+        <Typography
+          sx={{
+            fontSize: 11,
+            color: isSelected ? '#fff' : '#a0c4d8',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            fontWeight: 700,
+            flex: 1,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          🔗 {ag.ag_name}
+        </Typography>
+        <Typography
+          sx={{
+            fontSize: 10,
+            color,
+            fontWeight: 700,
+            bgcolor: `${color}22`,
+            px: 0.75,
+            py: 0.125,
+            borderRadius: 0.5,
+            whiteSpace: 'nowrap',
+            flexShrink: 0
+          }}
+        >
+          {ag.health === 'HEALTHY' ? '● HEALTHY' : ag.health === 'PARTIALLY_HEALTHY' ? '◐ PARTIAL' : '○ UNHEALTHY'}
+        </Typography>
+      </Box>
     </Box>
   )
 }
@@ -836,7 +855,7 @@ function VirtualServerList({
   searchText,
   serverAliases,
   onSelectServer,
-  onSelectAg: _onSelectAg,
+  onSelectAg,
   onToggleCollapse,
   onToggleAgCollapse,
   onToggleMachineCollapse,
@@ -902,7 +921,8 @@ function VirtualServerList({
                     ag={item.agInfo}
                     isSelected={selectedAgName === item.agName}
                     isExpanded={item.isExpanded}
-                    onClick={() => onToggleAgCollapse(item.agName)}
+                    onToggleCollapse={() => onToggleAgCollapse(item.agName)}
+                    onSelect={() => onSelectAg(item.agName)}
                   />
                 )}
                 {item.kind === 'machine' && (

@@ -60,6 +60,8 @@ export interface InstanceInfo {
   memoryTargetMb: number
   cpuUsagePercent: number
   uptimeDays: number
+  logicalCpus: number
+  physicalCpus: number
 }
 
 export interface HistoryRequest {
@@ -128,6 +130,8 @@ export interface StoredServer {
   agGroupId?: string        // group_id UUID if part of an AG
   agName?: string           // AG human-readable name, e.g. "AG-PROD-01"
   agRole?: AgRole
+  logicalCpus?: number      // cpu_count (with HT); persisted from polling
+  physicalCpus?: number     // cpu_count / hyperthread_ratio
 }
 
 export interface ServerAddResult {

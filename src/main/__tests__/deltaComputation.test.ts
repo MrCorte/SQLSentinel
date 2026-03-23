@@ -33,7 +33,7 @@ function makeMetrics(dbs: DbSpec[] = []): ServerMetrics {
     collectedAt: new Date(),
     instanceInfo: {
       version: '2019', edition: 'Dev', memoryUsedMb: 100,
-      memoryTargetMb: 200, cpuUsagePercent: 10, uptimeDays: 1
+      memoryTargetMb: 200, cpuUsagePercent: 10, uptimeDays: 1, logicalCpus: 8, physicalCpus: 4
     },
     databases: dbs.map((d) => ({
       name: d.name,

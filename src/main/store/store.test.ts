@@ -41,7 +41,9 @@ function makeMetrics(overrides: Partial<ServerMetrics> = {}): ServerMetrics {
       memoryUsedMb: 4096,
       memoryTargetMb: 8192,
       cpuUsagePercent: 15,
-      uptimeDays: 30
+      uptimeDays: 30,
+      logicalCpus: 16,
+      physicalCpus: 8
     },
     databases: [
       { name: 'master', stateDesc: 'ONLINE', recoveryModel: 'SIMPLE', sizeMb: 10, logSizeMb: 2 }

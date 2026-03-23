@@ -22,6 +22,8 @@ interface InstanceInfoRow {
   memory_target_mb: number
   cpu_usage_percent: number
   uptime_days: number
+  logical_cpu_count: number
+  physical_cpu_count: number
 }
 
 interface DatabaseInfoRow {
@@ -142,7 +144,9 @@ async function queryInstanceInfo(pool: mssql.ConnectionPool): Promise<InstanceIn
           ORDER BY timestamp DESC
         ) AS rb
       ), 0)                                      AS cpu_usage_percent,
-      DATEDIFF(DAY, osi.sqlserver_start_time, GETDATE()) AS uptime_days
+      DATEDIFF(DAY, osi.sqlserver_start_time, GETDATE()) AS uptime_days,
+      osi.cpu_count                                      AS logical_cpu_count,
+      osi.cpu_count / osi.hyperthread_ratio              AS physical_cpu_count
     FROM sys.dm_os_process_memory pm
     CROSS JOIN sys.dm_os_sys_info osi
   `
@@ -156,7 +160,9 @@ async function queryInstanceInfo(pool: mssql.ConnectionPool): Promise<InstanceIn
     memoryUsedMb: Number(row.memory_used_mb),
     memoryTargetMb: Number(row.memory_target_mb),
     cpuUsagePercent: Number(row.cpu_usage_percent),
-    uptimeDays: Number(row.uptime_days)
+    uptimeDays: Number(row.uptime_days),
+    logicalCpus: Number(row.logical_cpu_count) || 0,
+    physicalCpus: Number(row.physical_cpu_count) || 0
   }
 }
 
@@ -434,7 +440,7 @@ async function queryDatabaseFiles(pool: mssql.ConnectionPool): Promise<DatabaseF
 // --- Valori di default per query fallite ---
 
 function defaultInstanceInfo(): InstanceInfo {
-  return { version: 'unknown', edition: 'unknown', memoryUsedMb: 0, memoryTargetMb: 0, cpuUsagePercent: 0, uptimeDays: 0 }
+  return { version: 'unknown', edition: 'unknown', memoryUsedMb: 0, memoryTargetMb: 0, cpuUsagePercent: 0, uptimeDays: 0, logicalCpus: 0, physicalCpus: 0 }
 }
 
 // --- Entry points pubblici ---

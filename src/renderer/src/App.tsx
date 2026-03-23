@@ -98,7 +98,9 @@ function AppInner(): React.JSX.Element {
         updateServer(srv.id, {
           agGroupId: srv.agGroupId,
           agName: srv.agName,
-          agRole: srv.agRole
+          agRole: srv.agRole,
+          logicalCpus: srv.logicalCpus,
+          physicalCpus: srv.physicalCpus
         })
       }
     })

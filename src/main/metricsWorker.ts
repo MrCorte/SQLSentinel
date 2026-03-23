@@ -3,6 +3,7 @@ import { IpcChannel } from './ipc/types'
 import type { Alert, AlertCategory, AlertSeverity, WorkerStartRequest, CollectMetricsRequest, ServerHealthPayload } from './ipc/types'
 import { collectMetrics } from './collectors/sqlCollector'
 import { detectAndSyncReplicaRoles } from './collectors/agCollector'
+import * as serverStore from './store/serverStore'
 import type { ServerMetrics } from './collectors/types'
 import { getAllCustomFields } from './store/dbCustomFields'
 import { shouldSendDelta } from './deltaUtils'
@@ -214,6 +215,17 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     const delta = computeDelta(sid, enrichedMetrics)
     pushToRenderer(IpcChannel.METRICS_UPDATED, { serverId: sid, metrics: delta })
     processAlerts(sid, enrichedMetrics)
+
+    // CPU count persistence — save logicalCpus/physicalCpus to electron-store if changed.
+    // These values rarely change (only on hardware upgrade) so the write is infrequent.
+    const { logicalCpus, physicalCpus } = enrichedMetrics.instanceInfo
+    if (logicalCpus > 0) {
+      const srvRecord = serverStore.getByIpPort(job.server.ip, job.server.port)
+      if (srvRecord && (srvRecord.logicalCpus !== logicalCpus || srvRecord.physicalCpus !== physicalCpus)) {
+        serverStore.update(srvRecord.id, { logicalCpus, physicalCpus })
+        pushToRenderer(IpcChannel.SERVER_CONFIG_UPDATED, [{ ...srvRecord, logicalCpus, physicalCpus }])
+      }
+    }
 
     // AG detection — fire-and-forget: update agGroupId/agName/agRole for all
     // replicas found from this server; push changed records to renderer.

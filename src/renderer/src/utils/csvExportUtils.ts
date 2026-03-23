@@ -23,21 +23,24 @@ function formatDate(d: Date | string | null | undefined): string {
  * One row per database; if a server has no databases, one placeholder row
  * with empty database columns is emitted so the server still appears.
  *
- * Column order (17 columns, matches the headers in Inventory.tsx):
+ * Column order (19 columns, matches the headers in Inventory.tsx):
  *   Ambiente | Tipo | AG Nome | Server | Alias | Referente | Ruolo AG |
  *   Database | Stato DB | Dati (MB) | Log (MB) |
  *   Ultimo Backup Full | Ultimo Backup Log |
- *   Versione SQL | Uptime Server (giorni) | Stato Server | Tipo Infrastruttura
+ *   Versione SQL | Uptime Server (giorni) | Stato Server | Tipo Infrastruttura |
+ *   CPU Logici | CPU Fisici
  */
 export function buildInventoryCsvRows(
   inventory: InventoryStats,
   serverAliases: Record<string, string>,
   metricsMap: Record<string, ServerMetrics>,
-  dbCustomFields: Record<string, DbCustomFields>
+  dbCustomFields: Record<string, DbCustomFields>,
+  allowedServerIds?: Set<string>
 ): string[][] {
   return inventory.groups.flatMap((group) => {
     // ── STANDALONE ────────────────────────────────────────────────────────
     const standaloneRows = group.standaloneServers.flatMap((srv) => {
+      if (allowedServerIds && !allowedServerIds.has(srv.serverId)) return []
       const srvLabel = `${srv.ip}:${srv.port}`
       const alias = serverAliases[srvLabel] ?? ''
       const metrics = metricsMap[srvLabel]
@@ -57,7 +60,9 @@ export function buildInventoryCsvRows(
             srv.version ?? '',
             srv.uptimeDays?.toFixed(0) ?? '',
             srv.unreachable ? 'UNREACHABLE' : 'ONLINE',
-            hosting
+            hosting,
+            srv.logicalCpus?.toString() ?? '',
+            srv.physicalCpus?.toString() ?? ''
           ]
         ]
       }
@@ -81,7 +86,9 @@ export function buildInventoryCsvRows(
           srv.version ?? '',
           srv.uptimeDays?.toFixed(0) ?? '',
           srv.unreachable ? 'UNREACHABLE' : 'ONLINE',
-          hosting
+          hosting,
+          srv.logicalCpus?.toString() ?? '',
+          srv.physicalCpus?.toString() ?? ''
         ]
       })
     })
@@ -89,6 +96,7 @@ export function buildInventoryCsvRows(
     // ── ALWAYS ON ─────────────────────────────────────────────────────────
     const agRows = group.agClusters.flatMap((ag) =>
       ag.replicas.flatMap((srv) => {
+        if (allowedServerIds && !allowedServerIds.has(srv.serverId)) return []
         const srvLabel = `${srv.ip}:${srv.port}`
         const alias = serverAliases[srvLabel] ?? ''
         const metrics = metricsMap[srvLabel]
@@ -107,7 +115,9 @@ export function buildInventoryCsvRows(
               srv.version ?? '',
               srv.uptimeDays?.toFixed(0) ?? '',
               srv.unreachable ? 'UNREACHABLE' : 'ONLINE',
-              agHosting
+              agHosting,
+              srv.logicalCpus?.toString() ?? '',
+              srv.physicalCpus?.toString() ?? ''
             ]
           ]
         }
@@ -136,7 +146,9 @@ export function buildInventoryCsvRows(
             srv.version ?? '',
             srv.uptimeDays?.toFixed(0) ?? '',
             srv.unreachable ? 'UNREACHABLE' : 'ONLINE',
-            agHosting
+            agHosting,
+            srv.logicalCpus?.toString() ?? '',
+            srv.physicalCpus?.toString() ?? ''
           ]
         })
       })

@@ -28,14 +28,11 @@ import type {
   DbCustomFields,
   CollectMetricsRequest
 } from '../../../preload/index'
-import { MemoryChart } from './MemoryChart'
 import { DisksTab } from './tabs/DisksTab'
-import type { MetricsHistoryPoint } from '../hooks/useMetrics'
 import { tokens } from '../styles/tokens'
 
 interface Props {
   metrics: ServerMetrics
-  history: MetricsHistoryPoint[]
   serverId: string
   connection: CollectMetricsRequest
 }
@@ -51,8 +48,12 @@ function kpiAccent(type: 'blue' | 'health', value: number): string {
   return tokens.color.success
 }
 
-function KpiCard({ label, value, accent }: { label: string; value: string; accent: string }): React.JSX.Element {
-  return (
+function KpiCard({
+  label, value, accent, tooltip
+}: {
+  label: string; value: string; accent: string; tooltip?: string
+}): React.JSX.Element {
+  const card = (
     <Box
       sx={{
         bgcolor: tokens.color.bgCard,
@@ -63,7 +64,8 @@ function KpiCard({ label, value, accent }: { label: string; value: string; accen
         py: '16px',
         minWidth: 150,
         flex: '1 1 150px',
-        boxShadow: tokens.shadow.card
+        boxShadow: tokens.shadow.card,
+        cursor: tooltip ? 'help' : 'default'
       }}
     >
       <Typography
@@ -91,9 +93,12 @@ function KpiCard({ label, value, accent }: { label: string; value: string; accen
       </Typography>
     </Box>
   )
+  return tooltip
+    ? <Tooltip title={<span style={{ whiteSpace: 'pre-line' }}>{tooltip}</span>} placement="top" arrow>{card}</Tooltip>
+    : card
 }
 
-function TabPanoramica({ metrics, history }: Pick<Props, 'metrics' | 'history'>): React.JSX.Element {
+function TabPanoramica({ metrics }: Pick<Props, 'metrics'>): React.JSX.Element {
   const info = metrics.instanceInfo
   const memPercent = info.memoryTargetMb > 0 ? (info.memoryUsedMb / info.memoryTargetMb) * 100 : 0
 
@@ -113,13 +118,15 @@ function TabPanoramica({ metrics, history }: Pick<Props, 'metrics' | 'history'>)
           accent={kpiAccent('health', info.cpuUsagePercent)}
         />
         <KpiCard label="Uptime" value={`${info.uptimeDays.toFixed(1)} giorni`} accent={kpiAccent('blue', 0)} />
+        {info.logicalCpus > 0 && (
+          <KpiCard
+            label="CPU Logici"
+            value={`${info.physicalCpus}C / ${info.logicalCpus}T`}
+            accent={kpiAccent('blue', 0)}
+            tooltip={`Core fisici: ${info.physicalCpus}\nThread logici: ${info.logicalCpus}\nHyperthreading: ${info.logicalCpus > info.physicalCpus ? 'Attivo' : 'Non attivo'}`}
+          />
+        )}
       </Box>
-      {history.length > 1 && <MemoryChart history={history} />}
-      {history.length <= 1 && (
-        <Typography variant="body2" color="text.secondary">
-          Il grafico sarà disponibile dopo almeno 2 raccolte di metriche.
-        </Typography>
-      )}
     </Stack>
   )
 }
@@ -668,7 +675,7 @@ const waitStatColumns: GridColDef<WaitStatInfo>[] = [
 // Componente principale
 // -----------------------------------------------------------------------
 
-export function MetricsPanel({ metrics, history, serverId, connection }: Props): React.JSX.Element {
+export function MetricsPanel({ metrics, serverId, connection }: Props): React.JSX.Element {
   const [tab, setTab] = useState(0)
 
   const databases = metrics?.databases ?? []
@@ -718,7 +725,7 @@ export function MetricsPanel({ metrics, history, serverId, connection }: Props):
       </Box>
 
       <Box sx={{ flex: 1, overflow: 'auto', pt: 2 }}>
-        {tab === 0 && <TabPanoramica metrics={metrics} history={history} />}
+        {tab === 0 && <TabPanoramica metrics={metrics} />}
 
         {tab === 1 && <TabDatabase metrics={metrics} serverId={serverId} />}
 

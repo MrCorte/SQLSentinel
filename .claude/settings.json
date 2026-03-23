@@ -1,28 +1,32 @@
 {
-    "permissions": {
-        "allow": [
-            "Bash(npm run *)",
-            "Bash(git *)",
-            "Bash(mkdir *)",
-            "Read(**)",
-            "Edit(**)",
-            "Write(**)"
-        ],
-        "deny": [
-            "Bash(rm -rf *)"
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(git *)",
+      "Bash(mkdir *)",
+      "Read(**)",
+      "Edit(**)",
+      "Write(**)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit(src/**/*.ts)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npm run typecheck 2>&1 | tail -5"
+          }
         ]
-    },
-    "hooks": {
-        "PostToolUse": [
-            {
-                "matcher": "Edit(src/**/*.ts)",
-                "hooks": [
-                    {
-                        "type": "command",
-                        "command": "npm run typecheck 2>&1 | tail -5"
-                    }
-                ]
-            }
-        ]
-    }
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "context7@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true
+  }
 }

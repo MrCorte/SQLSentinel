@@ -3,6 +3,9 @@ import type { BrowserWindow as BrowserWindowType } from 'electron'
 import { join } from 'path'
 import icon from '../../resources/icon.png?asset'
 import { registerIpcHandlers } from './ipc/handlers'
+import { BackgroundService } from './backgroundService'
+import type { WorkerApi } from './backgroundService'
+import { syncServers, stopWorker, setIntervalOverrides, onAlert } from './metricsWorker'
 import { initDb, closeDb, defaultDbPath } from './store/database'
 import { cleanup as purgeOldSnapshots } from './store/metricsRepository'
 import { IpcChannel } from './ipc/types'
@@ -13,6 +16,7 @@ const isDev = !app.isPackaged
 
 // Module-level reference so the health checker can push events to the renderer
 let mainWindow: BrowserWindow | null = null
+let backgroundService: BackgroundService | null = null
 
 function watchWindowShortcuts(window: BrowserWindowType): void {
   const { webContents } = window
@@ -144,6 +148,11 @@ app.whenReady().then(() => {
 
   createWindow()
 
+  const workerApi: WorkerApi = { syncServers, stopWorker, setIntervalOverrides, onAlert }
+  if (mainWindow) {
+    backgroundService = new BackgroundService(mainWindow, workerApi)
+  }
+
   // Start health check: first run after 5 s, then every 60 s
   setTimeout(() => {
     healthCheckAll()
@@ -179,6 +188,7 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  backgroundService?.destroy()
   closeDb()
   if (process.platform !== 'darwin') {
     app.quit()

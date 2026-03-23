@@ -499,7 +499,6 @@ export function registerIpcHandlers(): void {
           BrowserWindow.fromWebContents(event.sender) ??
           BrowserWindow.getFocusedWindow() ??
           BrowserWindow.getAllWindows()[0]
-        console.log('[MAIN] EXPORT_INVENTORY_CSV ricevuto, righe:', req?.rows?.length, 'winId:', win?.id)
         const result = await dialog.showSaveDialog(win, {
           title: 'Salva inventario CSV',
           defaultPath: path.join(app.getPath('downloads'), `inventario-sql-${new Date().toISOString().slice(0, 10)}.csv`),

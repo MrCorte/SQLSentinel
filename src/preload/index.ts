@@ -405,10 +405,8 @@ const realApi = {
   exportAlerts: (): Promise<IpcResult<string>> =>
     ipcRenderer.invoke(IpcChannel.EXPORT_ALERTS),
 
-  exportInventoryCsv: (req: ExportInventoryCsvRequest): Promise<IpcResult<string | null>> => {
-    console.log('[PRELOAD] exportInventoryCsv → canale:', IpcChannel.EXPORT_INVENTORY_CSV, 'righe:', req?.rows?.length)
-    return ipcRenderer.invoke(IpcChannel.EXPORT_INVENTORY_CSV, req)
-  },
+  exportInventoryCsv: (req: ExportInventoryCsvRequest): Promise<IpcResult<string | null>> =>
+    ipcRenderer.invoke(IpcChannel.EXPORT_INVENTORY_CSV, req),
 
   saveCsv: (req: SaveCsvRequest): Promise<IpcResult<string | null>> =>
     ipcRenderer.invoke(IpcChannel.FILE_SAVE_CSV, req),

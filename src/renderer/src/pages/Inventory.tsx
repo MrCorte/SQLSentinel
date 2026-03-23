@@ -650,9 +650,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
       'CPU Logici', 'CPU Fisici'
     ]
     const exportRows = buildInventoryCsvRows(inventory, serverAliases, metricsMap, dbCustomFields, allowedServerIds)
-    console.log('[RENDERER] exportInventoryCsv chiamato, righe:', exportRows.length, 'headers:', headers.length)
-    const result = await window.sqlSentinel.exportInventoryCsv({ headers, rows: exportRows })
-    console.log('[RENDERER] exportInventoryCsv result:', JSON.stringify(result))
+    await window.sqlSentinel.exportInventoryCsv({ headers, rows: exportRows })
   }, [inventory, hasActiveFilters, search, filterEnv, filterType, filterState, filterHost, filterAlias, filterReferente, filterVersion, allClusterKeys, allMachineKeys])
 
   const handleSort = useCallback((key: keyof InventoryRow) => {

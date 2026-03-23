@@ -5,6 +5,14 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Added — 2026-03-23 (tray background service)
+- **Tray icon**: app ora si nasconde nella system tray alla chiusura della finestra (X) invece di uscire; doppio-click sull'icona o "Apri SQLSentinel" nel menu contestuale riapre la finestra; "Esci" nel menu chiude l'app completamente
+- **Polling background**: il worker continua a girare con la finestra nascosta; configurabile tra modalità *Light* (intervallo personalizzabile, solo 4 query critiche, history cap 3) e *Full* (intervalli invariati)
+- **Notifiche sistema**: alert CRITICAL inviano notifiche Windows toast quando la finestra è nascosta; cooldown 15 min per coppia (server, categoria); si ripristina all'acknowledgement; disabilitabili da Settings
+- **Menu tray contestuale**: mostra N server online / M offline, toggle polling background, Esci
+- **Performance**: `METRICS_UPDATED` IPC push saltato quando nessuna finestra visibile; thundering herd evitato staggerando `nextRun` su `[now, now+N/2]`; history cap ridotto a 3 in light mode; `topQueries`, `waitStats`, `databaseFiles` azzerati in light mode
+- **Settings**: nuova sezione "Background & Tray" con 4 parametri (`backgroundEnabled`, `backgroundMode`, `backgroundIntervalMinutes`, `backgroundNotifications`)
+
 ### Fixed — 2026-03-23 (export CSV — dialog parent window)
 - **`showSaveDialog` senza finestra padre**: entrambi gli handler `EXPORT_INVENTORY_CSV` e `FILE_SAVE_CSV` in `handlers.ts` usavano `win ?? undefined!` come parent — se `BrowserWindow.fromWebContents` restituisce `null`, il dialog veniva chiamato con `undefined` come primo argomento e non si apriva su Windows; sostituito con catena di fallback `BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]` che garantisce sempre una finestra valida
 

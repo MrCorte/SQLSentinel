@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Box,
   Card,
@@ -11,7 +11,12 @@ import {
   Button,
   Stack,
   Alert,
-  CircularProgress
+  CircularProgress,
+  FormControlLabel,
+  Switch,
+  RadioGroup,
+  Radio,
+  TextField
 } from '@mui/material'
 import SettingsIcon from '@mui/icons-material/Settings'
 import DownloadIcon from '@mui/icons-material/Download'
@@ -82,6 +87,37 @@ export function Settings(): React.JSX.Element {
   const { retentionMinutes, setRetentionMinutes, intervalSeconds } = useWorker()
   const [exportLoading, setExportLoading] = useState<ExportKey | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
+
+  const [bgEnabled, setBgEnabled] = useState(true)
+  const [bgMode, setBgMode] = useState<'light' | 'full'>('light')
+  const [bgInterval, setBgInterval] = useState(30)
+  const [bgNotifications, setBgNotifications] = useState(true)
+  const [bgLoaded, setBgLoaded] = useState(false)
+
+  useEffect(() => {
+    window.sqlSentinel.getSettings().then((res) => {
+      if (res.ok) {
+        setBgEnabled(res.data.backgroundEnabled)
+        setBgMode(res.data.backgroundMode)
+        setBgInterval(res.data.backgroundIntervalMinutes)
+        setBgNotifications(res.data.backgroundNotifications)
+        setBgLoaded(true)
+      }
+    })
+  }, [])
+
+  const saveBgSettings = (
+    patch: Partial<{
+      backgroundEnabled: boolean
+      backgroundMode: 'light' | 'full'
+      backgroundIntervalMinutes: number
+      backgroundNotifications: boolean
+    }>
+  ) => {
+    window.sqlSentinel.saveSettings(patch).catch((err: unknown) => {
+      console.error('[Settings] saveBgSettings failed:', err)
+    })
+  }
 
   function handleRetentionChange(minutes: number): void {
     setRetentionMinutes(minutes)
@@ -245,6 +281,91 @@ export function Settings(): React.JSX.Element {
           </Stack>
         </CardContent>
       </Card>
+
+      {/* Card — Background & Tray */}
+      {bgLoaded && (
+        <Card variant="outlined">
+          <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box>
+              <Typography variant="subtitle1" fontWeight={700}>
+                Background & Tray
+              </Typography>
+            </Box>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={bgEnabled}
+                  onChange={(e) => {
+                    setBgEnabled(e.target.checked)
+                    saveBgSettings({ backgroundEnabled: e.target.checked })
+                  }}
+                />
+              }
+              label="Mantieni attivo in background alla chiusura"
+            />
+            <Box
+              sx={{
+                ml: 2,
+                opacity: bgEnabled ? 1 : 0.4,
+                pointerEvents: bgEnabled ? 'auto' : 'none',
+              }}
+            >
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                Modalità polling background
+              </Typography>
+              <RadioGroup
+                value={bgMode}
+                onChange={(e) => {
+                  const v = e.target.value as 'light' | 'full'
+                  setBgMode(v)
+                  saveBgSettings({ backgroundMode: v })
+                }}
+              >
+                <FormControlLabel
+                  value="light"
+                  control={<Radio />}
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <span>Light — intervallo:</span>
+                      <TextField
+                        type="number"
+                        size="small"
+                        value={bgInterval}
+                        disabled={bgMode !== 'light'}
+                        inputProps={{ min: 1, max: 240 }}
+                        sx={{ width: 80 }}
+                        onChange={(e) => {
+                          const v = Math.max(1, Math.min(240, Number(e.target.value)))
+                          setBgInterval(v)
+                          saveBgSettings({ backgroundIntervalMinutes: v })
+                        }}
+                      />
+                      <span>min</span>
+                    </Box>
+                  }
+                />
+                <FormControlLabel
+                  value="full"
+                  control={<Radio />}
+                  label="Full — stesso intervallo del foreground"
+                />
+              </RadioGroup>
+            </Box>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={bgNotifications}
+                  onChange={(e) => {
+                    setBgNotifications(e.target.checked)
+                    saveBgSettings({ backgroundNotifications: e.target.checked })
+                  }}
+                />
+              }
+              label="Notifiche sistema per alert critici"
+            />
+          </CardContent>
+        </Card>
+      )}
     </Box>
   )
 }

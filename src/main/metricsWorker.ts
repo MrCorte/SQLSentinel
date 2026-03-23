@@ -51,6 +51,8 @@ let alertCounter = 0
 // Track previous metrics for delta computation
 const previousMetrics = new Map<string, ServerMetrics>()
 
+let alertCallback: ((alert: Alert) => void) | null = null
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -184,6 +186,7 @@ function processAlerts(sid: string, metrics: ServerMetrics): void {
     if (!hasOpen) {
       storedAlerts.push(alert)
       pushToRenderer(IpcChannel.ALERT_NEW, alert)
+      if (alertCallback) alertCallback(alert)
     }
   }
 }
@@ -402,6 +405,14 @@ export function getHistory(ip: string, port: number): ServerMetrics[] {
   return [...(metricsHistory.get(serverId(ip, port)) ?? [])]
 }
 
+/**
+ * Register a callback invoked for each genuinely new alert (post-dedup).
+ * Calling a second time silently replaces the previous callback.
+ */
+export function onAlert(cb: (alert: Alert) => void): void {
+  alertCallback = cb
+}
+
 // ---------------------------------------------------------------------------
 // Test helpers — NOT for production use
 // ---------------------------------------------------------------------------
@@ -418,6 +429,7 @@ export function __resetForTests(): void {
   storedAlerts = []
   alertCounter = 0
   activeServerId = null
+  alertCallback = null
 }
 
 /**
@@ -427,4 +439,12 @@ export function __resetForTests(): void {
  */
 export function __getJobForTest(sid: string): PollJob | undefined {
   return jobs.get(sid)
+}
+
+/**
+ * Returns the currently registered alert callback (or null if none).
+ * For testing only.
+ */
+export function __getAlertCallbackForTest() {
+  return alertCallback
 }

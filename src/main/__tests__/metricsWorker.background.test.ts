@@ -8,7 +8,37 @@ vi.mock('../collectors/agCollector', () => ({ detectAndSyncReplicaRoles: vi.fn((
 vi.mock('../store/dbCustomFields', () => ({ getAllCustomFields: vi.fn(() => ({})) }))
 vi.mock('../store/serverStore')
 
-import { onAlert, __resetForTests, __getAlertCallbackForTest } from '../metricsWorker'
+import { onAlert, __resetForTests, __getAlertCallbackForTest, setIntervalOverrides, __getJobForTest, syncServers } from '../metricsWorker'
+import type { CollectMetricsRequest } from '../ipc/types'
+
+const mockServer: CollectMetricsRequest = {
+  ip: '10.0.0.1', port: 1433, useWindowsAuth: true
+}
+
+describe('setIntervalOverrides', () => {
+  beforeEach(() => { __resetForTests() })
+
+  it('accepts overrides without throwing', () => {
+    expect(() => setIntervalOverrides({ activeMs: 1000, idleMs: 1000, offlineMs: 1000 })).not.toThrow()
+  })
+
+  it('accepts null to restore defaults without throwing', () => {
+    setIntervalOverrides({ activeMs: 1000, idleMs: 1000, offlineMs: 1000 })
+    expect(() => setIntervalOverrides(null)).not.toThrow()
+  })
+
+  it('staggers nextRun across [now, now + N/2] when applied', () => {
+    syncServers([mockServer, { ...mockServer, ip: '10.0.0.2' }])
+    const before = Date.now()
+    setIntervalOverrides({ activeMs: 60_000, idleMs: 60_000, offlineMs: 60_000 })
+    const job1 = __getJobForTest('10.0.0.1:1433')!
+    const job2 = __getJobForTest('10.0.0.2:1433')!
+    expect(job1.nextRun).toBeGreaterThanOrEqual(before)
+    expect(job1.nextRun).toBeLessThanOrEqual(before + 30_000 + 100)
+    expect(job2.nextRun).toBeGreaterThanOrEqual(before)
+    expect(job2.nextRun).toBeLessThanOrEqual(before + 30_000 + 100)
+  })
+})
 
 describe('onAlert', () => {
   beforeEach(() => { __resetForTests() })

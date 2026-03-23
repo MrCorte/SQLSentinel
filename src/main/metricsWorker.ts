@@ -8,6 +8,14 @@ import type { ServerMetrics } from './collectors/types'
 import { getAllCustomFields } from './store/dbCustomFields'
 import { shouldSendDelta } from './deltaUtils'
 
+export interface IntervalOverrides {
+  activeMs: number
+  idleMs: number
+  offlineMs: number
+  lightCollectors?: boolean
+  historyCapOverride?: number
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -52,6 +60,7 @@ let alertCounter = 0
 const previousMetrics = new Map<string, ServerMetrics>()
 
 let alertCallback: ((alert: Alert) => void) | null = null
+let intervalOverrides: IntervalOverrides | null = null
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -245,7 +254,12 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     job.lastFailed  = false
     job.failCount   = 0
     job.lastSuccess = Date.now()
-    job.nextRun     = Date.now() + (sid === activeServerId ? activeIntervalMs : INTERVAL_IDLE_MS)
+    const ov = intervalOverrides
+    if (ov) {
+      job.nextRun = Date.now() + (job.priority === 0 ? ov.activeMs : ov.idleMs)
+    } else {
+      job.nextRun = Date.now() + (job.priority === 0 ? activeIntervalMs : INTERVAL_IDLE_MS)
+    }
   } catch (err) {
     console.error(`[Worker] ${sid}:`, err instanceof Error ? err.message : err)
     job.lastFailed = true
@@ -413,6 +427,25 @@ export function onAlert(cb: (alert: Alert) => void): void {
   alertCallback = cb
 }
 
+export function setIntervalOverrides(overrides: IntervalOverrides | null): void {
+  intervalOverrides = overrides
+  if (overrides !== null) {
+    // Stagger all jobs across [now, now + N/2] to prevent thundering herd
+    const halfInterval = overrides.idleMs / 2
+    jobs.forEach((job) => {
+      job.nextRun = Date.now() + Math.random() * halfInterval
+    })
+    // Trim history if historyCapOverride is set
+    if (overrides.historyCapOverride != null) {
+      const cap = overrides.historyCapOverride
+      metricsHistory.forEach((hist) => {
+        while (hist.length > cap) hist.shift()
+      })
+    }
+  }
+  // On null (restore): leave existing nextRun values; normal interval tiers resume naturally
+}
+
 // ---------------------------------------------------------------------------
 // Test helpers — NOT for production use
 // ---------------------------------------------------------------------------
@@ -430,6 +463,7 @@ export function __resetForTests(): void {
   alertCounter = 0
   activeServerId = null
   alertCallback = null
+  intervalOverrides = null
 }
 
 /**

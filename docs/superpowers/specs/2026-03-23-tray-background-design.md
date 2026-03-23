@@ -52,6 +52,8 @@ interface IntervalOverrides {
   activeMs: number
   idleMs: number
   offlineMs: number
+  lightCollectors?: boolean  // true = only 4 critical queries (alert detection only)
+  historyCapOverride?: number  // reduce in-memory snapshot retention
 }
 ```
 
@@ -165,7 +167,7 @@ Esci
 | `backgroundEnabled` | `backgroundMode` | Action |
 |---|---|---|
 | `false` | — | `stopWorker()` |
-| `true` | `'light'` | `setIntervalOverrides({ activeMs: N, idleMs: N, offlineMs: N })` where N = `backgroundIntervalMinutes * 60_000` |
+| `true` | `'light'` | `setIntervalOverrides({ activeMs: N, idleMs: N, offlineMs: N, lightCollectors: true, historyCapOverride: 3 })` where N = `backgroundIntervalMinutes * 60_000`; jobs staggered across `[now, now + N/2]` |
 | `true` | `'full'` | no-op (worker runs at normal intervals) |
 
 **On `win.show()`:**
@@ -285,6 +287,71 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 ```
+
+---
+
+## Performance Considerations
+
+### 1. Thundering Herd in Light Mode
+
+**Problem:** When `setIntervalOverrides` applies the same interval N to all 200 jobs, every job becomes due at the same wall-clock time (or within the same scheduler tick). The existing BATCH_SIZE=10 cap prevents more than 10 concurrent SQL connections, but 200 jobs still create 20 sequential batches that drain over ~50s — a burst of sustained load every N minutes.
+
+**Fix:** When applying overrides, stagger each job's `nextRun` uniformly across `[now, now + N/2]`:
+```typescript
+// inside setIntervalOverrides(), after updating intervalOverrides:
+jobs.forEach((job) => {
+  job.nextRun = Date.now() + Math.random() * (overrides.idleMs / 2)
+})
+```
+This spreads 200 connections over ~15 minutes at 30-minute intervals instead of a single burst. Calling `setIntervalOverrides(null)` on `win.show()` must NOT re-stagger — just restore constants and leave existing `nextRun` values in place so normal interval tiers resume naturally.
+
+### 2. Skip IPC Push When Window Is Hidden
+
+**Problem:** `metricsWorker` calls `pushToRenderer(IpcChannel.METRICS_UPDATED, payload)` after every job regardless of window visibility. With 200 servers in background mode, this serializes large metrics payloads and sends them via IPC to a renderer that isn't displaying anything — pure overhead.
+
+**Fix:** Add a visibility check inside `pushToRenderer` or directly in `runJob`:
+```typescript
+// in runJob(), before pushToRenderer(METRICS_UPDATED, ...):
+if (!mainWindow?.isVisible()) return  // skip metrics push when hidden
+```
+`ALERT_NEW` push must **not** be skipped — it triggers the `alertCallback` used by `BackgroundService`. Only `METRICS_UPDATED` and `SERVER_HEALTH_UPDATE` pushes should be suppressed when hidden.
+
+### 3. Reduced Collection Scope in Light Mode
+
+**Problem:** Each server poll runs all collectors (CPU, memory, databases, sessions, waits, disk, backups, AG status — ~8–12 T-SQL queries per server). In background mode the goal is alert detection only, not full metrics for the UI.
+
+**Fix:** `setIntervalOverrides` accepts an optional `collectorsFilter` field:
+```typescript
+interface IntervalOverrides {
+  activeMs: number
+  idleMs: number
+  offlineMs: number
+  lightCollectors?: boolean  // default false
+}
+```
+When `lightCollectors: true`, `runJob` calls a new `collectMetricsCritical()` that runs only:
+1. CPU + memory snapshot (single query)
+2. Blocking sessions (alert trigger)
+3. Database state check (offline alert)
+4. Backup overdue check (alert trigger)
+
+Disk and AG queries are skipped. This reduces per-server query count from ~10 to 4, halving connection hold time and SQL Server load. `lightCollectors` is set to `true` automatically when `backgroundMode === 'light'`.
+
+### 4. History Cap Reduction in Background Mode
+
+**Problem:** `metricsHistory` keeps 20 snapshots per server in memory. With 200 servers in background mode, at 30-minute intervals over 10 hours: 200 × 20 = 4,000 snapshots. Each snapshot contains databases, sessions, and instance info — potentially 10–50 KB per snapshot → up to 200 MB retained in the main process.
+
+**Fix:** `setIntervalOverrides` also sets a `historyCapOverride` in the worker:
+```typescript
+interface IntervalOverrides {
+  activeMs: number
+  idleMs: number
+  offlineMs: number
+  lightCollectors?: boolean
+  historyCapOverride?: number  // default: existing MAX_HISTORY (20)
+}
+```
+In light mode, `historyCapOverride = 3`. When the cap is lowered, the worker trims existing history arrays immediately (`metricsHistory.forEach(h => { while (h.length > cap) h.shift() })`). When `setIntervalOverrides(null)` restores defaults, the cap reverts to 20 and new snapshots accumulate normally.
 
 ---
 

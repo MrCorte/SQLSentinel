@@ -68,8 +68,9 @@ export class BackgroundService {
       {
         label: `Polling background: ${settings.backgroundEnabled ? 'Attivo' : 'Disattivo'}`,
         click: () => {
-          saveSettings({ backgroundEnabled: !settings.backgroundEnabled })
-          if (settings.backgroundEnabled) {
+          const next = !settings.backgroundEnabled
+          saveSettings({ backgroundEnabled: next })
+          if (!next) {
             this.worker.stopWorker()
           } else {
             this.restoreWorker()

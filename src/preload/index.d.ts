@@ -238,10 +238,18 @@ export interface AcknowledgeAlertRequest {
 
 export interface AppSettings {
   retentionMinutes: number
+  backgroundEnabled: boolean
+  backgroundMode: 'light' | 'full'
+  backgroundIntervalMinutes: number
+  backgroundNotifications: boolean
 }
 
 export interface SaveSettingsRequest {
   retentionMinutes?: number
+  backgroundEnabled?: boolean
+  backgroundMode?: 'light' | 'full'
+  backgroundIntervalMinutes?: number
+  backgroundNotifications?: boolean
 }
 
 export interface DbCustomFields {

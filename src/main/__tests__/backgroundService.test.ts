@@ -95,3 +95,127 @@ describe('BackgroundService — window close intercept', () => {
     expect(preventDefault).not.toHaveBeenCalled()
   })
 })
+
+describe('BackgroundService — background mode manager', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('calls setIntervalOverrides with correct ms on hide (light mode)', async () => {
+    vi.resetModules()
+    const settingsMock = { getSettings: vi.fn(() => ({
+      backgroundEnabled: true, backgroundMode: 'light', backgroundIntervalMinutes: 30,
+      backgroundNotifications: true, retentionMinutes: 60
+    })), saveSettings: vi.fn() }
+    vi.doMock('../store/settings', () => settingsMock)
+    const { BackgroundService } = await import('../backgroundService')
+    const win = makeMockWin() as any
+    const worker = { syncServers: vi.fn(), stopWorker: vi.fn(), setIntervalOverrides: vi.fn(), onAlert: vi.fn() }
+    new BackgroundService(win, worker)
+    win.emit('hide')
+    expect(worker.setIntervalOverrides).toHaveBeenCalledWith(
+      expect.objectContaining({ activeMs: 30 * 60_000, lightCollectors: true, historyCapOverride: 3 })
+    )
+  })
+
+  it('calls stopWorker on hide when backgroundEnabled=false', async () => {
+    vi.resetModules()
+    vi.doMock('../store/settings', () => ({ getSettings: vi.fn(() => ({
+      backgroundEnabled: false, backgroundMode: 'light', backgroundIntervalMinutes: 30,
+      backgroundNotifications: true, retentionMinutes: 60
+    })), saveSettings: vi.fn() }))
+    const { BackgroundService } = await import('../backgroundService')
+    const win = makeMockWin() as any
+    const worker = { syncServers: vi.fn(), stopWorker: vi.fn(), setIntervalOverrides: vi.fn(), onAlert: vi.fn() }
+    new BackgroundService(win, worker)
+    win.emit('hide')
+    expect(worker.stopWorker).toHaveBeenCalled()
+  })
+
+  it('calls setIntervalOverrides(null) on show', async () => {
+    vi.resetModules()
+    vi.doMock('../store/settings', () => ({ getSettings: vi.fn(() => ({
+      backgroundEnabled: true, backgroundMode: 'full', backgroundIntervalMinutes: 30,
+      backgroundNotifications: true, retentionMinutes: 60
+    })), saveSettings: vi.fn() }))
+    const { BackgroundService } = await import('../backgroundService')
+    const win = makeMockWin() as any
+    const worker = { syncServers: vi.fn(), stopWorker: vi.fn(), setIntervalOverrides: vi.fn(), onAlert: vi.fn() }
+    new BackgroundService(win, worker)
+    win.emit('show')
+    expect(worker.setIntervalOverrides).toHaveBeenCalledWith(null)
+  })
+
+  it('does not call setIntervalOverrides or stopWorker on hide when backgroundMode=full', async () => {
+    vi.resetModules()
+    vi.doMock('../store/settings', () => ({ getSettings: vi.fn(() => ({
+      backgroundEnabled: true, backgroundMode: 'full', backgroundIntervalMinutes: 30,
+      backgroundNotifications: true, retentionMinutes: 60
+    })), saveSettings: vi.fn() }))
+    const { BackgroundService } = await import('../backgroundService')
+    const win = makeMockWin() as any
+    const worker = { syncServers: vi.fn(), stopWorker: vi.fn(), setIntervalOverrides: vi.fn(), onAlert: vi.fn() }
+    new BackgroundService(win, worker)
+    win.emit('hide')
+    expect(worker.setIntervalOverrides).not.toHaveBeenCalled()
+    expect(worker.stopWorker).not.toHaveBeenCalled()
+  })
+})
+
+describe('BackgroundService — notifications', () => {
+  beforeEach(() => { vi.clearAllMocks() })
+
+  it('does not notify for WARNING alerts', async () => {
+    vi.resetModules()
+    vi.doMock('../store/settings', () => ({ getSettings: vi.fn(() => ({
+      backgroundEnabled: true, backgroundMode: 'light', backgroundIntervalMinutes: 30,
+      backgroundNotifications: true, retentionMinutes: 60
+    })), saveSettings: vi.fn() }))
+    const { BackgroundService } = await import('../backgroundService')
+    const win = makeMockWin() as any
+    win.isVisible.mockReturnValue(false)
+    let capturedCb: Function | null = null
+    const worker = { syncServers: vi.fn(), stopWorker: vi.fn(), setIntervalOverrides: vi.fn(),
+      onAlert: vi.fn((cb) => { capturedCb = cb }) }
+    new BackgroundService(win, worker)
+    capturedCb!({ severity: 'WARNING', serverId: 'x', category: 'cpu_high', message: 'test', detectedAt: new Date(), acknowledgedAt: null, id: '1' })
+    expect(MockNotification).not.toHaveBeenCalled()
+  })
+
+  it('notifies for CRITICAL alerts when window hidden', async () => {
+    vi.resetModules()
+    vi.doMock('../store/settings', () => ({ getSettings: vi.fn(() => ({
+      backgroundEnabled: true, backgroundMode: 'light', backgroundIntervalMinutes: 30,
+      backgroundNotifications: true, retentionMinutes: 60
+    })), saveSettings: vi.fn() }))
+    const { BackgroundService } = await import('../backgroundService')
+    const win = makeMockWin() as any
+    win.isVisible.mockReturnValue(false)
+    let capturedCb: Function | null = null
+    const worker = { syncServers: vi.fn(), stopWorker: vi.fn(), setIntervalOverrides: vi.fn(),
+      onAlert: vi.fn((cb) => { capturedCb = cb }) }
+    new BackgroundService(win, worker)
+    capturedCb!({ severity: 'CRITICAL', serverId: '10.0.0.1:1433', category: 'cpu_high',
+      message: 'CPU 95%', detectedAt: new Date(), acknowledgedAt: null, id: '1' })
+    expect(MockNotification).toHaveBeenCalled()
+    expect(mockNotification.show).toHaveBeenCalled()
+  })
+
+  it('does not re-notify within 15-minute cooldown', async () => {
+    vi.resetModules()
+    vi.doMock('../store/settings', () => ({ getSettings: vi.fn(() => ({
+      backgroundEnabled: true, backgroundMode: 'light', backgroundIntervalMinutes: 30,
+      backgroundNotifications: true, retentionMinutes: 60
+    })), saveSettings: vi.fn() }))
+    const { BackgroundService } = await import('../backgroundService')
+    const win = makeMockWin() as any
+    win.isVisible.mockReturnValue(false)
+    let capturedCb: Function | null = null
+    const worker = { syncServers: vi.fn(), stopWorker: vi.fn(), setIntervalOverrides: vi.fn(),
+      onAlert: vi.fn((cb) => { capturedCb = cb }) }
+    new BackgroundService(win, worker)
+    const alert = { severity: 'CRITICAL' as const, serverId: '10.0.0.1:1433', category: 'cpu_high' as const,
+      message: 'CPU 95%', detectedAt: new Date(), acknowledgedAt: null, id: '1' }
+    capturedCb!(alert)
+    capturedCb!(alert) // second call — should be deduped
+    expect(MockNotification).toHaveBeenCalledTimes(1)
+  })
+})

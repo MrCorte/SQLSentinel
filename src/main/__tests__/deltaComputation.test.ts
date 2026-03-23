@@ -226,6 +226,7 @@ describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
       {
         isDestroyed: () => false,
+        isVisible: () => true,
         webContents: { send: (ch: string, d: unknown) => pushed.push({ channel: ch, data: d }) }
       } as unknown as Electron.BrowserWindow
     ])
@@ -261,6 +262,7 @@ describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
       {
         isDestroyed: () => false,
+        isVisible: () => true,
         webContents: { send: (ch: string, d: unknown) => pushed.push({ channel: ch, data: d }) }
       } as unknown as Electron.BrowserWindow
     ])
@@ -281,6 +283,7 @@ describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
       {
         isDestroyed: () => false,
+        isVisible: () => true,
         webContents: { send: (ch: string, d: unknown) => pushed.push({ channel: ch, data: d }) }
       } as unknown as Electron.BrowserWindow
     ])

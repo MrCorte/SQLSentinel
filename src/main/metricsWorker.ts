@@ -206,11 +206,12 @@ function processAlerts(sid: string, metrics: ServerMetrics): void {
 
 async function runJob(sid: string, job: PollJob): Promise<void> {
   const allCustomFields = getAllCustomFields()
+  const hasVisibleWindow = BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.isVisible())
   try {
     const metrics = await collectMetrics(job.server)
 
     // Merge campi custom (alias, referente) nei DatabaseInfo prima di pushare al renderer
-    const enrichedMetrics: ServerMetrics = {
+    let enrichedMetrics: ServerMetrics = {
       ...metrics,
       databases: metrics.databases.map((db) => ({
         ...db,
@@ -218,14 +219,28 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
       }))
     }
 
+    if (intervalOverrides?.lightCollectors) {
+      // Strip fields not needed for alert evaluation; reduces IPC payload and history memory.
+      // Note: full T-SQL query skipping (collectMetricsCritical) is deferred.
+      enrichedMetrics = {
+        ...enrichedMetrics,
+        topQueries: [],
+        waitStats: [],
+        databaseFiles: [],
+      }
+    }
+
     // Rolling history
+    const cap = intervalOverrides?.historyCapOverride ?? MAX_HISTORY
     const hist = metricsHistory.get(sid) ?? []
     hist.push(enrichedMetrics)
-    if (hist.length > MAX_HISTORY) hist.shift()
+    while (hist.length > cap) hist.shift()
     metricsHistory.set(sid, hist)
 
     const delta = computeDelta(sid, enrichedMetrics)
-    pushToRenderer(IpcChannel.METRICS_UPDATED, { serverId: sid, metrics: delta })
+    if (hasVisibleWindow) {
+      pushToRenderer(IpcChannel.METRICS_UPDATED, { serverId: sid, metrics: delta })
+    }
     processAlerts(sid, enrichedMetrics)
 
     // CPU count persistence — save logicalCpus/physicalCpus to electron-store if changed.
@@ -275,7 +290,10 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
       nextRetry:   job.nextRun,
       lastSuccess: job.lastSuccess
     }
-    pushToRenderer(IpcChannel.SERVER_HEALTH_UPDATE, health)
+    if (hasVisibleWindow) {
+      pushToRenderer(IpcChannel.SERVER_HEALTH_UPDATE, health)
+    }
+    // ALERT_NEW is always sent — feeds alertCallback in BackgroundService
   }
 }
 

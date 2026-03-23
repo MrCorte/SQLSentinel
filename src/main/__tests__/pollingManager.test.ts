@@ -46,6 +46,7 @@ function captureRendererMessages(): { channel: string; data: unknown }[] {
   vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
     {
       isDestroyed: () => false,
+      isVisible: () => true,
       webContents: { send: (ch: string, d: unknown) => messages.push({ channel: ch, data: d }) }
     } as unknown as Electron.BrowserWindow
   ])

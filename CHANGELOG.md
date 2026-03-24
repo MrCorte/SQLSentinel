@@ -22,6 +22,9 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 - **Lazy loading DisksTab**: `DisksTab` caricata con `React.lazy` + `Suspense`; il bundle del tab Dischi viene scaricato solo alla prima apertura
 - **Debounce ricerca Inventory**: ricerca testuale debouncata 300ms; `filteredRows` non viene ricalcolato ad ogni tasto — riduce il carico su inventari con 200+ server
 
+### Fixed — 2026-03-24 (mock mode — UNAUTHORIZED su servers:getAll)
+- **UNAUTHORIZED in mock mode**: `bridgeApi.servers.*` era hardcodato su `realApi` (IPC reale) anche con `VITE_MOCK_MODE=true`; l'IPC guard richiedeva una sessione reale che in mock mode non esiste; corretto facendo usare `api` (mockApi o realApi in base al flag) — `mockApi.servers` è puro in-memory, nessun rischio di inquinamento electron-store
+
 ### Fixed — 2026-03-24 (auth — UNAUTHORIZED su hot-reload dev)
 - **Sessione persa dopo hot-reload**: la variabile in-memory `currentSession` veniva azzerata quando Vite ricaricava il modulo `authService.ts`; il renderer era ancora loggato ma ogni IPC autenticata riceveva `UNAUTHORIZED`
 - **Fix**: sessioni persistite in SQLite (tabella `sessions`); `getSession()` recupera da DB se l'in-memory è nullo; logout cancella il record; sliding expiry aggiorna anche il DB; `AuthSession` ha ora il campo `token`

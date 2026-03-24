@@ -859,13 +859,16 @@ const bridgeApi = {
     getDatabases: (r: AgParams): Promise<IpcResult<AvailabilityDatabase[]>> =>
       isMock ? api.ag.getDatabases(r) : ipcRenderer.invoke(IpcChannel.AG_GET_DATABASES, r),
   },
-  // servers: sempre IPC reale, mai mockato — il mock CRUD crea record con id 'mock-*'
-  // che sopravvivono al riavvio e inquinano electron-store
+  // servers: in mock mode usa mockApi (in-memory, nessun IPC → nessun auth check);
+  // in real mode usa realApi (IPC → electron-store).
+  // La preoccupazione precedente ("record mock-* inquinano electron-store") era per
+  // il vecchio schema dove mockApi chiamava IPC sotto. Ora mockApi.servers è puro
+  // in-memory, quindi è sicuro usarlo in mock mode.
   servers: {
-    getAll:     () => realApi.servers.getAll(),
-    add:        (p: Omit<StoredServer, 'id' | 'addedAt'>) => realApi.servers.add(p),
-    update:     (id: string, patch: Partial<StoredServer>) => realApi.servers.update(id, patch),
-    remove:     (id: string) => realApi.servers.remove(id),
+    getAll:     () => api.servers.getAll(),
+    add:        (p: Omit<StoredServer, 'id' | 'addedAt'>) => api.servers.add(p),
+    update:     (id: string, patch: Partial<StoredServer>) => api.servers.update(id, patch),
+    remove:     (id: string) => api.servers.remove(id),
     clearMocks: (): Promise<{ success: boolean; removed: number; remaining: number }> =>
       ipcRenderer.invoke('servers:clearMocks'),
   },

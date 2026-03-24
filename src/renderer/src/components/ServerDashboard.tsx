@@ -83,6 +83,7 @@ export function ServerDashboard({ server, metrics, connection }: Props): React.J
       <MetricsPanel
         metrics={metrics}
         serverId={serverId}
+        serverDbId={server.id}
         serverNotes={server.notes}
         connection={connection}
       />

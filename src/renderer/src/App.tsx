@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Box, Tabs, Tab, IconButton, Badge, Tooltip, Typography } from '@mui/material'
 import NotificationsIcon from '@mui/icons-material/Notifications'
 import SettingsIcon from '@mui/icons-material/Settings'
+import { ThemeProvider } from '@mui/material/styles'
+import CssBaseline from '@mui/material/CssBaseline'
 import { Discovery } from './pages/Discovery'
 import { Inventory } from './pages/Inventory'
 import { Dashboard } from './pages/Dashboard'
@@ -16,6 +18,8 @@ import { useAppStore } from './store/appStore'
 import { useMetricsStore } from './store/metricsStore'
 import { tokens } from './styles/tokens'
 import { useMockData } from './hooks/useMockData'
+import { buildTheme } from './styles/theme'
+import { ThemeContext, type ThemeMode } from './context/ThemeContext'
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 
@@ -169,8 +173,9 @@ function AppInner(): React.JSX.Element {
         sx={{
           height: tokens.size.navbarHeight,
           minHeight: tokens.size.navbarHeight,
-          bgcolor: tokens.color.bgCard,
-          borderBottom: `1px solid ${tokens.color.border}`,
+          bgcolor: 'background.paper',
+          borderBottom: 1,
+          borderColor: 'divider',
           boxShadow: tokens.shadow.navbar,
           display: 'flex',
           alignItems: 'center',
@@ -213,24 +218,24 @@ function AppInner(): React.JSX.Element {
             value={1}
             label="Discovery"
             sx={{
-              color: tokens.color.textSecondary,
-              '&.Mui-selected': { color: tokens.color.primary }
+              color: 'text.secondary',
+              '&.Mui-selected': { color: 'primary.main' }
             }}
           />
           <Tab
             value={2}
             label="Inventario"
             sx={{
-              color: tokens.color.textSecondary,
-              '&.Mui-selected': { color: tokens.color.primary }
+              color: 'text.secondary',
+              '&.Mui-selected': { color: 'primary.main' }
             }}
           />
           <Tab
             value={3}
             label="Dashboard"
             sx={{
-              color: tokens.color.textSecondary,
-              '&.Mui-selected': { color: tokens.color.primary }
+              color: 'text.secondary',
+              '&.Mui-selected': { color: 'primary.main' }
             }}
           />
         </Tabs>
@@ -244,8 +249,8 @@ function AppInner(): React.JSX.Element {
             size="small"
             onClick={() => setDrawerOpen(true)}
             sx={{
-              color: criticalCount > 0 ? tokens.color.error : tokens.color.textSecondary,
-              '&:hover': { bgcolor: tokens.color.bgApp }
+              color: criticalCount > 0 ? 'error.main' : 'text.secondary',
+              '&:hover': { bgcolor: 'action.hover' }
             }}
           >
             <Badge badgeContent={criticalCount || undefined} color="error" max={99}>
@@ -259,8 +264,8 @@ function AppInner(): React.JSX.Element {
             size="small"
             onClick={() => setTab(4)}
             sx={{
-              color: tab === 4 ? tokens.color.primary : tokens.color.textSecondary,
-              '&:hover': { bgcolor: tokens.color.bgApp }
+              color: tab === 4 ? 'primary.main' : 'text.secondary',
+              '&:hover': { bgcolor: 'action.hover' }
             }}
           >
             <SettingsIcon fontSize="small" />
@@ -319,10 +324,50 @@ function AppInner(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 
 function App(): React.JSX.Element {
+  const [themeMode, setThemeModeState] = useState<ThemeMode>('system')
+  const [systemDark, setSystemDark] = useState(() =>
+    window.matchMedia('(prefers-color-scheme: dark)').matches
+  )
+
+  // Load persisted theme preference on mount
+  useEffect(() => {
+    window.sqlSentinel.getSettings().then((result) => {
+      if (result.ok && result.data.themeMode) {
+        setThemeModeState(result.data.themeMode as ThemeMode)
+      }
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Track OS dark-mode preference for 'system' mode
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = (e: MediaQueryListEvent) => setSystemDark(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  const effectiveMode = useMemo((): 'light' | 'dark' => {
+    if (themeMode === 'dark') return 'dark'
+    if (themeMode === 'light') return 'light'
+    return systemDark ? 'dark' : 'light'
+  }, [themeMode, systemDark])
+
+  const muiTheme = useMemo(() => buildTheme(effectiveMode), [effectiveMode])
+
+  const setThemeMode = useCallback(async (mode: ThemeMode): Promise<void> => {
+    setThemeModeState(mode)
+    await window.sqlSentinel.saveSettings({ themeMode: mode })
+  }, [])
+
   return (
-    <WorkerProvider>
-      <AppInner />
-    </WorkerProvider>
+    <ThemeContext.Provider value={{ themeMode, setThemeMode }}>
+      <ThemeProvider theme={muiTheme}>
+        <CssBaseline />
+        <WorkerProvider>
+          <AppInner />
+        </WorkerProvider>
+      </ThemeProvider>
+    </ThemeContext.Provider>
   )
 }
 

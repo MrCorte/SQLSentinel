@@ -18,9 +18,16 @@ import {
   Radio,
   TextField
 } from '@mui/material'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import SettingsIcon from '@mui/icons-material/Settings'
 import DownloadIcon from '@mui/icons-material/Download'
+import WbSunnyOutlinedIcon from '@mui/icons-material/WbSunnyOutlined'
+import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined'
+import DesktopWindowsOutlinedIcon from '@mui/icons-material/DesktopWindowsOutlined'
 import { useWorker } from '../context/useWorker'
+import { useThemeContext } from '../context/ThemeContext'
+import type { ThemeMode } from '../context/ThemeContext'
 
 // ---------------------------------------------------------------------------
 // Opzioni retention
@@ -84,6 +91,7 @@ async function runExport(key: ExportKey): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export function Settings(): React.JSX.Element {
+  const { themeMode, setThemeMode } = useThemeContext()
   const { retentionMinutes, setRetentionMinutes, intervalSeconds } = useWorker()
   const [exportLoading, setExportLoading] = useState<ExportKey | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
@@ -226,6 +234,39 @@ export function Settings(): React.JSX.Element {
           Impostazioni
         </Typography>
       </Box>
+
+      {/* ---- Aspetto ---- */}
+      <Card variant="outlined">
+        <CardContent>
+          <Typography variant="subtitle2" gutterBottom>
+            Aspetto
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            Scegli il tema dell&apos;applicazione
+          </Typography>
+          <ToggleButtonGroup
+            value={themeMode}
+            exclusive
+            onChange={(_e, value: ThemeMode | null) => {
+              if (value != null) void setThemeMode(value)
+            }}
+            size="small"
+          >
+            <ToggleButton value="light" aria-label="tema chiaro">
+              <WbSunnyOutlinedIcon fontSize="small" sx={{ mr: 0.5 }} />
+              Chiaro
+            </ToggleButton>
+            <ToggleButton value="dark" aria-label="tema scuro">
+              <DarkModeOutlinedIcon fontSize="small" sx={{ mr: 0.5 }} />
+              Scuro
+            </ToggleButton>
+            <ToggleButton value="system" aria-label="tema sistema">
+              <DesktopWindowsOutlinedIcon fontSize="small" sx={{ mr: 0.5 }} />
+              Sistema
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </CardContent>
+      </Card>
 
       {/* Card — Retention dati storici */}
       <Card variant="outlined">

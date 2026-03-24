@@ -70,8 +70,9 @@ function KpiCard({
       sx={{
         flex: '1 1 110px',
         minWidth: 100,
-        bgcolor: tokens.color.bgCard,
-        border: `1px solid ${tokens.color.border}`,
+        bgcolor: 'background.paper',
+        border: '1px solid',
+        borderColor: 'divider',
         borderTop: `3px solid ${borderColor}`,
         borderRadius: tokens.radius.sm,
         p: 1.5,
@@ -85,7 +86,7 @@ function KpiCard({
         sx={{
           fontSize: 10,
           fontWeight: 700,
-          color: tokens.color.textSecondary,
+          color: 'text.secondary',
           textTransform: 'uppercase',
           letterSpacing: '0.04em',
           mb: 0.5
@@ -94,7 +95,7 @@ function KpiCard({
         {label}
       </Typography>
       <Typography
-        sx={{ fontSize: 28, fontWeight: 700, color: tokens.color.textPrimary, lineHeight: 1 }}
+        sx={{ fontSize: 28, fontWeight: 700, color: 'text.primary', lineHeight: 1 }}
       >
         {value}
       </Typography>
@@ -201,10 +202,10 @@ export function HomeDashboard({
           gap: 2
         }}
       >
-        <Typography variant="h6" sx={{ color: tokens.color.textSecondary }}>
+        <Typography variant="h6" sx={{ color: 'text.secondary' }}>
           Nessun server monitorato
         </Typography>
-        <Typography sx={{ color: tokens.color.textSecondary, fontSize: 14 }}>
+        <Typography sx={{ color: 'text.secondary', fontSize: 14 }}>
           Vai alla Discovery per aggiungere i tuoi SQL Server
         </Typography>
         <Button variant="outlined" onClick={onNavigateToDiscovery}>
@@ -232,13 +233,13 @@ export function HomeDashboard({
           sx={{
             fontSize: tokens.font.sizeLg,
             fontWeight: tokens.font.weightBold,
-            color: tokens.color.textPrimary
+            color: 'text.primary'
           }}
         >
           Home Dashboard
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Typography sx={{ fontSize: tokens.font.sizeSm, color: tokens.color.textSecondary }}>
+          <Typography sx={{ fontSize: tokens.font.sizeSm, color: 'text.secondary' }}>
             Aggiornato: {lastUpdate ? formatTime(lastUpdate) : '—'}
           </Typography>
           <MuiTooltip title="Aggiorna metriche da tutti i server">
@@ -294,8 +295,9 @@ export function HomeDashboard({
         <Box
           sx={{
             flex: '0 0 260px',
-            bgcolor: tokens.color.bgCard,
-            border: `1px solid ${tokens.color.border}`,
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
             borderRadius: tokens.radius.sm,
             boxShadow: tokens.shadow.card,
             p: 1.5
@@ -305,7 +307,7 @@ export function HomeDashboard({
             sx={{
               fontSize: 11,
               fontWeight: 700,
-              color: tokens.color.textSecondary,
+              color: 'text.secondary',
               textTransform: 'uppercase',
               letterSpacing: '0.04em',
               mb: 1
@@ -332,7 +334,7 @@ export function HomeDashboard({
                 <Tooltip
                   contentStyle={{
                     fontSize: 12,
-                    border: `1px solid ${tokens.color.border}`,
+                    border: '1px solid rgba(128,128,128,0.3)',
                     borderRadius: tokens.radius.sm
                   }}
                 />
@@ -354,7 +356,7 @@ export function HomeDashboard({
               }}
             >
               <Typography
-                sx={{ fontSize: 28, fontWeight: 700, color: tokens.color.textPrimary, lineHeight: 1 }}
+                sx={{ fontSize: 28, fontWeight: 700, color: 'text.primary', lineHeight: 1 }}
               >
                 {servers.length}
               </Typography>
@@ -362,7 +364,7 @@ export function HomeDashboard({
                 sx={{
                   fontSize: 10,
                   fontWeight: 700,
-                  color: tokens.color.textSecondary,
+                  color: 'text.secondary',
                   textTransform: 'uppercase',
                   letterSpacing: '0.06em'
                 }}
@@ -389,11 +391,11 @@ export function HomeDashboard({
                   }}
                 />
                 <Typography
-                  sx={{ fontSize: 11, color: tokens.color.textSecondary, flex: 1 }}
+                  sx={{ fontSize: 11, color: 'text.secondary', flex: 1 }}
                 >
                   {item.label}
                 </Typography>
-                <Typography sx={{ fontSize: 11, fontWeight: 700, color: tokens.color.textPrimary }}>
+                <Typography sx={{ fontSize: 11, fontWeight: 700, color: 'text.primary' }}>
                   {item.value}
                 </Typography>
               </Box>
@@ -405,8 +407,9 @@ export function HomeDashboard({
         <Box
           sx={{
             flex: 1,
-            bgcolor: tokens.color.bgCard,
-            border: `1px solid ${tokens.color.border}`,
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
             borderRadius: tokens.radius.sm,
             boxShadow: tokens.shadow.card,
             p: 1.5,
@@ -418,7 +421,7 @@ export function HomeDashboard({
             sx={{
               fontSize: 11,
               fontWeight: 700,
-              color: tokens.color.textSecondary,
+              color: 'text.secondary',
               textTransform: 'uppercase',
               letterSpacing: '0.04em',
               mb: 1
@@ -435,7 +438,7 @@ export function HomeDashboard({
                 height: 180
               }}
             >
-              <Typography sx={{ fontSize: 13, color: tokens.color.textSecondary }}>
+              <Typography sx={{ fontSize: 13, color: 'text.secondary' }}>
                 Nessuna metrica disponibile
               </Typography>
             </Box>
@@ -451,19 +454,19 @@ export function HomeDashboard({
                   type="number"
                   domain={[0, 100]}
                   tickFormatter={(v: number) => `${v}%`}
-                  tick={{ fontSize: 11, fill: tokens.color.textSecondary }}
+                  tick={{ fontSize: 11, fill: '#94a3b8' }}
                 />
                 <YAxis
                   type="category"
                   dataKey="name"
                   width={120}
-                  tick={{ fontSize: 11, fill: tokens.color.textSecondary }}
+                  tick={{ fontSize: 11, fill: '#94a3b8' }}
                 />
                 <Tooltip
                   formatter={(value) => [`${value}%`, 'CPU']}
                   contentStyle={{
                     fontSize: 12,
-                    border: `1px solid ${tokens.color.border}`,
+                    border: '1px solid rgba(128,128,128,0.3)',
                     borderRadius: tokens.radius.sm
                   }}
                 />
@@ -484,8 +487,9 @@ export function HomeDashboard({
         <Box
           sx={{
             flex: 1,
-            bgcolor: tokens.color.bgCard,
-            border: `1px solid ${tokens.color.border}`,
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
             borderRadius: tokens.radius.sm,
             boxShadow: tokens.shadow.card,
             overflow: 'auto',
@@ -505,7 +509,7 @@ export function HomeDashboard({
                 style={{
                   position: 'sticky',
                   top: 0,
-                  backgroundColor: tokens.color.bgApp,
+                  backgroundColor: 'transparent',
                   zIndex: 1
                 }}
               >
@@ -528,10 +532,11 @@ export function HomeDashboard({
                       textAlign: 'left',
                       fontWeight: 700,
                       fontSize: 11,
-                      color: tokens.color.textSecondary,
+                      color: 'inherit',
+                      opacity: 0.6,
                       textTransform: 'uppercase',
                       letterSpacing: '0.04em',
-                      borderBottom: `1px solid ${tokens.color.border}`,
+                      borderBottom: '1px solid rgba(128,128,128,0.2)',
                       whiteSpace: 'nowrap'
                     }}
                   >
@@ -583,7 +588,7 @@ export function HomeDashboard({
                     onMouseEnter={(e) => {
                       if (!s.unreachable)
                         (e.currentTarget as HTMLTableRowElement).style.backgroundColor =
-                          tokens.color.bgApp
+                          'rgba(128,128,128,0.08)'
                     }}
                     onMouseLeave={(e) => {
                       ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = rowBg
@@ -592,9 +597,8 @@ export function HomeDashboard({
                     <td
                       style={{
                         padding: '5px 8px',
-                        borderBottom: `1px solid ${tokens.color.border}`,
+                        borderBottom: '1px solid rgba(128,128,128,0.2)',
                         fontWeight: 600,
-                        color: tokens.color.textPrimary,
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap'
@@ -605,8 +609,8 @@ export function HomeDashboard({
                     <td
                       style={{
                         padding: '5px 8px',
-                        borderBottom: `1px solid ${tokens.color.border}`,
-                        color: tokens.color.textSecondary,
+                        borderBottom: '1px solid rgba(128,128,128,0.2)',
+                        opacity: 0.7,
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap'
@@ -623,7 +627,7 @@ export function HomeDashboard({
                     <td
                       style={{
                         padding: '5px 8px',
-                        borderBottom: `1px solid ${tokens.color.border}`,
+                        borderBottom: '1px solid rgba(128,128,128,0.2)',
                         whiteSpace: 'nowrap'
                       }}
                     >
@@ -649,8 +653,8 @@ export function HomeDashboard({
                     <td
                       style={{
                         padding: '5px 8px',
-                        borderBottom: `1px solid ${tokens.color.border}`,
-                        color: tokens.color.textSecondary,
+                        borderBottom: '1px solid rgba(128,128,128,0.2)',
+                        opacity: 0.7,
                         whiteSpace: 'nowrap'
                       }}
                     >
@@ -659,15 +663,15 @@ export function HomeDashboard({
                     <td
                       style={{
                         padding: '5px 8px',
-                        borderBottom: `1px solid ${tokens.color.border}`,
+                        borderBottom: '1px solid rgba(128,128,128,0.2)',
                         color:
                           cpu === undefined
-                            ? tokens.color.textDisabled
+                            ? 'rgba(128,128,128,0.5)'
                             : cpu >= 80
                               ? '#a4262c'
                               : cpu >= 60
                                 ? '#d83b01'
-                                : tokens.color.textPrimary,
+                                : undefined,
                         fontWeight: cpu !== undefined && cpu >= 60 ? 700 : 400,
                         whiteSpace: 'nowrap'
                       }}
@@ -677,13 +681,13 @@ export function HomeDashboard({
                     <td
                       style={{
                         padding: '5px 8px',
-                        borderBottom: `1px solid ${tokens.color.border}`,
+                        borderBottom: '1px solid rgba(128,128,128,0.2)',
                         color:
                           memPct === null
-                            ? tokens.color.textDisabled
+                            ? 'rgba(128,128,128,0.5)'
                             : memPct >= 90
                               ? '#a4262c'
-                              : tokens.color.textPrimary,
+                              : undefined,
                         whiteSpace: 'nowrap'
                       }}
                     >
@@ -692,8 +696,7 @@ export function HomeDashboard({
                     <td
                       style={{
                         padding: '5px 8px',
-                        borderBottom: `1px solid ${tokens.color.border}`,
-                        color: tokens.color.textPrimary,
+                        borderBottom: '1px solid rgba(128,128,128,0.2)',
                         whiteSpace: 'nowrap'
                       }}
                     >
@@ -702,7 +705,7 @@ export function HomeDashboard({
                     <td
                       style={{
                         padding: '5px 8px',
-                        borderBottom: `1px solid ${tokens.color.border}`,
+                        borderBottom: '1px solid rgba(128,128,128,0.2)',
                         whiteSpace: 'nowrap'
                       }}
                     >
@@ -736,13 +739,13 @@ export function HomeDashboard({
                         </span>
                       )}
                       {critSrv === 0 && warnSrv === 0 && (
-                        <span style={{ color: tokens.color.textDisabled }}>—</span>
+                        <span style={{ opacity: 0.4 }}>—</span>
                       )}
                     </td>
                     <td
                       style={{
                         padding: '5px 8px',
-                        borderBottom: `1px solid ${tokens.color.border}`,
+                        borderBottom: '1px solid rgba(128,128,128,0.2)',
                         whiteSpace: 'nowrap'
                       }}
                     >
@@ -762,7 +765,7 @@ export function HomeDashboard({
                         </span>
                       ) : (
                         <span
-                          style={{ color: tokens.color.textDisabled, fontSize: 11 }}
+                          style={{ opacity: 0.4, fontSize: 11 }}
                         >
                           ● SCONOSCIUTO
                         </span>
@@ -771,8 +774,8 @@ export function HomeDashboard({
                     <td
                       style={{
                         padding: '5px 8px',
-                        borderBottom: `1px solid ${tokens.color.border}`,
-                        color: tokens.color.textSecondary,
+                        borderBottom: '1px solid rgba(128,128,128,0.2)',
+                        opacity: 0.7,
                         whiteSpace: 'nowrap'
                       }}
                     >
@@ -790,8 +793,9 @@ export function HomeDashboard({
           sx={{
             width: 300,
             flexShrink: 0,
-            bgcolor: tokens.color.bgCard,
-            border: `1px solid ${tokens.color.border}`,
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
             borderRadius: tokens.radius.sm,
             boxShadow: tokens.shadow.card,
             display: 'flex',
@@ -807,7 +811,8 @@ export function HomeDashboard({
               justifyContent: 'space-between',
               px: 1.5,
               py: 1,
-              borderBottom: `1px solid ${tokens.color.border}`,
+              borderBottom: '1px solid',
+              borderBottomColor: 'divider',
               flexShrink: 0
             }}
           >
@@ -815,7 +820,7 @@ export function HomeDashboard({
               sx={{
                 fontSize: 11,
                 fontWeight: 700,
-                color: tokens.color.textSecondary,
+                color: 'text.secondary',
                 textTransform: 'uppercase',
                 letterSpacing: '0.04em'
               }}
@@ -847,7 +852,7 @@ export function HomeDashboard({
                   p: 2
                 }}
               >
-                <Typography sx={{ fontSize: 13, color: tokens.color.textSecondary }}>
+                <Typography sx={{ fontSize: 13, color: 'text.secondary' }}>
                   Nessun allarme attivo
                 </Typography>
               </Box>
@@ -873,9 +878,10 @@ export function HomeDashboard({
                       borderLeft: `3px solid ${alertBorderColor}`,
                       px: 1.5,
                       py: 0.75,
-                      borderBottom: `1px solid ${tokens.color.border}`,
+                      borderBottom: '1px solid',
+                      borderBottomColor: 'divider',
                       cursor: srvForAlert ? 'pointer' : 'default',
-                      '&:hover': srvForAlert ? { bgcolor: tokens.color.bgApp } : undefined
+                      '&:hover': srvForAlert ? { bgcolor: 'action.hover' } : undefined
                     }}
                   >
                     <Box
@@ -889,7 +895,7 @@ export function HomeDashboard({
                       <Typography
                         sx={{
                           fontSize: 10,
-                          color: tokens.color.textSecondary,
+                          color: 'text.secondary',
                           whiteSpace: 'nowrap'
                         }}
                       >
@@ -899,7 +905,7 @@ export function HomeDashboard({
                         sx={{
                           fontSize: 11,
                           fontWeight: 600,
-                          color: tokens.color.textPrimary,
+                          color: 'text.primary',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
@@ -913,7 +919,7 @@ export function HomeDashboard({
                     <Typography
                       sx={{
                         fontSize: 11,
-                        color: tokens.color.textSecondary,
+                        color: 'text.secondary',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap'

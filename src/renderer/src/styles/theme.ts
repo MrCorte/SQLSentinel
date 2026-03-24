@@ -15,16 +15,16 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
       warning: { main: tokens.color.warning },
       error: { main: tokens.color.error },
       background: isDark
-        ? { default: '#1a1a1a', paper: '#242424' }
+        ? { default: '#0f172a', paper: '#1e293b' }
         : { default: tokens.color.bgApp, paper: tokens.color.bgCard },
       text: isDark
-        ? { primary: '#e8e6e3', secondary: '#a8a6a4', disabled: '#6a6866' }
+        ? { primary: '#f1f5f9', secondary: '#94a3b8', disabled: '#475569' }
         : {
             primary: tokens.color.textPrimary,
             secondary: tokens.color.textSecondary,
             disabled: tokens.color.textDisabled,
           },
-      divider: isDark ? 'rgba(255,255,255,0.12)' : tokens.color.divider,
+      divider: isDark ? '#334155' : tokens.color.divider,
     },
 
     typography: {
@@ -37,7 +37,7 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
       body2: { fontSize: tokens.font.sizeSm },
       caption: {
         fontSize: tokens.font.sizeXs,
-        color: isDark ? '#a8a6a4' : tokens.color.textSecondary,
+        color: isDark ? '#94a3b8' : tokens.color.textSecondary,
       },
       button: {
         fontSize: tokens.font.sizeBase,
@@ -52,17 +52,17 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
       MuiCssBaseline: {
         styleOverrides: {
           body: {
-            backgroundColor: isDark ? '#1a1a1a' : tokens.color.bgApp,
-            color: isDark ? '#e8e6e3' : tokens.color.textPrimary,
+            backgroundColor: isDark ? '#0f172a' : tokens.color.bgApp,
+            color: isDark ? '#f1f5f9' : tokens.color.textPrimary,
             fontFamily: tokens.font.family,
           },
           // Scrollbar colours switch with the theme
           '::-webkit-scrollbar': { width: 6, height: 6 },
           '::-webkit-scrollbar-track': { background: 'transparent' },
           '::-webkit-scrollbar-thumb': {
-            background: isDark ? '#555553' : '#c8c6c4',
+            background: isDark ? '#334155' : '#c8c6c4',
             borderRadius: 3,
-            '&:hover': { background: isDark ? '#737170' : '#8a8886' },
+            '&:hover': { background: isDark ? '#475569' : '#8a8886' },
           },
         },
       },
@@ -112,8 +112,8 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
             fontWeight: tokens.font.weightSemibold,
             textTransform: 'uppercase',
             letterSpacing: '0.04em',
-            backgroundColor: isDark ? '#2a2a2a' : tokens.color.bgApp,
-            color: isDark ? '#a8a6a4' : tokens.color.textSecondary,
+            backgroundColor: isDark ? '#1a2744' : tokens.color.bgApp,
+            color: isDark ? '#94a3b8' : tokens.color.textSecondary,
             borderBottom: `2px solid ${tokens.color.primary}`,
           },
           body: { fontSize: tokens.font.sizeSm },
@@ -151,7 +151,7 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
 
       MuiDivider: {
         styleOverrides: {
-          root: { borderColor: isDark ? 'rgba(255,255,255,0.12)' : tokens.color.divider },
+          root: { borderColor: isDark ? '#334155' : tokens.color.divider },
         },
       },
     },

@@ -41,8 +41,9 @@ function VolumeCard({ vol }: { vol: DiskVolume }): React.JSX.Element {
   return (
     <Box
       sx={{
-        bgcolor: tokens.color.bgCard,
-        border: `1px solid ${tokens.color.border}`,
+        bgcolor: 'background.paper',
+        border: '1px solid',
+        borderColor: 'divider',
         borderRadius: tokens.radius.sm,
         p: 2,
         position: 'relative',
@@ -68,11 +69,11 @@ function VolumeCard({ vol }: { vol: DiskVolume }): React.JSX.Element {
 
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
         <StorageIcon sx={{ fontSize: 16, color: tokens.color.primary }} />
-        <Typography sx={{ fontSize: 14, fontWeight: 600, color: tokens.color.textPrimary }}>
+        <Typography sx={{ fontSize: 14, fontWeight: 600, color: 'text.primary' }}>
           {vol.volume_mount_point}
         </Typography>
         {vol.logical_volume_name && (
-          <Typography sx={{ fontSize: 12, color: tokens.color.textSecondary }}>
+          <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>
             {vol.logical_volume_name}
           </Typography>
         )}
@@ -81,17 +82,17 @@ function VolumeCard({ vol }: { vol: DiskVolume }): React.JSX.Element {
       <SpaceBar used={vol.used_gb} total={vol.total_gb} unit="GB" />
 
       <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
-        <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
           Usato:{' '}
-          <strong style={{ color: tokens.color.textPrimary }}>{vol.used_gb.toFixed(1)} GB</strong>
+          <strong style={{ color: 'inherit' }}>{vol.used_gb.toFixed(1)} GB</strong>
         </Typography>
-        <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
           Libero:{' '}
-          <strong style={{ color: tokens.color.textPrimary }}>{vol.free_gb.toFixed(1)} GB</strong>
+          <strong style={{ color: 'inherit' }}>{vol.free_gb.toFixed(1)} GB</strong>
         </Typography>
-        <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
           Totale:{' '}
-          <strong style={{ color: tokens.color.textPrimary }}>{vol.total_gb.toFixed(1)} GB</strong>
+          <strong style={{ color: 'inherit' }}>{vol.total_gb.toFixed(1)} GB</strong>
         </Typography>
       </Stack>
     </Box>
@@ -116,14 +117,15 @@ function DatabaseFileRow({ file }: { file: DatabaseFile }): React.JSX.Element {
             fontWeight: 700,
             height: 18,
             bgcolor: file.type_desc === 'ROWS' ? tokens.color.infoLight : 'action.hover',
-            color: file.type_desc === 'ROWS' ? tokens.color.primary : tokens.color.textSecondary,
-            border: `1px solid ${file.type_desc === 'ROWS' ? tokens.color.primary : tokens.color.border}`
+            color: file.type_desc === 'ROWS' ? tokens.color.primary : 'text.secondary',
+            border: '1px solid',
+            borderColor: file.type_desc === 'ROWS' ? tokens.color.primary : 'divider'
           }}
         />
         <Typography
           sx={{
             fontSize: 12,
-            color: tokens.color.textPrimary,
+            color: 'text.primary',
             fontFamily: 'monospace',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -142,13 +144,13 @@ function DatabaseFileRow({ file }: { file: DatabaseFile }): React.JSX.Element {
         <Typography
           variant="caption"
           sx={{
-            color: ag.isDisabled ? tokens.color.error : tokens.color.textSecondary,
+            color: ag.isDisabled ? tokens.color.error : 'text.secondary',
             fontWeight: ag.isDisabled ? 600 : 400
           }}
         >
           {ag.text}
         </Typography>
-        <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
           Max: {maxSizeLabel(file.max_mb)}
         </Typography>
       </Stack>
@@ -176,8 +178,9 @@ function DatabaseGroupCard({
     <>
     <Box
       sx={{
-        bgcolor: tokens.color.bgCard,
-        border: `1px solid ${tokens.color.border}`,
+        bgcolor: 'background.paper',
+        border: '1px solid',
+        borderColor: 'divider',
         borderRadius: tokens.radius.sm,
         overflow: 'hidden',
         boxShadow: tokens.shadow.card
@@ -191,24 +194,25 @@ function DatabaseGroupCard({
         sx={{
           px: 2,
           py: 1,
-          bgcolor: tokens.color.bgApp,
-          borderBottom: open ? `1px solid ${tokens.color.border}` : 'none',
+          bgcolor: 'background.default',
+          borderBottom: open ? '1px solid' : 'none',
+          borderBottomColor: open ? 'divider' : 'transparent',
           cursor: 'pointer',
           '&:hover': { bgcolor: 'action.hover' }
         }}
         onClick={() => setOpen((v) => !v)}
       >
         <FolderOpenIcon sx={{ fontSize: 15, color: tokens.color.primary }} />
-        <Typography sx={{ fontSize: 13, fontWeight: 600, flex: 1, color: tokens.color.textPrimary }}>
+        <Typography sx={{ fontSize: 13, fontWeight: 600, flex: 1, color: 'text.primary' }}>
           {dbName}
         </Typography>
-        <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>
+        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
           {files.length} {files.length === 1 ? 'file' : 'files'}
         </Typography>
         <Tooltip title="Shrink database">
           <IconButton
             size="small"
-            sx={{ p: 0.25, color: tokens.color.textSecondary, '&:hover': { color: tokens.color.primary } }}
+            sx={{ p: 0.25, color: 'text.secondary', '&:hover': { color: tokens.color.primary } }}
             onClick={(e) => { e.stopPropagation(); setShrinkOpen(true) }}
           >
             <SettingsIcon sx={{ fontSize: 14 }} />
@@ -218,7 +222,7 @@ function DatabaseGroupCard({
           <ExpandMoreIcon
             sx={{
               fontSize: 16,
-              color: tokens.color.textSecondary,
+              color: 'text.secondary',
               transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
               transition: 'transform 200ms ease'
             }}
@@ -274,14 +278,14 @@ export function DisksTab({ diskVolumes, databaseFiles, connection }: DisksTabPro
       {/* Section A — Volumi server */}
       <Box>
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
-          <StorageIcon sx={{ fontSize: 16, color: tokens.color.textSecondary }} />
+          <StorageIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
           <Typography
             sx={{
               fontSize: 11,
               fontWeight: 700,
               textTransform: 'uppercase',
               letterSpacing: '0.5px',
-              color: tokens.color.textSecondary
+              color: 'text.secondary'
             }}
           >
             Volumi Server
@@ -289,7 +293,7 @@ export function DisksTab({ diskVolumes, databaseFiles, connection }: DisksTabPro
         </Stack>
 
         {diskVolumes.length === 0 ? (
-          <Typography variant="body2" sx={{ color: tokens.color.textSecondary }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             Nessun dato volume disponibile.
           </Typography>
         ) : (
@@ -312,14 +316,14 @@ export function DisksTab({ diskVolumes, databaseFiles, connection }: DisksTabPro
       {/* Section B — File Database */}
       <Box>
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
-          <FolderOpenIcon sx={{ fontSize: 16, color: tokens.color.textSecondary }} />
+          <FolderOpenIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
           <Typography
             sx={{
               fontSize: 11,
               fontWeight: 700,
               textTransform: 'uppercase',
               letterSpacing: '0.5px',
-              color: tokens.color.textSecondary
+              color: 'text.secondary'
             }}
           >
             File Database
@@ -327,7 +331,7 @@ export function DisksTab({ diskVolumes, databaseFiles, connection }: DisksTabPro
         </Stack>
 
         {sortedDbNames.length === 0 ? (
-          <Typography variant="body2" sx={{ color: tokens.color.textSecondary }}>
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
             Nessun file database disponibile.
           </Typography>
         ) : (

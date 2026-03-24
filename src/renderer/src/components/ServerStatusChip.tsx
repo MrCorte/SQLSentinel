@@ -18,11 +18,12 @@ export function ServerStatusChip({ reachable, responseTimeMs }: Props): React.JS
           px: 0.75,
           py: 0.125,
           borderRadius: '12px',
-          bgcolor: tokens.color.bgApp,
-          border: `1px solid ${tokens.color.border}`
+          bgcolor: 'background.default',
+          border: '1px solid',
+          borderColor: 'divider',
         }}
       >
-        <Typography component="span" sx={{ fontSize: tokens.font.sizeXs, color: tokens.color.textSecondary }}>
+        <Typography component="span" sx={{ fontSize: tokens.font.sizeXs, color: 'text.secondary' }}>
           Sconosciuto
         </Typography>
       </Box>

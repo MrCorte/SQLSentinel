@@ -5,7 +5,9 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
-### Fixed — 2026-03-24 (dark mode cleanup)
+### Fixed — 2026-03-24 (dark mode — token cleanup)
+- **Palette dark aggiornata**: sfondo `#0f172a`/`#1e293b`, testo `#f1f5f9`/`#94a3b8`, divider `#334155` (palette slate)
+- **`tokens.color.*` sostituiti con MUI palette keys**: `AgDashboard`, `AlertsDrawer`, `DisksTab`, `HomeDashboard`, `Inventory`, `MemoryChart`, `MetricsPanel`, `ServerStatusChip` ora usano `background.paper`, `background.default`, `text.primary`, `text.secondary`, `divider` — tutte le card e tabelle si adattano al tema
 - **Colori hardcoded rimossi**: `SpaceBar`, `DisksTab`, `MetricsPanel`, `Dashboard`, `Inventory` ora usano MUI palette keys (`text.secondary`, `action.hover`, `background.default`, `divider`) invece di hex fissi; righe Inventory con tinte colorate adattate per dark/light via `alpha()` e sx callback
 
 ### Added — 2026-03-24 (dark mode)

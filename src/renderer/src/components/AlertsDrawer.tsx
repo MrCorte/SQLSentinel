@@ -47,9 +47,10 @@ function SectionHeader({ label }: { label: string }): React.JSX.Element {
         fontWeight: tokens.font.weightSemibold,
         textTransform: 'uppercase',
         letterSpacing: '0.06em',
-        color: tokens.color.textSecondary,
-        bgcolor: tokens.color.bgApp,
-        borderBottom: `1px solid ${tokens.color.border}`
+        color: 'text.secondary',
+        bgcolor: 'background.default',
+        borderBottom: '1px solid',
+        borderBottomColor: 'divider',
       }}
     >
       {label}
@@ -74,7 +75,7 @@ function AlertRow({
       sx={{
         opacity: isAcknowledged ? 0.55 : 1,
         borderLeft: `3px solid ${accentColor}`,
-        bgcolor: tokens.color.bgCard,
+        bgcolor: 'background.paper',
         mb: 0.5,
         pr: 2,
         flexDirection: 'column',
@@ -101,8 +102,8 @@ function AlertRow({
               sx={{
                 fontSize: tokens.font.sizeXs,
                 fontWeight: tokens.font.weightSemibold,
-                color: tokens.color.textSecondary,
-                bgcolor: tokens.color.bgApp,
+                color: 'text.secondary',
+                bgcolor: 'background.default',
                 px: 0.75,
                 py: 0.125,
                 borderRadius: tokens.radius.sm
@@ -112,7 +113,7 @@ function AlertRow({
             </Typography>
             <Typography
               component="span"
-              sx={{ fontSize: tokens.font.sizeXs, color: tokens.color.textSecondary }}
+              sx={{ fontSize: tokens.font.sizeXs, color: 'text.secondary' }}
             >
               {alert.serverId}
             </Typography>
@@ -122,14 +123,14 @@ function AlertRow({
           <>
             <Typography
               component="span"
-              sx={{ display: 'block', fontSize: tokens.font.sizeSm, color: tokens.color.textPrimary, mb: 0.5 }}
+              sx={{ display: 'block', fontSize: tokens.font.sizeSm, color: 'text.primary', mb: 0.5 }}
             >
               {alert.message}
             </Typography>
             <Stack direction="row" justifyContent="space-between" alignItems="center">
               <Typography
                 component="span"
-                sx={{ fontSize: tokens.font.sizeXs, color: tokens.color.textSecondary }}
+                sx={{ fontSize: tokens.font.sizeXs, color: 'text.secondary' }}
               >
                 {new Date(alert.detectedAt).toLocaleString('it-IT')}
               </Typography>
@@ -173,7 +174,7 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
       PaperProps={{
         sx: {
           width: tokens.size.alertsDrawerWidth,
-          bgcolor: tokens.color.bgApp,
+          bgcolor: 'background.default',
           boxShadow: tokens.shadow.drawer
         }
       }}
@@ -187,8 +188,9 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
             px: 2,
             height: tokens.size.navbarHeight,
             minHeight: tokens.size.navbarHeight,
-            bgcolor: tokens.color.bgCard,
-            borderBottom: `1px solid ${tokens.color.border}`
+            bgcolor: 'background.paper',
+            borderBottom: '1px solid',
+            borderBottomColor: 'divider',
           }}
         >
           <Typography
@@ -196,7 +198,7 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
               flex: 1,
               fontSize: tokens.font.sizeMd,
               fontWeight: tokens.font.weightSemibold,
-              color: tokens.color.textPrimary
+              color: 'text.primary'
             }}
           >
             Alert attivi
@@ -207,7 +209,7 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
                   ml: 1,
                   fontSize: tokens.font.sizeXs,
                   fontWeight: tokens.font.weightSemibold,
-                  color: tokens.color.bgCard,
+                  color: 'common.white',
                   bgcolor: tokens.color.error,
                   px: 0.75,
                   py: 0.25,
@@ -221,7 +223,7 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
           <IconButton
             size="small"
             onClick={onClose}
-            sx={{ color: tokens.color.textSecondary }}
+            sx={{ color: 'text.secondary' }}
           >
             <CloseIcon fontSize="small" />
           </IconButton>
@@ -232,7 +234,7 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
           {criticalFirst.length === 0 && acked.length === 0 && (
             <Typography
               variant="body2"
-              sx={{ p: 3, textAlign: 'center', color: tokens.color.textSecondary }}
+              sx={{ p: 3, textAlign: 'center', color: 'text.secondary' }}
             >
               Nessun alert attivo.
             </Typography>

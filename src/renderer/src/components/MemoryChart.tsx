@@ -38,8 +38,9 @@ export function MemoryChart({ history }: Props): React.JSX.Element {
   return (
     <Box
       sx={{
-        bgcolor: tokens.color.bgCard,
-        border: `1px solid ${tokens.color.border}`,
+        bgcolor: 'background.paper',
+        border: '1px solid',
+        borderColor: 'divider',
         borderRadius: tokens.radius.sm,
         p: 1.5
       }}
@@ -53,7 +54,7 @@ export function MemoryChart({ history }: Props): React.JSX.Element {
             formatter={(value, name) => [`${Number(value).toFixed(1)} %`, name as string]}
             contentStyle={{
               fontSize: tokens.font.sizeSm,
-              border: `1px solid ${tokens.color.border}`,
+              border: '1px solid rgba(128,128,128,0.3)',
               borderRadius: tokens.radius.sm
             }}
           />

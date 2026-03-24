@@ -59,8 +59,9 @@ function KpiCard({ label, value, accentColor }: KpiCardProps): React.JSX.Element
       sx={{
         flex: '1 1 0',
         minWidth: 100,
-        bgcolor: tokens.color.bgCard,
-        border: `1px solid ${tokens.color.border}`,
+        bgcolor: 'background.paper',
+        border: '1px solid',
+        borderColor: 'divider',
         borderTop: `3px solid ${accentColor}`,
         borderRadius: '4px',
         px: 2,
@@ -68,11 +69,11 @@ function KpiCard({ label, value, accentColor }: KpiCardProps): React.JSX.Element
       }}
     >
       <Typography
-        sx={{ fontSize: 10, color: tokens.color.textSecondary, textTransform: 'uppercase', letterSpacing: '0.5px', mb: 0.5 }}
+        sx={{ fontSize: 10, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.5px', mb: 0.5 }}
       >
         {label}
       </Typography>
-      <Typography sx={{ fontSize: 22, fontWeight: 700, color: tokens.color.textPrimary, lineHeight: 1 }}>
+      <Typography sx={{ fontSize: 22, fontWeight: 700, color: 'text.primary', lineHeight: 1 }}>
         {value}
       </Typography>
     </Box>
@@ -677,16 +678,16 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
   }, [])
 
   return (
-    <Box sx={{ height: '100%', overflow: 'auto', bgcolor: tokens.color.bgApp }}>
+    <Box sx={{ height: '100%', overflow: 'auto', bgcolor: 'background.default' }}>
       <Box sx={{ maxWidth: 1400, mx: 'auto', px: 3, py: 2 }}>
 
         {/* ── Top bar ── */}
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
-          <Typography sx={{ fontSize: 18, fontWeight: 700, color: tokens.color.textPrimary, flex: 1 }}>
+          <Typography sx={{ fontSize: 18, fontWeight: 700, color: 'text.primary', flex: 1 }}>
             Inventario SQL Server
           </Typography>
           {lastRefresh && (
-            <Typography sx={{ fontSize: 12, color: tokens.color.textSecondary }}>
+            <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>
               Aggiornato: {lastRefresh.toLocaleTimeString('it-IT')}
             </Typography>
           )}
@@ -741,7 +742,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
 
         {/* ── Empty placeholder ── */}
         {inventory.groups.length === 0 && (
-          <Box sx={{ textAlign: 'center', py: 8, color: tokens.color.textSecondary }}>
+          <Box sx={{ textAlign: 'center', py: 8, color: 'text.secondary' }}>
             <Typography sx={{ fontSize: 14 }}>
               Nessun server monitorato. Aggiungi server dalla sezione Discovery.
             </Typography>
@@ -876,7 +877,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                     >
                       <Typography
                         variant="caption" fontWeight={700}
-                        sx={{ color: active ? tokens.color.primary : tokens.color.textSecondary }}
+                        sx={{ color: active ? tokens.color.primary : 'text.secondary' }}
                       >
                         {col.label}
                       </Typography>
@@ -954,8 +955,8 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                             {/* Expand / collapse toggle for ag-cluster */}
                             {row.type === 'ag-cluster' && (
                               expandedClusters.has(row.clusterKey!)
-                                ? <ExpandMoreIcon fontSize="small" sx={{ color: tokens.color.textSecondary, flexShrink: 0 }} />
-                                : <ChevronRightIcon fontSize="small" sx={{ color: tokens.color.textSecondary, flexShrink: 0 }} />
+                                ? <ExpandMoreIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
+                                : <ChevronRightIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
                             )}
                             {/* Expand / collapse toggle for machine-header */}
                             {row.type === 'machine-header' && (
@@ -973,7 +974,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                             )}
                             {/* Role star / circle for replicas */}
                             {row.type === 'ag-replica' && (
-                              <Typography sx={{ flexShrink: 0, color: row.agRole === 'PRIMARY' ? '#107c10' : tokens.color.textSecondary, fontSize: 12 }}>
+                              <Typography sx={{ flexShrink: 0, color: row.agRole === 'PRIMARY' ? '#107c10' : 'text.secondary', fontSize: 12 }}>
                                 {row.agRole === 'PRIMARY' ? '★' : '○'}
                               </Typography>
                             )}

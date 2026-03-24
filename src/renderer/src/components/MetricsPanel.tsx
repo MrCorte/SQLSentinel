@@ -56,8 +56,9 @@ function KpiCard({
   const card = (
     <Box
       sx={{
-        bgcolor: tokens.color.bgCard,
-        border: `1px solid ${tokens.color.border}`,
+        bgcolor: 'background.paper',
+        border: '1px solid',
+        borderColor: 'divider',
         borderTop: `3px solid ${accent}`,
         borderRadius: tokens.radius.sm,
         px: '20px',
@@ -74,7 +75,7 @@ function KpiCard({
           fontWeight: tokens.font.weightSemibold,
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
-          color: tokens.color.textSecondary,
+          color: 'text.secondary',
           mb: '8px',
           display: 'block'
         }}
@@ -231,12 +232,12 @@ function dbRowClass(db: DatabaseRow): string {
 
 const GRID_HEADER_SX = {
   '& .MuiDataGrid-columnHeader': {
-    bgcolor: tokens.color.bgApp,
+    bgcolor: 'background.default',
     fontSize: tokens.font.sizeXs,
     fontWeight: tokens.font.weightSemibold,
     textTransform: 'uppercase',
     letterSpacing: '0.04em',
-    color: tokens.color.textSecondary
+    color: 'text.secondary'
   },
   '& .MuiDataGrid-columnHeaders': {
     borderBottom: `2px solid ${tokens.color.primary}`
@@ -259,9 +260,9 @@ const DB_SX = {
 } as const
 
 function StatoCell({ stateDesc }: { stateDesc: string }): React.JSX.Element {
-  let bgcolor = tokens.color.bgApp
-  let color = tokens.color.textSecondary
-  let borderColor = tokens.color.border
+  let bgcolor = 'background.default'
+  let color = 'text.secondary'
+  let borderColor = 'divider'
 
   if (stateDesc === 'ONLINE') {
     bgcolor = tokens.color.successLight
@@ -690,8 +691,9 @@ export function MetricsPanel({ metrics, serverId, connection }: Props): React.JS
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Box
         sx={{
-          bgcolor: tokens.color.bgCard,
-          borderBottom: `1px solid ${tokens.color.border}`
+          bgcolor: 'background.paper',
+          borderBottom: '1px solid',
+          borderBottomColor: 'divider',
         }}
       >
         <Tabs
@@ -703,7 +705,7 @@ export function MetricsPanel({ metrics, serverId, connection }: Props): React.JS
               minHeight: 36,
               fontSize: tokens.font.sizeBase,
               fontWeight: tokens.font.weightSemibold,
-              color: tokens.color.textSecondary,
+              color: 'text.secondary',
               py: 0,
               textTransform: 'none',
               '&.Mui-selected': { color: tokens.color.primary }

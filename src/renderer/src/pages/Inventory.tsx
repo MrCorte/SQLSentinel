@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from 'react'
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { alpha } from '@mui/material/styles'
 import {
   Box,
@@ -335,6 +335,7 @@ interface InventoryProps {
 export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.Element {
   const { refreshing, lastRefresh, handleRefresh } = useRefreshAllServers()
   const [search,            setSearch]             = useState('')
+  const [debouncedSearch,   setDebouncedSearch]    = useState('')
   const [filterEnv,         setFilterEnv]          = useState('all')
   const [filterType,        setFilterType]         = useState<'all' | 'standalone' | 'ag-primary' | 'ag-secondary'>('all')
   const [filterState,       setFilterState]        = useState<'all' | 'online' | 'offline'>('all')
@@ -347,6 +348,12 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
   const [expandedClusters,  setExpandedClusters]   = useState<Set<string>>(new Set())
   const [expandedMachines,  setExpandedMachines]   = useState<Set<string>>(new Set())
   const parentRef = useRef<HTMLDivElement>(null)
+
+  // Debounce search to avoid recomputing filteredRows on every keystroke
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
 
   // Store subscriptions
   useServersStore((s) => s.servers)
@@ -440,7 +447,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
   )
 
   const filteredRows = useMemo(() => {
-    const q = search.toLowerCase()
+    const q = debouncedSearch.toLowerCase()
     return allRows.filter((row) => {
       // Type filter
       if (filterType !== 'all') {
@@ -476,7 +483,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
       if (filterVersion !== 'all' && getSqlServerVersion(row.version) !== filterVersion) return false
       return true
     })
-  }, [allRows, search, filterEnv, filterType, filterState, filterHost, filterAlias, filterReferente, filterVersion, serverAliases, metricsMap])
+  }, [allRows, debouncedSearch, filterEnv, filterType, filterState, filterHost, filterAlias, filterReferente, filterVersion, serverAliases, metricsMap])
 
   // ── Filtered KPI stats (derived from filteredRows, zero extra pass) ────
   const filteredStats = useMemo(() => {

@@ -5,6 +5,12 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Performance — 2026-03-24 (200+ server scalability)
+- **SQLite WAL flush + PRAGMA optimize**: `wal_checkpoint(PASSIVE)` all'avvio per recuperare spazio; `PRAGMA optimize` alla chiusura per aggiornare le statistiche del query planner
+- **React.memo**: `TabPanoramica`, `TabDatabase`, `WaitPercentCell` wrappati con `memo` per evitare re-render quando le props non cambiano
+- **Lazy loading DisksTab**: `DisksTab` caricata con `React.lazy` + `Suspense`; il bundle del tab Dischi viene scaricato solo alla prima apertura
+- **Debounce ricerca Inventory**: ricerca testuale debouncata 300ms; `filteredRows` non viene ricalcolato ad ogni tasto — riduce il carico su inventari con 200+ server
+
 ### Added — 2026-03-24 (server notes)
 - **Campo Note per server**: campo testuale libero (max 1000 caratteri) persistito in electron-store per ogni server
 - **NoteEditor**: componente con autosave 1s debounce e indicatore "Salvato"; visibile nella tab Panoramica del dashboard server

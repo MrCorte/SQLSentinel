@@ -71,6 +71,9 @@ export function initDb(dbPath: string): Database.Database {
 
   _db.exec(DDL)
 
+  // Flush any WAL pages left from a previous run; keeps DB file compact
+  _db.pragma('wal_checkpoint(PASSIVE)')
+
   return _db
 }
 
@@ -80,8 +83,12 @@ export function getDb(): Database.Database {
 }
 
 export function closeDb(): void {
-  _db?.close()
-  _db = null
+  if (_db) {
+    // Let SQLite update internal statistics for the query planner before closing
+    _db.pragma('optimize')
+    _db.close()
+    _db = null
+  }
 }
 
 /**

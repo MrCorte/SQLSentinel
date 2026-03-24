@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, memo, lazy, Suspense } from 'react'
 import {
   Box,
   Tabs,
@@ -28,7 +28,7 @@ import type {
   DbCustomFields,
   CollectMetricsRequest
 } from '../../../preload/index'
-import { DisksTab } from './tabs/DisksTab'
+const DisksTab = lazy(() => import('./tabs/DisksTab').then((m) => ({ default: m.DisksTab })))
 import { NoteEditor } from './NoteEditor'
 import { tokens } from '../styles/tokens'
 
@@ -101,7 +101,7 @@ function KpiCard({
     : card
 }
 
-function TabPanoramica({
+const TabPanoramica = memo(function TabPanoramica({
   metrics, serverId, serverNotes
 }: Pick<Props, 'metrics' | 'serverId' | 'serverNotes'>): React.JSX.Element {
   const info = metrics.instanceInfo
@@ -146,7 +146,7 @@ function TabPanoramica({
       </Box>
     </Stack>
   )
-}
+})
 
 // -----------------------------------------------------------------------
 // Helpers condivisi
@@ -318,7 +318,7 @@ function StatoCell({ stateDesc }: { stateDesc: string }): React.JSX.Element {
   )
 }
 
-function TabDatabase({
+const TabDatabase = memo(function TabDatabase({
   metrics,
   serverId
 }: {
@@ -477,7 +477,7 @@ function TabDatabase({
       )}
     </>
   )
-}
+})
 
 // -----------------------------------------------------------------------
 // Tab Sessioni
@@ -620,7 +620,7 @@ const queryColumns: GridColDef<QueryInfo>[] = [
 // Tab Wait Stats
 // -----------------------------------------------------------------------
 
-function WaitPercentCell({ value }: { value: number }): React.JSX.Element {
+const WaitPercentCell = memo(function WaitPercentCell({ value }: { value: number }): React.JSX.Element {
   const color = value > 20 ? '#ef4444' : value > 10 ? '#f97316' : '#22c55e'
   return (
     <Box sx={{ width: '100%', display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
@@ -632,7 +632,7 @@ function WaitPercentCell({ value }: { value: number }): React.JSX.Element {
       </Typography>
     </Box>
   )
-}
+})
 
 const waitStatColumns: GridColDef<WaitStatInfo>[] = [
   {
@@ -778,7 +778,9 @@ export function MetricsPanel({ metrics, serverId, serverNotes, connection }: Pro
         )}
 
         {tab === 4 && (
-          <DisksTab diskVolumes={diskVolumes} databaseFiles={databaseFiles} connection={connection} />
+          <Suspense fallback={<Box sx={{ p: 2, color: 'text.secondary' }}>Caricamento...</Box>}>
+            <DisksTab diskVolumes={diskVolumes} databaseFiles={databaseFiles} connection={connection} />
+          </Suspense>
         )}
 
         {tab === 5 && (

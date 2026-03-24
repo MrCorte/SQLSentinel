@@ -5,6 +5,11 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Added — 2026-03-24 (server notes)
+- **Campo Note per server**: campo testuale libero (max 1000 caratteri) persistito in electron-store per ogni server
+- **NoteEditor**: componente con autosave 1s debounce e indicatore "Salvato"; visibile nella tab Panoramica del dashboard server
+- **Colonna Note in Inventory**: cella con Tooltip per testo esteso; inclusa nel CSV export come ultima colonna
+
 ### Fixed — 2026-03-24 (dark mode — Dashboard container)
 - **Dashboard outer container**: `bgcolor: tokens.color.bgApp` → `background.default`; titolo/alias server e rename input ora usano `text.primary`/`text.secondary`
 - **StatoCell (MetricsPanel)**: `border: \`1px solid ${borderColor}\`` corretto con `border: '1px solid'` + `borderColor` in sx (era CSS non valido per il caso default)

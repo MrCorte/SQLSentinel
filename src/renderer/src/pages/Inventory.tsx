@@ -118,6 +118,7 @@ interface InventoryRow {
   uptimeDays?:   number
   logicalCpus?:  number
   physicalCpus?: number
+  notes?:        string
 }
 
 // ---------------------------------------------------------------------------
@@ -131,18 +132,19 @@ interface ColDef {
 }
 
 const COLUMNS: ColDef[] = [
-  { key: 'serverLabel',  label: 'SERVER',   width: '20%' },
-  { key: 'envName',      label: 'AMBIENTE', width: '9%'  },
-  { key: 'type',         label: 'TIPO',     width: '9%'  },
-  { key: 'machineName',  label: 'MACCHINA', width: '9%'  },
-  { key: 'hostingType',  label: 'HOSTING',  width: '7%'  },
-  { key: 'dbCount',      label: 'DB',       width: '5%'  },
-  { key: 'onlineCount',  label: 'ONLINE',   width: '6%'  },
-  { key: 'offlineCount', label: 'OFFLINE',  width: '6%'  },
-  { key: 'totalDataMb',  label: 'DATI',     width: '8%'  },
-  { key: 'version',      label: 'VERSIONE', width: '11%' },
-  { key: 'logicalCpus',  label: 'CPU',      width: '6%'  },
+  { key: 'serverLabel',  label: 'SERVER',   width: '17%' },
+  { key: 'envName',      label: 'AMBIENTE', width: '8%'  },
+  { key: 'type',         label: 'TIPO',     width: '8%'  },
+  { key: 'machineName',  label: 'MACCHINA', width: '8%'  },
+  { key: 'hostingType',  label: 'HOSTING',  width: '6%'  },
+  { key: 'dbCount',      label: 'DB',       width: '4%'  },
+  { key: 'onlineCount',  label: 'ONLINE',   width: '5%'  },
+  { key: 'offlineCount', label: 'OFFLINE',  width: '5%'  },
+  { key: 'totalDataMb',  label: 'DATI',     width: '7%'  },
+  { key: 'version',      label: 'VERSIONE', width: '9%'  },
+  { key: 'logicalCpus',  label: 'CPU',      width: '5%'  },
   { key: 'unreachable',  label: 'STATO',    width: '6%'  },
+  { key: 'notes',        label: 'NOTE',     width: '12%' },
 ]
 
 const GRID_TEMPLATE = COLUMNS.map((c) => c.width).join(' ')
@@ -220,6 +222,7 @@ function buildRows(invGroups: GroupInventory[], expandedClusters: Set<string>, e
               clusterKey:    machineKey,
               logicalCpus:   srv.logicalCpus,
               physicalCpus:  srv.physicalCpus,
+              notes:         srv.notes,
             })
           }
         }
@@ -248,6 +251,7 @@ function buildRows(invGroups: GroupInventory[], expandedClusters: Set<string>, e
           uptimeDays:   srv.uptimeDays,
           logicalCpus:  srv.logicalCpus,
           physicalCpus: srv.physicalCpus,
+          notes:        srv.notes,
         })
       }
     }
@@ -310,6 +314,7 @@ function buildRows(invGroups: GroupInventory[], expandedClusters: Set<string>, e
             clusterKey,
             logicalCpus:  srv.logicalCpus,
             physicalCpus: srv.physicalCpus,
+            notes:        srv.notes,
           })
         }
       }
@@ -649,7 +654,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
       'Database', 'Stato DB', 'Dati (MB)', 'Log (MB)',
       'Ultimo Backup Full', 'Ultimo Backup Log',
       'Versione SQL', 'Uptime Server (giorni)', 'Stato Server', 'Tipo Infrastruttura',
-      'CPU Logici', 'CPU Fisici'
+      'CPU Logici', 'CPU Fisici', 'Note'
     ]
     const exportRows = buildInventoryCsvRows(inventory, serverAliases, metricsMap, dbCustomFields, allowedServerIds)
     await window.sqlSentinel.exportInventoryCsv({ headers, rows: exportRows })
@@ -1114,6 +1119,26 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                                 color: '#fff', width: 'fit-content'
                               }}
                             />
+                          )}
+
+                          {/* ── NOTE ── */}
+                          {row.notes ? (
+                            <Tooltip title={row.notes} placement="top">
+                              <Typography
+                                variant="body2"
+                                sx={{
+                                  color: 'text.secondary',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  cursor: 'help'
+                                }}
+                              >
+                                {row.notes}
+                              </Typography>
+                            </Tooltip>
+                          ) : (
+                            <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
                           )}
                         </Box>
                       )

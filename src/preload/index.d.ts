@@ -132,6 +132,7 @@ export interface StoredServer {
   agRole?: AgRole
   logicalCpus?: number      // cpu_count (with HT); persisted from polling
   physicalCpus?: number     // cpu_count / hyperthread_ratio
+  notes?: string            // free-text notes; persisted in electron-store
 }
 
 export interface ServerAddResult {

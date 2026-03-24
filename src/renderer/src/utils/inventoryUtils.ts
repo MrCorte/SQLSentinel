@@ -75,7 +75,8 @@ function buildServerSummary(
     hostingType: srv.hostingType,
     // Live metrics take priority; fall back to last persisted value in StoredServer
     logicalCpus: m?.instanceInfo.logicalCpus || srv.logicalCpus,
-    physicalCpus: m?.instanceInfo.physicalCpus || srv.physicalCpus
+    physicalCpus: m?.instanceInfo.physicalCpus || srv.physicalCpus,
+    notes: srv.notes
   }
 }
 

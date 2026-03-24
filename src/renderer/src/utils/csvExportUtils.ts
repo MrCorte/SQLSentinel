@@ -62,7 +62,8 @@ export function buildInventoryCsvRows(
             srv.unreachable ? 'UNREACHABLE' : 'ONLINE',
             hosting,
             srv.logicalCpus?.toString() ?? '',
-            srv.physicalCpus?.toString() ?? ''
+            srv.physicalCpus?.toString() ?? '',
+            srv.notes ?? ''
           ]
         ]
       }
@@ -88,7 +89,8 @@ export function buildInventoryCsvRows(
           srv.unreachable ? 'UNREACHABLE' : 'ONLINE',
           hosting,
           srv.logicalCpus?.toString() ?? '',
-          srv.physicalCpus?.toString() ?? ''
+          srv.physicalCpus?.toString() ?? '',
+          srv.notes ?? ''
         ]
       })
     })
@@ -117,7 +119,8 @@ export function buildInventoryCsvRows(
               srv.unreachable ? 'UNREACHABLE' : 'ONLINE',
               agHosting,
               srv.logicalCpus?.toString() ?? '',
-              srv.physicalCpus?.toString() ?? ''
+              srv.physicalCpus?.toString() ?? '',
+              srv.notes ?? ''
             ]
           ]
         }
@@ -148,7 +151,8 @@ export function buildInventoryCsvRows(
             srv.unreachable ? 'UNREACHABLE' : 'ONLINE',
             agHosting,
             srv.logicalCpus?.toString() ?? '',
-            srv.physicalCpus?.toString() ?? ''
+            srv.physicalCpus?.toString() ?? '',
+            srv.notes ?? ''
           ]
         })
       })

@@ -45,6 +45,7 @@ export interface ServerSummary {
   hostingType?: 'on-premise' | 'cloud'
   logicalCpus?: number
   physicalCpus?: number
+  notes?: string
 }
 
 export interface AgClusterSummary {

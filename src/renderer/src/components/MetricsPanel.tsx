@@ -29,11 +29,13 @@ import type {
   CollectMetricsRequest
 } from '../../../preload/index'
 import { DisksTab } from './tabs/DisksTab'
+import { NoteEditor } from './NoteEditor'
 import { tokens } from '../styles/tokens'
 
 interface Props {
   metrics: ServerMetrics
   serverId: string
+  serverNotes?: string
   connection: CollectMetricsRequest
 }
 
@@ -99,7 +101,9 @@ function KpiCard({
     : card
 }
 
-function TabPanoramica({ metrics }: Pick<Props, 'metrics'>): React.JSX.Element {
+function TabPanoramica({
+  metrics, serverId, serverNotes
+}: Pick<Props, 'metrics' | 'serverId' | 'serverNotes'>): React.JSX.Element {
   const info = metrics.instanceInfo
   const memPercent = info.memoryTargetMb > 0 ? (info.memoryUsedMb / info.memoryTargetMb) * 100 : 0
 
@@ -127,6 +131,18 @@ function TabPanoramica({ metrics }: Pick<Props, 'metrics'>): React.JSX.Element {
             tooltip={`Core fisici: ${info.physicalCpus}\nThread logici: ${info.logicalCpus}\nHyperthreading: ${info.logicalCpus > info.physicalCpus ? 'Attivo' : 'Non attivo'}`}
           />
         )}
+      </Box>
+
+      <Box
+        sx={{
+          p: 2,
+          bgcolor: 'background.paper',
+          borderRadius: 1,
+          border: '1px solid',
+          borderColor: 'divider'
+        }}
+      >
+        <NoteEditor serverId={serverId} initialNote={serverNotes ?? ''} />
       </Box>
     </Stack>
   )
@@ -677,7 +693,7 @@ const waitStatColumns: GridColDef<WaitStatInfo>[] = [
 // Componente principale
 // -----------------------------------------------------------------------
 
-export function MetricsPanel({ metrics, serverId, connection }: Props): React.JSX.Element {
+export function MetricsPanel({ metrics, serverId, serverNotes, connection }: Props): React.JSX.Element {
   const [tab, setTab] = useState(0)
 
   const databases = metrics?.databases ?? []
@@ -728,7 +744,7 @@ export function MetricsPanel({ metrics, serverId, connection }: Props): React.JS
       </Box>
 
       <Box sx={{ flex: 1, overflow: 'auto', pt: 2 }}>
-        {tab === 0 && <TabPanoramica metrics={metrics} />}
+        {tab === 0 && <TabPanoramica metrics={metrics} serverId={serverId} serverNotes={serverNotes} />}
 
         {tab === 1 && <TabDatabase metrics={metrics} serverId={serverId} />}
 

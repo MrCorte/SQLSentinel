@@ -29,6 +29,7 @@ export interface StoredServer {
   logicalCpus?: number      // cpu_count from sys.dm_os_sys_info (persisted, rarely changes)
   physicalCpus?: number     // cpu_count / hyperthread_ratio
   hostingType?: ServerHostingType
+  notes?: string            // free-text notes; persisted in electron-store
 }
 
 /**

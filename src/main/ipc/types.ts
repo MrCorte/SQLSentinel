@@ -54,7 +54,11 @@ export enum IpcChannel {
   APP_BACKGROUND = 'app:background',
   APP_FOREGROUND = 'app:foreground',
   // Server detection — MachineName + InstanceName via SERVERPROPERTY
-  DETECT_SERVER_INFO = 'servers:detectInfo'
+  DETECT_SERVER_INFO = 'servers:detectInfo',
+  // Email alerting
+  EMAIL_SETTINGS_GET = 'email:getSettings',
+  EMAIL_SETTINGS_SET = 'email:setSettings',
+  EMAIL_TEST = 'email:test',
 }
 
 /** Unified result envelope — never throw raw errors to the renderer. */
@@ -150,6 +154,26 @@ export interface SaveSettingsRequest {
   backgroundMode?: 'light' | 'full'
   backgroundIntervalMinutes?: number
   backgroundNotifications?: boolean
+}
+
+export interface EmailSettings {
+  emailEnabled: boolean
+  smtpHost: string
+  smtpPort: number
+  smtpUser: string
+  smtpPassword: string
+  smtpTls: boolean
+  emailRecipients: string[]
+}
+
+export interface SaveEmailSettingsRequest {
+  emailEnabled?: boolean
+  smtpHost?: string
+  smtpPort?: number
+  smtpUser?: string
+  smtpPassword?: string
+  smtpTls?: boolean
+  emailRecipients?: string[]
 }
 
 export interface DbCustomFields {

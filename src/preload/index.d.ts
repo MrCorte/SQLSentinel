@@ -252,6 +252,26 @@ export interface SaveSettingsRequest {
   backgroundNotifications?: boolean
 }
 
+export interface EmailSettings {
+  emailEnabled: boolean
+  smtpHost: string
+  smtpPort: number
+  smtpUser: string
+  smtpPassword: string
+  smtpTls: boolean
+  emailRecipients: string[]
+}
+
+export interface SaveEmailSettingsRequest {
+  emailEnabled?: boolean
+  smtpHost?: string
+  smtpPort?: number
+  smtpUser?: string
+  smtpPassword?: string
+  smtpTls?: boolean
+  emailRecipients?: string[]
+}
+
 export interface DbCustomFields {
   alias?: string
   referente?: string
@@ -373,6 +393,9 @@ export interface SqlSentinelAPI {
   onAlertNew(callback: (alert: Alert) => void): () => void
   getSettings(): Promise<IpcResult<AppSettings>>
   saveSettings(req: SaveSettingsRequest): Promise<IpcResult<null>>
+  getEmailSettings(): Promise<IpcResult<EmailSettings>>
+  saveEmailSettings(req: SaveEmailSettingsRequest): Promise<IpcResult<null>>
+  sendTestEmail(): Promise<IpcResult<null>>
   getDbCustomFields(req: { serverId: string; dbName: string }): Promise<IpcResult<DbCustomFields>>
   setDbCustomFields(req: { serverId: string; dbName: string; fields: DbCustomFields }): Promise<IpcResult<null>>
   getAllDbCustomFields(): Promise<IpcResult<Record<string, DbCustomFields>>>

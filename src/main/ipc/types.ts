@@ -279,6 +279,7 @@ export interface AgParams {
 // --- Auth types ---
 
 export interface AuthSession {
+  token: string
   userId: string
   username: string
   role: string

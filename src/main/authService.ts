@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs'
+import { randomUUID } from 'node:crypto'
 import { getDb } from './store/database'
 
 // ---------------------------------------------------------------------------
@@ -13,6 +14,7 @@ const SESSION_TIMEOUT_MS = 8 * 60 * 60 * 1000 // 8 hours
 // ---------------------------------------------------------------------------
 
 export interface AuthSession {
+  token: string
   userId: string
   username: string
   role: string
@@ -27,6 +29,14 @@ interface UserRow {
   created_at: number
   last_login: number | null
   must_change_password: number
+}
+
+interface SessionRow {
+  token: string
+  user_id: string
+  username: string
+  role: string
+  expires_at: number
 }
 
 // ---------------------------------------------------------------------------
@@ -59,31 +69,80 @@ export async function login(
     return { success: false, error: 'Credenziali non valide' }
   }
 
+  const token = randomUUID()
+  const expiresAt = Date.now() + SESSION_TIMEOUT_MS
+
   currentSession = {
+    token,
     userId: user.id,
     username: user.username,
     role: user.role,
-    expiresAt: Date.now() + SESSION_TIMEOUT_MS,
+    expiresAt,
   }
 
   db.prepare('UPDATE users SET last_login = ? WHERE id = ?').run(Date.now(), user.id)
+
+  // Persist session so it survives main-process hot-reloads in dev
+  db.prepare(
+    'INSERT OR REPLACE INTO sessions (token, user_id, username, role, expires_at) VALUES (?, ?, ?, ?, ?)'
+  ).run(token, user.id, user.username, user.role, expiresAt)
 
   return { success: true, mustChangePassword: user.must_change_password === 1 }
 }
 
 export function logout(): void {
+  if (currentSession) {
+    try {
+      getDb().prepare('DELETE FROM sessions WHERE token = ?').run(currentSession.token)
+    } catch {
+      // DB might not be open yet during tests
+    }
+  }
   currentSession = null
 }
 
 export function getSession(): AuthSession | null {
-  if (!currentSession) return null
-  if (Date.now() > currentSession.expiresAt) {
-    currentSession = null
-    return null
+  const now = Date.now()
+
+  if (currentSession) {
+    if (now > currentSession.expiresAt) {
+      logout()
+      return null
+    }
+    // Sliding expiry — renew in memory and DB
+    currentSession.expiresAt = now + SESSION_TIMEOUT_MS
+    try {
+      getDb()
+        .prepare('UPDATE sessions SET expires_at = ? WHERE token = ?')
+        .run(currentSession.expiresAt, currentSession.token)
+    } catch {
+      // ignore — in-memory session is still valid
+    }
+    return { ...currentSession }
   }
-  // Sliding expiry — renew on every use
-  currentSession.expiresAt = Date.now() + SESSION_TIMEOUT_MS
-  return { ...currentSession }
+
+  // In-memory session lost (e.g. main-process hot-reload in dev) — recover from DB
+  try {
+    const row = getDb()
+      .prepare<[number], SessionRow>(
+        'SELECT * FROM sessions WHERE expires_at > ? ORDER BY expires_at DESC LIMIT 1'
+      )
+      .get(now)
+    if (row) {
+      currentSession = {
+        token: row.token,
+        userId: row.user_id,
+        username: row.username,
+        role: row.role,
+        expiresAt: row.expires_at,
+      }
+      return { ...currentSession }
+    }
+  } catch {
+    // DB not yet open — return null
+  }
+
+  return null
 }
 
 export function isAuthenticated(): boolean {

@@ -22,6 +22,10 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 - **Lazy loading DisksTab**: `DisksTab` caricata con `React.lazy` + `Suspense`; il bundle del tab Dischi viene scaricato solo alla prima apertura
 - **Debounce ricerca Inventory**: ricerca testuale debouncata 300ms; `filteredRows` non viene ricalcolato ad ogni tasto — riduce il carico su inventari con 200+ server
 
+### Fixed — 2026-03-24 (auth — UNAUTHORIZED su hot-reload dev)
+- **Sessione persa dopo hot-reload**: la variabile in-memory `currentSession` veniva azzerata quando Vite ricaricava il modulo `authService.ts`; il renderer era ancora loggato ma ogni IPC autenticata riceveva `UNAUTHORIZED`
+- **Fix**: sessioni persistite in SQLite (tabella `sessions`); `getSession()` recupera da DB se l'in-memory è nullo; logout cancella il record; sliding expiry aggiorna anche il DB; `AuthSession` ha ora il campo `token`
+
 ### Fixed — 2026-03-24 (NoteEditor — note mai persistite)
 - **Bug nota server non salvata**: `ServerDashboard` passava `ip:port` come `serverId` a `MetricsPanel`/`NoteEditor`, ma `serverStore.update()` cerca per UUID → `idx` sempre `-1` → nulla scritto su disco; introdotto `serverDbId` (UUID) separato da `serverId` (ip:port) e instradato correttamente fino a `NoteEditor`
 

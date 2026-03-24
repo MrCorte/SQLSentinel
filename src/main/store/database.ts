@@ -49,6 +49,14 @@ const DDL = `
     must_change_password INTEGER NOT NULL DEFAULT 0
   );
 
+  CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT    PRIMARY KEY,
+    user_id    TEXT    NOT NULL,
+    username   TEXT    NOT NULL,
+    role       TEXT    NOT NULL,
+    expires_at INTEGER NOT NULL
+  );
+
   -- Drop legacy single-column indexes replaced by the composite below
   DROP INDEX IF EXISTS idx_metrics_server_id;
   DROP INDEX IF EXISTS idx_metrics_collected_at;

@@ -208,6 +208,7 @@ export interface Alert {
 }
 
 export interface AuthSession {
+  token: string
   userId: string
   username: string
   role: string

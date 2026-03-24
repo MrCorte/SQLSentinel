@@ -6,6 +6,7 @@ const icon = app.isPackaged
   ? join(process.resourcesPath, 'icon.png')
   : join(__dirname, '../../resources/icon.png')
 import { registerIpcHandlers } from './ipc/handlers'
+import { initDefaultAdmin } from './authService'
 import { BackgroundService } from './backgroundService'
 import type { WorkerApi } from './backgroundService'
 import { syncServers, stopWorker, setIntervalOverrides, onAlert } from './metricsWorker'
@@ -128,6 +129,9 @@ function createWindow(): void {
 app.whenReady().then(() => {
   // Inizializza SQLite — prima di qualsiasi IPC handler
   initDb(defaultDbPath(app.getPath('appData')))
+
+  // Crea utente admin di default se non esistono utenti
+  initDefaultAdmin().catch((err) => console.error('[AUTH] initDefaultAdmin fallito:', err))
 
   // Purge snapshots più vecchi di 30 giorni: una volta al boot, poi ogni 24 h
   purgeOldSnapshots(30)

@@ -5,6 +5,17 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Added — 2026-03-24 (autenticazione locale)
+- **Sistema di login**: autenticazione locale con credenziali in SQLite (tabella `users`, password hashata con bcrypt 12 rounds)
+- **Utente admin di default**: alla prima installazione viene creato `admin / Admin1234!` con obbligo di cambio password
+- **Sessione in memoria**: scadenza 8 ore con sliding expiry; nessuna persistenza su disco — al riavvio è richiesto il re-login
+- **Cambio password obbligatorio**: dialog modale non chiudibile al primo accesso (campo `must_change_password`)
+- **Validazione password**: minimo 8 caratteri, almeno 1 maiuscola e 1 numero
+- **Auth guard IPC**: tutti gli handler IPC sensibili richiedono sessione valida; restituiscono `UNAUTHORIZED` altrimenti
+- **LoginPage**: form con toggle visibilità password, dark mode, messaggi di errore
+- **Logout**: pulsante nella navbar; sessione invalidata lato main process
+- **Handler UNAUTHORIZED globale**: `unhandledrejection` rileva sessioni scadute e torna alla LoginPage
+
 ### Performance — 2026-03-24 (200+ server scalability)
 - **SQLite WAL flush + PRAGMA optimize**: `wal_checkpoint(PASSIVE)` all'avvio per recuperare spazio; `PRAGMA optimize` alla chiusura per aggiornare le statistiche del query planner
 - **React.memo**: `TabPanoramica`, `TabDatabase`, `WaitPercentCell` wrappati con `memo` per evitare re-render quando le props non cambiano

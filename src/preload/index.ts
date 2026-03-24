@@ -34,7 +34,10 @@ import type {
   AvailabilityReplica,
   AvailabilityDatabase,
   EmailSettings,
-  SaveEmailSettingsRequest
+  SaveEmailSettingsRequest,
+  AuthSession,
+  LoginResult,
+  ChangePasswordResult,
 } from '../main/ipc/types'
 import type { ServerMetrics, ServerInfo } from '../main/collectors/types'
 import type { StoredServer } from '../main/store/serverStore'
@@ -47,6 +50,7 @@ export type { DbCustomFields, SaveCsvRequest, ServerAddResult, UpdateServerReque
 export type { ShrinkDatabaseParams, ShrinkFileParams, ShrinkEstimateParams, ShrinkEstimate, ShrinkResult } from '../main/ipc/types'
 export type { AgParams, AvailabilityGroup, AvailabilityReplica, AvailabilityDatabase, AgHealth, AgRole } from '../main/ipc/types'
 export type { EmailSettings, SaveEmailSettingsRequest } from '../main/ipc/types'
+export type { AuthSession, LoginResult, ChangePasswordResult } from '../main/ipc/types'
 export type { ServerMetrics } from '../main/collectors/types'
 export type { ServerInfo } from '../main/collectors/types'
 export type { InstanceInfo, DatabaseInfo, SessionInfo, QueryInfo, BackupInfo, WaitStatInfo, DiskVolume, DatabaseFile } from '../main/collectors/types'
@@ -486,6 +490,22 @@ const realApi = {
     ipcRenderer.on(IpcChannel.APP_FOREGROUND, listener)
     return () => ipcRenderer.removeListener(IpcChannel.APP_FOREGROUND, listener)
   },
+
+  login: (username: string, password: string): Promise<LoginResult> =>
+    ipcRenderer.invoke(IpcChannel.AUTH_LOGIN, username, password),
+
+  logout: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke(IpcChannel.AUTH_LOGOUT),
+
+  checkAuth: (): Promise<{ authenticated: boolean; session: AuthSession | null }> =>
+    ipcRenderer.invoke(IpcChannel.AUTH_CHECK),
+
+  changePassword: (
+    userId: string,
+    oldPassword: string,
+    newPassword: string
+  ): Promise<ChangePasswordResult> =>
+    ipcRenderer.invoke(IpcChannel.AUTH_CHANGE_PASSWORD, userId, oldPassword, newPassword),
 }
 
 // ---------------------------------------------------------------------------
@@ -758,6 +778,21 @@ const mockApi = {
   onAppBackground: (_callback: () => void): (() => void) => () => {},
   onAppForeground: (_callback: () => void): (() => void) => () => {},
   onServerConfigUpdated: (_callback: (servers: StoredServer[]) => void): (() => void) => () => {},
+
+  // Auth — mock mode: auto-login as admin, no password required
+  login: (_username: string, _password: string): Promise<LoginResult> =>
+    Promise.resolve({ success: true, mustChangePassword: false }),
+  logout: (): Promise<{ success: boolean }> => Promise.resolve({ success: true }),
+  checkAuth: (): Promise<{ authenticated: boolean; session: AuthSession | null }> =>
+    Promise.resolve({
+      authenticated: true,
+      session: { userId: 'mock-admin', username: 'admin', role: 'admin', expiresAt: Date.now() + 8 * 3600 * 1000 },
+    }),
+  changePassword: (
+    _userId: string,
+    _oldPassword: string,
+    _newPassword: string
+  ): Promise<ChangePasswordResult> => Promise.resolve({ success: true }),
 }
 
 // ---------------------------------------------------------------------------
@@ -839,6 +874,11 @@ const bridgeApi = {
   onServerConfigUpdated:  (cb: (servers: StoredServer[]) => void) => api.onServerConfigUpdated(cb),
   onAppBackground:     (cb: () => void) => api.onAppBackground(cb),
   onAppForeground:     (cb: () => void) => api.onAppForeground(cb),
+  login:           (u: string, p: string) => api.login(u, p),
+  logout:          () => api.logout(),
+  checkAuth:       () => api.checkAuth(),
+  changePassword:  (userId: string, oldPwd: string, newPwd: string) =>
+    api.changePassword(userId, oldPwd, newPwd),
 }
 
 if (process.contextIsolated) {

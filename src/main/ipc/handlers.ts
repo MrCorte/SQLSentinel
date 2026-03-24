@@ -1,4 +1,11 @@
 import { ipcMain, dialog, app, BrowserWindow } from 'electron'
+import {
+  login,
+  logout,
+  getSession,
+  isAuthenticated,
+  changePassword,
+} from '../authService'
 import { buildCsvContent } from '../csvUtils'
 import { writeFileSync, promises as fsPromises } from 'node:fs'
 import path from 'node:path'
@@ -38,7 +45,10 @@ import {
   type AvailabilityReplica,
   type AvailabilityDatabase,
   type EmailSettings,
-  type SaveEmailSettingsRequest
+  type SaveEmailSettingsRequest,
+  type LoginResult,
+  type ChangePasswordResult,
+  type AuthSession,
 } from './types'
 import type { ServerMetrics } from '../collectors/types'
 import { startWorker, stopWorker, setActiveServer, syncServers, getAlerts, acknowledgeAlert, getHistory } from '../metricsWorker'
@@ -74,6 +84,68 @@ function safeError(err: unknown): string {
 }
 
 export function registerIpcHandlers(): void {
+  // ── Auth handlers (no guard needed) ──────────────────────────────────────
+
+  ipcMain.handle(
+    IpcChannel.AUTH_LOGIN,
+    async (_event: IpcMainInvokeEvent, username: string, password: string): Promise<LoginResult> => {
+      try {
+        return await login(username, password)
+      } catch (err) {
+        return { success: false, error: safeError(err) }
+      }
+    }
+  )
+
+  ipcMain.handle(IpcChannel.AUTH_LOGOUT, async (): Promise<{ success: boolean }> => {
+    logout()
+    return { success: true }
+  })
+
+  ipcMain.handle(
+    IpcChannel.AUTH_CHECK,
+    async (): Promise<{ authenticated: boolean; session: AuthSession | null }> => ({
+      authenticated: isAuthenticated(),
+      session: getSession(),
+    })
+  )
+
+  ipcMain.handle(
+    IpcChannel.AUTH_CHANGE_PASSWORD,
+    async (
+      _event: IpcMainInvokeEvent,
+      userId: string,
+      oldPassword: string,
+      newPassword: string
+    ): Promise<ChangePasswordResult> => {
+      try {
+        return await changePassword(userId, oldPassword, newPassword)
+      } catch (err) {
+        return { success: false, error: safeError(err) }
+      }
+    }
+  )
+
+  // ── Auth guard — protects all handlers registered after this point ───────
+  // Channels exempt from auth (needed before login or are auth themselves)
+  const AUTH_EXEMPT = new Set<string>([
+    IpcChannel.AUTH_LOGIN,
+    IpcChannel.AUTH_LOGOUT,
+    IpcChannel.AUTH_CHECK,
+    IpcChannel.AUTH_CHANGE_PASSWORD,
+    IpcChannel.SETTINGS_GET,
+    IpcChannel.SETTINGS_SET,
+  ])
+  const _origHandle = ipcMain.handle.bind(ipcMain)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(ipcMain as any).handle = (channel: string, listener: (...args: any[]) => any) => {
+    if (AUTH_EXEMPT.has(channel)) return _origHandle(channel, listener)
+    return _origHandle(channel, async (event: IpcMainInvokeEvent, ...args: unknown[]) => {
+      if (!isAuthenticated()) throw new Error('UNAUTHORIZED')
+      return listener(event, ...args)
+    })
+  }
+
   // SCAN_SUBNET — runs async TCP scan, streams progress events back to renderer
   ipcMain.handle(
     IpcChannel.SCAN_SUBNET,
@@ -577,6 +649,10 @@ export function registerIpcHandlers(): void {
       }
     }
   )
+
+  // Restore original ipcMain.handle after all handlers are registered
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(ipcMain as any).handle = _origHandle
 }
 
 function csvEscape(value: string): string {

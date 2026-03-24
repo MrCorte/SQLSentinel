@@ -207,6 +207,24 @@ export interface Alert {
   acknowledgedAt: Date | null
 }
 
+export interface AuthSession {
+  userId: string
+  username: string
+  role: string
+  expiresAt: number
+}
+
+export interface LoginResult {
+  success: boolean
+  mustChangePassword?: boolean
+  error?: string
+}
+
+export interface ChangePasswordResult {
+  success: boolean
+  error?: string
+}
+
 export interface WorkerStartRequest {
   intervalSeconds: number
   servers: CollectMetricsRequest[]
@@ -428,6 +446,10 @@ export interface SqlSentinelAPI {
   onServerRecovered(callback: (serverId: string) => void): () => void
   /** Pushed by worker when AG detection updates StoredServer records in electron-store */
   onServerConfigUpdated(callback: (servers: StoredServer[]) => void): () => void
+  login(username: string, password: string): Promise<LoginResult>
+  logout(): Promise<{ success: boolean }>
+  checkAuth(): Promise<{ authenticated: boolean; session: AuthSession | null }>
+  changePassword(userId: string, oldPassword: string, newPassword: string): Promise<ChangePasswordResult>
 }
 
 declare global {

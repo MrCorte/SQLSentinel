@@ -59,6 +59,11 @@ export enum IpcChannel {
   EMAIL_SETTINGS_GET = 'email:getSettings',
   EMAIL_SETTINGS_SET = 'email:setSettings',
   EMAIL_TEST = 'email:test',
+  // Authentication
+  AUTH_LOGIN = 'auth:login',
+  AUTH_LOGOUT = 'auth:logout',
+  AUTH_CHECK = 'auth:check',
+  AUTH_CHANGE_PASSWORD = 'auth:changePassword',
 }
 
 /** Unified result envelope — never throw raw errors to the renderer. */
@@ -269,6 +274,26 @@ export interface ShrinkResult {
 
 export interface AgParams {
   connection: CollectMetricsRequest
+}
+
+// --- Auth types ---
+
+export interface AuthSession {
+  userId: string
+  username: string
+  role: string
+  expiresAt: number
+}
+
+export interface LoginResult {
+  success: boolean
+  mustChangePassword?: boolean
+  error?: string
+}
+
+export interface ChangePasswordResult {
+  success: boolean
+  error?: string
 }
 
 // Re-export types so consumers have a single import point

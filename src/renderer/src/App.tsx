@@ -2,12 +2,14 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Box, Tabs, Tab, IconButton, Badge, Tooltip, Typography } from '@mui/material'
 import NotificationsIcon from '@mui/icons-material/Notifications'
 import SettingsIcon from '@mui/icons-material/Settings'
+import LogoutIcon from '@mui/icons-material/Logout'
 import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { Discovery } from './pages/Discovery'
 import { Inventory } from './pages/Inventory'
 import { Dashboard } from './pages/Dashboard'
 import { Settings } from './pages/Settings'
+import { LoginPage } from './pages/Login'
 import { AlertsDrawer } from './components/AlertsDrawer'
 import { HomeDashboard } from './components/HomeDashboard'
 import { WorkerProvider } from './context/WorkerContext'
@@ -20,6 +22,8 @@ import { tokens } from './styles/tokens'
 import { useMockData } from './hooks/useMockData'
 import { buildTheme } from './styles/theme'
 import { ThemeContext, type ThemeMode } from './context/ThemeContext'
+import { AuthContext } from './context/AuthContext'
+import type { AuthSession } from '../../preload/index'
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 
@@ -27,7 +31,7 @@ const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 // Inner — accede a WorkerContext (deve essere dentro WorkerProvider)
 // ---------------------------------------------------------------------------
 
-function AppInner(): React.JSX.Element {
+function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
   const [tab, setTab] = useState(0)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
@@ -271,6 +275,16 @@ function AppInner(): React.JSX.Element {
             <SettingsIcon fontSize="small" />
           </IconButton>
         </Tooltip>
+
+        <Tooltip title="Disconnetti">
+          <IconButton
+            size="small"
+            onClick={onLogout}
+            sx={{ color: 'text.secondary', '&:hover': { bgcolor: 'action.hover' } }}
+          >
+            <LogoutIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
       </Box>
 
       {/* ---- Page content ---- */}
@@ -328,8 +342,38 @@ function App(): React.JSX.Element {
   const [systemDark, setSystemDark] = useState(() =>
     window.matchMedia('(prefers-color-scheme: dark)').matches
   )
+  const [session, setSession] = useState<AuthSession | null>(null)
+  const [authChecking, setAuthChecking] = useState(true)
 
-  // Load persisted theme preference on mount
+  // Check if a session already exists (e.g. app restarted within the same process)
+  useEffect(() => {
+    window.sqlSentinel.checkAuth().then(({ authenticated, session: s }) => {
+      if (authenticated && s) setSession(s)
+      setAuthChecking(false)
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Global UNAUTHORIZED handler — session expired or revoked
+  useEffect(() => {
+    function onUnhandledRejection(e: PromiseRejectionEvent): void {
+      if (
+        e.reason instanceof Error &&
+        (e.reason.message === 'UNAUTHORIZED' || e.reason.message.includes('UNAUTHORIZED'))
+      ) {
+        e.preventDefault()
+        setSession(null)
+      }
+    }
+    window.addEventListener('unhandledrejection', onUnhandledRejection)
+    return () => window.removeEventListener('unhandledrejection', onUnhandledRejection)
+  }, [])
+
+  const handleLogout = useCallback(async (): Promise<void> => {
+    await window.sqlSentinel.logout()
+    setSession(null)
+  }, [])
+
+  // Load persisted theme preference on mount (exempt from auth — needed for login page)
   useEffect(() => {
     window.sqlSentinel.getSettings().then((result) => {
       if (result.ok && result.data.themeMode) {
@@ -363,9 +407,15 @@ function App(): React.JSX.Element {
     <ThemeContext.Provider value={{ themeMode, setThemeMode }}>
       <ThemeProvider theme={muiTheme}>
         <CssBaseline />
-        <WorkerProvider>
-          <AppInner />
-        </WorkerProvider>
+        {authChecking ? null : !session ? (
+          <LoginPage onLogin={setSession} />
+        ) : (
+          <AuthContext.Provider value={{ session, logout: handleLogout }}>
+            <WorkerProvider>
+              <AppInner onLogout={handleLogout} />
+            </WorkerProvider>
+          </AuthContext.Provider>
+        )}
       </ThemeProvider>
     </ThemeContext.Provider>
   )

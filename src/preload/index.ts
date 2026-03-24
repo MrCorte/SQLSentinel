@@ -626,6 +626,7 @@ const mockApi = {
       backgroundMode: 'light',
       backgroundIntervalMinutes: 30,
       backgroundNotifications: true,
+      themeMode: 'system',
     }}),
 
   saveSettings: (_req: SaveSettingsRequest): Promise<IpcResult<null>> =>

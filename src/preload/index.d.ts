@@ -242,6 +242,7 @@ export interface AppSettings {
   backgroundMode: 'light' | 'full'
   backgroundIntervalMinutes: number
   backgroundNotifications: boolean
+  themeMode: 'light' | 'dark' | 'system'
 }
 
 export interface SaveSettingsRequest {
@@ -250,6 +251,7 @@ export interface SaveSettingsRequest {
   backgroundMode?: 'light' | 'full'
   backgroundIntervalMinutes?: number
   backgroundNotifications?: boolean
+  themeMode?: 'light' | 'dark' | 'system'
 }
 
 export interface EmailSettings {

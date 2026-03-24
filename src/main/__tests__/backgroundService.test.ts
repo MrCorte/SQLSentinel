@@ -32,6 +32,7 @@ vi.mock('../store/settings', () => ({
     backgroundMode: 'light',
     backgroundIntervalMinutes: 30,
     backgroundNotifications: true,
+    themeMode: 'system',
   })),
   saveSettings: vi.fn(),
 }))
@@ -106,7 +107,7 @@ describe('BackgroundService — background mode manager', () => {
     vi.resetModules()
     const settingsMock = { getSettings: vi.fn(() => ({
       backgroundEnabled: true, backgroundMode: 'light', backgroundIntervalMinutes: 30,
-      backgroundNotifications: true, retentionMinutes: 60
+      backgroundNotifications: true, retentionMinutes: 60, themeMode: 'system'
     })), saveSettings: vi.fn() }
     vi.doMock('../store/settings', () => settingsMock)
     const { BackgroundService } = await import('../backgroundService')
@@ -123,7 +124,7 @@ describe('BackgroundService — background mode manager', () => {
     vi.resetModules()
     vi.doMock('../store/settings', () => ({ getSettings: vi.fn(() => ({
       backgroundEnabled: false, backgroundMode: 'light', backgroundIntervalMinutes: 30,
-      backgroundNotifications: true, retentionMinutes: 60
+      backgroundNotifications: true, retentionMinutes: 60, themeMode: 'system'
     })), saveSettings: vi.fn() }))
     const { BackgroundService } = await import('../backgroundService')
     const win = makeMockWin() as any
@@ -137,7 +138,7 @@ describe('BackgroundService — background mode manager', () => {
     vi.resetModules()
     vi.doMock('../store/settings', () => ({ getSettings: vi.fn(() => ({
       backgroundEnabled: true, backgroundMode: 'full', backgroundIntervalMinutes: 30,
-      backgroundNotifications: true, retentionMinutes: 60
+      backgroundNotifications: true, retentionMinutes: 60, themeMode: 'system'
     })), saveSettings: vi.fn() }))
     const { BackgroundService } = await import('../backgroundService')
     const win = makeMockWin() as any
@@ -151,7 +152,7 @@ describe('BackgroundService — background mode manager', () => {
     vi.resetModules()
     vi.doMock('../store/settings', () => ({ getSettings: vi.fn(() => ({
       backgroundEnabled: true, backgroundMode: 'full', backgroundIntervalMinutes: 30,
-      backgroundNotifications: true, retentionMinutes: 60
+      backgroundNotifications: true, retentionMinutes: 60, themeMode: 'system'
     })), saveSettings: vi.fn() }))
     const { BackgroundService } = await import('../backgroundService')
     const win = makeMockWin() as any
@@ -170,7 +171,7 @@ describe('BackgroundService — notifications', () => {
     vi.resetModules()
     vi.doMock('../store/settings', () => ({ getSettings: vi.fn(() => ({
       backgroundEnabled: true, backgroundMode: 'light', backgroundIntervalMinutes: 30,
-      backgroundNotifications: true, retentionMinutes: 60
+      backgroundNotifications: true, retentionMinutes: 60, themeMode: 'system'
     })), saveSettings: vi.fn() }))
     const { BackgroundService } = await import('../backgroundService')
     const win = makeMockWin() as any
@@ -187,7 +188,7 @@ describe('BackgroundService — notifications', () => {
     vi.resetModules()
     vi.doMock('../store/settings', () => ({ getSettings: vi.fn(() => ({
       backgroundEnabled: true, backgroundMode: 'light', backgroundIntervalMinutes: 30,
-      backgroundNotifications: true, retentionMinutes: 60
+      backgroundNotifications: true, retentionMinutes: 60, themeMode: 'system'
     })), saveSettings: vi.fn() }))
     const { BackgroundService } = await import('../backgroundService')
     const win = makeMockWin() as any
@@ -206,7 +207,7 @@ describe('BackgroundService — notifications', () => {
     vi.resetModules()
     vi.doMock('../store/settings', () => ({ getSettings: vi.fn(() => ({
       backgroundEnabled: true, backgroundMode: 'light', backgroundIntervalMinutes: 30,
-      backgroundNotifications: true, retentionMinutes: 60
+      backgroundNotifications: true, retentionMinutes: 60, themeMode: 'system'
     })), saveSettings: vi.fn() }))
     const { BackgroundService } = await import('../backgroundService')
     const win = makeMockWin() as any

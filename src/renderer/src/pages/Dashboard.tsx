@@ -209,7 +209,7 @@ export function Dashboard(): React.JSX.Element {
           overflow: 'hidden',
           p: 2,
           gap: 1.5,
-          bgcolor: tokens.color.bgApp
+          bgcolor: 'background.default'
         }}
       >
         {!selectedServer && !selectedAgName && (
@@ -260,7 +260,7 @@ export function Dashboard(): React.JSX.Element {
                       borderBottom: `2px solid ${tokens.color.primary}`,
                       fontSize: tokens.font.sizeLg,
                       fontWeight: tokens.font.weightSemibold,
-                      color: tokens.color.textPrimary,
+                      color: 'text.primary',
                       outline: 'none',
                       minWidth: 200,
                       fontFamily: 'inherit',
@@ -273,7 +273,7 @@ export function Dashboard(): React.JSX.Element {
                       sx={{
                         fontSize: tokens.font.sizeLg,
                         fontWeight: tokens.font.weightSemibold,
-                        color: tokens.color.textPrimary,
+                        color: 'text.primary',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap'
@@ -299,7 +299,7 @@ export function Dashboard(): React.JSX.Element {
                   <IconButton
                     size="small"
                     onClick={startEditAlias}
-                    sx={{ color: tokens.color.textSecondary, flexShrink: 0 }}
+                    sx={{ color: 'text.secondary', flexShrink: 0 }}
                   >
                     <EditIcon sx={{ fontSize: 14 }} />
                   </IconButton>

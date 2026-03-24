@@ -5,6 +5,10 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed — 2026-03-24 (dark mode — Dashboard container)
+- **Dashboard outer container**: `bgcolor: tokens.color.bgApp` → `background.default`; titolo/alias server e rename input ora usano `text.primary`/`text.secondary`
+- **StatoCell (MetricsPanel)**: `border: \`1px solid ${borderColor}\`` corretto con `border: '1px solid'` + `borderColor` in sx (era CSS non valido per il caso default)
+
 ### Fixed — 2026-03-24 (dark mode — token cleanup)
 - **Palette dark aggiornata**: sfondo `#0f172a`/`#1e293b`, testo `#f1f5f9`/`#94a3b8`, divider `#334155` (palette slate)
 - **`tokens.color.*` sostituiti con MUI palette keys**: `AgDashboard`, `AlertsDrawer`, `DisksTab`, `HomeDashboard`, `Inventory`, `MemoryChart`, `MetricsPanel`, `ServerStatusChip` ora usano `background.paper`, `background.default`, `text.primary`, `text.secondary`, `divider` — tutte le card e tabelle si adattano al tema

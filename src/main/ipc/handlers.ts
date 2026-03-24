@@ -36,11 +36,15 @@ import {
   type AgParams,
   type AvailabilityGroup,
   type AvailabilityReplica,
-  type AvailabilityDatabase
+  type AvailabilityDatabase,
+  type EmailSettings,
+  type SaveEmailSettingsRequest
 } from './types'
 import type { ServerMetrics } from '../collectors/types'
 import { startWorker, stopWorker, setActiveServer, syncServers, getAlerts, acknowledgeAlert, getHistory } from '../metricsWorker'
 import { getSettings, saveSettings } from '../store/settings'
+import { getEmailSettings, saveEmailSettings } from '../store/emailSettings'
+import { sendTestEmail } from '../emailService'
 import { getCustomFields, setCustomFields, getAllCustomFields } from '../store/dbCustomFields'
 import type { DiscoveredServer, ScanOptions } from '../discovery/types'
 import { scanSubnet, scanHost } from '../discovery/tcpScanner'
@@ -531,6 +535,46 @@ export function registerIpcHandlers(): void {
       if (result.canceled || !result.filePath) return { ok: true, data: null }
       writeFileSync(result.filePath, '\uFEFF' + req.content, 'utf8')
       return { ok: true, data: result.filePath }
+    }
+  )
+
+  // EMAIL_SETTINGS_GET
+  ipcMain.handle(
+    IpcChannel.EMAIL_SETTINGS_GET,
+    async (): Promise<IpcResult<EmailSettings>> => {
+      try {
+        return { ok: true, data: getEmailSettings() }
+      } catch (err) {
+        console.error('[IPC] EMAIL_SETTINGS_GET:', safeError(err))
+        return { ok: false, error: safeError(err) }
+      }
+    }
+  )
+
+  // EMAIL_SETTINGS_SET
+  ipcMain.handle(
+    IpcChannel.EMAIL_SETTINGS_SET,
+    async (_event: IpcMainInvokeEvent, req: SaveEmailSettingsRequest): Promise<IpcResult<null>> => {
+      try {
+        saveEmailSettings(req)
+        return { ok: true, data: null }
+      } catch (err) {
+        console.error('[IPC] EMAIL_SETTINGS_SET:', safeError(err))
+        return { ok: false, error: safeError(err) }
+      }
+    }
+  )
+
+  // EMAIL_TEST — sendTestEmail() has internal try/catch; outer try/catch catches unexpected throws
+  ipcMain.handle(
+    IpcChannel.EMAIL_TEST,
+    async (): Promise<IpcResult<null>> => {
+      try {
+        return await sendTestEmail()
+      } catch (err) {
+        console.error('[IPC] EMAIL_TEST:', safeError(err))
+        return { ok: false, error: safeError(err) }
+      }
     }
   )
 }

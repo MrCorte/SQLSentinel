@@ -5,6 +5,12 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Added — 2026-03-24 (dark mode)
+- **Tema scuro**: supporto Light / Dark / Sistema tramite MUI `palette.mode`; toggle in Settings → Aspetto
+- **Persistenza tema**: preferenza salvata nella tabella `settings` (chiave `theme_mode`); ripristinata all'avvio
+- **Modalità sistema**: segue automaticamente la preferenza OS (`prefers-color-scheme`); ascolta cambiamenti in tempo reale
+- **Navbar e scrollbar**: adattati al tema attivo tramite MUI palette keys e CssBaseline overrides
+
 ### Added — 2026-03-24 (email alerting)
 - **Notifiche email**: alert WARNING e CRITICAL inviano email HTML via SMTP quando rilevati; disabilitabili da Settings → Notifiche Email
 - **Dedup email**: cooldown 15 minuti per coppia (server, categoria) per evitare spam

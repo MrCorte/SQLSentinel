@@ -1,7 +1,10 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import type { BrowserWindow as BrowserWindowType } from 'electron'
 import { join } from 'path'
-import icon from '../../resources/icon.png?asset'
+
+const icon = app.isPackaged
+  ? join(process.resourcesPath, 'icon.png')
+  : join(__dirname, '../../resources/icon.png')
 import { registerIpcHandlers } from './ipc/handlers'
 import { BackgroundService } from './backgroundService'
 import type { WorkerApi } from './backgroundService'

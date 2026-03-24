@@ -1,15 +1,19 @@
 import { Tray, Menu, Notification, app, BrowserWindow } from 'electron'
 import { existsSync } from 'fs'
-import { join, dirname } from 'path'
-import trayIconNormal from '../../../resources/tray-icon.png?asset'
+import { join } from 'path'
 import type { CollectMetricsRequest, Alert } from './ipc/types'
 import type { IntervalOverrides } from './metricsWorker'
 import { getSettings, saveSettings } from './store/settings'
 import * as serverStore from './store/serverStore'
 import { getAlerts } from './metricsWorker'
 
-const alertAssetPath = join(dirname(trayIconNormal), 'tray-icon-alert.png')
-const trayIconAlert = existsSync(alertAssetPath) ? alertAssetPath : trayIconNormal
+const resourcesDir = app.isPackaged
+  ? process.resourcesPath
+  : join(__dirname, '../../../resources')
+
+const trayIconNormal = join(resourcesDir, 'tray-icon.png')
+const trayIconAlertCandidate = join(resourcesDir, 'tray-icon-alert.png')
+const trayIconAlert = existsSync(trayIconAlertCandidate) ? trayIconAlertCandidate : trayIconNormal
 
 export interface WorkerApi {
   syncServers(servers: CollectMetricsRequest[]): void

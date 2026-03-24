@@ -19,9 +19,14 @@ describe('themeMode in settings', () => {
     expect(getSettings().themeMode).toBe('system')
   })
 
-  it('reads persisted themeMode from db', () => {
+  it('reads persisted themeMode "dark" from db', () => {
     mockAll.mockReturnValue([{ key: 'theme_mode', value: 'dark' }])
     expect(getSettings().themeMode).toBe('dark')
+  })
+
+  it('reads persisted themeMode "light" from db', () => {
+    mockAll.mockReturnValue([{ key: 'theme_mode', value: 'light' }])
+    expect(getSettings().themeMode).toBe('light')
   })
 
   it('saveSettings persists themeMode with key "theme_mode"', () => {

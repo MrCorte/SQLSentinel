@@ -119,6 +119,84 @@ export function Settings(): React.JSX.Element {
     })
   }
 
+  // --- Email settings state ---
+  const [emailLoaded, setEmailLoaded] = useState(false)
+  const [emailEnabled, setEmailEnabled] = useState(false)
+  const [smtpHost, setSmtpHost] = useState('')
+  const [smtpPort, setSmtpPort] = useState(587)
+  const [smtpUser, setSmtpUser] = useState('')
+  const [smtpPassword, setSmtpPassword] = useState('')
+  const [smtpTls, setSmtpTls] = useState(true)
+  const [emailRecipients, setEmailRecipients] = useState<string[]>([])
+  const [recipientInput, setRecipientInput] = useState('')
+  const [recipientError, setRecipientError] = useState('')
+  const [testEmailStatus, setTestEmailStatus] = useState<'idle' | 'sending' | 'success' | 'error'>(
+    'idle'
+  )
+  const [testEmailError, setTestEmailError] = useState('')
+
+  useEffect(() => {
+    window.sqlSentinel.getEmailSettings().then((res) => {
+      if (res.ok) {
+        setEmailEnabled(res.data.emailEnabled)
+        setSmtpHost(res.data.smtpHost)
+        setSmtpPort(res.data.smtpPort)
+        setSmtpUser(res.data.smtpUser)
+        setSmtpPassword(res.data.smtpPassword)
+        setSmtpTls(res.data.smtpTls)
+        setEmailRecipients(res.data.emailRecipients)
+        setEmailLoaded(true)
+      }
+    })
+  }, [])
+
+  const saveEmail = (patch: Parameters<typeof window.sqlSentinel.saveEmailSettings>[0]) => {
+    window.sqlSentinel.saveEmailSettings(patch).catch((err: unknown) => {
+      console.error('[Settings] saveEmailSettings failed:', err)
+    })
+  }
+
+  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+  const addRecipient = () => {
+    const email = recipientInput.trim()
+    if (!EMAIL_REGEX.test(email)) {
+      setRecipientError('Email non valida')
+      return
+    }
+    if (emailRecipients.includes(email)) {
+      setRecipientError('Email già presente')
+      return
+    }
+    if (emailRecipients.length >= 20) {
+      setRecipientError('Massimo 20 destinatari')
+      return
+    }
+    const next = [...emailRecipients, email]
+    setEmailRecipients(next)
+    setRecipientInput('')
+    setRecipientError('')
+    saveEmail({ emailRecipients: next })
+  }
+
+  const removeRecipient = (email: string) => {
+    const next = emailRecipients.filter((r) => r !== email)
+    setEmailRecipients(next)
+    saveEmail({ emailRecipients: next })
+  }
+
+  const handleTestEmail = async () => {
+    setTestEmailStatus('sending')
+    setTestEmailError('')
+    const result = await window.sqlSentinel.sendTestEmail()
+    if (result.ok) {
+      setTestEmailStatus('success')
+    } else {
+      setTestEmailStatus('error')
+      setTestEmailError(result.error)
+    }
+  }
+
   function handleRetentionChange(minutes: number): void {
     setRetentionMinutes(minutes)
     window.sqlSentinel.saveSettings({ retentionMinutes: minutes })
@@ -363,6 +441,169 @@ export function Settings(): React.JSX.Element {
               }
               label="Notifiche sistema per alert critici"
             />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Card — Notifiche Email */}
+      {emailLoaded && (
+        <Card variant="outlined">
+          <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box>
+              <Typography variant="subtitle1" fontWeight={700}>
+                Notifiche Email
+              </Typography>
+            </Box>
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={emailEnabled}
+                  onChange={(e) => {
+                    setEmailEnabled(e.target.checked)
+                    saveEmail({ emailEnabled: e.target.checked })
+                  }}
+                />
+              }
+              label="Abilita notifiche email"
+            />
+
+            <Box
+              sx={{
+                ml: 2,
+                opacity: emailEnabled ? 1 : 0.4,
+                pointerEvents: emailEnabled ? 'auto' : 'none',
+              }}
+            >
+              <Stack spacing={2}>
+                <TextField
+                  label="SMTP Host"
+                  size="small"
+                  value={smtpHost}
+                  onChange={(e) => setSmtpHost(e.target.value)}
+                  onBlur={() => saveEmail({ smtpHost })}
+                  placeholder="smtp.office365.com"
+                />
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <TextField
+                    label="SMTP Port"
+                    size="small"
+                    type="number"
+                    value={smtpPort}
+                    inputProps={{ min: 1, max: 65535 }}
+                    sx={{ width: 120 }}
+                    onChange={(e) => setSmtpPort(Number(e.target.value))}
+                    onBlur={() => saveEmail({ smtpPort })}
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={smtpTls}
+                        onChange={(e) => {
+                          setSmtpTls(e.target.checked)
+                          saveEmail({ smtpTls: e.target.checked })
+                        }}
+                      />
+                    }
+                    label="TLS/STARTTLS"
+                  />
+                </Stack>
+                <TextField
+                  label="SMTP User (mittente)"
+                  size="small"
+                  value={smtpUser}
+                  onChange={(e) => setSmtpUser(e.target.value)}
+                  onBlur={() => saveEmail({ smtpUser })}
+                  placeholder="alerts@azienda.it"
+                />
+                <TextField
+                  label="SMTP Password"
+                  size="small"
+                  type="password"
+                  value={smtpPassword}
+                  onChange={(e) => setSmtpPassword(e.target.value)}
+                  onBlur={() => saveEmail({ smtpPassword })}
+                />
+
+                {/* Recipient list */}
+                <Box>
+                  <Typography variant="body2" gutterBottom>
+                    Destinatari ({emailRecipients.length}/20)
+                  </Typography>
+                  <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                    <TextField
+                      size="small"
+                      placeholder="destinatario@azienda.it"
+                      value={recipientInput}
+                      onChange={(e) => {
+                        setRecipientInput(e.target.value)
+                        setRecipientError('')
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          addRecipient()
+                        }
+                      }}
+                      error={!!recipientError}
+                      helperText={recipientError}
+                      sx={{ flexGrow: 1 }}
+                    />
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={addRecipient}
+                      disabled={emailRecipients.length >= 20}
+                    >
+                      Aggiungi
+                    </Button>
+                  </Stack>
+                  <Stack spacing={0.5}>
+                    {emailRecipients.map((email) => (
+                      <Stack key={email} direction="row" alignItems="center" spacing={1}>
+                        <Typography variant="body2" sx={{ flexGrow: 1 }}>
+                          {email}
+                        </Typography>
+                        <Button
+                          size="small"
+                          color="error"
+                          onClick={() => removeRecipient(email)}
+                          sx={{ minWidth: 0, p: 0.5 }}
+                        >
+                          ❌
+                        </Button>
+                      </Stack>
+                    ))}
+                  </Stack>
+                </Box>
+
+                {/* Test email */}
+                <Box>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={handleTestEmail}
+                    disabled={
+                      testEmailStatus === 'sending' ||
+                      !smtpHost ||
+                      emailRecipients.length === 0
+                    }
+                  >
+                    {testEmailStatus === 'sending' ? 'Invio in corso…' : 'Invia email di test'}
+                  </Button>
+                  {testEmailStatus === 'success' && (
+                    <Alert severity="success" sx={{ mt: 1 }}>
+                      Email di test inviata con successo
+                    </Alert>
+                  )}
+                  {testEmailStatus === 'error' && (
+                    <Alert severity="error" sx={{ mt: 1 }}>
+                      Errore invio: {testEmailError}
+                    </Alert>
+                  )}
+                </Box>
+              </Stack>
+            </Box>
           </CardContent>
         </Card>
       )}

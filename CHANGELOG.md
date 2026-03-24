@@ -5,6 +5,9 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed — 2026-03-24 (dark mode cleanup)
+- **Colori hardcoded rimossi**: `SpaceBar`, `DisksTab`, `MetricsPanel`, `Dashboard`, `Inventory` ora usano MUI palette keys (`text.secondary`, `action.hover`, `background.default`, `divider`) invece di hex fissi; righe Inventory con tinte colorate adattate per dark/light via `alpha()` e sx callback
+
 ### Added — 2026-03-24 (dark mode)
 - **Tema scuro**: supporto Light / Dark / Sistema tramite MUI `palette.mode`; toggle in Settings → Aspetto
 - **Persistenza tema**: preferenza salvata nella tabella `settings` (chiave `theme_mode`); ripristinata all'avvio

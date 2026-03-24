@@ -22,7 +22,7 @@ export function SpaceBar({ used, total, unit }: SpaceBarProps): React.JSX.Elemen
         sx={{
           height: 8,
           borderRadius: '4px',
-          bgcolor: '#e0e0e0',
+          bgcolor: 'action.disabledBackground',
           overflow: 'hidden'
         }}
       >
@@ -38,7 +38,7 @@ export function SpaceBar({ used, total, unit }: SpaceBarProps): React.JSX.Elemen
       </Box>
       <Typography
         variant="caption"
-        sx={{ color: '#605e5c', mt: 0.5, display: 'block', fontSize: 11 }}
+        sx={{ color: 'text.secondary', mt: 0.5, display: 'block', fontSize: 11 }}
       >
         {used.toFixed(1)} / {total.toFixed(1)} {unit} ({pct.toFixed(1)}%)
       </Typography>

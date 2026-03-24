@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useCallback } from 'react'
+import { alpha } from '@mui/material/styles'
 import {
   Box,
   Typography,
@@ -858,8 +859,8 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                   display: 'grid',
                   gridTemplateColumns: GRID_TEMPLATE,
                   px: 2, py: 1,
-                  bgcolor: '#f3f2f1',
-                  borderBottom: '2px solid #e0e0e0',
+                  bgcolor: 'background.default',
+                  borderBottom: (theme) => `2px solid ${theme.palette.divider}`,
                   position: 'sticky',
                   top: 0,
                   zIndex: 1,
@@ -921,17 +922,30 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                             px: 2,
                             pl,
                             cursor: 'pointer',
-                            borderBottom: '1px solid #f0f0f0',
-                            bgcolor:
-                              row.type === 'machine-header' ? '#edf2f7' :
-                              row.type === 'ag-cluster'     ? '#f6f4fb' :
-                              row.type === 'ag-replica'     ? '#fafafa' :
-                              row.unreachable               ? '#fde7e9' : 'white',
+                            borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+                            bgcolor: (theme) =>
+                              theme.palette.mode === 'dark'
+                                ? row.type === 'machine-header' ? alpha(theme.palette.info.main, 0.12)
+                                  : row.type === 'ag-cluster'   ? alpha('#8b5cf6', 0.12)
+                                  : row.type === 'ag-replica'   ? alpha('#ffffff', 0.03)
+                                  : row.unreachable             ? alpha(theme.palette.error.main, 0.2)
+                                  : theme.palette.background.paper
+                                : row.type === 'machine-header' ? '#edf2f7'
+                                : row.type === 'ag-cluster'     ? '#f6f4fb'
+                                : row.type === 'ag-replica'     ? '#fafafa'
+                                : row.unreachable               ? '#fde7e9'
+                                : theme.palette.background.paper,
                             '&:hover': {
-                              bgcolor:
-                                row.type === 'machine-header' ? '#dce7f0' :
-                                row.type === 'ag-cluster'     ? '#ede8f5' :
-                                row.unreachable               ? '#fad4d4' : '#f3f2f1'
+                              bgcolor: (theme) =>
+                                theme.palette.mode === 'dark'
+                                  ? row.type === 'machine-header' ? alpha(theme.palette.info.main, 0.22)
+                                    : row.type === 'ag-cluster'   ? alpha('#8b5cf6', 0.22)
+                                    : row.unreachable             ? alpha(theme.palette.error.main, 0.3)
+                                    : theme.palette.action.hover
+                                  : row.type === 'machine-header' ? '#dce7f0'
+                                  : row.type === 'ag-cluster'     ? '#ede8f5'
+                                  : row.unreachable               ? '#fad4d4'
+                                  : theme.palette.action.hover,
                             },
                           }}
                         >

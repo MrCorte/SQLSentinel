@@ -115,7 +115,7 @@ function DatabaseFileRow({ file }: { file: DatabaseFile }): React.JSX.Element {
             fontSize: 10,
             fontWeight: 700,
             height: 18,
-            bgcolor: file.type_desc === 'ROWS' ? tokens.color.infoLight : '#f3f3f3',
+            bgcolor: file.type_desc === 'ROWS' ? tokens.color.infoLight : 'action.hover',
             color: file.type_desc === 'ROWS' ? tokens.color.primary : tokens.color.textSecondary,
             border: `1px solid ${file.type_desc === 'ROWS' ? tokens.color.primary : tokens.color.border}`
           }}
@@ -194,7 +194,7 @@ function DatabaseGroupCard({
           bgcolor: tokens.color.bgApp,
           borderBottom: open ? `1px solid ${tokens.color.border}` : 'none',
           cursor: 'pointer',
-          '&:hover': { bgcolor: '#ebe9e8' }
+          '&:hover': { bgcolor: 'action.hover' }
         }}
         onClick={() => setOpen((v) => !v)}
       >

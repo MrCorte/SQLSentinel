@@ -13,6 +13,7 @@ import {
   IconButton,
   Tooltip
 } from '@mui/material'
+import { alpha } from '@mui/material/styles'
 import EditIcon from '@mui/icons-material/Edit'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import RefreshIcon from '@mui/icons-material/Refresh'
@@ -287,7 +288,7 @@ export function Dashboard(): React.JSX.Element {
                     {serverAliases[serverLabel(selectedServer)] && (
                       <Typography
                         component="span"
-                        sx={{ fontSize: 12, color: '#605e5c', whiteSpace: 'nowrap', flexShrink: 0 }}
+                        sx={{ fontSize: 12, color: 'text.secondary', whiteSpace: 'nowrap', flexShrink: 0 }}
                       >
                         {serverLabel(selectedServer)}
                       </Typography>
@@ -339,7 +340,7 @@ export function Dashboard(): React.JSX.Element {
                   gap: 1.5,
                   px: 2,
                   py: 1,
-                  bgcolor: '#3d1a1a',
+                  bgcolor: (theme) => alpha(theme.palette.error.main, theme.palette.mode === 'dark' ? 0.2 : 0.08),
                   border: `1px solid ${tokens.color.error}`,
                   borderRadius: 1
                 }}

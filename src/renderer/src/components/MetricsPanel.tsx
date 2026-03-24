@@ -85,7 +85,7 @@ function KpiCard({
         sx={{
           fontSize: 18,
           fontWeight: 600,
-          color: '#201f1e',
+          color: 'text.primary',
           lineHeight: 1.2
         }}
       >

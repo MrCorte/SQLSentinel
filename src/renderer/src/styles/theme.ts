@@ -158,5 +158,3 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
   })
 }
 
-// Backward-compat export used by main.tsx (removed in Task 4)
-export const theme = buildTheme('light')

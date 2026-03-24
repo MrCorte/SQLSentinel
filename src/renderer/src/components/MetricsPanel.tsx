@@ -142,7 +142,7 @@ const TabPanoramica = memo(function TabPanoramica({
           borderColor: 'divider'
         }}
       >
-        <NoteEditor serverId={serverId} initialNote={serverNotes ?? ''} />
+        <NoteEditor key={serverId} serverId={serverId} initialNote={serverNotes ?? ''} />
       </Box>
     </Stack>
   )

@@ -22,6 +22,9 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 - **Lazy loading DisksTab**: `DisksTab` caricata con `React.lazy` + `Suspense`; il bundle del tab Dischi viene scaricato solo alla prima apertura
 - **Debounce ricerca Inventory**: ricerca testuale debouncata 300ms; `filteredRows` non viene ricalcolato ad ogni tasto — riduce il carico su inventari con 200+ server
 
+### Fixed — 2026-03-24 (NoteEditor — note condivise tra server)
+- **Bug note uguali per tutti i server**: `NoteEditor` mostrava le note dell'ultimo server visitato quando si passava a un server con note vuote; corretto aggiungendo `serverId` alle dipendenze di entrambi gli `useEffect` e `key={serverId}` sul componente per forzarne il remount al cambio server
+
 ### Added — 2026-03-24 (server notes)
 - **Campo Note per server**: campo testuale libero (max 1000 caratteri) persistito in electron-store per ogni server
 - **NoteEditor**: componente con autosave 1s debounce e indicatore "Salvato"; visibile nella tab Panoramica del dashboard server

@@ -13,12 +13,13 @@ export function NoteEditor({ serverId, initialNote }: NoteEditorProps): React.JS
   const [saved, setSaved] = useState(false)
   const updateServer = useServersStore((s) => s.updateServer)
 
-  // Sync if the server's note changes from outside (e.g. store refresh)
+  // Reset note whenever the active server changes (serverId is the key discriminator)
   useEffect(() => {
     setNote(initialNote)
-  }, [initialNote])
+    setSaved(false)
+  }, [serverId, initialNote])
 
-  // Autosave with 1s debounce
+  // Autosave with 1s debounce — serverId in deps guards against saves to the wrong server
   useEffect(() => {
     if (note === initialNote) return
     setSaved(false)
@@ -31,7 +32,7 @@ export function NoteEditor({ serverId, initialNote }: NoteEditorProps): React.JS
     }, 1000)
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [note])
+  }, [note, serverId])
 
   return (
     <Box>

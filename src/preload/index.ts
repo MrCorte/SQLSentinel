@@ -32,7 +32,9 @@ import type {
   AgParams,
   AvailabilityGroup,
   AvailabilityReplica,
-  AvailabilityDatabase
+  AvailabilityDatabase,
+  EmailSettings,
+  SaveEmailSettingsRequest
 } from '../main/ipc/types'
 import type { ServerMetrics, ServerInfo } from '../main/collectors/types'
 import type { StoredServer } from '../main/store/serverStore'
@@ -44,6 +46,7 @@ export type { WorkerStartRequest, WorkerSetActiveRequest, WorkerSyncServersReque
 export type { DbCustomFields, SaveCsvRequest, ServerAddResult, UpdateServerRequest, ServerUnreachableEvent } from '../main/ipc/types'
 export type { ShrinkDatabaseParams, ShrinkFileParams, ShrinkEstimateParams, ShrinkEstimate, ShrinkResult } from '../main/ipc/types'
 export type { AgParams, AvailabilityGroup, AvailabilityReplica, AvailabilityDatabase, AgHealth, AgRole } from '../main/ipc/types'
+export type { EmailSettings, SaveEmailSettingsRequest } from '../main/ipc/types'
 export type { ServerMetrics } from '../main/collectors/types'
 export type { ServerInfo } from '../main/collectors/types'
 export type { InstanceInfo, DatabaseInfo, SessionInfo, QueryInfo, BackupInfo, WaitStatInfo, DiskVolume, DatabaseFile } from '../main/collectors/types'
@@ -387,6 +390,15 @@ const realApi = {
   saveSettings: (req: SaveSettingsRequest): Promise<IpcResult<null>> =>
     ipcRenderer.invoke(IpcChannel.SETTINGS_SET, req),
 
+  getEmailSettings: (): Promise<IpcResult<EmailSettings>> =>
+    ipcRenderer.invoke(IpcChannel.EMAIL_SETTINGS_GET),
+
+  saveEmailSettings: (req: SaveEmailSettingsRequest): Promise<IpcResult<null>> =>
+    ipcRenderer.invoke(IpcChannel.EMAIL_SETTINGS_SET, req),
+
+  sendTestEmail: (): Promise<IpcResult<null>> =>
+    ipcRenderer.invoke(IpcChannel.EMAIL_TEST),
+
   getDbCustomFields: (req: DbCustomFieldsGetRequest): Promise<IpcResult<DbCustomFields>> =>
     ipcRenderer.invoke(IpcChannel.DB_GET_CUSTOM_FIELDS, req),
 
@@ -619,6 +631,26 @@ const mockApi = {
   saveSettings: (_req: SaveSettingsRequest): Promise<IpcResult<null>> =>
     Promise.resolve({ ok: true, data: null }),
 
+  getEmailSettings: (): Promise<IpcResult<EmailSettings>> =>
+    Promise.resolve({
+      ok: true,
+      data: {
+        emailEnabled: false,
+        smtpHost: '',
+        smtpPort: 587,
+        smtpUser: '',
+        smtpPassword: '',
+        smtpTls: true,
+        emailRecipients: [],
+      },
+    }),
+
+  saveEmailSettings: (_req: SaveEmailSettingsRequest): Promise<IpcResult<null>> =>
+    Promise.resolve({ ok: true, data: null }),
+
+  sendTestEmail: (): Promise<IpcResult<null>> =>
+    Promise.resolve({ ok: true, data: null }),
+
   getDbCustomFields: (_req: DbCustomFieldsGetRequest): Promise<IpcResult<DbCustomFields>> =>
     Promise.resolve({ ok: true, data: {} }),
 
@@ -762,6 +794,9 @@ const bridgeApi = {
   onAlertNew:          (cb: (a: Alert) => void) => api.onAlertNew(cb),
   getSettings:         () => api.getSettings(),
   saveSettings:        (r: SaveSettingsRequest) => api.saveSettings(r),
+  getEmailSettings:  () => api.getEmailSettings(),
+  saveEmailSettings: (r: SaveEmailSettingsRequest) => api.saveEmailSettings(r),
+  sendTestEmail:     () => realApi.sendTestEmail(),
   getDbCustomFields:   (r: DbCustomFieldsGetRequest) => api.getDbCustomFields(r),
   setDbCustomFields:   (r: DbCustomFieldsSetRequest) => api.setDbCustomFields(r),
   getAllDbCustomFields: () => api.getAllDbCustomFields(),

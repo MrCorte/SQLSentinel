@@ -42,6 +42,9 @@ vi.mock('../metricsWorker', () => ({
   onAlert: vi.fn(),
   getAlerts: vi.fn(() => []),
 }))
+vi.mock('../emailService', () => ({
+  sendAlertEmail: vi.fn().mockResolvedValue(undefined),
+}))
 
 function makeMockWin() {
   const listeners: Record<string, Function[]> = {}

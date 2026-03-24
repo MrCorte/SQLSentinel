@@ -6,6 +6,7 @@ import type { IntervalOverrides } from './metricsWorker'
 import { getSettings, saveSettings } from './store/settings'
 import * as serverStore from './store/serverStore'
 import { getAlerts } from './metricsWorker'
+import { sendAlertEmail } from './emailService'
 
 const resourcesDir = app.isPackaged
   ? process.resourcesPath
@@ -133,6 +134,10 @@ export class BackgroundService {
   private readonly notifyDedup = new Map<string, number>()
 
   private maybeNotify(alert: Alert): void {
+    // Email — fires for WARNING and CRITICAL, filtered by emailService settings + dedup
+    sendAlertEmail(alert).catch((err) => console.error('[BackgroundService] Email error:', err))
+
+    // Toast — CRITICAL only, hidden window only
     if (alert.severity !== 'CRITICAL') return
     if (this.win.isVisible()) return
     if (!getSettings().backgroundNotifications) return

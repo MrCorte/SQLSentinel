@@ -10,8 +10,6 @@ html, body {
   height: 100%;
   font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 13px;
-  color: #323130;
-  background-color: #f3f2f1;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -24,20 +22,10 @@ html, body {
   overflow: hidden;
 }
 
-/* Custom scrollbar — thin Azure style */
+/* Custom scrollbar — thin Azure style; colours set per-theme in MuiCssBaseline */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #c8c6c4;
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #8a8886;
 }
 
 /* Remove MUI default outline on focused elements in favor of cleaner look */

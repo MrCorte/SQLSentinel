@@ -22,6 +22,9 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 - **Lazy loading DisksTab**: `DisksTab` caricata con `React.lazy` + `Suspense`; il bundle del tab Dischi viene scaricato solo alla prima apertura
 - **Debounce ricerca Inventory**: ricerca testuale debouncata 300ms; `filteredRows` non viene ricalcolato ad ogni tasto — riduce il carico su inventari con 200+ server
 
+### Added — 2026-03-24 (autostart)
+- **Avvia con Windows**: toggle nella card Background & Tray delle impostazioni; usa `app.setLoginItemSettings` di Electron (scrive in `HKCU\...\Run`); disabilitato in dev (registrerebbe electron.exe anziché l'exe installato); source of truth è il SO — nessuna copia in SQLite
+
 ### Fixed — 2026-03-24 (mock mode — UNAUTHORIZED su servers:getAll)
 - **UNAUTHORIZED in mock mode**: `bridgeApi.servers.*` era hardcodato su `realApi` (IPC reale) anche con `VITE_MOCK_MODE=true`; l'IPC guard richiedeva una sessione reale che in mock mode non esiste; corretto facendo usare `api` (mockApi o realApi in base al flag) — `mockApi.servers` è puro in-memory, nessun rischio di inquinamento electron-store
 

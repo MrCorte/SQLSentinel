@@ -403,16 +403,25 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // SETTINGS_GET — restituisce le impostazioni salvate
+  // SETTINGS_GET — restituisce le impostazioni salvate + stato autostart dal SO
   ipcMain.handle(IpcChannel.SETTINGS_GET, async (): Promise<IpcResult<AppSettings>> => {
-    return { ok: true, data: getSettings() }
+    return {
+      ok: true,
+      data: {
+        ...getSettings(),
+        autostartEnabled: app.getLoginItemSettings().openAtLogin,
+      },
+    }
   })
 
-  // SETTINGS_SET — salva le impostazioni
+  // SETTINGS_SET — salva le impostazioni; aggiorna autostart nel registro di SO se richiesto
   ipcMain.handle(
     IpcChannel.SETTINGS_SET,
     async (_event: IpcMainInvokeEvent, req: SaveSettingsRequest): Promise<IpcResult<null>> => {
       saveSettings(req)
+      if (req.autostartEnabled !== undefined) {
+        app.setLoginItemSettings({ openAtLogin: req.autostartEnabled })
+      }
       return { ok: true, data: null }
     }
   )

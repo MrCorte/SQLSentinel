@@ -16,7 +16,8 @@ import {
   Switch,
   RadioGroup,
   Radio,
-  TextField
+  TextField,
+  Tooltip
 } from '@mui/material'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
@@ -100,7 +101,11 @@ export function Settings(): React.JSX.Element {
   const [bgMode, setBgMode] = useState<'light' | 'full'>('light')
   const [bgInterval, setBgInterval] = useState(30)
   const [bgNotifications, setBgNotifications] = useState(true)
+  const [autostartEnabled, setAutostartEnabled] = useState(false)
   const [bgLoaded, setBgLoaded] = useState(false)
+
+  // true solo nell'exe installato — in dev setLoginItemSettings registrerebbe electron.exe
+  const isPackaged: boolean = !import.meta.env.DEV
 
   useEffect(() => {
     window.sqlSentinel.getSettings().then((res) => {
@@ -109,6 +114,7 @@ export function Settings(): React.JSX.Element {
         setBgMode(res.data.backgroundMode)
         setBgInterval(res.data.backgroundIntervalMinutes)
         setBgNotifications(res.data.backgroundNotifications)
+        setAutostartEnabled(res.data.autostartEnabled)
         setBgLoaded(true)
       }
     })
@@ -120,6 +126,7 @@ export function Settings(): React.JSX.Element {
       backgroundMode: 'light' | 'full'
       backgroundIntervalMinutes: number
       backgroundNotifications: boolean
+      autostartEnabled: boolean
     }>
   ) => {
     window.sqlSentinel.saveSettings(patch).catch((err: unknown) => {
@@ -482,6 +489,26 @@ export function Settings(): React.JSX.Element {
               }
               label="Notifiche sistema per alert critici"
             />
+            <Tooltip
+              title={!isPackaged ? 'Disponibile solo nella versione installata (.exe)' : ''}
+              placement="right"
+            >
+              <span>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={autostartEnabled}
+                      disabled={!isPackaged}
+                      onChange={(e) => {
+                        setAutostartEnabled(e.target.checked)
+                        saveBgSettings({ autostartEnabled: e.target.checked })
+                      }}
+                    />
+                  }
+                  label="Avvia con Windows"
+                />
+              </span>
+            </Tooltip>
           </CardContent>
         </Card>
       )}

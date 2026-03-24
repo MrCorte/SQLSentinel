@@ -5,6 +5,14 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Added — 2026-03-24 (email alerting)
+- **Notifiche email**: alert WARNING e CRITICAL inviano email HTML via SMTP quando rilevati; disabilitabili da Settings → Notifiche Email
+- **Dedup email**: cooldown 15 minuti per coppia (server, categoria) per evitare spam
+- **Configurazione SMTP**: host, porta, utente, password, toggle TLS/STARTTLS; persistito nella tabella `settings` come coppie chiave-valore
+- **Lista destinatari**: fino a 20 indirizzi email con validazione e rimozione dalla UI
+- **Email di test**: pulsante in Settings invia email di prova con stato visualizzato inline
+- **Template HTML**: email con header colorato per livello (🔴 CRITICAL / 🟡 WARNING)
+
 ### Added — 2026-03-23 (tray background service)
 - **Tray icon**: app ora si nasconde nella system tray alla chiusura della finestra (X) invece di uscire; doppio-click sull'icona o "Apri SQLSentinel" nel menu contestuale riapre la finestra; "Esci" nel menu chiude l'app completamente
 - **Polling background**: il worker continua a girare con la finestra nascosta; configurabile tra modalità *Light* (intervallo personalizzabile, solo 4 query critiche, history cap 3) e *Full* (intervalli invariati)

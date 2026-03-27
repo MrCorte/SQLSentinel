@@ -357,9 +357,26 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
 
   // Store subscriptions
   useServersStore((s) => s.servers)
-  const metricsMap    = useMetricsStore((s) => s.metricsMap)
   const envGroups     = useGroupsStore((s) => s.groups)
   const serverAliases = useGroupsStore((s) => s.serverAliases)
+
+  // Throttle: se Dashboard e Inventory fossero mounted contemporaneamente, senza throttle
+  // ogni metrics push (200 server/ciclo) riscatena filteredRows e referenteOptions.
+  const [metricsMap, setMetricsMap] = useState(() => useMetricsStore.getState().metricsMap)
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const unsub = useMetricsStore.subscribe(() => {
+      if (timer) return
+      timer = setTimeout(() => {
+        setMetricsMap(useMetricsStore.getState().metricsMap)
+        timer = null
+      }, 1000)
+    })
+    return () => {
+      unsub()
+      if (timer) clearTimeout(timer)
+    }
+  }, [])
 
   const inventory = computeInventory()
   const { totals } = inventory

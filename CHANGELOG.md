@@ -5,6 +5,11 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Changed — 2026-03-27 (ottimizzazioni post-analisi)
+- **AG sync observability**: `detectAndSyncReplicaRoles` non swallowa più gli errori silenziosamente; logga `console.warn` per visibilità su server non in AG / permessi insufficienti
+- **Inventory throttle**: subscription a `metricsMap` throttlata a 1s (pattern HomeDashboard) — protezione per uso futuro quando Inventory e Dashboard potrebbero essere mounted contemporaneamente
+- **previousMetrics cleanup**: dopo 50 fallimenti consecutivi su un server la entry in `previousMetrics` viene rimossa (evita ~1 MB/server per server offline a lungo)
+
 ### Changed — 2026-03-27 (stabilità e performance 200+ server)
 - **Poll timeout**: ogni job di polling ha ora un timeout di 90s (`Promise.race`); se SQL Server non risponde entro 90s il job termina con errore anziché bloccarsi indefinitamente
 - **BATCH_SIZE**: aumentato da 10 a 30 connessioni concorrenti; con 200 server il ciclo completo scende da ~30 min a ~40s in condizioni normali

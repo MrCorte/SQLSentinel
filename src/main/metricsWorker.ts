@@ -269,7 +269,7 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
           pushToRenderer(IpcChannel.SERVER_CONFIG_UPDATED, updated)
         }
       })
-      .catch(() => {}) // not in AG or insufficient permissions — silent
+      .catch((err: Error) => console.warn('[worker] AG sync:', err.message)) // not in AG or insufficient permissions
 
     // Reset circuit-breaker on success
     job.lastFailed  = false
@@ -288,6 +288,11 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     // Exponential back-off: 600s, 1200s, 2400s … capped at 1h
     const backoff = INTERVAL_OFFLINE_MS * Math.pow(2, job.failCount - 1)
     job.nextRun = Date.now() + Math.min(backoff, BACKOFF_CAP_MS)
+    // Dopo 50 fallimenti consecutivi, libera la entry in previousMetrics per evitare
+    // crescita unbounded su server offline a lungo (~1 MB per entry)
+    if (job.failCount >= 50) {
+      previousMetrics.delete(sid)
+    }
   } finally {
     // Always push health state so the UI can show retry info
     const health: ServerHealthPayload = {

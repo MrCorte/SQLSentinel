@@ -30,6 +30,7 @@ export enum IpcChannel {
   ALERTS_GET_ALL = 'alerts:get-all',
   ALERTS_ACKNOWLEDGE = 'alerts:acknowledge',
   METRICS_HISTORY = 'metrics:history',
+  METRICS_HISTORY_BULK = 'metrics:historyBulk',
   SETTINGS_GET = 'settings:get',
   SETTINGS_SET = 'settings:set',
   DB_GET_CUSTOM_FIELDS = 'db:get-custom-fields',

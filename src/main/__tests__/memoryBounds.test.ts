@@ -20,6 +20,11 @@ vi.mock('electron', () => ({
 }))
 vi.mock('../collectors/sqlCollector', () => ({ collectMetrics: vi.fn() }))
 vi.mock('../store/dbCustomFields', () => ({ getAllCustomFields: vi.fn(() => ({})) }))
+// startWorker ora chiama loadHistoryFromDb → isola il test dal DB per le suite AREA 3
+vi.mock('../store/serverStore')
+vi.mock('../store/settings', () => ({
+  getSettings: vi.fn(() => ({ retentionMinutes: 60 }))
+}))
 
 import { BrowserWindow } from 'electron'
 import { collectMetrics } from '../collectors/sqlCollector'
@@ -31,6 +36,7 @@ import {
   __getJobForTest
 } from '../metricsWorker'
 import type { CollectMetricsRequest } from '../ipc/types'
+import { initDb as _initDb, closeDb as _closeDb } from '../store/database'
 
 // ── Costante da metricsWorker (deve coincidere) ───────────────────────────────
 const MAX_HISTORY = 20
@@ -90,6 +96,7 @@ async function runNCycles(n: number): Promise<void> {
 
 beforeEach(() => {
   vi.useFakeTimers()
+  _initDb(':memory:')   // garantisce getDb() valido per loadHistoryFromDb → cleanup()
   __resetForTests()
   vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([])
   vi.mocked(collectMetrics).mockReset()
@@ -97,6 +104,7 @@ beforeEach(() => {
 
 afterEach(() => {
   __resetForTests()
+  _closeDb()
   vi.useRealTimers()
 })
 
@@ -355,6 +363,79 @@ describe('AREA 5 — metricsStore: historyMap ring buffer', () => {
 
     expect(useMetricsStore.getState().metricsMap[SID]).toBeUndefined()
     expect(useMetricsStore.getState().summaries[SID]).toBeDefined()
+  })
+})
+
+describe('AREA 5 — metricsStore: seedFromHistory', () => {
+  const SID = '10.0.0.1:1433'
+  const SID2 = '10.0.0.2:1433'
+
+  beforeEach(() => {
+    useMetricsStore.setState({
+      metricsMap: {},
+      summaries: {},
+      historyMap: {},
+      activeServerId: null,
+      lastUpdate: null,
+      serverHealth: {}
+    })
+  })
+
+  it('popola metricsMap e summaries con lo snapshot più recente', () => {
+    const history = [makeServerMetrics(10, 1000), makeServerMetrics(20, 2000)]
+    useMetricsStore.getState().seedFromHistory({ [SID]: history })
+    const latest = useMetricsStore.getState().metricsMap[SID]
+    expect(latest).toBeDefined()
+    expect(latest.instanceInfo.cpuUsagePercent).toBe(20)
+    const summary = useMetricsStore.getState().summaries[SID]
+    expect(summary.cpuUsagePercent).toBe(20)
+    expect(summary.memoryUsedMb).toBe(2000)
+  })
+
+  it('costruisce historyMap con tutti i punti forniti (idle cap)', () => {
+    const history = Array.from({ length: 5 }, (_, i) => makeServerMetrics(i * 10, i * 100))
+    useMetricsStore.getState().seedFromHistory({ [SID]: history })
+    const hist = useMetricsStore.getState().historyMap[SID]
+    expect(hist.cpu).toHaveLength(5)
+    expect(hist.cpu[0].value).toBe(0)
+    expect(hist.cpu[4].value).toBe(40)
+  })
+
+  it('usa MAX_HISTORY_ACTIVE (60) per il server attivo', () => {
+    useMetricsStore.setState({ activeServerId: SID })
+    const history = Array.from({ length: 65 }, (_, i) => makeServerMetrics(i, i * 10))
+    useMetricsStore.getState().seedFromHistory({ [SID]: history })
+    const hist = useMetricsStore.getState().historyMap[SID]
+    expect(hist.cpu.length).toBe(60)
+  })
+
+  it('usa MAX_HISTORY_IDLE (10) per server non attivi', () => {
+    useMetricsStore.setState({ activeServerId: 'other:1433' })
+    const history = Array.from({ length: 15 }, (_, i) => makeServerMetrics(i, i * 10))
+    useMetricsStore.getState().seedFromHistory({ [SID]: history })
+    const hist = useMetricsStore.getState().historyMap[SID]
+    expect(hist.cpu.length).toBe(10)
+  })
+
+  it('gestisce più server in una sola chiamata', () => {
+    useMetricsStore.getState().seedFromHistory({
+      [SID]:  [makeServerMetrics(10, 1000)],
+      [SID2]: [makeServerMetrics(50, 5000)],
+    })
+    expect(useMetricsStore.getState().summaries[SID].cpuUsagePercent).toBe(10)
+    expect(useMetricsStore.getState().summaries[SID2].cpuUsagePercent).toBe(50)
+  })
+
+  it('ignora i server con history vuota senza sovrascrivere dati esistenti', () => {
+    useMetricsStore.getState().setMetrics(SID, makeServerMetrics(99, 9999))
+    useMetricsStore.getState().seedFromHistory({ [SID]: [] })
+    expect(useMetricsStore.getState().summaries[SID].cpuUsagePercent).toBe(99)
+  })
+
+  it('seedFromHistory non sovrascrive poll live successivi', () => {
+    useMetricsStore.getState().seedFromHistory({ [SID]: [makeServerMetrics(10, 1000)] })
+    useMetricsStore.getState().setMetrics(SID, makeServerMetrics(75, 7500))
+    expect(useMetricsStore.getState().summaries[SID].cpuUsagePercent).toBe(75)
   })
 })
 

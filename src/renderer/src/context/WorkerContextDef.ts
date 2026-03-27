@@ -16,6 +16,8 @@ export interface WorkerContextValue {
   /** Legge lo storico per un server. Dipende da historyVersion → re-render garantito. */
   getHistory: (serverId: string) => MetricsHistoryPoint[]
   setRetentionMinutes: (minutes: number) => void
+  /** Pre-popola la history al boot da SQLite (chiamata una volta sola da App.tsx). */
+  seedHistory: (allHistory: Record<string, ServerMetrics[]>) => void
 }
 
 export const WorkerContext = createContext<WorkerContextValue>({
@@ -26,5 +28,6 @@ export const WorkerContext = createContext<WorkerContextValue>({
   setConnection: () => {},
   pushSnapshot: () => {},
   getHistory: () => [],
-  setRetentionMinutes: () => {}
+  setRetentionMinutes: () => {},
+  seedHistory: () => {}
 })

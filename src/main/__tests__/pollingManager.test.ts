@@ -9,6 +9,16 @@ vi.mock('electron', () => ({
 }))
 vi.mock('../collectors/sqlCollector', () => ({ collectMetrics: vi.fn() }))
 vi.mock('../store/dbCustomFields', () => ({ getAllCustomFields: vi.fn(() => ({})) }))
+// startWorker ora chiama loadHistoryFromDb → mock per isolare il test dal DB
+vi.mock('../store/metricsRepository', () => ({
+  cleanup: vi.fn(),
+  findLastN: vi.fn(() => []),
+  batchSave: vi.fn(),
+}))
+vi.mock('../store/settings', () => ({
+  getSettings: vi.fn(() => ({ retentionMinutes: 60 }))
+}))
+vi.mock('../store/serverStore')
 
 import { BrowserWindow } from 'electron'
 import { collectMetrics } from '../collectors/sqlCollector'
@@ -79,12 +89,12 @@ describe('AREA 1 — PollingManager', () => {
 
   describe('BATCH_SIZE', () => {
 
-    it('non viene mai superato: 20 server → collectMetrics chiamato ≤ 10 volte', () => {
+    it('non viene mai superato: 35 server → collectMetrics chiamato esattamente 30 volte (BATCH_SIZE=30)', () => {
       vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))
-      const servers = Array.from({ length: 20 }, (_, i) => makeServer(`10.0.0.${i + 1}`))
+      const servers = Array.from({ length: 35 }, (_, i) => makeServer(`10.0.0.${i + 1}`))
       startWorker({ intervalSeconds: 60, servers })
-      // scheduleTick esegue il primo batch in modo sincrono
-      expect(vi.mocked(collectMetrics)).toHaveBeenCalledTimes(10)
+      // scheduleTick esegue il primo batch in modo sincrono — al massimo BATCH_SIZE=30 job
+      expect(vi.mocked(collectMetrics)).toHaveBeenCalledTimes(30)
     })
 
     it('con 5 server partono esattamente 5 job (meno del batch)', () => {

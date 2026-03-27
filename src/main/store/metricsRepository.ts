@@ -3,6 +3,13 @@ import { getDb } from './database'
 import type { MetricsSnapshot } from './types'
 import type { ServerMetrics } from '../collectors/types'
 
+// --- Batch save item ---
+
+export interface SaveItem {
+  serverId: string
+  metrics: ServerMetrics
+}
+
 // --- Reviver per deserializzare le date da JSON ---
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
@@ -91,4 +98,42 @@ export function cleanup(retentionDays: number): void {
       WHERE collected_at < datetime('now', ? || ' days')
     `)
     .run(-retentionDays)
+}
+
+/**
+ * Restituisce gli ultimi N snapshot per il server, ordinati dal più vecchio al più recente.
+ */
+export function findLastN(serverId: string, n: number): ServerMetrics[] {
+  const rows = getDb()
+    .prepare<[string, number], SnapshotRow>(`
+      SELECT * FROM metrics_snapshots
+      WHERE server_id = ?
+      ORDER BY collected_at DESC
+      LIMIT ?
+    `)
+    .all(serverId, n)
+  return rows.reverse().map((row) => JSON.parse(row.metrics_json, dateReviver) as ServerMetrics)
+}
+
+/**
+ * Inserisce più snapshot in un'unica transazione SQLite.
+ */
+export function batchSave(items: SaveItem[]): void {
+  if (items.length === 0) return
+  const db = getDb()
+  const stmt = db.prepare<[string, string, string, string]>(`
+    INSERT INTO metrics_snapshots (id, server_id, collected_at, metrics_json)
+    VALUES (?, ?, ?, ?)
+  `)
+  const insertAll = db.transaction((list: SaveItem[]) => {
+    for (const item of list) {
+      stmt.run(
+        randomUUID(),
+        item.serverId,
+        item.metrics.collectedAt.toISOString(),
+        JSON.stringify(item.metrics)
+      )
+    }
+  })
+  insertAll(items)
 }

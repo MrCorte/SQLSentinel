@@ -4,6 +4,8 @@ import type { Alert, AlertCategory, AlertSeverity, WorkerStartRequest, CollectMe
 import { collectMetrics } from './collectors/sqlCollector'
 import { detectAndSyncReplicaRoles } from './collectors/agCollector'
 import * as serverStore from './store/serverStore'
+import * as metricsRepository from './store/metricsRepository'
+import { getSettings } from './store/settings'
 import type { ServerMetrics } from './collectors/types'
 import { getAllCustomFields } from './store/dbCustomFields'
 import { shouldSendDelta } from './deltaUtils'
@@ -27,6 +29,8 @@ const INTERVAL_IDLE_MS    = 300_000
 const INTERVAL_OFFLINE_MS = 600_000
 const BACKOFF_CAP_MS      = 3_600_000 // 1 hour max back-off
 const POLL_TIMEOUT_MS     = 90_000   // max 90s per singolo job
+const SAVE_EVERY_N        = 5        // salva su SQLite ogni N poll (≈5 min a 60s interval)
+const SAVE_FLUSH_MS       = 300_000  // flush batch ogni 5 min
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,6 +43,7 @@ interface PollJob {
   lastFailed: boolean
   failCount: number       // consecutive failures — drives exponential back-off
   lastSuccess: number | null  // ms timestamp of last successful collect
+  pollCount: number       // total successful polls — drives SAVE_EVERY_N logic
 }
 
 // ---------------------------------------------------------------------------
@@ -56,6 +61,10 @@ let activeDebounce: ReturnType<typeof setTimeout> | null = null
 const metricsHistory = new Map<string, ServerMetrics[]>()
 let storedAlerts: Alert[] = []
 let alertCounter = 0
+
+// --- SQLite persistence ---
+const saveQueue: metricsRepository.SaveItem[] = []
+let saveFlushTimer: ReturnType<typeof setTimeout> | null = null
 
 // Track previous metrics for delta computation
 const previousMetrics = new Map<string, ServerMetrics>()
@@ -79,6 +88,54 @@ function pushToRenderer(channel: string, data: unknown): void {
   BrowserWindow.getAllWindows().forEach((w) => {
     if (!w.isDestroyed()) w.webContents.send(channel, data)
   })
+}
+
+// ---------------------------------------------------------------------------
+// SQLite persistence helpers
+// ---------------------------------------------------------------------------
+
+function flushSaveQueue(): void {
+  saveFlushTimer = null
+  if (saveQueue.length === 0) return
+  const toFlush = saveQueue.splice(0, saveQueue.length)
+  try {
+    metricsRepository.batchSave(toFlush)
+  } catch (err) {
+    console.error('[worker] SQLite batch save:', err instanceof Error ? err.message : err)
+  }
+}
+
+function queueSave(srv: CollectMetricsRequest, metrics: ServerMetrics): void {
+  const record = serverStore.getByIpPort(srv.ip, srv.port)
+  if (!record) return
+  saveQueue.push({ serverId: record.id, metrics })
+  if (!saveFlushTimer) {
+    saveFlushTimer = setTimeout(flushSaveQueue, SAVE_FLUSH_MS)
+  }
+}
+
+function loadHistoryFromDb(servers: CollectMetricsRequest[]): void {
+  try {
+    const retentionMinutes = getSettings().retentionMinutes
+    const retentionDays = retentionMinutes / (60 * 24)
+    metricsRepository.cleanup(retentionDays)
+  } catch (err) {
+    console.warn('[worker] SQLite cleanup:', err instanceof Error ? err.message : err)
+  }
+
+  for (const srv of servers) {
+    const sid = serverId(srv.ip, srv.port)
+    const record = serverStore.getByIpPort(srv.ip, srv.port)
+    if (!record) continue
+    try {
+      const snapshots = metricsRepository.findLastN(record.id, MAX_HISTORY)
+      if (snapshots.length > 0) {
+        metricsHistory.set(sid, snapshots)
+      }
+    } catch (err) {
+      console.warn('[worker] SQLite load history', sid, ':', err instanceof Error ? err.message : err)
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +328,12 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
       })
       .catch((err: Error) => console.warn('[worker] AG sync:', err.message)) // not in AG or insufficient permissions
 
+    // Persist snapshot to SQLite every SAVE_EVERY_N successful polls
+    job.pollCount++
+    if (job.pollCount % SAVE_EVERY_N === 0) {
+      queueSave(job.server, enrichedMetrics)
+    }
+
     // Reset circuit-breaker on success
     job.lastFailed  = false
     job.failCount   = 0
@@ -346,6 +409,8 @@ export function startWorker(req: WorkerStartRequest): void {
   stopWorker()
   activeIntervalMs = Math.max(30_000, Math.min(300_000, req.intervalSeconds * 1000))
   if (req.activeServerId) activeServerId = req.activeServerId
+  // Restore history from SQLite before scheduling any polls
+  loadHistoryFromDb(req.servers)
   for (const srv of req.servers) {
     const sid = serverId(srv.ip, srv.port)
     jobs.set(sid, {
@@ -354,7 +419,8 @@ export function startWorker(req: WorkerStartRequest): void {
       priority: sid === activeServerId ? 0 : 1,
       lastFailed: false,
       failCount: 0,
-      lastSuccess: null
+      lastSuccess: null,
+      pollCount: 0
     })
   }
   scheduleTick()
@@ -389,6 +455,7 @@ export function setActiveServer(sid: string): void {
 export function stopWorker(): void {
   if (tickHandle)      { clearTimeout(tickHandle); tickHandle = null }
   if (activeDebounce)  { clearTimeout(activeDebounce); activeDebounce = null }
+  if (saveFlushTimer)  { clearTimeout(saveFlushTimer); saveFlushTimer = null; flushSaveQueue() }
   jobs.clear()
   running = 0
   previousMetrics.clear()
@@ -414,7 +481,8 @@ export function syncServers(servers: CollectMetricsRequest[]): void {
         priority: sid === activeServerId ? 0 : 1,
         lastFailed: false,
         failCount: 0,
-        lastSuccess: null
+        lastSuccess: null,
+        pollCount: 0
       })
     } else {
       // Keep state but refresh credentials (may have changed)
@@ -446,6 +514,18 @@ export function acknowledgeAlert(alertId: string): boolean {
 
 export function getHistory(ip: string, port: number): ServerMetrics[] {
   return [...(metricsHistory.get(serverId(ip, port)) ?? [])]
+}
+
+/**
+ * Restituisce l'intera mappa di history (sid → ServerMetrics[]) come plain object.
+ * Usato dall'IPC METRICS_HISTORY_BULK al boot per pre-popolare il renderer.
+ */
+export function getHistoryAll(): Record<string, ServerMetrics[]> {
+  const result: Record<string, ServerMetrics[]> = {}
+  for (const [sid, history] of metricsHistory) {
+    if (history.length > 0) result[sid] = [...history]
+  }
+  return result
 }
 
 /**
@@ -486,8 +566,9 @@ export type { PollJob }
  * Call this in beforeEach / afterEach of unit tests to get a clean slate.
  */
 export function __resetForTests(): void {
-  stopWorker()           // clears jobs, running, tickHandle, activeDebounce, previousMetrics
+  stopWorker()           // clears jobs, running, tickHandle, activeDebounce, previousMetrics, flushes saveQueue
   metricsHistory.clear()
+  saveQueue.length = 0
   storedAlerts = []
   alertCounter = 0
   activeServerId = null

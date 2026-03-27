@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { CollectMetricsRequest, ServerMetrics } from '../../../preload/index'
-import { metricsToHistoryPoint } from '../hooks/useMetrics'
-import type { MetricsHistoryPoint } from '../hooks/useMetrics'
+import { metricsToHistoryPoint, type MetricsHistoryPoint } from '../hooks/useMetrics'
 import { WorkerContext } from './WorkerContextDef'
 import { useMetricsStore } from '../store/metricsStore'
 
@@ -49,6 +48,23 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
     [] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
+  // Chiamata una volta sola da App.tsx al boot per pre-popolare la history da SQLite.
+  // Setta historyMapRef (grafici dettaglio) + metricsStore (KPI + sparkline corrente).
+  const seedHistory = useCallback(
+    (allHistory: Record<string, ServerMetrics[]>) => {
+      const map = historyMapRef.current
+      for (const [sid, snapshots] of Object.entries(allHistory)) {
+        if (snapshots.length === 0) continue
+        map.set(
+          sid,
+          snapshots.map((m) => metricsToHistoryPoint(m)).slice(-maxPoints)
+        )
+      }
+      useMetricsStore.getState().seedFromHistory(allHistory)
+    },
+    [maxPoints] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
   // Notifica il main process quale server è "attivo" (riceve polling più frequente).
   // Il worker globale viene avviato da App.tsx con tutti i server.
   // NON ha cleanup su unmount: il worker deve sopravvivere alla navigazione.
@@ -67,7 +83,8 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
         setConnection,
         pushSnapshot,
         getHistory,
-        setRetentionMinutes
+        setRetentionMinutes,
+        seedHistory
       }}
     >
       {children}

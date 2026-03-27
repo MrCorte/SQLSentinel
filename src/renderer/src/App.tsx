@@ -37,7 +37,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
 
   useMockData()
 
-  const { setRetentionMinutes } = useWorker()
+  const { setRetentionMinutes, seedHistory } = useWorker()
   const { alerts, setAlerts, addAlert, acknowledgeAlert: acknowledgeAlertInStore } = useAlertsStore()
 
   // Load persisted servers on mount — runs in both real and mock mode so that
@@ -66,6 +66,14 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
             username: s.username,
             password: s.password
           }))
+        }).then(() => {
+          if (typeof window.sqlSentinel?.getHistoryBulk === 'function') {
+            window.sqlSentinel.getHistoryBulk().then((result) => {
+              if (result.ok && Object.keys(result.data).length > 0) {
+                seedHistory(result.data)
+              }
+            }).catch(() => {}) // non bloccante
+          }
         })
       }
     })

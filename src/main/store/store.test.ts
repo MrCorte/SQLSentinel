@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { initDb, closeDb, getDb } from './database'
 import { findAll, findById, upsert, remove, updateLastSeen } from './serverRepository'
-import { save, findLatest, findHistory, cleanup } from './metricsRepository'
+import { save, findLatest, findHistory, cleanup, findLastN, batchSave } from './metricsRepository'
 import type { ServerMetrics } from '../collectors/types'
 
 // DB in memoria: ogni test parte da zero
@@ -219,6 +219,70 @@ describe('metricsRepository', () => {
       expect(history[0].serverId).toBe(server.id)
       expect(history[0].collectedAt).toBeInstanceOf(Date)
       expect(history[0].metricsJson).toBeTypeOf('string')
+    })
+  })
+
+  describe('findLastN', () => {
+    it('restituisce i last N snapshot ordinati dal più vecchio al più recente (ASC)', () => {
+      const server = upsert(SERVER_A)
+      const dates = [
+        new Date('2026-03-01T10:00:00Z'),
+        new Date('2026-03-02T10:00:00Z'),
+        new Date('2026-03-03T10:00:00Z'),
+        new Date('2026-03-04T10:00:00Z'),
+        new Date('2026-03-05T10:00:00Z'),
+      ]
+      for (const collectedAt of dates) save(server.id, makeMetrics({ collectedAt }))
+
+      const result = findLastN(server.id, 3)
+      expect(result).toHaveLength(3)
+      // deve restituire i 3 più recenti in ordine ASC (oldest first)
+      expect(result[0].collectedAt).toEqual(new Date('2026-03-03T10:00:00Z'))
+      expect(result[1].collectedAt).toEqual(new Date('2026-03-04T10:00:00Z'))
+      expect(result[2].collectedAt).toEqual(new Date('2026-03-05T10:00:00Z'))
+    })
+
+    it('restituisce tutti gli snapshot se n > count', () => {
+      const server = upsert(SERVER_A)
+      save(server.id, makeMetrics())
+      expect(findLastN(server.id, 10)).toHaveLength(1)
+    })
+
+    it('restituisce [] per server senza snapshot', () => {
+      const server = upsert(SERVER_A)
+      expect(findLastN(server.id, 5)).toHaveLength(0)
+    })
+
+    it('deserializza collectedAt come Date', () => {
+      const server = upsert(SERVER_A)
+      save(server.id, makeMetrics())
+      const [snap] = findLastN(server.id, 1)
+      expect(snap.collectedAt).toBeInstanceOf(Date)
+    })
+  })
+
+  describe('batchSave', () => {
+    it('inserisce più snapshot in una transazione e li recupera con findLastN', () => {
+      const server = upsert(SERVER_A)
+      batchSave([
+        { serverId: server.id, metrics: makeMetrics({ collectedAt: new Date('2026-03-01T10:00:00Z') }) },
+        { serverId: server.id, metrics: makeMetrics({ collectedAt: new Date('2026-03-02T10:00:00Z') }) },
+        { serverId: server.id, metrics: makeMetrics({ collectedAt: new Date('2026-03-03T10:00:00Z') }) },
+      ])
+      expect(findLastN(server.id, 10)).toHaveLength(3)
+    })
+
+    it('batchSave([]) non lancia errori', () => {
+      expect(() => batchSave([])).not.toThrow()
+    })
+
+    it('i dati inseriti con batchSave sono deserializzati correttamente da findLastN', () => {
+      const server = upsert(SERVER_A)
+      const metrics = makeMetrics({ collectedAt: new Date('2026-03-10T10:00:00Z') })
+      batchSave([{ serverId: server.id, metrics }])
+      const [snap] = findLastN(server.id, 1)
+      expect(snap.collectedAt).toBeInstanceOf(Date)
+      expect(snap.instanceInfo.version).toBe('SQL Server 2019')
     })
   })
 

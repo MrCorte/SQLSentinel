@@ -159,6 +159,17 @@ class MockStatement {
         )
     }
 
+    // ── SELECT * FROM metrics_snapshots WHERE server_id = ? ORDER BY … LIMIT ? (findLastN) ──
+    if (s.includes('from metrics_snapshots') && s.includes('server_id = ?') && s.includes('limit')) {
+      const [sid, limit] = args
+      return [...metrics_snapshots.values()]
+        .filter(r => r.server_id === sid)
+        .sort((a, b) =>
+          (b.collected_at as string).localeCompare(a.collected_at as string)
+        )
+        .slice(0, limit as number)
+    }
+
     // ── SELECT * FROM metrics_snapshots WHERE server_id = ? (findHistory 9999) ─
     if (s.includes('from metrics_snapshots') && s.includes('server_id = ?')) {
       const sid = args[0] as string

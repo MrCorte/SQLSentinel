@@ -5,6 +5,15 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Added — 2026-03-27 (persistenza storico metriche su SQLite)
+- **Boot restore**: all'avvio l'app carica automaticamente gli ultimi 20 snapshot per server da SQLite — i grafici CPU/memoria e i valori KPI sono immediatamente disponibili senza attendere il primo ciclo di polling (~60s)
+- **Persistenza progressiva**: ogni 5 poll riusciti (~5 min a 60s interval) lo snapshot viene accodato in-memory e scritto su SQLite in un'unica transazione ogni 5 min (`batchSave`)
+- **Cleanup retention**: all'avvio vengono eliminati automaticamente gli snapshot più vecchi del retention time configurato in Impostazioni
+- **`METRICS_HISTORY_BULK` IPC**: nuovo canale bulk che restituisce l'intera history in-memory in un'unica chiamata al renderer
+- **`seedFromHistory`** in metricsStore: pre-popola `metricsMap`, `summaries` e `historyMap` (sparkline) per tutti i server in un'unica operazione Zustand
+- **`seedHistory`** in WorkerContext: pre-popola `historyMapRef` (grafici dettaglio) convertendo `ServerMetrics[]` in `MetricsHistoryPoint[]`
+- **`findLastN` / `batchSave`** in metricsRepository: query ottimizzata `ORDER BY collected_at DESC LIMIT N` + inserimento transazionale multiplo
+
 ### Changed — 2026-03-27 (ottimizzazioni post-analisi)
 - **AG sync observability**: `detectAndSyncReplicaRoles` non swallowa più gli errori silenziosamente; logga `console.warn` per visibilità su server non in AG / permessi insufficienti
 - **Inventory throttle**: subscription a `metricsMap` throttlata a 1s (pattern HomeDashboard) — protezione per uso futuro quando Inventory e Dashboard potrebbero essere mounted contemporaneamente

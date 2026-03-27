@@ -87,6 +87,12 @@ interface MetricsStore {
   evictFullMetrics: (serverId: string) => void
   /** Clear ring-buffer history. Pass serverId to reset one server, omit to reset all. */
   resetHistory: (serverId?: string) => void
+  /**
+   * Pre-popola lo store al boot dalla history SQLite (chiamata una volta sola).
+   * Per ogni server: aggiorna metricsMap/summaries con lo snapshot più recente e
+   * costruisce i ring-buffer historyMap da tutti gli snapshot disponibili.
+   */
+  seedFromHistory: (allHistory: Record<string, ServerMetrics[]>) => void
 }
 
 // ── Store implementation ───────────────────────────────────────────────────
@@ -119,6 +125,29 @@ export const useMetricsStore = create<MetricsStore>()(
             state.historyMap[id] = { cpu: [], memory: [] }
           })
         }
+      }),
+
+    seedFromHistory: (allHistory) =>
+      set((state) => {
+        for (const [sid, history] of Object.entries(allHistory)) {
+          if (history.length === 0) continue
+          const latest = history[history.length - 1]
+          state.metricsMap[sid] = latest
+          state.summaries[sid] = buildSummary(latest)
+          const cpu: HistoryPoint[] = []
+          const memory: HistoryPoint[] = []
+          for (const m of history) {
+            const ts = new Date(m.collectedAt).getTime()
+            cpu.push({ ts, value: m.instanceInfo.cpuUsagePercent })
+            memory.push({ ts, value: memPercent(m.instanceInfo) })
+          }
+          const cap = state.activeServerId === sid ? MAX_HISTORY_ACTIVE : MAX_HISTORY_IDLE
+          state.historyMap[sid] = {
+            cpu: cpu.slice(-cap),
+            memory: memory.slice(-cap)
+          }
+        }
+        if (Object.keys(allHistory).length > 0) state.lastUpdate = new Date()
       }),
 
     setMetrics: (serverId, m) =>

@@ -373,6 +373,9 @@ const realApi = {
   getHistory: (req: HistoryRequest): Promise<IpcResult<ServerMetrics[]>> =>
     ipcRenderer.invoke(IpcChannel.METRICS_HISTORY, req),
 
+  getHistoryBulk: (): Promise<IpcResult<Record<string, ServerMetrics[]>>> =>
+    ipcRenderer.invoke(IpcChannel.METRICS_HISTORY_BULK),
+
   onMetricsUpdated: (
     callback: (data: { serverId: string; metrics: ServerMetrics }) => void
   ): (() => void) => {
@@ -627,6 +630,9 @@ const mockApi = {
   getHistory: (_req: HistoryRequest): Promise<IpcResult<ServerMetrics[]>> =>
     Promise.resolve({ ok: true, data: [] }),
 
+  getHistoryBulk: (): Promise<IpcResult<Record<string, ServerMetrics[]>>> =>
+    Promise.resolve({ ok: true, data: {} }),
+
   onMetricsUpdated: (
     callback: (data: { serverId: string; metrics: ServerMetrics }) => void
   ): (() => void) => {
@@ -827,6 +833,7 @@ const bridgeApi = {
   getAlerts:           () => api.getAlerts(),
   acknowledgeAlert:    (r: AcknowledgeAlertRequest) => api.acknowledgeAlert(r),
   getHistory:          (r: HistoryRequest) => api.getHistory(r),
+  getHistoryBulk:      () => api.getHistoryBulk(),
   onMetricsUpdated:    (cb: (d: { serverId: string; metrics: ServerMetrics }) => void) => api.onMetricsUpdated(cb),
   onAlertNew:          (cb: (a: Alert) => void) => api.onAlertNew(cb),
   getSettings:         () => api.getSettings(),

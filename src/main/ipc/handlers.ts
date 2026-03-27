@@ -51,7 +51,7 @@ import {
   type AuthSession,
 } from './types'
 import type { ServerMetrics } from '../collectors/types'
-import { startWorker, stopWorker, setActiveServer, syncServers, getAlerts, acknowledgeAlert, getHistory } from '../metricsWorker'
+import { startWorker, stopWorker, setActiveServer, syncServers, getAlerts, acknowledgeAlert, getHistory, getHistoryAll } from '../metricsWorker'
 import { getSettings, saveSettings } from '../store/settings'
 import { getEmailSettings, saveEmailSettings } from '../store/emailSettings'
 import { sendTestEmail } from '../emailService'
@@ -375,6 +375,14 @@ export function registerIpcHandlers(): void {
       const history = getHistory(req.ip, req.port)
       console.log('[Main] metrics:history richiesta per', `${req.ip}:${req.port}`, '— snapshot:', history.length)
       return { ok: true, data: history }
+    }
+  )
+
+  // METRICS_HISTORY_BULK — restituisce tutta la history in-memory al boot (pre-popolata da SQLite)
+  ipcMain.handle(
+    IpcChannel.METRICS_HISTORY_BULK,
+    async (): Promise<IpcResult<Record<string, ServerMetrics[]>>> => {
+      return { ok: true, data: getHistoryAll() }
     }
   )
 

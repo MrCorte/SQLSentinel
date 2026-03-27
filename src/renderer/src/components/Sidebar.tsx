@@ -1044,34 +1044,40 @@ export function Sidebar({
   const sortedGroups = [...groups].sort((a, b) => a.order - b.order)
 
   // Search: filter + priority sort (startsWith before includes)
-  const filteredServers = searchText
-    ? servers
-        .filter((s) => {
-          const label = serverAliases[serverLabel(s)] || serverLabel(s)
-          return label.toLowerCase().includes(searchText.toLowerCase())
-        })
-        .sort((a, b) => {
-          const la = (serverAliases[serverLabel(a)] || serverLabel(a)).toLowerCase()
-          const lb = (serverAliases[serverLabel(b)] || serverLabel(b)).toLowerCase()
-          const q = searchText.toLowerCase()
-          const aStarts = la.startsWith(q)
-          const bStarts = lb.startsWith(q)
-          if (aStarts && !bStarts) return -1
-          if (!aStarts && bStarts) return 1
-          return 0
-        })
-    : []
+  const filteredServers = useMemo(
+    () =>
+      searchText
+        ? servers
+            .filter((s) => {
+              const label = serverAliases[serverLabel(s)] || serverLabel(s)
+              return label.toLowerCase().includes(searchText.toLowerCase())
+            })
+            .sort((a, b) => {
+              const la = (serverAliases[serverLabel(a)] || serverLabel(a)).toLowerCase()
+              const lb = (serverAliases[serverLabel(b)] || serverLabel(b)).toLowerCase()
+              const q = searchText.toLowerCase()
+              const aStarts = la.startsWith(q)
+              const bStarts = lb.startsWith(q)
+              if (aStarts && !bStarts) return -1
+              if (!aStarts && bStarts) return 1
+              return 0
+            })
+        : [],
+    [servers, searchText, serverAliases]
+  )
 
   // Group assignment map
-  const serversByGroupId = new Map<string, StoredServer[]>()
-  for (const s of servers) {
-    const gid = serverGroups[serverLabel(s)]
-    if (gid) {
-      if (!serversByGroupId.has(gid)) serversByGroupId.set(gid, [])
-      serversByGroupId.get(gid)!.push(s)
+  const { serversByGroupId, ungrouped } = useMemo(() => {
+    const byGroup = new Map<string, StoredServer[]>()
+    for (const s of servers) {
+      const gid = serverGroups[serverLabel(s)]
+      if (gid) {
+        if (!byGroup.has(gid)) byGroup.set(gid, [])
+        byGroup.get(gid)!.push(s)
+      }
     }
-  }
-  const ungrouped = servers.filter((s) => !serverGroups[serverLabel(s)])
+    return { serversByGroupId: byGroup, ungrouped: servers.filter((s) => !serverGroups[serverLabel(s)]) }
+  }, [servers, serverGroups])
 
   // ---------------------------------------------------------------------------
   // Flat item list for virtualization

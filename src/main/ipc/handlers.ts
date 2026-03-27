@@ -605,17 +605,21 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(
     IpcChannel.FILE_SAVE_CSV,
     async (event: IpcMainInvokeEvent, req: SaveCsvRequest): Promise<IpcResult<string | null>> => {
-      const win =
-        BrowserWindow.fromWebContents(event.sender) ??
-        BrowserWindow.getFocusedWindow() ??
-        BrowserWindow.getAllWindows()[0]
-      const result = await dialog.showSaveDialog(win, {
-        defaultPath: req.filename,
-        filters: [{ name: 'CSV', extensions: ['csv'] }]
-      })
-      if (result.canceled || !result.filePath) return { ok: true, data: null }
-      writeFileSync(result.filePath, '\uFEFF' + req.content, 'utf8')
-      return { ok: true, data: result.filePath }
+      try {
+        const win =
+          BrowserWindow.fromWebContents(event.sender) ??
+          BrowserWindow.getFocusedWindow() ??
+          BrowserWindow.getAllWindows()[0]
+        const result = await dialog.showSaveDialog(win, {
+          defaultPath: req.filename,
+          filters: [{ name: 'CSV', extensions: ['csv'] }]
+        })
+        if (result.canceled || !result.filePath) return { ok: true, data: null }
+        writeFileSync(result.filePath, '\uFEFF' + req.content, 'utf8')
+        return { ok: true, data: result.filePath }
+      } catch (err) {
+        return { ok: false, error: safeError(err) }
+      }
     }
   )
 

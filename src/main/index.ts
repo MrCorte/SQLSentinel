@@ -18,6 +18,14 @@ import { scanHost } from './discovery/tcpScanner'
 
 const isDev = !app.isPackaged
 
+// Cattura errori asincroni non gestiti nel main process prima che crashino silenziosamente
+process.on('unhandledRejection', (reason) => {
+  console.error('[main] unhandledRejection:', reason)
+})
+process.on('uncaughtException', (err) => {
+  console.error('[main] uncaughtException:', err)
+})
+
 // Module-level reference so the health checker can push events to the renderer
 let mainWindow: BrowserWindow | null = null
 let backgroundService: BackgroundService | null = null

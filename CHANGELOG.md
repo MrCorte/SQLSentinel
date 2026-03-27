@@ -5,6 +5,16 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Changed — 2026-03-27 (stabilità e performance 200+ server)
+- **Poll timeout**: ogni job di polling ha ora un timeout di 90s (`Promise.race`); se SQL Server non risponde entro 90s il job termina con errore anziché bloccarsi indefinitamente
+- **BATCH_SIZE**: aumentato da 10 a 30 connessioni concorrenti; con 200 server il ciclo completo scende da ~30 min a ~40s in condizioni normali
+- **Global error handlers**: `process.on('unhandledRejection')` e `uncaughtException` nel main process — errori asincroni non gestiti vengono ora loggati anziché passare silenziosi
+- **FILE_SAVE_CSV**: aggiunto try/catch — errori di disco pieno o permessi negati restituiscono `{ ok: false }` anziché crashare l'handler
+- **WorkerContext**: rimosso `historyVersion` dal context value — eliminati fino a 200 re-render/ciclo su tutti i consumer; `getHistory` legge dal ref sempre aggiornato
+- **HomeDashboard**: subscription a `metricsMap` throttlata a 1 re-render/s (da 200/ciclo con 200 server); `KpiCard` wrappato in `React.memo`
+- **Sidebar**: `filteredServers`, `serversByGroupId` e `ungrouped` wrappati in `useMemo` — eliminato sort O(n log n) su ogni keystroke nella ricerca
+- **MetricsPanel**: array rows del DataGrid top-query memoizzato — eliminato full re-render della griglia ad ogni update
+
 ### Added — 2026-03-24 (autenticazione locale)
 - **Sistema di login**: autenticazione locale con credenziali in SQLite (tabella `users`, password hashata con bcrypt 12 rounds)
 - **Utente admin di default**: alla prima installazione viene creato `admin / Admin1234!` con obbligo di cambio password

@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect, memo } from 'react'
 import { Box, Typography, Button, CircularProgress, Tooltip as MuiTooltip } from '@mui/material'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import {
@@ -53,7 +53,7 @@ function formatTimeShort(d: Date): string {
 // KpiCard
 // ---------------------------------------------------------------------------
 
-function KpiCard({
+const KpiCard = memo(function KpiCard({
   label,
   value,
   borderColor,
@@ -101,7 +101,7 @@ function KpiCard({
       </Typography>
     </Box>
   )
-}
+})
 
 // ---------------------------------------------------------------------------
 // HomeDashboard
@@ -113,8 +113,25 @@ export function HomeDashboard({
   onOpenAlerts
 }: Props): React.JSX.Element {
   const servers = useServersStore((s) => s.servers)
-  const metricsMap = useMetricsStore((s) => s.metricsMap)
   const lastUpdate = useMetricsStore((s) => s.lastUpdate)
+
+  // Throttle: con 200+ server ogni singolo update ricevuto riscatena useMemo del dashboard.
+  // Limitiamo a max 1 re-render/s — i dati nel ref sono sempre aggiornati da applyDelta.
+  const [metricsMap, setMetricsMap] = useState(() => useMetricsStore.getState().metricsMap)
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const unsub = useMetricsStore.subscribe(() => {
+      if (timer) return
+      timer = setTimeout(() => {
+        setMetricsMap(useMetricsStore.getState().metricsMap)
+        timer = null
+      }, 1000)
+    })
+    return () => {
+      unsub()
+      if (timer) clearTimeout(timer)
+    }
+  }, [])
   const { groups, serverGroups, serverAliases } = useGroupsStore()
   const { agGroups } = useAgStore()
   const alerts = useAlertsStore((s) => s.alerts)

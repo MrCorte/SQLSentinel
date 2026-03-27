@@ -14,9 +14,7 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
   const [retentionMinutes, setRetentionMinutes] = useState(60)
 
   // useRef per la Map: non viene mai ricreata → nessuna perdita di dati al re-render
-  // historyVersion: contatore che forza il re-render quando la Map cambia
   const historyMapRef = useRef<Map<string, MetricsHistoryPoint[]>>(new Map())
-  const [historyVersion, setHistoryVersion] = useState(0)
 
   // maxPoints: basato su worst-case 30s di intervallo
   const maxPoints = Math.ceil((retentionMinutes * 60) / 30)
@@ -30,15 +28,6 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
       const newPoint = metricsToHistoryPoint(m)
       const updated = [...existing, newPoint].slice(-maxPoints)
       map.set(serverId, updated)
-      console.log(
-        '[WorkerContext] pushSnapshot',
-        serverId,
-        'map size:',
-        map.size,
-        'punti per questo server:',
-        updated.length
-      )
-      setHistoryVersion((v) => v + 1)
     },
     [maxPoints]
   )
@@ -46,33 +35,18 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
   // Quando cambia retentionMinutes, taglia le entry esistenti in-place
   useEffect(() => {
     const map = historyMapRef.current
-    let changed = false
     for (const [serverId, points] of map) {
       if (points.length > maxPoints) {
         map.set(serverId, points.slice(points.length - maxPoints))
-        changed = true
       }
     }
-    if (changed) setHistoryVersion((v) => v + 1)
   }, [maxPoints])
 
-  // getHistory legge sempre dalla ref aggiornata.
-  // historyVersion come dep garantisce che i consumer ricevano una nuova funzione
-  // (e quindi si ri-rendano) ogni volta che la Map viene aggiornata.
+  // getHistory legge dalla ref aggiornata: deps vuote perché i ref sono sempre correnti.
+  // I consumer si ri-renderizzano tramite useMetricsStore (aggiornato da pushSnapshot).
   const getHistory = useCallback(
-    (serverId: string): MetricsHistoryPoint[] => {
-      const snapshots = historyMapRef.current.get(serverId) ?? []
-      console.log(
-        '[WorkerContext] getHistory',
-        serverId,
-        'punti:',
-        snapshots.length,
-        'map size:',
-        historyMapRef.current.size
-      )
-      return snapshots
-    },
-    [historyVersion] // eslint-disable-line react-hooks/exhaustive-deps
+    (serverId: string): MetricsHistoryPoint[] => historyMapRef.current.get(serverId) ?? [],
+    [] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   // Notifica il main process quale server è "attivo" (riceve polling più frequente).
@@ -80,10 +54,6 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
   // NON ha cleanup su unmount: il worker deve sopravvivere alla navigazione.
   useEffect(() => {
     if (!connection) return
-    console.log(
-      '[WorkerContext] workerSetActive — server=',
-      `${connection.ip}:${connection.port}`
-    )
     window.sqlSentinel.workerSetActive({ serverId: `${connection.ip}:${connection.port}` })
   }, [connection?.ip, connection?.port]) // eslint-disable-line react-hooks/exhaustive-deps
 

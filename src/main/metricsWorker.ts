@@ -21,11 +21,12 @@ export interface IntervalOverrides {
 // ---------------------------------------------------------------------------
 
 const MAX_HISTORY = 20
-const BATCH_SIZE = 10
+const BATCH_SIZE = 30
 const INTERVAL_ACTIVE_MS  = 60_000
 const INTERVAL_IDLE_MS    = 300_000
 const INTERVAL_OFFLINE_MS = 600_000
 const BACKOFF_CAP_MS      = 3_600_000 // 1 hour max back-off
+const POLL_TIMEOUT_MS     = 90_000   // max 90s per singolo job
 
 // ---------------------------------------------------------------------------
 // Types
@@ -208,7 +209,12 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
   const allCustomFields = getAllCustomFields()
   const hasVisibleWindow = BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.isVisible())
   try {
-    const metrics = await collectMetrics(job.server)
+    const metrics = await Promise.race([
+      collectMetrics(job.server),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('poll timeout')), POLL_TIMEOUT_MS)
+      ),
+    ])
 
     // Merge campi custom (alias, referente) nei DatabaseInfo prima di pushare al renderer
     let enrichedMetrics: ServerMetrics = {

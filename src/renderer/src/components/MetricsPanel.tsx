@@ -705,6 +705,12 @@ export function MetricsPanel({ metrics, serverId, serverDbId, serverNotes, conne
   const topQueries = metrics?.topQueries ?? []
   const waitStats = metrics?.waitStats ?? []
 
+  // Memoizzato: evita che DataGrid esegua un full re-render per ricreazione array inline
+  const topQueriesRows = useMemo(
+    () => topQueries.map((q, i) => ({ ...q, _idx: i })),
+    [topQueries]
+  )
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Box
@@ -786,7 +792,7 @@ export function MetricsPanel({ metrics, serverId, serverDbId, serverNotes, conne
 
         {tab === 5 && (
           <DataGrid<QueryInfo>
-            rows={topQueries.map((q, i) => ({ ...q, _idx: i }))}
+            rows={topQueriesRows}
             columns={queryColumns}
             getRowId={(r) => (r as QueryInfo & { _idx: number })._idx}
             density="compact"

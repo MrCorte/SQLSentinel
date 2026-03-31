@@ -29,6 +29,7 @@ import { useServersStore } from '../store/serversStore'
 import { useAgStore } from '../store/agStore'
 import { useAppStore } from '../store/appStore'
 import { useMetricsStore } from '../store/metricsStore'
+import { useShallow } from 'zustand/shallow'
 import { getServerDisplayName } from '../types/index'
 import { tokens } from '../styles/tokens'
 
@@ -56,7 +57,14 @@ function toCollectRequest(server: StoredServer): CollectMetricsRequest {
 // -----------------------------------------------------------------------
 
 export function Dashboard(): React.JSX.Element {
-  const { servers, initialized, removeServer, updateServer } = useServersStore()
+  const { servers, initialized, removeServer, updateServer } = useServersStore(
+    useShallow((s) => ({
+      servers: s.servers,
+      initialized: s.initialized,
+      removeServer: s.removeServer,
+      updateServer: s.updateServer,
+    }))
+  )
   const { detectAgsForServer } = useAgStore()
   const [selectedServer, setSelectedServer] = useState<StoredServer | null>(null)
   const [selectedAgName, setSelectedAgName] = useState<string | null>(null)
@@ -75,9 +83,7 @@ export function Dashboard(): React.JSX.Element {
   }, [pendingServerId, servers, setPendingServerId])
   const [retriggering, setRetriggering] = useState(false)
 
-  const metricsMap = useMetricsStore((s) => s.metricsMap)
-
-  const { intervalSeconds, setIntervalSeconds, setConnection, pushSnapshot } =
+  const { intervalSeconds, setIntervalSeconds, setConnection, pushSnapshot, pushSnapshotBatch } =
     useWorker()
   const { serverAliases, setServerAlias } = useGroupsStore()
 
@@ -88,6 +94,10 @@ export function Dashboard(): React.JSX.Element {
 
   const connection = selectedServer ? toCollectRequest(selectedServer) : null
   const selectedServerId = selectedServer ? serverLabel(selectedServer) : null
+
+  const cachedMetrics = useMetricsStore(
+    (s) => (selectedServerId ? s.metricsMap[selectedServerId] ?? null : null)
+  )
 
   const { metrics, isLoading, error, refresh, receiveMetrics } = useMetrics(connection, {
     onReceived: pushSnapshot
@@ -134,16 +144,17 @@ export function Dashboard(): React.JSX.Element {
     setSelectedServer(null)
   }, [])
 
-  const stablePushSnapshot = useCallback(pushSnapshot, [pushSnapshot])
+  const stablePushSnapshotBatch = useCallback(pushSnapshotBatch, [pushSnapshotBatch])
   const stableReceiveMetrics = useCallback(receiveMetrics, [receiveMetrics])
 
   useEffect(() => {
-    const unsub = window.sqlSentinel.onMetricsUpdated(({ serverId, metrics: m }) => {
-      stablePushSnapshot(serverId, m)
-      if (serverId === selectedServerId) stableReceiveMetrics(m)
+    const unsubBatch = window.sqlSentinel.onMetricsBatchUpdated((batch) => {
+      stablePushSnapshotBatch(batch)
+      const active = batch.find(({ serverId }) => serverId === selectedServerId)
+      if (active) stableReceiveMetrics(active.metrics)
     })
-    return unsub
-  }, [selectedServerId, stablePushSnapshot, stableReceiveMetrics])
+    return unsubBatch
+  }, [selectedServerId, stablePushSnapshotBatch, stableReceiveMetrics])
 
   // Inline alias edit helpers
   const startEditAlias = useCallback((): void => {
@@ -381,7 +392,7 @@ export function Dashboard(): React.JSX.Element {
             {(() => {
               // Stale-while-revalidate: usa metriche fresche se disponibili,
               // altrimenti mostra la cache dello store (seedFromHistory / worker push)
-              const displayMetrics = metrics ?? (selectedServerId ? metricsMap[selectedServerId] ?? null : null)
+              const displayMetrics = metrics ?? cachedMetrics
               const isFirstLoad = isLoading && !displayMetrics
 
               if (isFirstLoad) {

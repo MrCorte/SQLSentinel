@@ -46,7 +46,7 @@ function makeMetrics(overrides: Partial<ServerMetrics> = {}): ServerMetrics {
       physicalCpus: 8
     },
     databases: [
-      { name: 'master', stateDesc: 'ONLINE', recoveryModel: 'SIMPLE', sizeMb: 10, logSizeMb: 2 }
+      { name: 'master', stateDesc: 'ONLINE', recoveryModel: 'SIMPLE', sizeMb: 10, logSizeMb: 2, compatibilityLevel: 150, isEncrypted: false, isReadOnly: false, owner: 'sa', createDate: '2020-01-01T00:00:00.000Z' }
     ],
     activeSessions: [],
     topQueries: [],

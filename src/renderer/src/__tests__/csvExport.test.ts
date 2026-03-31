@@ -114,6 +114,11 @@ function makeDb(name: string, overrides: Partial<DatabaseInfo> = {}): DatabaseIn
     recoveryModel: 'FULL',
     sizeMb: 500,
     logSizeMb: 50,
+    compatibilityLevel: 150,
+    isEncrypted: false,
+    isReadOnly: false,
+    owner: 'sa',
+    createDate: '2020-01-01T00:00:00.000Z',
     ...overrides
   }
 }

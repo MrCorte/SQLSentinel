@@ -5,6 +5,7 @@
  */
 import type { ServerMetrics, DbCustomFields } from '../../../preload/index'
 import type { InventoryStats } from '../types/index'
+import { compatLevelToSqlVersion } from './sqlVersionUtils'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -12,6 +13,62 @@ import type { InventoryStats } from '../types/index'
 
 function formatDate(d: Date | string | null | undefined): string {
   return d ? new Date(d).toLocaleDateString('it-IT') : 'Mai'
+}
+
+// ---------------------------------------------------------------------------
+// DB View CSV export
+// ---------------------------------------------------------------------------
+
+/** Minimal shape needed from DbViewRow (db-row only) for CSV export. */
+export interface DbAssetCsvInput {
+  envName: string
+  serverLabel: string
+  serverVersion: string
+  dbName: string
+  alias?: string
+  referente?: string
+  stateDesc?: string
+  recoveryModel?: string
+  compatibilityLevel?: number
+  isEncrypted?: boolean
+  isReadOnly?: boolean
+  sizeMb?: number
+  logSizeMb?: number
+  lastFullBackup?: Date | null
+  lastLogBackup?: Date | null
+  owner?: string
+  createDate?: string
+}
+
+export const DB_VIEW_CSV_HEADERS = [
+  'Ambiente', 'Server', 'Versione SQL', 'Database', 'Alias', 'Referente',
+  'Stato DB', 'Recovery Model', 'Compat. Level', 'TDE', 'Sola Lettura',
+  'Dati (MB)', 'Log (MB)', 'Ultimo Backup Full', 'Ultimo Backup Log',
+  'Owner', 'Data Creazione'
+]
+
+export function buildDbViewCsvRows(rows: DbAssetCsvInput[]): string[][] {
+  return rows.map((row) => [
+    row.envName,
+    row.serverLabel,
+    row.serverVersion,
+    row.dbName,
+    row.alias ?? '',
+    row.referente ?? '',
+    row.stateDesc ?? '',
+    row.recoveryModel ?? '',
+    row.compatibilityLevel ? compatLevelToSqlVersion(row.compatibilityLevel) : '',
+    row.isEncrypted ? 'Sì' : 'No',
+    row.isReadOnly ? 'Sì' : 'No',
+    row.sizeMb?.toFixed(1) ?? '',
+    row.logSizeMb?.toFixed(1) ?? '',
+    row.lastFullBackup ? formatDate(row.lastFullBackup) : 'Mai',
+    row.lastLogBackup
+      ? formatDate(row.lastLogBackup)
+      : row.recoveryModel === 'SIMPLE' ? 'N/A' : 'Mai',
+    row.owner ?? '',
+    row.createDate ? new Date(row.createDate).toLocaleDateString('it-IT') : ''
+  ])
 }
 
 // ---------------------------------------------------------------------------

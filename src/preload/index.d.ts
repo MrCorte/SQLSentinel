@@ -75,6 +75,15 @@ export interface DatabaseInfo {
   recoveryModel: string
   sizeMb: number
   logSizeMb: number
+  /** Compatibility level raw (80=SQL2000, 150=SQL2019, 160=SQL2022) — undefined for snapshots from older app versions */
+  compatibilityLevel?: number
+  /** TDE (Transparent Data Encryption) enabled — undefined for snapshots from older app versions */
+  isEncrypted?: boolean
+  isReadOnly?: boolean
+  /** Database owner principal name — undefined for snapshots from older app versions */
+  owner?: string
+  /** Creation date — ISO 8601 string — undefined for snapshots from older app versions */
+  createDate?: string
   alias?: string
   referente?: string
 }

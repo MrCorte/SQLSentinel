@@ -10,7 +10,7 @@ import { sendAlertEmail } from './emailService'
 
 const resourcesDir = app.isPackaged
   ? process.resourcesPath
-  : join(__dirname, '../../../resources')
+  : join(__dirname, '../../resources')
 
 const trayIconNormal = join(resourcesDir, 'tray-icon.png')
 const trayIconAlertCandidate = join(resourcesDir, 'tray-icon-alert.png')

@@ -63,10 +63,11 @@ export function useMetrics(
     }
   }, [])
 
-  // Resetta solo l'errore al cambio server — le metriche rimangono visibili
-  // fino all'arrivo dei nuovi dati (evita blank screen durante il caricamento)
+  // Resetta errore e metriche locali al cambio server — il Dashboard mostrerà
+  // i dati cached da metricsStore (metricsMap) durante il refresh silenzioso
   useEffect(() => {
     setError(null)
+    setMetrics(null)
   }, [connection?.ip, connection?.port])
 
   return { metrics, isLoading, error, refresh, receiveMetrics }

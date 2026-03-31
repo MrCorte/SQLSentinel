@@ -11,6 +11,7 @@ import {
   InputLabel,
   CircularProgress,
   IconButton,
+  LinearProgress,
   Tooltip
 } from '@mui/material'
 import { alpha } from '@mui/material/styles'
@@ -27,6 +28,7 @@ import { useGroupsStore } from '../store/groupsStore'
 import { useServersStore } from '../store/serversStore'
 import { useAgStore } from '../store/agStore'
 import { useAppStore } from '../store/appStore'
+import { useMetricsStore } from '../store/metricsStore'
 import { getServerDisplayName } from '../types/index'
 import { tokens } from '../styles/tokens'
 
@@ -72,6 +74,8 @@ export function Dashboard(): React.JSX.Element {
     }
   }, [pendingServerId, servers, setPendingServerId])
   const [retriggering, setRetriggering] = useState(false)
+
+  const metricsMap = useMetricsStore((s) => s.metricsMap)
 
   const { intervalSeconds, setIntervalSeconds, setConnection, pushSnapshot } =
     useWorker()
@@ -374,22 +378,44 @@ export function Dashboard(): React.JSX.Element {
 
             {error && <Alert severity="error">{error}</Alert>}
 
-            {metrics ? (
-              <Box sx={{ flex: 1, overflow: 'auto' }}>
-                <ServerDashboard
-                  server={selectedServer}
-                  metrics={metrics}
-                  connection={connection!}
-                />
-              </Box>
-            ) : (
-              !isLoading &&
-              !error && (
-                <Alert severity="info">
-                  Premi &quot;Aggiorna metriche&quot; per raccogliere i dati dal server.
-                </Alert>
-              )
-            )}
+            {(() => {
+              // Stale-while-revalidate: usa metriche fresche se disponibili,
+              // altrimenti mostra la cache dello store (seedFromHistory / worker push)
+              const displayMetrics = metrics ?? (selectedServerId ? metricsMap[selectedServerId] ?? null : null)
+              const isFirstLoad = isLoading && !displayMetrics
+
+              if (isFirstLoad) {
+                return (
+                  <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <CircularProgress size={32} />
+                  </Box>
+                )
+              }
+
+              if (!displayMetrics && !isLoading && !error) {
+                return (
+                  <Alert severity="info">
+                    Premi &quot;Aggiorna metriche&quot; per raccogliere i dati dal server.
+                  </Alert>
+                )
+              }
+
+              return displayMetrics ? (
+                <Box sx={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+                  {/* Barra di refresh silenzioso — non blocca la UI */}
+                  {isLoading && (
+                    <LinearProgress
+                      sx={{ position: 'sticky', top: 0, left: 0, right: 0, zIndex: 10 }}
+                    />
+                  )}
+                  <ServerDashboard
+                    server={selectedServer}
+                    metrics={displayMetrics}
+                    connection={connection!}
+                  />
+                </Box>
+              ) : null
+            })()}
           </>
         )}
       </Box>

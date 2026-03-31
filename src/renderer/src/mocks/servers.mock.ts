@@ -64,6 +64,11 @@ function makeDb(
     recoveryModel: opts.recoveryModel ?? 'FULL',
     sizeMb,
     logSizeMb: Math.round(sizeMb * 0.12),
+    compatibilityLevel: 150,
+    isEncrypted: false,
+    isReadOnly: false,
+    owner: 'sa',
+    createDate: '2020-01-01T00:00:00.000Z',
     referente: opts.referente,
   }
 }

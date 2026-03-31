@@ -11,7 +11,9 @@ import {
   Select,
   MenuItem,
   Paper,
-  InputAdornment
+  InputAdornment,
+  ToggleButton,
+  ToggleButtonGroup
 } from '@mui/material'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import DownloadIcon from '@mui/icons-material/Download'
@@ -20,6 +22,9 @@ import FilterListIcon from '@mui/icons-material/FilterList'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
+import StorageIcon from '@mui/icons-material/Storage'
+import LockIcon from '@mui/icons-material/Lock'
+import LockOpenIcon from '@mui/icons-material/LockOpen'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useServersStore } from '../store/serversStore'
 import { useMetricsStore } from '../store/metricsStore'
@@ -27,9 +32,11 @@ import { useRefreshAllServers } from '../hooks/useRefreshAllServers'
 import { useGroupsStore } from '../store/groupsStore'
 import { useAppStore } from '../store/appStore'
 import { computeInventory, getSqlServerVersion } from '../utils/inventoryUtils'
-import { buildInventoryCsvRows } from '../utils/csvExportUtils'
-import type { GroupInventory } from '../types/index'
-import type { DbCustomFields } from '../../../preload/index'
+import { buildInventoryCsvRows, buildDbViewCsvRows, DB_VIEW_CSV_HEADERS } from '../utils/csvExportUtils'
+import type { DbAssetCsvInput } from '../utils/csvExportUtils'
+import { compatLevelToSqlVersion } from '../utils/sqlVersionUtils'
+import type { GroupInventory, InventoryStats } from '../types/index'
+import type { DbCustomFields, ServerMetrics } from '../../../preload/index'
 import type { ServerHostingType } from '../constants/hosting'
 import { HOSTING_BADGE } from '../constants/hosting'
 import { tokens } from '../styles/tokens'
@@ -148,6 +155,135 @@ const COLUMNS: ColDef[] = [
 ]
 
 const GRID_TEMPLATE = COLUMNS.map((c) => c.width).join(' ')
+
+// ---------------------------------------------------------------------------
+// DB View — types, columns, row builder
+// ---------------------------------------------------------------------------
+
+type DbViewRowType = 'server-header' | 'db-row'
+
+interface DbViewRow {
+  id:                  string
+  type:                DbViewRowType
+  serverId:            string
+  serverKey:           string   // "ip:port"
+  serverLabel:         string
+  envName:             string
+  envColor:            string
+  unreachable:         boolean
+  serverVersion:       string
+  clusterKey:          string   // = serverKey, used for expand/collapse
+  // server-header only
+  dbCount?:            number
+  agRole?:             'PRIMARY' | 'SECONDARY'
+  // db-row only
+  dbName?:             string
+  stateDesc?:          string
+  recoveryModel?:      string
+  compatibilityLevel?: number
+  isEncrypted?:        boolean
+  isReadOnly?:         boolean
+  owner?:              string
+  createDate?:         string
+  sizeMb?:             number
+  logSizeMb?:          number
+  lastFullBackup?:     Date | null
+  lastLogBackup?:      Date | null
+  alias?:              string
+  referente?:          string
+}
+
+const DB_COLUMNS = [
+  { label: 'DATABASE',    width: '13%' },
+  { label: 'SERVER',      width: '10%' },
+  { label: 'ALIAS',       width: '8%'  },
+  { label: 'STATO',       width: '6%'  },
+  { label: 'RECOVERY',    width: '6%'  },
+  { label: 'COMPAT',      width: '7%'  },
+  { label: 'TDE',         width: '5%'  },
+  { label: 'DATI',        width: '6%'  },
+  { label: 'LOG',         width: '5%'  },
+  { label: 'ULTIMO FULL', width: '9%'  },
+  { label: 'ULTIMO LOG',  width: '9%'  },
+  { label: 'OWNER',       width: '8%'  },
+  { label: 'CREATO',      width: '8%'  },
+]
+
+const DB_GRID_TEMPLATE = DB_COLUMNS.map((c) => c.width).join(' ')
+
+function buildDbViewRows(
+  inventory: InventoryStats,
+  metricsMap: Record<string, ServerMetrics>,
+  expandedServers: Set<string>
+): DbViewRow[] {
+  const rows: DbViewRow[] = []
+
+  for (const group of inventory.groups) {
+    const allServers = [
+      ...group.standaloneServers,
+      ...group.agClusters.flatMap((ag) => ag.replicas)
+    ]
+
+    for (const srv of allServers) {
+      const serverKey = `${srv.ip}:${srv.port}`
+      const metrics = metricsMap[serverKey]
+      const databases = metrics?.databases ?? []
+      const backupMap = Object.fromEntries(
+        (metrics?.backupStatus ?? []).map((b) => [b.databaseName, b])
+      )
+      const isExpanded = expandedServers.has(serverKey)
+
+      rows.push({
+        id:            serverKey,
+        type:          'server-header',
+        serverId:      srv.serverId,
+        serverKey,
+        serverLabel:   srv.displayName,
+        envName:       group.groupName,
+        envColor:      group.groupColor,
+        unreachable:   srv.unreachable,
+        serverVersion: srv.version ?? '—',
+        clusterKey:    serverKey,
+        dbCount:       databases.length,
+        agRole:        (srv.agRole === 'PRIMARY' || srv.agRole === 'SECONDARY') ? srv.agRole : undefined,
+      })
+
+      if (isExpanded) {
+        for (const db of databases) {
+          const backup = backupMap[db.name]
+          rows.push({
+            id:                  `${serverKey}/${db.name}`,
+            type:                'db-row',
+            serverId:            srv.serverId,
+            serverKey,
+            serverLabel:         srv.displayName,
+            envName:             group.groupName,
+            envColor:            group.groupColor,
+            unreachable:         srv.unreachable,
+            serverVersion:       srv.version ?? '—',
+            clusterKey:          serverKey,
+            dbName:              db.name,
+            stateDesc:           db.stateDesc,
+            recoveryModel:       db.recoveryModel,
+            compatibilityLevel:  db.compatibilityLevel,
+            isEncrypted:         db.isEncrypted,
+            isReadOnly:          db.isReadOnly,
+            owner:               db.owner,
+            createDate:          db.createDate,
+            sizeMb:              db.sizeMb,
+            logSizeMb:           db.logSizeMb,
+            lastFullBackup:      backup?.lastFullBackup ?? null,
+            lastLogBackup:       backup?.lastLogBackup ?? null,
+            alias:               db.alias,
+            referente:           db.referente,
+          })
+        }
+      }
+    }
+  }
+
+  return rows
+}
 
 // ---------------------------------------------------------------------------
 // Row flattener
@@ -349,6 +485,17 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
   const [expandedMachines,  setExpandedMachines]   = useState<Set<string>>(new Set())
   const parentRef = useRef<HTMLDivElement>(null)
 
+  // DB View state
+  const [dbView,             setDbView]             = useState(false)
+  const [expandedDbServers,  setExpandedDbServers]  = useState<Set<string>>(new Set())
+  const [dbSearch,           setDbSearch]           = useState('')
+  const [filterDbRecovery,   setFilterDbRecovery]   = useState<'all' | 'FULL' | 'SIMPLE' | 'BULK_LOGGED'>('all')
+  const [filterDbTde,        setFilterDbTde]        = useState<'all' | 'encrypted' | 'not-encrypted'>('all')
+  const [filterDbCompat,     setFilterDbCompat]     = useState('all')
+  const [filterDbOffline,    setFilterDbOffline]    = useState(false)
+  const [filterDbNoBackup,   setFilterDbNoBackup]   = useState(false)
+  const dbParentRef = useRef<HTMLDivElement>(null)
+
   // Debounce search to avoid recomputing filteredRows on every keystroke
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300)
@@ -440,6 +587,106 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
     }
     return [...versions].sort()
   }, [inventory.groups])
+
+  // ── DB View memos ───────────────────────────────────────────────────────
+
+  // All server keys (for "expand all" in DB View)
+  const allServerKeys = useMemo(() => {
+    const keys: string[] = []
+    for (const g of inventory.groups) {
+      for (const srv of g.standaloneServers) keys.push(`${srv.ip}:${srv.port}`)
+      for (const ag of g.agClusters)
+        for (const r of ag.replicas) keys.push(`${r.ip}:${r.port}`)
+    }
+    return keys
+  }, [inventory.groups])
+
+  // All DB rows (all servers expanded — used for filtering + KPI)
+  const allDbViewRowsExpanded = useMemo(
+    () => buildDbViewRows(inventory, metricsMap, new Set(allServerKeys)),
+    [inventory, metricsMap, allServerKeys]
+  )
+
+  // Flat list of db-rows only (for filters + KPI cards)
+  const allDbRows = useMemo(
+    () => allDbViewRowsExpanded.filter((r): r is DbViewRow & { type: 'db-row' } => r.type === 'db-row'),
+    [allDbViewRowsExpanded]
+  )
+
+  // Compat level options for DB View filter
+  const compatLevelOptions = useMemo(() => {
+    const levels = new Set<number>()
+    for (const r of allDbRows) if (r.compatibilityLevel) levels.add(r.compatibilityLevel)
+    return [...levels].sort((a, b) => b - a)
+  }, [allDbRows])
+
+  // DB View filter — applied to db-rows
+  const hasActiveDbFilters = dbSearch !== '' || filterDbRecovery !== 'all' || filterDbTde !== 'all' ||
+    filterDbCompat !== 'all' || filterDbOffline || filterDbNoBackup
+
+  const filteredDbRows = useMemo(() => {
+    if (!hasActiveDbFilters) return allDbRows
+    const q = dbSearch.toLowerCase()
+    const now = Date.now()
+    return allDbRows.filter((r) => {
+      if (q && !r.dbName?.toLowerCase().includes(q) && !r.serverLabel.toLowerCase().includes(q)) return false
+      if (filterDbRecovery !== 'all' && r.recoveryModel !== filterDbRecovery) return false
+      if (filterDbTde === 'encrypted'     && !r.isEncrypted)  return false
+      if (filterDbTde === 'not-encrypted' &&  r.isEncrypted)  return false
+      if (filterDbCompat !== 'all' && String(r.compatibilityLevel) !== filterDbCompat) return false
+      if (filterDbOffline && r.stateDesc === 'ONLINE') return false
+      if (filterDbNoBackup) {
+        const noBackup = !r.lastFullBackup || (now - new Date(r.lastFullBackup).getTime() > 86_400_000)
+        if (!noBackup) return false
+      }
+      return true
+    })
+  }, [allDbRows, dbSearch, filterDbRecovery, filterDbTde, filterDbCompat, filterDbOffline, filterDbNoBackup, hasActiveDbFilters])
+
+  // Servers that have at least one matching DB (for header-row visibility when filters active)
+  const serversWithMatchingDbs = useMemo(() => {
+    const set = new Set<string>()
+    filteredDbRows.forEach((r) => set.add(r.serverKey))
+    return set
+  }, [filteredDbRows])
+
+  // Display rows: server headers + expanded DB rows (filtered)
+  const displayDbViewRows = useMemo(() => {
+    const matchingIds = new Set(filteredDbRows.map((r) => r.id))
+    const rows: DbViewRow[] = []
+    for (const row of allDbViewRowsExpanded) {
+      if (row.type === 'server-header') {
+        if (hasActiveDbFilters && !serversWithMatchingDbs.has(row.serverKey)) continue
+        rows.push(row)
+      } else if (row.type === 'db-row' && expandedDbServers.has(row.serverKey)) {
+        if (!hasActiveDbFilters || matchingIds.has(row.id)) rows.push(row)
+      }
+    }
+    return rows
+  }, [allDbViewRowsExpanded, filteredDbRows, serversWithMatchingDbs, expandedDbServers, hasActiveDbFilters])
+
+  // DB View KPI cards
+  const dbViewStats = useMemo(() => {
+    const rows = filteredDbRows
+    const now = Date.now()
+    return {
+      total:        rows.length,
+      online:       rows.filter((r) => r.stateDesc === 'ONLINE').length,
+      offline:      rows.filter((r) => r.stateDesc !== 'ONLINE').length,
+      fullRecovery: rows.filter((r) => r.recoveryModel === 'FULL').length,
+      tdeActive:    rows.filter((r) => r.isEncrypted).length,
+      noBackup:     rows.filter((r) => !r.lastFullBackup || (now - new Date(r.lastFullBackup).getTime() > 86_400_000)).length,
+      oldCompat:    rows.filter((r) => (r.compatibilityLevel ?? 999) < 130).length,
+    }
+  }, [filteredDbRows])
+
+  // DB View virtualizer
+  const dbRowVirtualizer = useVirtualizer({
+    count:            displayDbViewRows.length,
+    getScrollElement: () => dbParentRef.current,
+    estimateSize:     () => 40,
+    overscan:         10,
+  })
 
   // ── Rows ────────────────────────────────────────────────────────────────
   // When filtering by AG role / alias / referente, all clusters and machines
@@ -635,6 +882,33 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
   )
 
   const handleExportCsv = useCallback(async () => {
+    // DB View export — use filtered db-rows directly (alias/referente already in db object)
+    if (dbView) {
+      const exportRows = buildDbViewCsvRows(
+        filteredDbRows.map((r): DbAssetCsvInput => ({
+          envName:             r.envName,
+          serverLabel:         r.serverLabel,
+          serverVersion:       r.serverVersion,
+          dbName:              r.dbName ?? '',
+          alias:               r.alias,
+          referente:           r.referente,
+          stateDesc:           r.stateDesc,
+          recoveryModel:       r.recoveryModel,
+          compatibilityLevel:  r.compatibilityLevel,
+          isEncrypted:         r.isEncrypted,
+          isReadOnly:          r.isReadOnly,
+          sizeMb:              r.sizeMb,
+          logSizeMb:           r.logSizeMb,
+          lastFullBackup:      r.lastFullBackup,
+          lastLogBackup:       r.lastLogBackup,
+          owner:               r.owner,
+          createDate:          r.createDate,
+        }))
+      )
+      await window.sqlSentinel.exportInventoryCsv({ headers: DB_VIEW_CSV_HEADERS, rows: exportRows })
+      return
+    }
+
     const { serverAliases } = useGroupsStore.getState()
     const { metricsMap }    = useMetricsStore.getState()
     const cfResult          = await window.sqlSentinel.getAllDbCustomFields()
@@ -682,7 +956,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
     ]
     const exportRows = buildInventoryCsvRows(inventory, serverAliases, metricsMap, dbCustomFields, allowedServerIds)
     await window.sqlSentinel.exportInventoryCsv({ headers, rows: exportRows })
-  }, [inventory, hasActiveFilters, search, filterEnv, filterType, filterState, filterHost, filterAlias, filterReferente, filterVersion, allClusterKeys, allMachineKeys])
+  }, [dbView, filteredDbRows, inventory, hasActiveFilters, search, filterEnv, filterType, filterState, filterHost, filterAlias, filterReferente, filterVersion, allClusterKeys, allMachineKeys])
 
   const handleSort = useCallback((key: keyof InventoryRow) => {
     setSortKey((prev) => {
@@ -705,6 +979,31 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
     setFilterReferente('all')
     setFilterVersion('all')
   }, [])
+
+  const toggleDbServer = useCallback((serverKey: string) => {
+    setExpandedDbServers((prev) => {
+      const next = new Set(prev)
+      next.has(serverKey) ? next.delete(serverKey) : next.add(serverKey)
+      return next
+    })
+  }, [])
+
+  const handleResetDbFilters = useCallback(() => {
+    setDbSearch('')
+    setFilterDbRecovery('all')
+    setFilterDbTde('all')
+    setFilterDbCompat('all')
+    setFilterDbOffline(false)
+    setFilterDbNoBackup(false)
+  }, [])
+
+  const handleDbToggleAll = useCallback(() => {
+    if (expandedDbServers.size === allServerKeys.length) {
+      setExpandedDbServers(new Set())
+    } else {
+      setExpandedDbServers(new Set(allServerKeys))
+    }
+  }, [expandedDbServers.size, allServerKeys])
 
   return (
     <Box sx={{ height: '100%', overflow: 'auto', bgcolor: 'background.default' }}>
@@ -745,27 +1044,70 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
           </Tooltip>
         </Box>
 
-        {/* ── KPI cards ── */}
-        <Box sx={{ display: 'flex', gap: 1.5, mb: hasActiveFilters ? 1 : 3, flexWrap: 'wrap' }}>
-          <KpiCard label="Server"     value={String(filteredStats.servers)}    accentColor="#0078d4" />
-          <KpiCard label="Standalone" value={String(filteredStats.standalone)} accentColor="#0078d4" />
-          <KpiCard
-            label="AG Cluster"
-            value={filteredStats.agClusters > 0 ? `${filteredStats.agClusters} (${filteredStats.agServers} nodi)` : '0'}
-            accentColor="#8764b8"
-          />
-          <KpiCard label="Database" value={String(filteredStats.databases)}  accentColor="#0078d4" />
-          <KpiCard label="Online"   value={String(filteredStats.onlineDbs)}  accentColor="#107c10" />
-          <KpiCard
-            label="Offline" value={String(filteredStats.offlineDbs)}
-            accentColor={filteredStats.offlineDbs > 0 ? '#a4262c' : '#107c10'}
-          />
+        {/* ── View toggle ── */}
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 2 }}>
+          <ToggleButtonGroup
+            value={dbView ? 'db' : 'server'}
+            exclusive
+            onChange={(_e, v) => { if (v) setDbView(v === 'db') }}
+            size="small"
+          >
+            <ToggleButton value="server" sx={{ fontSize: 12, px: 1.5, gap: 0.5 }}>
+              <AccountTreeIcon sx={{ fontSize: 15 }} /> Server View
+            </ToggleButton>
+            <ToggleButton value="db" sx={{ fontSize: 12, px: 1.5, gap: 0.5 }}>
+              <StorageIcon sx={{ fontSize: 15 }} /> DB View
+            </ToggleButton>
+          </ToggleButtonGroup>
         </Box>
 
+        {/* ── KPI cards ── */}
+        {!dbView && (
+          <Box sx={{ display: 'flex', gap: 1.5, mb: hasActiveFilters ? 1 : 3, flexWrap: 'wrap' }}>
+            <KpiCard label="Server"     value={String(filteredStats.servers)}    accentColor="#0078d4" />
+            <KpiCard label="Standalone" value={String(filteredStats.standalone)} accentColor="#0078d4" />
+            <KpiCard
+              label="AG Cluster"
+              value={filteredStats.agClusters > 0 ? `${filteredStats.agClusters} (${filteredStats.agServers} nodi)` : '0'}
+              accentColor="#8764b8"
+            />
+            <KpiCard label="Database" value={String(filteredStats.databases)}  accentColor="#0078d4" />
+            <KpiCard label="Online"   value={String(filteredStats.onlineDbs)}  accentColor="#107c10" />
+            <KpiCard
+              label="Offline" value={String(filteredStats.offlineDbs)}
+              accentColor={filteredStats.offlineDbs > 0 ? '#a4262c' : '#107c10'}
+            />
+          </Box>
+        )}
+        {dbView && (
+          <Box sx={{ display: 'flex', gap: 1.5, mb: hasActiveDbFilters ? 1 : 3, flexWrap: 'wrap' }}>
+            <KpiCard label="DB Totali"     value={String(dbViewStats.total)}        accentColor="#0078d4" />
+            <KpiCard label="Online"        value={String(dbViewStats.online)}       accentColor="#107c10" />
+            <KpiCard label="Offline"       value={String(dbViewStats.offline)}      accentColor={dbViewStats.offline > 0 ? '#a4262c' : '#107c10'} />
+            <KpiCard label="Full Recovery" value={String(dbViewStats.fullRecovery)} accentColor="#0078d4" />
+            <KpiCard label="TDE Attivo"    value={String(dbViewStats.tdeActive)}    accentColor="#038387" />
+            <KpiCard
+              label="Senza Backup"
+              value={String(dbViewStats.noBackup)}
+              accentColor={dbViewStats.noBackup > 0 ? '#d83b01' : '#107c10'}
+            />
+            <KpiCard
+              label="Compat < 2016"
+              value={String(dbViewStats.oldCompat)}
+              accentColor={dbViewStats.oldCompat > 0 ? '#ca5010' : '#107c10'}
+            />
+          </Box>
+        )}
+
         {/* ── Filter indicator ── */}
-        {hasActiveFilters && (
+        {!dbView && hasActiveFilters && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
             Risultati filtrati: {filteredStats.servers} di {totals.servers} server
+          </Typography>
+        )}
+        {dbView && hasActiveDbFilters && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+            Risultati filtrati: {filteredDbRows.length} di {allDbRows.length} database
           </Typography>
         )}
 
@@ -778,8 +1120,310 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
           </Box>
         )}
 
-        {/* ── Filter bar + table ── */}
-        {inventory.groups.length > 0 && (
+        {/* ── DB View filter bar + table ── */}
+        {dbView && inventory.groups.length > 0 && (
+          <>
+            {/* DB View filter bar */}
+            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
+              <TextField
+                size="small"
+                placeholder="Cerca database o server..."
+                value={dbSearch}
+                onChange={(e) => setDbSearch(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                    </InputAdornment>
+                  )
+                }}
+                sx={{ minWidth: 220 }}
+              />
+
+              <Select size="small" value={filterDbRecovery}
+                onChange={(e) => setFilterDbRecovery(e.target.value as typeof filterDbRecovery)} sx={{ minWidth: 150 }}>
+                <MenuItem value="all">Tutti i recovery</MenuItem>
+                <MenuItem value="FULL">FULL</MenuItem>
+                <MenuItem value="SIMPLE">SIMPLE</MenuItem>
+                <MenuItem value="BULK_LOGGED">BULK_LOGGED</MenuItem>
+              </Select>
+
+              <Select size="small" value={filterDbTde}
+                onChange={(e) => setFilterDbTde(e.target.value as typeof filterDbTde)} sx={{ minWidth: 150 }}>
+                <MenuItem value="all">TDE: Tutti</MenuItem>
+                <MenuItem value="encrypted">Solo crittografati</MenuItem>
+                <MenuItem value="not-encrypted">Solo non crittografati</MenuItem>
+              </Select>
+
+              {compatLevelOptions.length > 0 && (
+                <Select size="small" value={filterDbCompat}
+                  onChange={(e) => setFilterDbCompat(e.target.value)} sx={{ minWidth: 150 }}>
+                  <MenuItem value="all">Tutti i compat</MenuItem>
+                  {compatLevelOptions.map((l) => (
+                    <MenuItem key={l} value={String(l)}>{compatLevelToSqlVersion(l)} ({l})</MenuItem>
+                  ))}
+                </Select>
+              )}
+
+              <Button
+                size="small" variant={filterDbOffline ? 'contained' : 'outlined'} color="error"
+                onClick={() => setFilterDbOffline((v) => !v)}
+                sx={{ fontSize: 12, height: 36 }}
+              >
+                Solo Offline
+              </Button>
+
+              <Button
+                size="small" variant={filterDbNoBackup ? 'contained' : 'outlined'} color="warning"
+                onClick={() => setFilterDbNoBackup((v) => !v)}
+                sx={{ fontSize: 12, height: 36 }}
+              >
+                Senza Backup &gt;24h
+              </Button>
+
+              <Button
+                size="small" variant="text" color="inherit"
+                startIcon={<FilterListIcon />}
+                onClick={handleResetDbFilters}
+              >
+                Reset
+              </Button>
+
+              <Button size="small" variant="text" color="inherit" onClick={handleDbToggleAll} sx={{ ml: 0 }}>
+                {expandedDbServers.size > 0 ? 'Comprimi tutti' : 'Espandi tutti'}
+              </Button>
+
+              <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                {allDbViewRowsExpanded.filter((r) => r.type === 'server-header').length} server · {filteredDbRows.length} DB
+              </Typography>
+            </Box>
+
+            {/* DB View virtualised table */}
+            <Paper sx={{ overflow: 'hidden' }}>
+              {/* Sticky column headers */}
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: DB_GRID_TEMPLATE,
+                  px: 2, py: 1,
+                  bgcolor: 'background.default',
+                  borderBottom: (theme) => `2px solid ${theme.palette.divider}`,
+                  position: 'sticky',
+                  top: 0,
+                  zIndex: 1,
+                }}
+              >
+                {DB_COLUMNS.map((col) => (
+                  <Typography key={col.label} variant="caption" fontWeight={700} sx={{ color: 'text.secondary' }}>
+                    {col.label}
+                  </Typography>
+                ))}
+              </Box>
+
+              <Box
+                ref={dbParentRef}
+                sx={{ height: 'calc(100vh - 380px)', overflowY: 'auto', position: 'relative' }}
+              >
+                {displayDbViewRows.length === 0 ? (
+                  <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
+                    Nessun database corrisponde ai filtri selezionati
+                  </Box>
+                ) : (
+                  <Box sx={{ height: dbRowVirtualizer.getTotalSize(), position: 'relative' }}>
+                    {dbRowVirtualizer.getVirtualItems().map((vRow) => {
+                      const row = displayDbViewRows[vRow.index]
+                      const isHeader = row.type === 'server-header'
+
+                      return (
+                        <Box
+                          key={row.id}
+                          onClick={() => isHeader ? toggleDbServer(row.serverKey) : undefined}
+                          sx={{
+                            position: 'absolute',
+                            top: vRow.start,
+                            height: vRow.size,
+                            width: '100%',
+                            display: 'grid',
+                            gridTemplateColumns: DB_GRID_TEMPLATE,
+                            alignItems: 'center',
+                            px: 2,
+                            cursor: isHeader ? 'pointer' : 'default',
+                            borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
+                            bgcolor: (theme) =>
+                              isHeader
+                                ? theme.palette.mode === 'dark'
+                                  ? alpha(theme.palette.primary.main, 0.12)
+                                  : '#eef4fb'
+                                : row.stateDesc !== 'ONLINE'
+                                  ? theme.palette.mode === 'dark'
+                                    ? alpha(theme.palette.error.main, 0.15)
+                                    : '#fde7e9'
+                                  : theme.palette.background.paper,
+                            '&:hover': {
+                              bgcolor: (theme) =>
+                                isHeader
+                                  ? theme.palette.mode === 'dark'
+                                    ? alpha(theme.palette.primary.main, 0.22)
+                                    : '#dce9f5'
+                                  : theme.palette.action.hover,
+                            },
+                          }}
+                        >
+                          {isHeader ? (
+                            // Server header — spans all columns
+                            <Box sx={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                              {expandedDbServers.has(row.serverKey)
+                                ? <ExpandMoreIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
+                                : <ChevronRightIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
+                              }
+                              <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: row.envColor, flexShrink: 0 }} />
+                              <Typography variant="body2" fontWeight={700} noWrap sx={{ flex: 1 }}>
+                                {row.serverLabel}
+                              </Typography>
+                              <Chip
+                                label={row.unreachable ? 'OFFLINE' : 'ONLINE'}
+                                size="small"
+                                sx={{
+                                  height: 18, fontSize: 9, fontWeight: 700, borderRadius: '3px',
+                                  bgcolor: row.unreachable ? '#a4262c' : '#107c10', color: '#fff'
+                                }}
+                              />
+                              {row.agRole && (
+                                <Chip
+                                  label={row.agRole === 'PRIMARY' ? '★ PRIMARY' : '○ SECONDARY'}
+                                  size="small"
+                                  sx={{
+                                    height: 18, fontSize: 9, fontWeight: 700, borderRadius: '3px',
+                                    bgcolor: row.agRole === 'PRIMARY' ? '#107c10' : 'transparent',
+                                    color: row.agRole === 'PRIMARY' ? '#fff' : 'text.secondary',
+                                    border: row.agRole === 'SECONDARY' ? '1px solid' : 'none',
+                                    borderColor: 'divider',
+                                  }}
+                                />
+                              )}
+                              <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                                {row.serverVersion}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary" sx={{ ml: 1, flexShrink: 0 }}>
+                                {row.dbCount} DB
+                              </Typography>
+                            </Box>
+                          ) : (
+                            // DB row — 13 cells
+                            <>
+                              {/* DATABASE */}
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, pl: 2, minWidth: 0 }}>
+                                <Typography variant="body2" noWrap fontWeight={500}>{row.dbName}</Typography>
+                                {row.isReadOnly && (
+                                  <Tooltip title="Sola lettura">
+                                    <Typography sx={{ fontSize: 10, color: 'text.disabled', flexShrink: 0 }}>R/O</Typography>
+                                  </Tooltip>
+                                )}
+                              </Box>
+
+                              {/* SERVER */}
+                              <Typography variant="caption" color="text.secondary" noWrap>{row.serverLabel}</Typography>
+
+                              {/* ALIAS */}
+                              <Typography variant="caption" color="text.secondary" noWrap>{row.alias ?? '—'}</Typography>
+
+                              {/* STATO */}
+                              <Chip
+                                label={row.stateDesc ?? '—'}
+                                size="small"
+                                sx={{
+                                  height: 18, fontSize: 9, fontWeight: 700, borderRadius: '3px',
+                                  bgcolor: row.stateDesc === 'ONLINE' ? '#107c10' : '#a4262c',
+                                  color: '#fff', width: 'fit-content'
+                                }}
+                              />
+
+                              {/* RECOVERY */}
+                              <Chip
+                                label={row.recoveryModel ?? '—'}
+                                size="small"
+                                sx={{
+                                  height: 18, fontSize: 9, fontWeight: 700, borderRadius: '3px',
+                                  bgcolor: row.recoveryModel === 'FULL' ? '#0078d4'
+                                         : row.recoveryModel === 'BULK_LOGGED' ? '#038387' : '#737373',
+                                  color: '#fff', width: 'fit-content'
+                                }}
+                              />
+
+                              {/* COMPAT */}
+                              <Tooltip title={`Compatibility level ${row.compatibilityLevel ?? '—'}`}>
+                                <Typography variant="caption" sx={{
+                                  color: (row.compatibilityLevel ?? 999) < 130 ? '#ca5010' : 'text.secondary'
+                                }}>
+                                  {row.compatibilityLevel ? compatLevelToSqlVersion(row.compatibilityLevel) : '—'}
+                                </Typography>
+                              </Tooltip>
+
+                              {/* TDE */}
+                              <Tooltip title={row.isEncrypted ? 'TDE attivo' : 'TDE non attivo'}>
+                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                  {row.isEncrypted
+                                    ? <LockIcon sx={{ fontSize: 15, color: '#038387' }} />
+                                    : <LockOpenIcon sx={{ fontSize: 15, color: 'text.disabled' }} />
+                                  }
+                                </Box>
+                              </Tooltip>
+
+                              {/* DATI */}
+                              <Typography variant="body2">
+                                {row.sizeMb ? formatMb(row.sizeMb) : '—'}
+                              </Typography>
+
+                              {/* LOG */}
+                              <Typography variant="body2">
+                                {row.logSizeMb ? formatMb(row.logSizeMb) : '—'}
+                              </Typography>
+
+                              {/* ULTIMO FULL */}
+                              {(() => {
+                                const noBackup = !row.lastFullBackup
+                                const stale = !noBackup && (Date.now() - new Date(row.lastFullBackup!).getTime() > 86_400_000)
+                                return (
+                                  <Typography variant="caption" sx={{ color: noBackup || stale ? '#a4262c' : 'text.secondary' }}>
+                                    {noBackup ? 'Mai' : new Date(row.lastFullBackup!).toLocaleDateString('it-IT')}
+                                  </Typography>
+                                )
+                              })()}
+
+                              {/* ULTIMO LOG */}
+                              {(() => {
+                                if (row.recoveryModel === 'SIMPLE') {
+                                  return <Typography variant="caption" color="text.disabled">N/A</Typography>
+                                }
+                                const noLog = !row.lastLogBackup
+                                return (
+                                  <Typography variant="caption" sx={{ color: noLog ? '#d83b01' : 'text.secondary' }}>
+                                    {noLog ? 'Mai' : new Date(row.lastLogBackup!).toLocaleDateString('it-IT')}
+                                  </Typography>
+                                )
+                              })()}
+
+                              {/* OWNER */}
+                              <Typography variant="caption" color="text.secondary" noWrap>{row.owner || '—'}</Typography>
+
+                              {/* CREATO */}
+                              <Typography variant="caption" color="text.secondary">
+                                {row.createDate ? new Date(row.createDate).toLocaleDateString('it-IT') : '—'}
+                              </Typography>
+                            </>
+                          )}
+                        </Box>
+                      )
+                    })}
+                  </Box>
+                )}
+              </Box>
+            </Paper>
+          </>
+        )}
+
+        {/* ── Server View filter bar + table ── */}
+        {!dbView && inventory.groups.length > 0 && (
           <>
             {/* Filter bar */}
             <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>

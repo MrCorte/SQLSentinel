@@ -40,7 +40,12 @@ function makeMetrics(dbs: DbSpec[] = []): ServerMetrics {
       stateDesc: d.stateDesc ?? 'ONLINE',
       recoveryModel: 'FULL',
       sizeMb: d.sizeMb ?? 100,
-      logSizeMb: d.logSizeMb ?? 10
+      logSizeMb: d.logSizeMb ?? 10,
+      compatibilityLevel: 150,
+      isEncrypted: false,
+      isReadOnly: false,
+      owner: 'sa',
+      createDate: '2020-01-01T00:00:00.000Z'
     })),
     activeSessions: [],
     topQueries: [],

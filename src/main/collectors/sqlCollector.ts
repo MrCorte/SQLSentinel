@@ -32,6 +32,11 @@ interface DatabaseInfoRow {
   recovery_model: string
   size_mb: number
   log_size_mb: number
+  compatibility_level: number
+  is_encrypted: boolean
+  is_read_only: boolean
+  owner: string
+  create_date: Date
 }
 
 interface SessionInfoRow {
@@ -179,11 +184,18 @@ async function queryDatabases(pool: mssql.ConnectionPool): Promise<DatabaseInfo[
       CAST(SUM(CASE WHEN mf.type = 0 THEN mf.size * 8.0 / 1024 ELSE 0 END)
            AS DECIMAL(18,2))                                                    AS size_mb,
       CAST(SUM(CASE WHEN mf.type = 1 THEN mf.size * 8.0 / 1024 ELSE 0 END)
-           AS DECIMAL(18,2))                                                    AS log_size_mb
+           AS DECIMAL(18,2))                                                    AS log_size_mb,
+      d.compatibility_level                                                     AS compatibility_level,
+      d.is_encrypted                                                            AS is_encrypted,
+      d.is_read_only                                                            AS is_read_only,
+      ISNULL(SUSER_SNAME(d.owner_sid), '')                                     AS owner,
+      d.create_date                                                             AS create_date
     FROM sys.databases d
     LEFT JOIN sys.master_files mf ON d.database_id = mf.database_id
     WHERE d.database_id > 4
-    GROUP BY d.name, d.state_desc, d.recovery_model_desc
+    GROUP BY d.name, d.state_desc, d.recovery_model_desc,
+             d.compatibility_level, d.is_encrypted, d.is_read_only,
+             d.owner_sid, d.create_date
     ORDER BY d.name
   `
 
@@ -194,7 +206,12 @@ async function queryDatabases(pool: mssql.ConnectionPool): Promise<DatabaseInfo[
     stateDesc: row.state_desc,
     recoveryModel: row.recovery_model,
     sizeMb: Number(row.size_mb),
-    logSizeMb: Number(row.log_size_mb)
+    logSizeMb: Number(row.log_size_mb),
+    compatibilityLevel: Number(row.compatibility_level),
+    isEncrypted: Boolean(row.is_encrypted),
+    isReadOnly: Boolean(row.is_read_only),
+    owner: row.owner ?? '',
+    createDate: row.create_date instanceof Date ? row.create_date.toISOString() : String(row.create_date)
   }))
 }
 

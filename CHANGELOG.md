@@ -5,6 +5,27 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Added — 2026-03-31 (DB View — asset inventory database-centric)
+- **DB View in Inventory**: toggle Server View / DB View nella pagina Inventory — una riga per ogni database di ogni server, raggruppato per server (header collassabile)
+- **Nuovi campi T-SQL**: `compatibilityLevel`, `isEncrypted` (TDE), `isReadOnly`, `owner`, `createDate` aggiunti alla query `sys.databases` del collector; disponibili in tutta l'app
+- **Colonne DB View**: DATABASE | SERVER | ALIAS | STATO | RECOVERY | COMPAT (→ "SQL 2019") | TDE (🔒/🔓) | DATI | LOG | ULTIMO FULL | ULTIMO LOG | OWNER | CREATO
+- **KPI cards DB View**: DB Totali · Online · Offline · Full Recovery · TDE Attivo · Senza Backup · Compat < 2016
+- **Filtri DB View**: recovery model (FULL/SIMPLE/BULK_LOGGED) · TDE (tutti/crittografati/non crittografati) · compat level · solo offline · solo senza backup >24h
+- **Export CSV DB View**: `buildDbViewCsvRows()` in csvExportUtils — 17 colonne inclusi tutti i nuovi campi tecnici
+- **`compatLevelToSqlVersion()`**: helper `sqlVersionUtils.ts` mappa il raw compat level (80–160) alla versione leggibile SQL 2000–2022
+- **AG role nel DB View**: server-header mostra chip "★ PRIMARY" / "○ SECONDARY" per repliche AG — chiarisce perché lo stesso DB appare più volte per server diversi in un availability group
+
+### Fixed — 2026-03-31 (production hardening)
+- **`DatabaseInfo` backward compat**: i 5 nuovi campi (`compatibilityLevel`, `isEncrypted`, `isReadOnly`, `owner`, `createDate`) sono ora `optional` — snapshot precedenti (SQLite) non rompono la deserializzazione
+- **CSV DB View compat level**: `buildDbViewCsvRows` emette stringa vuota invece di `'Compat 0'` quando il compat level non è disponibile
+- **Tray icon dev mode**: percorso icona corretto da `../../../resources` a `../../resources` — risolve `unhandledRejection: Failed to load image from path`
+- **`sqlCollector.test.ts`**: aggiornato mock `DB_ROW` con i 5 nuovi campi; aggiunte assertions su `compatibilityLevel`, `isEncrypted`, `isReadOnly`, `owner`, `createDate`
+
+### Changed — 2026-03-31 (caricamento istantaneo server — stale-while-revalidate)
+- **Dashboard stale-while-revalidate**: al cambio server la UI mostra immediatamente i dati già in `metricsStore.metricsMap` (pre-popolati da SQLite al boot o dai push del worker) mentre il fetch silenzioso si completa in background — il ritorno su un server già visitato è istantaneo
+- **LinearProgress non bloccante**: durante il refresh silenzioso compare una barra sottile in cima al contenuto (sticky, `zIndex 10`) invece del blocco della UI; `CircularProgress` appare solo al primo carico assoluto (nessun dato in cache)
+- **Reset metrics locali al cambio server** (`useMetrics`): `metrics` locale viene azzerato a `null` ad ogni cambio `ip:port` — elimina il bug per cui si vedevano brevemente le metriche del server precedente durante il caricamento del nuovo
+
 ### Added — 2026-03-27 (persistenza storico metriche su SQLite)
 - **Boot restore**: all'avvio l'app carica automaticamente gli ultimi 20 snapshot per server da SQLite — i grafici CPU/memoria e i valori KPI sono immediatamente disponibili senza attendere il primo ciclo di polling (~60s)
 - **Persistenza progressiva**: ogni 5 poll riusciti (~5 min a 60s interval) lo snapshot viene accodato in-memory e scritto su SQLite in un'unica transazione ogni 5 min (`batchSave`)

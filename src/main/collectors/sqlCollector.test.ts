@@ -31,7 +31,12 @@ const DB_ROW = {
   state_desc: 'ONLINE',
   recovery_model: 'FULL',
   size_mb: 512,
-  log_size_mb: 64
+  log_size_mb: 64,
+  compatibility_level: 150,
+  is_encrypted: false,
+  is_read_only: false,
+  owner: 'sa',
+  create_date: new Date('2020-01-01T00:00:00Z')
 }
 
 const BACKUP_ROW = {
@@ -91,6 +96,11 @@ describe('collectMetrics', () => {
     expect(metrics.databases[0].name).toBe('AdventureWorks')
     expect(metrics.databases[0].stateDesc).toBe('ONLINE')
     expect(metrics.databases[0].sizeMb).toBe(512)
+    expect(metrics.databases[0].compatibilityLevel).toBe(150)
+    expect(metrics.databases[0].isEncrypted).toBe(false)
+    expect(metrics.databases[0].isReadOnly).toBe(false)
+    expect(metrics.databases[0].owner).toBe('sa')
+    expect(metrics.databases[0].createDate).toBe(new Date('2020-01-01T00:00:00Z').toISOString())
 
     // Sessioni e top queries vuote (recordset vuoti)
     expect(metrics.activeSessions).toEqual([])

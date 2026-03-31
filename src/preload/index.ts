@@ -181,9 +181,9 @@ function mockMetrics(cpu = 18, memUsed = 4096): ServerMetrics {
       physicalCpus: 8,
     },
     databases: [
-      { name: 'AdventureWorks', stateDesc: 'ONLINE', recoveryModel: 'FULL', sizeMb: 248, logSizeMb: 64 },
-      { name: 'ReportServer', stateDesc: 'ONLINE', recoveryModel: 'SIMPLE', sizeMb: 12, logSizeMb: 2 },
-      { name: 'OfflineDB', stateDesc: 'OFFLINE', recoveryModel: 'FULL', sizeMb: 512, logSizeMb: 128 },
+      { name: 'AdventureWorks', stateDesc: 'ONLINE', recoveryModel: 'FULL', sizeMb: 248, logSizeMb: 64, compatibilityLevel: 150, isEncrypted: false, isReadOnly: false, owner: 'sa', createDate: '2021-01-01T00:00:00.000Z' },
+      { name: 'ReportServer', stateDesc: 'ONLINE', recoveryModel: 'SIMPLE', sizeMb: 12, logSizeMb: 2, compatibilityLevel: 130, isEncrypted: false, isReadOnly: false, owner: 'sa', createDate: '2019-06-01T00:00:00.000Z' },
+      { name: 'OfflineDB', stateDesc: 'OFFLINE', recoveryModel: 'FULL', sizeMb: 512, logSizeMb: 128, compatibilityLevel: 150, isEncrypted: true, isReadOnly: false, owner: 'dbo', createDate: '2020-03-15T00:00:00.000Z' },
     ],
     activeSessions: [
       { sessionId: 51, status: 'running', blockingSessionId: 0, waitType: '', waitTimeMs: 0, cpuTime: 234, logicalReads: 1024 },

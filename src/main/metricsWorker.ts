@@ -1,7 +1,7 @@
 import { BrowserWindow } from 'electron'
 import { IpcChannel } from './ipc/types'
 import type { Alert, AlertCategory, AlertSeverity, WorkerStartRequest, CollectMetricsRequest, ServerHealthPayload } from './ipc/types'
-import { collectMetrics } from './collectors/sqlCollector'
+import { collectMetrics, collectMetricsCritical } from './collectors/sqlCollector'
 import { detectAndSyncReplicaRoles } from './collectors/agCollector'
 import * as serverStore from './store/serverStore'
 import * as metricsRepository from './store/metricsRepository'
@@ -24,6 +24,7 @@ export interface IntervalOverrides {
 
 const MAX_HISTORY = 20
 const BATCH_SIZE = 30
+const SYSTEM_DBS = new Set(['master', 'tempdb', 'model', 'msdb', 'distribution'])
 const INTERVAL_ACTIVE_MS  = 60_000
 const INTERVAL_IDLE_MS    = 300_000
 const INTERVAL_OFFLINE_MS = 600_000
@@ -69,6 +70,10 @@ let saveFlushTimer: ReturnType<typeof setTimeout> | null = null
 // Track previous metrics for delta computation
 const previousMetrics = new Map<string, ServerMetrics>()
 
+// Batch buffer: coalesce per-server metrics pushes into a single IPC message per microtask checkpoint
+const pendingBatch: Array<{ serverId: string; metrics: ServerMetrics }> = []
+let batchFlushScheduled = false
+
 let alertCallback: ((alert: Alert) => void) | null = null
 let intervalOverrides: IntervalOverrides | null = null
 
@@ -88,6 +93,24 @@ function pushToRenderer(channel: string, data: unknown): void {
   BrowserWindow.getAllWindows().forEach((w) => {
     if (!w.isDestroyed()) w.webContents.send(channel, data)
   })
+}
+
+function flushMetricsBatch(): void {
+  batchFlushScheduled = false
+  if (pendingBatch.length === 0) return
+  const batch = pendingBatch.splice(0)
+  pushToRenderer(IpcChannel.METRICS_BATCH_UPDATED, batch)
+}
+
+function enqueueBatchPush(sid: string, metrics: ServerMetrics): void {
+  pendingBatch.push({ serverId: sid, metrics })
+  if (!batchFlushScheduled) {
+    batchFlushScheduled = true
+    // Microtask flush: coalesces all job completions within the same event-loop turn
+    // into a single IPC message. Fires before any macrotask (setTimeout), so it works
+    // transparently with Vitest fake timers.
+    Promise.resolve().then(flushMetricsBatch)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -201,9 +224,10 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
     )
   }
 
-  // Backup scaduto
+  // Backup scaduto (escludi DB di sistema — distribution ha database_id > 4 quindi non filtrato dalla query SQL)
   const MS_24H = 86_400_000
   const overdueDBs = metrics.backupStatus
+    .filter((b) => !SYSTEM_DBS.has(b.databaseName))
     .filter((b) => !b.lastFullBackup || Date.now() - new Date(b.lastFullBackup).getTime() > MS_24H)
     .map((b) => b.databaseName)
   if (overdueDBs.length > 0) {
@@ -266,8 +290,9 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
   const allCustomFields = getAllCustomFields()
   const hasVisibleWindow = BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.isVisible())
   try {
+    const collectFn = intervalOverrides?.lightCollectors ? collectMetricsCritical : collectMetrics
     const metrics = await Promise.race([
-      collectMetrics(job.server),
+      collectFn(job.server),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('poll timeout')), POLL_TIMEOUT_MS)
       ),
@@ -282,17 +307,6 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
       }))
     }
 
-    if (intervalOverrides?.lightCollectors) {
-      // Strip fields not needed for alert evaluation; reduces IPC payload and history memory.
-      // Note: full T-SQL query skipping (collectMetricsCritical) is deferred.
-      enrichedMetrics = {
-        ...enrichedMetrics,
-        topQueries: [],
-        waitStats: [],
-        databaseFiles: [],
-      }
-    }
-
     // Rolling history
     const cap = intervalOverrides?.historyCapOverride ?? MAX_HISTORY
     const hist = metricsHistory.get(sid) ?? []
@@ -302,7 +316,7 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
 
     const delta = computeDelta(sid, enrichedMetrics)
     if (hasVisibleWindow) {
-      pushToRenderer(IpcChannel.METRICS_UPDATED, { serverId: sid, metrics: delta })
+      enqueueBatchPush(sid, delta)
     }
     processAlerts(sid, enrichedMetrics)
 
@@ -574,6 +588,8 @@ export function __resetForTests(): void {
   activeServerId = null
   alertCallback = null
   intervalOverrides = null
+  pendingBatch.length = 0
+  batchFlushScheduled = false
 }
 
 /**

@@ -561,3 +561,59 @@ export async function collectMetrics(connection: ServerConnection): Promise<Serv
     }
   }
 }
+
+/**
+ * Raccoglie solo le metriche necessarie per la valutazione degli alert:
+ * CPU/memoria, stato DB, sessioni bloccate, backup age, spazio disco.
+ * Salta topQueries (dm_exec_query_stats), waitStats (dm_os_wait_stats) e
+ * databaseFiles (FILEPROPERTY) — usato per server idle/background con lightCollectors=true.
+ */
+export async function collectMetricsCritical(connection: ServerConnection): Promise<ServerMetrics> {
+  const config = buildConfig(connection)
+  let pool: mssql.ConnectionPool | null = null
+
+  try {
+    pool = await mssql.connect(config)
+
+    const [instanceInfo, databases, activeSessions, backupStatus, diskVolumes] = await Promise.all([
+      queryInstanceInfo(pool).catch((err: Error) => {
+        console.error('[collector] instance info:', err.message)
+        return defaultInstanceInfo()
+      }),
+      queryDatabases(pool).catch((err: Error) => {
+        console.error('[collector] databases:', err.message)
+        return [] as DatabaseInfo[]
+      }),
+      querySessions(pool).catch((err: Error) => {
+        console.error('[collector] sessions:', err.message)
+        return [] as SessionInfo[]
+      }),
+      queryBackupStatus(pool).catch((err: Error) => {
+        console.error('[collector] backup status:', err.message)
+        return [] as BackupInfo[]
+      }),
+      queryDiskVolumes(pool).catch((err: Error) => {
+        console.error('[collector] disk volumes:', err.message)
+        return [] as DiskVolume[]
+      })
+    ])
+
+    return {
+      collectedAt: new Date(),
+      instanceInfo,
+      databases,
+      activeSessions,
+      topQueries: [],
+      backupStatus,
+      waitStats: [],
+      diskVolumes,
+      databaseFiles: []
+    }
+  } finally {
+    if (pool) {
+      await pool.close().catch((err: Error) =>
+        console.error('[collector] pool close:', err.message)
+      )
+    }
+  }
+}

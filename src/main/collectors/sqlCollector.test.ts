@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as mssql from 'mssql'
-import { collectMetrics } from './sqlCollector'
+import { collectMetrics, collectMetricsCritical } from './sqlCollector'
 import type { ServerConnection } from './types'
 
 // Mock dell'intero modulo mssql — nessuna connessione reale
@@ -161,5 +161,49 @@ describe('collectMetrics', () => {
     expect(mockPool.close).toHaveBeenCalledOnce()
 
     consoleSpy.mockRestore()
+  })
+})
+
+describe('collectMetricsCritical', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('esegue solo 5 query (salta dm_exec_query_stats, dm_os_wait_stats, FILEPROPERTY)', async () => {
+    const { mockPool, mockRequest } = makeMockPool()
+    vi.mocked(mssql.connect as (config: mssql.config | string) => Promise<mssql.ConnectionPool>)
+      .mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
+
+    const result = await collectMetricsCritical(CONN)
+
+    const executedSqls: string[] = mockRequest.query.mock.calls.map(([sql]: [string]) => sql)
+
+    // Le 3 query costose NON devono essere eseguite
+    expect(executedSqls.some((sql) => sql.includes('dm_exec_query_stats'))).toBe(false)
+    expect(executedSqls.some((sql) => sql.includes('dm_os_wait_stats'))).toBe(false)
+    expect(executedSqls.some((sql) => sql.includes('FILEPROPERTY'))).toBe(false)
+
+    // Le 5 query critiche DEVONO essere eseguite
+    expect(executedSqls.some((sql) => sql.includes('dm_os_process_memory'))).toBe(true)
+    expect(executedSqls.some((sql) => sql.includes('sys.databases'))).toBe(true)
+    expect(executedSqls.some((sql) => sql.includes('dm_exec_requests'))).toBe(true)
+    expect(executedSqls.some((sql) => sql.includes('backupset'))).toBe(true)
+    expect(executedSqls.some((sql) => sql.includes('dm_os_volume_stats'))).toBe(true)
+
+    // Esattamente 5 chiamate .query()
+    expect(mockRequest.query).toHaveBeenCalledTimes(5)
+
+    // I campi saltati sono array vuoti
+    expect(result.topQueries).toEqual([])
+    expect(result.waitStats).toEqual([])
+    expect(result.databaseFiles).toEqual([])
+
+    // I campi critici sono valorizzati
+    expect(result.instanceInfo.version).toBe(INSTANCE_ROW.version)
+    expect(result.databases).toHaveLength(1)
+    expect(result.backupStatus).toHaveLength(1)
+
+    // Pool sempre chiuso
+    expect(mockPool.close).toHaveBeenCalledOnce()
   })
 })

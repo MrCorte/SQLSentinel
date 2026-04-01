@@ -28,11 +28,11 @@ import DragHandleIcon from '@mui/icons-material/DragHandle'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import { keyframes } from '@mui/system'
 import type { StoredServer } from '../../../preload/index'
+import { useShallow } from 'zustand/shallow'
 import { useGroupsStore } from '../store/groupsStore'
 import { useMetricsStore } from '../store/metricsStore'
 import { useAgStore } from '../store/agStore'
 import type { AgGroupState } from '../store/agStore'
-import { useServersStore } from '../store/serversStore'
 import type { ServerGroup } from '../types/index'
 import { getServerDisplayName } from '../types/index'
 import { tokens } from '../styles/tokens'
@@ -1019,11 +1019,21 @@ export function Sidebar({
     toggleMachineCollapse,
     setServerGroup,
     setServerAlias
-  } = useGroupsStore()
+  } = useGroupsStore(
+    useShallow((s) => ({
+      groups: s.groups,
+      serverGroups: s.serverGroups,
+      serverAliases: s.serverAliases,
+      expandedAGs: s.expandedAGs,
+      expandedMachines: s.expandedMachines,
+      toggleCollapse: s.toggleCollapse,
+      toggleAgCollapse: s.toggleAgCollapse,
+      toggleMachineCollapse: s.toggleMachineCollapse,
+      setServerGroup: s.setServerGroup,
+      setServerAlias: s.setServerAlias,
+    }))
+  )
   const agGroups = useAgStore((s) => s.agGroups)
-  // Debug: verifica reattività store vs props
-  const storeServers = useServersStore((s) => s.servers)
-  console.log('[Sidebar] render — props:', servers.length, 'store:', storeServers.length)
 
   const [searchText, setSearchText] = useState('')
   const [groupManagerOpen, setGroupManagerOpen] = useState(false)

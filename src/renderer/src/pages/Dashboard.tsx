@@ -62,7 +62,7 @@ export function Dashboard(): React.JSX.Element {
       servers: s.servers,
       initialized: s.initialized,
       removeServer: s.removeServer,
-      updateServer: s.updateServer,
+      updateServer: s.updateServer
     }))
   )
   const { detectAgsForServer } = useAgStore()

@@ -1030,7 +1030,7 @@ export function Sidebar({
       toggleAgCollapse: s.toggleAgCollapse,
       toggleMachineCollapse: s.toggleMachineCollapse,
       setServerGroup: s.setServerGroup,
-      setServerAlias: s.setServerAlias,
+      setServerAlias: s.setServerAlias
     }))
   )
   const agGroups = useAgStore((s) => s.agGroups)

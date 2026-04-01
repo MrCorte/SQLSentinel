@@ -31,6 +31,20 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
     [maxPoints]
   )
 
+  const pushSnapshotBatch = useCallback(
+    (batch: Array<{ serverId: string; metrics: ServerMetrics }>) => {
+      // Single Zustand set() for all servers in the batch
+      useMetricsStore.getState().applyDeltaBatch(batch)
+      const map = historyMapRef.current
+      for (const { serverId, metrics: m } of batch) {
+        const existing = map.get(serverId) ?? []
+        const newPoint = metricsToHistoryPoint(m)
+        map.set(serverId, [...existing, newPoint].slice(-maxPoints))
+      }
+    },
+    [maxPoints]
+  )
+
   // Quando cambia retentionMinutes, taglia le entry esistenti in-place
   useEffect(() => {
     const map = historyMapRef.current
@@ -82,6 +96,7 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
         setIntervalSeconds,
         setConnection,
         pushSnapshot,
+        pushSnapshotBatch,
         getHistory,
         setRetentionMinutes,
         seedHistory

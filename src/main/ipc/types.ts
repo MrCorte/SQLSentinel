@@ -20,7 +20,8 @@ export enum IpcChannel {
   SERVER_UNREACHABLE = 'server:unreachable',
   SERVER_RECOVERED = 'server:recovered',
   COLLECT_METRICS = 'metrics:collect',
-  METRICS_UPDATED = 'metrics:updated', // push-only: main → renderer
+  METRICS_UPDATED = 'metrics:updated',       // push-only: main → renderer (legacy single-server)
+  METRICS_BATCH_UPDATED = 'metrics:batchUpdated', // push-only: coalesced batch per polling cycle
   ALERT_NEW = 'metrics:alert-new', // push-only: main → renderer
   WORKER_START = 'worker:start',
   WORKER_STOP = 'worker:stop',

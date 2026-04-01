@@ -5,6 +5,20 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Security — 2026-03-31 (cifratura credenziali a riposo)
+- **Password encryption**: le password SQL Server non vengono più scritte in plaintext nel file `electron-store` JSON su disco — uso di `safeStorage` di Electron (Windows DPAPI / macOS Keychain / Linux Secret Service) per cifrare a riposo con `encryptedPassword` in base64
+- **Migration automatica**: al primo avvio l'app rileva password in chiaro nel file JSON esistente e le migra in modo trasparente via `migrateEncryptCredentials()` — zero intervento manuale
+- Il renderer riceve ancora `password` via IPC in memoria (canale locale in-process, threat model accettabile per desktop app)
+
+### Performance — 2026-03-31 (batching IPC metriche)
+- **`METRICS_BATCH_UPDATED`**: nuovo canale IPC che raggruppa tutti gli aggiornamenti di un ciclo di polling in un singolo messaggio — da 120 IPC separati con 200+ server a 1-2 messaggi per ciclo
+- **`enqueueBatchPush` + `flushMetricsBatch`**: le push dei singoli job vengono accodate e inviate tramite microtask flush (`Promise.resolve().then()`), compatibile con Vitest fake timers
+- **`applyDeltaBatch()`** in `metricsStore`: unica transazione Zustand per tutti gli update del batch — riduce i re-render del renderer
+- **`pushSnapshotBatch()`** in `WorkerContext`: aggiorna sia lo store Zustand che `historyMapRef` in un unico passaggio per tutti i server del batch
+
+### Fixed — 2026-03-31 (filtro system DB negli alert backup)
+- **`SYSTEM_DBS` filter**: aggiunto set esplicito `{master, tempdb, model, msdb, distribution}` nel check `backup_overdue` come defense-in-depth — il database `distribution` (SQL Server Replication) ha `database_id > 4` e non era filtrato dalla query SQL, generando falsi positivi
+
 ### Added — 2026-03-31 (DB View — asset inventory database-centric)
 - **DB View in Inventory**: toggle Server View / DB View nella pagina Inventory — una riga per ogni database di ogni server, raggruppato per server (header collassabile)
 - **Nuovi campi T-SQL**: `compatibilityLevel`, `isEncrypted` (TDE), `isReadOnly`, `owner`, `createDate` aggiunti alla query `sys.databases` del collector; disponibili in tutta l'app

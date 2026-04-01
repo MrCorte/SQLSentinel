@@ -254,8 +254,9 @@ describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
     vi.advanceTimersByTime(300_001)  // INTERVAL_IDLE_MS = 300_000
     await drainJobCycle()
 
-    const evt = pushed.find((m) => m.channel === 'metrics:updated')
-    const payload = evt?.data as { serverId: string; metrics: ServerMetrics }
+    const evt = pushed.find((m) => m.channel === 'metrics:batchUpdated')
+    const batch = evt?.data as Array<{ serverId: string; metrics: ServerMetrics }>
+    const payload = batch?.[0]
     expect(payload?.metrics?.removedDbs).toEqual(
       expect.arrayContaining(['DB_GONE_1', 'DB_GONE_2'])
     )
@@ -277,10 +278,10 @@ describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
     startWorker({ intervalSeconds: 60, servers: [{ ip: '10.0.0.1', port: 1433, useWindowsAuth: true }] })
     await drainJobCycle()
 
-    const evt = pushed.find((m) => m.channel === 'metrics:updated')
-    const payload = evt?.data as { metrics: ServerMetrics }
+    const evt = pushed.find((m) => m.channel === 'metrics:batchUpdated')
+    const batch = evt?.data as Array<{ serverId: string; metrics: ServerMetrics }>
     // Prima collect: nessun isDelta
-    expect(payload?.metrics?.isDelta).toBeFalsy()
+    expect(batch?.[0]?.metrics?.isDelta).toBeFalsy()
   })
 
   it('nessun DB cambiato → isDelta:true con databases array vuoto', async () => {
@@ -308,8 +309,9 @@ describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
     vi.advanceTimersByTime(300_001)  // INTERVAL_IDLE_MS = 300_000
     await drainJobCycle()
 
-    const evt = pushed.find((m) => m.channel === 'metrics:updated')
-    const payload = evt?.data as { metrics: ServerMetrics }
+    const evt = pushed.find((m) => m.channel === 'metrics:batchUpdated')
+    const batch = evt?.data as Array<{ serverId: string; metrics: ServerMetrics }>
+    const payload = batch?.[0]
     expect(payload?.metrics?.isDelta).toBe(true)
     expect(payload?.metrics?.databases).toHaveLength(0)
   })

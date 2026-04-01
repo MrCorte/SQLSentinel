@@ -424,6 +424,7 @@ export interface SqlSentinelAPI {
   getHistory(req: HistoryRequest): Promise<IpcResult<ServerMetrics[]>>
   getHistoryBulk(): Promise<IpcResult<Record<string, ServerMetrics[]>>>
   onMetricsUpdated(callback: (data: { serverId: string; metrics: ServerMetrics }) => void): () => void
+  onMetricsBatchUpdated(callback: (batch: Array<{ serverId: string; metrics: ServerMetrics }>) => void): () => void
   onAlertNew(callback: (alert: Alert) => void): () => void
   getSettings(): Promise<IpcResult<AppSettings>>
   saveSettings(req: SaveSettingsRequest): Promise<IpcResult<null>>

@@ -13,6 +13,8 @@ export interface WorkerContextValue {
   setConnection: (c: CollectMetricsRequest | null) => void
   /** Aggiunge un punto allo storico del server specificato. */
   pushSnapshot: (serverId: string, m: ServerMetrics) => void
+  /** Versione batch di pushSnapshot — singola transazione Zustand per tutti gli update. */
+  pushSnapshotBatch: (batch: Array<{ serverId: string; metrics: ServerMetrics }>) => void
   /** Legge lo storico per un server. Dipende da historyVersion → re-render garantito. */
   getHistory: (serverId: string) => MetricsHistoryPoint[]
   setRetentionMinutes: (minutes: number) => void
@@ -27,6 +29,7 @@ export const WorkerContext = createContext<WorkerContextValue>({
   setIntervalSeconds: () => {},
   setConnection: () => {},
   pushSnapshot: () => {},
+  pushSnapshotBatch: () => {},
   getHistory: () => [],
   setRetentionMinutes: () => {},
   seedHistory: () => {}

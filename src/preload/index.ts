@@ -385,6 +385,17 @@ const realApi = {
     return () => ipcRenderer.removeListener(IpcChannel.METRICS_UPDATED, listener)
   },
 
+  onMetricsBatchUpdated: (
+    callback: (batch: Array<{ serverId: string; metrics: ServerMetrics }>) => void
+  ): (() => void) => {
+    const listener = (
+      _event: IpcRendererEvent,
+      batch: Array<{ serverId: string; metrics: ServerMetrics }>
+    ) => callback(batch)
+    ipcRenderer.on(IpcChannel.METRICS_BATCH_UPDATED, listener)
+    return () => ipcRenderer.removeListener(IpcChannel.METRICS_BATCH_UPDATED, listener)
+  },
+
   onAlertNew: (callback: (alert: Alert) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, alert: Alert) => callback(alert)
     ipcRenderer.on(IpcChannel.ALERT_NEW, listener)

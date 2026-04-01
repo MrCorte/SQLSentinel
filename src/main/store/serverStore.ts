@@ -1,5 +1,6 @@
 import Store from 'electron-store'
 import { randomUUID } from 'node:crypto'
+import { safeStorage } from 'electron'
 
 // ---------------------------------------------------------------------------
 // Type — must stay JSON-serialisable (strings for dates, no Date objects)
@@ -15,7 +16,9 @@ export interface StoredServer {
   instanceName?: string
   useWindowsAuth: boolean
   username?: string
-  /** Plaintext password — encrypt in a future iteration */
+  /** Encrypted password (base64-encoded DPAPI/Keychain blob via safeStorage) — never plaintext on disk */
+  encryptedPassword?: string
+  /** @deprecated Do not persist. Populated transiently by getAll/getByIpPort after decryption. */
   password?: string
   addedAt: string           // ISO 8601
   lastSeen?: string         // ISO 8601 — last successful connection
@@ -30,6 +33,36 @@ export interface StoredServer {
   physicalCpus?: number     // cpu_count / hyperthread_ratio
   hostingType?: ServerHostingType
   notes?: string            // free-text notes; persisted in electron-store
+}
+
+// ---------------------------------------------------------------------------
+// Encryption helpers (safeStorage — Windows DPAPI, macOS Keychain, Linux Secret Service)
+// ---------------------------------------------------------------------------
+
+function encryptPwd(plain: string): string {
+  if (!safeStorage.isEncryptionAvailable()) return plain  // rare: fallback for unsupported OS config
+  return safeStorage.encryptString(plain).toString('base64')
+}
+
+function decryptPwd(stored: string): string {
+  if (!safeStorage.isEncryptionAvailable()) return stored
+  try {
+    return safeStorage.decryptString(Buffer.from(stored, 'base64'))
+  } catch {
+    // Corrupted or migrated from different OS user — return empty to avoid crash
+    console.warn('[serverStore] decryptPwd: failed to decrypt, clearing password')
+    return ''
+  }
+}
+
+/** Inject decrypted password into a stored server before returning to callers */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function withDecryptedPassword(s: any): StoredServer {
+  const srv: StoredServer = normalizeServer(s)
+  if (srv.encryptedPassword) {
+    srv.password = decryptPwd(srv.encryptedPassword)
+  }
+  return srv
 }
 
 /**
@@ -61,7 +94,7 @@ const store = new Store<Schema>({
 
 export function getAll(): StoredServer[] {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (store.get('servers', []) as any[]).map(normalizeServer)
+  return (store.get('servers', []) as any[]).map(withDecryptedPassword)
 }
 
 export function getById(id: string): StoredServer | undefined {
@@ -90,8 +123,13 @@ export function add(
     id: randomUUID(),
     addedAt: new Date().toISOString()
   }
+  // Encrypt password before persisting; never write plaintext to disk
+  if (server.password) {
+    server.encryptedPassword = encryptPwd(server.password)
+    delete server.password
+  }
   store.set('servers', [...servers, server])
-  return { success: true, server }
+  return { success: true, server: withDecryptedPassword(server) }
 }
 
 /**
@@ -115,7 +153,12 @@ export function update(id: string, patch: Partial<StoredServer>): void {
   const servers = store.get('servers', [])
   const idx = servers.findIndex((s) => s.id === id)
   if (idx >= 0) {
-    servers[idx] = { ...servers[idx], ...patch }
+    const safePatch = { ...patch }
+    if (safePatch.password) {
+      safePatch.encryptedPassword = encryptPwd(safePatch.password)
+      delete safePatch.password
+    }
+    servers[idx] = { ...servers[idx], ...safePatch }
     store.set('servers', servers)
   }
 }
@@ -139,15 +182,47 @@ export function upsertByIpPort(params: any): StoredServer {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const idx = servers.findIndex((s: any) => (s.host ?? s.ip) === normalized.host && s.port === normalized.port)
   if (idx >= 0) {
-    servers[idx] = { ...servers[idx], ...normalized }
+    const safePatch = { ...normalized }
+    if (safePatch.password) {
+      safePatch.encryptedPassword = encryptPwd(safePatch.password)
+      delete safePatch.password
+    }
+    servers[idx] = { ...servers[idx], ...safePatch }
     store.set('servers', servers)
-    return normalizeServer(servers[idx])
+    return withDecryptedPassword(servers[idx])
   }
   const server: StoredServer = {
     ...normalized,
     id: randomUUID(),
     addedAt: new Date().toISOString()
   }
+  if (server.password) {
+    server.encryptedPassword = encryptPwd(server.password)
+    delete server.password
+  }
   store.set('servers', [...servers, server])
-  return server
+  return withDecryptedPassword(server)
+}
+
+/**
+ * One-shot migration: encrypt any plaintext passwords left in the store from
+ * previous app versions. Safe to call on every boot — no-op if already migrated.
+ */
+export function migrateEncryptCredentials(): void {
+  try {
+    if (!safeStorage.isEncryptionAvailable()) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const raw = store.get('servers', []) as any[]
+    const toMigrate = raw.filter((s) => s.password && !s.encryptedPassword)
+    if (toMigrate.length === 0) return
+    const migrated = raw.map((s) => {
+      if (!s.password || s.encryptedPassword) return s
+      const { password, ...rest } = s
+      return { ...rest, encryptedPassword: encryptPwd(password) }
+    })
+    store.set('servers', migrated)
+    console.log('[serverStore] migrated', toMigrate.length, 'server(s) to encrypted credentials')
+  } catch (err) {
+    console.error('[serverStore] migrateEncryptCredentials error:', err)
+  }
 }

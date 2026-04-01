@@ -23,6 +23,7 @@ vi.stubGlobal('sqlSentinel', {
   getServers: vi.fn().mockResolvedValue({ ok: true, data: [] }),
   onAlertNew: vi.fn(() => () => {}),
   onMetricsUpdated: vi.fn(() => () => {}),
+  onMetricsBatchUpdated: vi.fn(() => () => {}),
   onServerHealthUpdate: vi.fn(() => () => {}),
   onServerUnreachable: vi.fn(() => () => {}),
   onServerRecovered: vi.fn(() => () => {}),

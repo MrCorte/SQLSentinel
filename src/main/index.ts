@@ -12,6 +12,7 @@ import type { WorkerApi } from './backgroundService'
 import { syncServers, stopWorker, setIntervalOverrides, onAlert } from './metricsWorker'
 import { initDb, closeDb, defaultDbPath } from './store/database'
 import { cleanup as purgeOldSnapshots } from './store/metricsRepository'
+import { getSettings } from './store/settings'
 import { IpcChannel } from './ipc/types'
 import * as serverStore from './store/serverStore'
 import { scanHost } from './discovery/tcpScanner'
@@ -141,12 +142,14 @@ app.whenReady().then(() => {
   // Crea utente admin di default se non esistono utenti
   initDefaultAdmin().catch((err) => console.error('[AUTH] initDefaultAdmin fallito:', err))
 
-  // Purge snapshots più vecchi di 30 giorni: una volta al boot, poi ogni 24 h
-  purgeOldSnapshots(30)
-  setInterval(() => purgeOldSnapshots(30), 24 * 60 * 60 * 1000)
+  // Purge snapshots più vecchi della retention configurata: una volta al boot, poi ogni 24 h
+  const retentionDays = (): number => getSettings().retentionMinutes / (60 * 24)
+  purgeOldSnapshots(retentionDays())
+  setInterval(() => purgeOldSnapshots(retentionDays()), 24 * 60 * 60 * 1000)
 
-  // One-shot migration: normalize ip↔host field in electron-store
+  // One-shot migrations
   serverStore.migrateHostField()
+  serverStore.migrateEncryptCredentials()
 
   // App User Model ID per Windows (notifiche, taskbar)
   if (process.platform === 'win32') {

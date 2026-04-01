@@ -116,6 +116,37 @@ export function findLastN(serverId: string, n: number): ServerMetrics[] {
 }
 
 /**
+ * Restituisce gli ultimi N snapshot per ciascun server nella lista, in un'unica query SQLite.
+ * Usa ROW_NUMBER() OVER (PARTITION BY server_id) — richiede SQLite ≥ 3.25 (disponibile
+ * con better-sqlite3 su Node 18+).
+ * Più efficiente di N chiamate findLastN() separate su avvii con molti server.
+ */
+export function findLastNBulk(serverIds: string[], n: number): Record<string, ServerMetrics[]> {
+  if (serverIds.length === 0) return {}
+  const placeholders = serverIds.map(() => '?').join(',')
+  const rows = getDb()
+    .prepare<unknown[], SnapshotRow>(`
+      SELECT id, server_id, collected_at, metrics_json
+      FROM (
+        SELECT *,
+               ROW_NUMBER() OVER (PARTITION BY server_id ORDER BY collected_at DESC) AS rn
+        FROM metrics_snapshots
+        WHERE server_id IN (${placeholders})
+      ) AS ranked
+      WHERE ranked.rn <= ?
+      ORDER BY server_id, collected_at ASC
+    `)
+    .all(...serverIds, n)
+
+  const result: Record<string, ServerMetrics[]> = {}
+  for (const row of rows) {
+    if (!result[row.server_id]) result[row.server_id] = []
+    result[row.server_id].push(JSON.parse(row.metrics_json, dateReviver) as ServerMetrics)
+  }
+  return result
+}
+
+/**
  * Inserisce più snapshot in un'unica transazione SQLite.
  */
 export function batchSave(items: SaveItem[]): void {

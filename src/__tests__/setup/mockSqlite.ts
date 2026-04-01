@@ -180,6 +180,34 @@ class MockStatement {
         )
     }
 
+    // ── findLastNBulk: ROW_NUMBER() OVER (PARTITION BY server_id) ─────────────
+    // Args: ...serverIds, n  (last arg is the limit n)
+    if (s.includes('row_number()') && s.includes('partition by server_id')) {
+      const n = args[args.length - 1] as number
+      const serverIdSet = new Set(args.slice(0, -1) as string[])
+      const grouped = new Map<string, Row[]>()
+      for (const row of metrics_snapshots.values()) {
+        const sid = row.server_id as string
+        if (!serverIdSet.has(sid)) continue
+        if (!grouped.has(sid)) grouped.set(sid, [])
+        grouped.get(sid)!.push(row)
+      }
+      const result: Row[] = []
+      for (const [, rows] of grouped) {
+        const sorted = rows
+          .sort((a, b) => (b.collected_at as string).localeCompare(a.collected_at as string))
+          .slice(0, n)
+          .reverse() // ASC order (oldest first)
+        result.push(...sorted)
+      }
+      // Sort by server_id then collected_at ASC (matches ORDER BY in real query)
+      result.sort((a, b) => {
+        const sidCmp = (a.server_id as string).localeCompare(b.server_id as string)
+        return sidCmp !== 0 ? sidCmp : (a.collected_at as string).localeCompare(b.collected_at as string)
+      })
+      return result
+    }
+
     return []
   }
 }

@@ -146,17 +146,22 @@ function loadHistoryFromDb(servers: CollectMetricsRequest[]): void {
     console.warn('[worker] SQLite cleanup:', err instanceof Error ? err.message : err)
   }
 
+  const recordIdToSid = new Map<string, string>()
   for (const srv of servers) {
     const sid = serverId(srv.ip, srv.port)
     const record = serverStore.getByIpPort(srv.ip, srv.port)
-    if (!record) continue
+    if (record) recordIdToSid.set(record.id, sid)
+  }
+
+  if (recordIdToSid.size > 0) {
     try {
-      const snapshots = metricsRepository.findLastN(record.id, MAX_HISTORY)
-      if (snapshots.length > 0) {
-        metricsHistory.set(sid, snapshots)
+      const allHistory = metricsRepository.findLastNBulk([...recordIdToSid.keys()], MAX_HISTORY)
+      for (const [recordId, snapshots] of Object.entries(allHistory)) {
+        const sid = recordIdToSid.get(recordId)
+        if (sid && snapshots.length > 0) metricsHistory.set(sid, snapshots)
       }
     } catch (err) {
-      console.warn('[worker] SQLite load history', sid, ':', err instanceof Error ? err.message : err)
+      console.warn('[worker] SQLite load history bulk:', err instanceof Error ? err.message : err)
     }
   }
 }

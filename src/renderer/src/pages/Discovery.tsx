@@ -86,8 +86,7 @@ export function Discovery(): React.JSX.Element {
   }
 
   const handleDialogSave = async (data: AddServerFormData): Promise<void> => {
-    console.log('[Discovery] handleDialogSave — data:', JSON.stringify(data))
-    const result = await useServersStore.getState().addServer({
+    await useServersStore.getState().addServer({
       host: data.ip,
       port: data.port,
       instanceName: data.instanceName || undefined,
@@ -97,8 +96,6 @@ export function Discovery(): React.JSX.Element {
       password: data.password || undefined,
       hostingType: data.hostingType
     })
-    console.log('[Discovery] addServer result:', JSON.stringify(result))
-    console.log('[Discovery] store dopo add:', useServersStore.getState().servers.length, 'server')
     const sid = `${data.ip}:${data.port}`
     if (data.groupId) setServerGroup(sid, data.groupId)
     if (data.alias?.trim()) setServerAlias(sid, data.alias.trim())

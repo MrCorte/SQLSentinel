@@ -162,9 +162,11 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
   const openAlerts = alerts.filter((a) => a.acknowledgedAt === null)
   const acked = alerts.filter((a) => a.acknowledgedAt !== null)
 
-  const criticalFirst = [...openAlerts].sort((a, b) =>
-    a.severity === 'CRITICAL' && b.severity !== 'CRITICAL' ? -1 : 1
-  )
+  const criticalFirst = [...openAlerts].sort((a, b) => {
+    if (a.severity === 'CRITICAL' && b.severity !== 'CRITICAL') return -1
+    if (b.severity === 'CRITICAL' && a.severity !== 'CRITICAL') return 1
+    return 0
+  })
 
   return (
     <Drawer

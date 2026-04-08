@@ -344,8 +344,8 @@ export function HomeDashboard({
                   dataKey="value"
                   isAnimationActive={false}
                 >
-                  {donutFinal.map((entry, index) => (
-                    <Cell key={index} fill={entry.fill} />
+                  {donutFinal.map((entry) => (
+                    <Cell key={entry.name} fill={entry.fill} />
                   ))}
                 </Pie>
                 <Tooltip
@@ -488,8 +488,8 @@ export function HomeDashboard({
                   }}
                 />
                 <Bar dataKey="cpu" radius={[0, 2, 2, 0]} isAnimationActive={false}>
-                  {cpuData.map((entry, index) => (
-                    <Cell key={index} fill={entry.fill} />
+                  {cpuData.map((entry) => (
+                    <Cell key={entry.name} fill={entry.fill} />
                   ))}
                 </Bar>
               </BarChart>

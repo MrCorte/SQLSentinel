@@ -119,7 +119,7 @@ export function Dashboard(): React.JSX.Element {
 
   useEffect(() => {
     setConnection(connection)
-  }, [connection?.ip, connection?.port]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [connection])
 
   useEffect(() => {
     if (!selectedServerId) return

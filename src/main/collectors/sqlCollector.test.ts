@@ -22,8 +22,11 @@ const INSTANCE_ROW = {
   version: 'Microsoft SQL Server 2019 (RTM)',
   edition: 'Enterprise Edition',
   memory_used_mb: 4096,
+  memory_target_mb: 8192,
   cpu_usage_percent: 22,
-  uptime_days: 15
+  uptime_days: 15,
+  logical_cpu_count: 16,
+  physical_cpu_count: 8
 }
 
 const DB_ROW = {
@@ -88,8 +91,11 @@ describe('collectMetrics', () => {
     expect(metrics.instanceInfo.version).toBe(INSTANCE_ROW.version)
     expect(metrics.instanceInfo.edition).toBe(INSTANCE_ROW.edition)
     expect(metrics.instanceInfo.memoryUsedMb).toBe(4096)
+    expect(metrics.instanceInfo.memoryTargetMb).toBe(8192)
     expect(metrics.instanceInfo.cpuUsagePercent).toBe(22)
     expect(metrics.instanceInfo.uptimeDays).toBe(15)
+    expect(metrics.instanceInfo.logicalCpus).toBe(16)
+    expect(metrics.instanceInfo.physicalCpus).toBe(8)
 
     // Database
     expect(metrics.databases).toHaveLength(1)

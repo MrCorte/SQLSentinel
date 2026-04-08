@@ -12,8 +12,8 @@ vi.mock('../store/dbCustomFields', () => ({ getAllCustomFields: vi.fn(() => ({})
 // startWorker ora chiama loadHistoryFromDb → mock per isolare il test dal DB
 vi.mock('../store/metricsRepository', () => ({
   cleanup: vi.fn(),
-  findLastN: vi.fn(() => []),
-  batchSave: vi.fn(),
+  findLastNBulk: vi.fn(() => ({})),
+  batchSave: vi.fn()
 }))
 vi.mock('../store/settings', () => ({
   getSettings: vi.fn(() => ({ retentionMinutes: 60 }))

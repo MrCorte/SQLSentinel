@@ -74,7 +74,14 @@ const noop = () => {}
 
 beforeEach(() => {
   useServersStore.setState({ servers: [], initialized: true })
-  useMetricsStore.setState({ metricsMap: {}, lastUpdate: null, serverHealth: {} })
+  useMetricsStore.setState({
+    metricsMap: {},
+    summaries: {},
+    historyMap: {},
+    activeServerId: null,
+    lastUpdate: null,
+    serverHealth: {}
+  })
   useAlertsStore.setState({ alerts: [] })
 })
 

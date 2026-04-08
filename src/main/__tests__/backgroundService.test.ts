@@ -20,7 +20,7 @@ vi.mock('electron', () => ({
   Tray: MockTray,
   Menu: MockMenu,
   Notification: MockNotification,
-  app: { quit: vi.fn() },
+  app: { quit: vi.fn(), isPackaged: false },
   BrowserWindow: { getAllWindows: vi.fn(() => []) },
 }))
 
@@ -67,6 +67,7 @@ describe('BackgroundService — window close intercept', () => {
   beforeEach(() => { vi.clearAllMocks() })
 
   it('hides the window instead of closing when quitting=false', async () => {
+    vi.resetModules()
     const { BackgroundService } = await import('../backgroundService')
     const win = makeMockWin() as any
     const workerApi = {

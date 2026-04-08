@@ -17,6 +17,18 @@ vi.mock('electron', () => ({
 }))
 vi.mock('../collectors/sqlCollector', () => ({ collectMetrics: vi.fn() }))
 vi.mock('../store/dbCustomFields', () => ({ getAllCustomFields: vi.fn(() => ({})) }))
+vi.mock('../store/serverStore')
+vi.mock('../store/settings', () => ({
+  getSettings: vi.fn(() => ({ retentionMinutes: 60 }))
+}))
+vi.mock('../store/metricsRepository', () => ({
+  cleanup: vi.fn(),
+  findLastNBulk: vi.fn(() => ({})),
+  batchSave: vi.fn()
+}))
+vi.mock('../collectors/agCollector', () => ({
+  detectAndSyncReplicaRoles: vi.fn(() => Promise.resolve([]))
+}))
 
 import { BrowserWindow } from 'electron'
 import { collectMetrics } from '../collectors/sqlCollector'

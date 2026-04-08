@@ -654,6 +654,10 @@ const mockApi = {
     }
   },
 
+  onMetricsBatchUpdated: (
+    _callback: (batch: Array<{ serverId: string; metrics: ServerMetrics }>) => void
+  ): (() => void) => () => {},
+
   onAlertNew: (_callback: (alert: Alert) => void): (() => void) => () => {},
 
   getSettings: (): Promise<IpcResult<AppSettings>> =>
@@ -845,8 +849,9 @@ const bridgeApi = {
   acknowledgeAlert:    (r: AcknowledgeAlertRequest) => api.acknowledgeAlert(r),
   getHistory:          (r: HistoryRequest) => api.getHistory(r),
   getHistoryBulk:      () => api.getHistoryBulk(),
-  onMetricsUpdated:    (cb: (d: { serverId: string; metrics: ServerMetrics }) => void) => api.onMetricsUpdated(cb),
-  onAlertNew:          (cb: (a: Alert) => void) => api.onAlertNew(cb),
+  onMetricsUpdated:       (cb: (d: { serverId: string; metrics: ServerMetrics }) => void) => api.onMetricsUpdated(cb),
+  onMetricsBatchUpdated:  (cb: (batch: Array<{ serverId: string; metrics: ServerMetrics }>) => void) => api.onMetricsBatchUpdated(cb),
+  onAlertNew:             (cb: (a: Alert) => void) => api.onAlertNew(cb),
   getSettings:         () => api.getSettings(),
   saveSettings:        (r: SaveSettingsRequest) => api.saveSettings(r),
   getEmailSettings:  () => api.getEmailSettings(),

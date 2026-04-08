@@ -30,6 +30,7 @@ import type {
 } from '../../../preload/index'
 const DisksTab = lazy(() => import('./tabs/DisksTab').then((m) => ({ default: m.DisksTab })))
 import { NoteEditor } from './NoteEditor'
+import { compatLevelToSqlVersion } from '../utils/sqlVersionUtils'
 import { tokens } from '../styles/tokens'
 
 interface Props {
@@ -352,9 +353,6 @@ const TabDatabase = memo(function TabDatabase({
     [metrics.databases, customFields, serverId]
   )
 
-  console.log('[TabDatabase] databases:', databases)
-  console.log('[TabDatabase] customFields:', customFields)
-
   const handleSave = useCallback(
     async (fields: DbCustomFields) => {
       if (!editingDb) return
@@ -434,6 +432,25 @@ const TabDatabase = memo(function TabDatabase({
         align: 'right',
         headerAlign: 'right',
         valueFormatter: (v: number) => v.toLocaleString('it-IT')
+      },
+      {
+        field: 'compatibilityLevel',
+        headerName: 'Compat',
+        width: 100,
+        renderCell: (p) => {
+          const level = p.value as number | undefined
+          if (!level) return <Typography variant="body2" color="text.disabled">—</Typography>
+          return (
+            <Tooltip title={`Compatibility level ${level}`}>
+              <Typography
+                variant="body2"
+                sx={{ color: level < 130 ? 'warning.main' : 'text.secondary', fontVariantNumeric: 'tabular-nums' }}
+              >
+                {compatLevelToSqlVersion(level)}
+              </Typography>
+            </Tooltip>
+          )
+        }
       },
       {
         field: 'actions',

@@ -22,6 +22,9 @@ export function expandCidr(cidr: string): string[] {
   const baseInt = (((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0)
 
   const hostCount = Math.pow(2, 32 - prefix)
+  if (hostCount > 65536) {
+    throw new Error(`CIDR range too large (${hostCount} hosts) — minimum prefix /16`)
+  }
   const networkMask = (~(hostCount - 1)) >>> 0
   const networkInt = (baseInt & networkMask) >>> 0
 

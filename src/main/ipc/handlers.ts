@@ -118,6 +118,10 @@ export function registerIpcHandlers(): void {
       oldPassword: string,
       newPassword: string
     ): Promise<ChangePasswordResult> => {
+      const session = getSession()
+      if (!session || session.userId !== userId) {
+        return { success: false, error: 'Unauthorized' }
+      }
       try {
         return await changePassword(userId, oldPassword, newPassword)
       } catch (err) {
@@ -132,7 +136,6 @@ export function registerIpcHandlers(): void {
     IpcChannel.AUTH_LOGIN,
     IpcChannel.AUTH_LOGOUT,
     IpcChannel.AUTH_CHECK,
-    IpcChannel.AUTH_CHANGE_PASSWORD,
     IpcChannel.SETTINGS_GET,
     IpcChannel.SETTINGS_SET,
   ])
@@ -255,7 +258,7 @@ export function registerIpcHandlers(): void {
   )
 
   // SERVERS_CLEAR_MOCKS — rimuove server con id che inizia con 'mock-' (usati dal preload mock)
-  ipcMain.handle('servers:clearMocks', (): { success: boolean; removed: number; remaining: number } => {
+  ipcMain.handle(IpcChannel.SERVERS_CLEAR_MOCKS, (): { success: boolean; removed: number; remaining: number } => {
     try {
       const before = serverStore.getAll()
       const mocks = before.filter((s) => s.id.startsWith('mock-'))
@@ -676,9 +679,11 @@ export function registerIpcHandlers(): void {
   ;(ipcMain as any).handle = _origHandle
 }
 
-function csvEscape(value: string): string {
-  if (value.includes(',') || value.includes('"') || value.includes('\n') || value.includes('\r')) {
-    return '"' + value.replace(/"/g, '""') + '"'
+function csvEscape(v: unknown): string {
+  const s = v == null ? '' : String(v)
+  const dangerous = /^[=+\-@\t\r]/.test(s)
+  if (dangerous || s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
+    return '"' + s.replace(/"/g, '""') + '"'
   }
-  return value
+  return s
 }

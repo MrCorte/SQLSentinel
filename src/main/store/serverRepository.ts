@@ -89,7 +89,8 @@ export function upsert(server: Omit<StoredServer, 'id' | 'addedAt'> & Partial<Pi
     .prepare<[string, number], ServerRow>('SELECT * FROM servers WHERE ip = ? AND port = ?')
     .get(server.ip, server.port)
 
-  return rowToServer(saved!)
+  if (!saved) throw new Error('[serverRepository] upsert failed: row not found after insert')
+  return rowToServer(saved)
 }
 
 export function remove(id: string): void {

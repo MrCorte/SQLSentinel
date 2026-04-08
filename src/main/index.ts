@@ -30,6 +30,7 @@ process.on('uncaughtException', (err) => {
 // Module-level reference so the health checker can push events to the renderer
 let mainWindow: BrowserWindow | null = null
 let backgroundService: BackgroundService | null = null
+let healthCheckIntervalId: ReturnType<typeof setInterval> | undefined
 
 function watchWindowShortcuts(window: BrowserWindowType): void {
   const { webContents } = window
@@ -174,7 +175,7 @@ app.whenReady().then(() => {
   // Start health check: first run after 5 s, then every 60 s
   setTimeout(() => {
     healthCheckAll()
-    setInterval(healthCheckAll, 60_000)
+    healthCheckIntervalId = setInterval(healthCheckAll, 60_000)
   }, 5_000)
 
   // Push background/foreground events to renderer so it can throttle polling
@@ -206,6 +207,7 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  if (healthCheckIntervalId) clearInterval(healthCheckIntervalId)
   backgroundService?.destroy()
   closeDb()
   if (process.platform !== 'darwin') {

@@ -194,6 +194,6 @@ export async function initDefaultAdmin(): Promise<void> {
     db.prepare(
       `INSERT INTO users (username, password, role, must_change_password) VALUES (?, ?, 'admin', 1)`
     ).run('admin', hash)
-    console.log('[AUTH] Utente admin default creato (username: admin, password: Admin1234!)')
+    console.log('[AUTH] Default admin user created — change password on first login')
   }
 }

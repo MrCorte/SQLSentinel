@@ -16,6 +16,7 @@ export enum IpcChannel {
   SERVERS_ADD = 'servers:add',
   SERVERS_UPDATE = 'servers:update',
   SERVERS_REMOVE_BY_ID = 'servers:removeById',
+  SERVERS_CLEAR_MOCKS = 'servers:clearMocks',
   // Push events — main → renderer
   SERVER_UNREACHABLE = 'server:unreachable',
   SERVER_RECOVERED = 'server:recovered',

@@ -894,7 +894,7 @@ const bridgeApi = {
     update:     (id: string, patch: Partial<StoredServer>) => api.servers.update(id, patch),
     remove:     (id: string) => api.servers.remove(id),
     clearMocks: (): Promise<{ success: boolean; removed: number; remaining: number }> =>
-      ipcRenderer.invoke('servers:clearMocks'),
+      ipcRenderer.invoke(IpcChannel.SERVERS_CLEAR_MOCKS),
   },
   onServerUnreachable:    (cb: (d: ServerUnreachableEvent) => void) => api.onServerUnreachable(cb),
   onServerRecovered:      (cb: (id: string) => void) => api.onServerRecovered(cb),

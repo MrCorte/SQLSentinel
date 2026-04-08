@@ -151,7 +151,7 @@ async function queryInstanceInfo(pool: mssql.ConnectionPool): Promise<InstanceIn
       ), 0)                                      AS cpu_usage_percent,
       DATEDIFF(DAY, osi.sqlserver_start_time, GETDATE()) AS uptime_days,
       osi.cpu_count                                      AS logical_cpu_count,
-      osi.cpu_count / osi.hyperthread_ratio              AS physical_cpu_count
+      osi.cpu_count / NULLIF(osi.hyperthread_ratio, 0)    AS physical_cpu_count
     FROM sys.dm_os_process_memory pm
     CROSS JOIN sys.dm_os_sys_info osi
   `
@@ -264,8 +264,8 @@ async function queryTopQueries(pool: mssql.ConnectionPool): Promise<QueryInfo[]>
       )                                                    AS query_text,
       qs.execution_count                                   AS execution_count,
       qs.total_elapsed_time / 1000                         AS total_elapsed_time_ms,
-      (qs.total_worker_time / qs.execution_count) / 1000   AS avg_cpu_time_ms,
-      qs.total_logical_reads / qs.execution_count          AS avg_logical_reads
+      (qs.total_worker_time / NULLIF(qs.execution_count, 0)) / 1000   AS avg_cpu_time_ms,
+      qs.total_logical_reads / NULLIF(qs.execution_count, 0)          AS avg_logical_reads
     FROM sys.dm_exec_query_stats qs
     CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) qt
     ORDER BY qs.total_elapsed_time DESC
@@ -277,8 +277,8 @@ async function queryTopQueries(pool: mssql.ConnectionPool): Promise<QueryInfo[]>
     queryText: row.query_text,
     executionCount: Number(row.execution_count),
     totalElapsedTimeMs: Number(row.total_elapsed_time_ms),
-    avgCpuTimeMs: Number(row.avg_cpu_time_ms),
-    avgLogicalReads: Number(row.avg_logical_reads)
+    avgCpuTimeMs: Number(row.avg_cpu_time_ms ?? 0),
+    avgLogicalReads: Number(row.avg_logical_reads ?? 0)
   }))
 }
 

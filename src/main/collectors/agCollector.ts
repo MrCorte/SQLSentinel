@@ -49,8 +49,9 @@ function buildConfig(conn: CollectMetricsRequest): mssql.config {
 export async function getAvailabilityGroups(
   conn: CollectMetricsRequest
 ): Promise<AvailabilityGroup[]> {
-  const pool = await mssql.connect(buildConfig(conn))
+  let pool: mssql.ConnectionPool | null = null
   try {
+    pool = await mssql.connect(buildConfig(conn))
     const result = await pool.request().query<AvailabilityGroup>(`
       SELECT
         CAST(ag.group_id AS nvarchar(36))       AS group_id,
@@ -65,7 +66,7 @@ export async function getAvailabilityGroups(
     `)
     return result.recordset
   } finally {
-    await pool.close()
+    await pool?.close().catch((err: Error) => console.error('[agCollector] pool close:', err.message))
   }
 }
 
@@ -76,8 +77,9 @@ export async function getAvailabilityGroups(
 export async function getAvailabilityReplicas(
   conn: CollectMetricsRequest
 ): Promise<AvailabilityReplica[]> {
-  const pool = await mssql.connect(buildConfig(conn))
+  let pool: mssql.ConnectionPool | null = null
   try {
+    pool = await mssql.connect(buildConfig(conn))
     const result = await pool.request().query<AvailabilityReplica>(`
       SELECT
         CAST(ar.replica_id AS nvarchar(36))                         AS replica_id,
@@ -100,7 +102,7 @@ export async function getAvailabilityReplicas(
     `)
     return result.recordset
   } finally {
-    await pool.close()
+    await pool?.close().catch((err: Error) => console.error('[agCollector] pool close:', err.message))
   }
 }
 
@@ -121,9 +123,10 @@ export async function getAvailabilityReplicas(
 export async function detectAndSyncReplicaRoles(
   conn: CollectMetricsRequest
 ): Promise<serverStore.StoredServer[]> {
-  const pool = await mssql.connect(buildConfig(conn))
+  let pool: mssql.ConnectionPool | null = null
   let replicas: Array<{ agName: string; groupId: string; replicaHost: string; agRole: string }> = []
   try {
+    pool = await mssql.connect(buildConfig(conn))
     const result = await pool.request().query<{
       agName: string
       groupId: string
@@ -143,7 +146,7 @@ export async function detectAndSyncReplicaRoles(
     `)
     replicas = result.recordset
   } finally {
-    await pool.close()
+    await pool?.close().catch((err: Error) => console.error('[agCollector] pool close:', err.message))
   }
 
   if (replicas.length === 0) return []
@@ -156,7 +159,7 @@ export async function detectAndSyncReplicaRoles(
     const replicaBase = replica.replicaHost.split('\\')[0].toLowerCase()
     const match = allServers.find((s) => {
       const addr = (s.host ?? '').toLowerCase()
-      return addr === replicaBase || addr.includes(replicaBase) || replicaBase.includes(addr)
+      return addr === replicaBase || addr.includes(replicaBase)
     })
     if (!match) continue
 
@@ -188,8 +191,9 @@ export async function detectAndSyncReplicaRoles(
 export async function getAvailabilityDatabases(
   conn: CollectMetricsRequest
 ): Promise<AvailabilityDatabase[]> {
-  const pool = await mssql.connect(buildConfig(conn))
+  let pool: mssql.ConnectionPool | null = null
   try {
+    pool = await mssql.connect(buildConfig(conn))
     const result = await pool.request().query<{
       ag_name: string
       database_name: string
@@ -230,6 +234,6 @@ export async function getAvailabilityDatabases(
       last_commit_time: r.last_commit_time ? r.last_commit_time.toISOString() : null
     })) as AvailabilityDatabase[]
   } finally {
-    await pool.close()
+    await pool?.close().catch((err: Error) => console.error('[agCollector] pool close:', err.message))
   }
 }

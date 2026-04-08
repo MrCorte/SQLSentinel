@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   Box,
   Stack,
@@ -92,7 +92,10 @@ export function Dashboard(): React.JSX.Element {
   const [aliasInput, setAliasInput] = useState('')
   const aliasInputRef = useRef<HTMLInputElement | null>(null)
 
-  const connection = selectedServer ? toCollectRequest(selectedServer) : null
+  const connection = useMemo(
+    () => (selectedServer ? toCollectRequest(selectedServer) : null),
+    [selectedServer]
+  )
   const selectedServerId = selectedServer ? serverLabel(selectedServer) : null
 
   const cachedMetrics = useMetricsStore(

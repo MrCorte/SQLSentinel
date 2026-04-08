@@ -17,12 +17,14 @@ import {
   RadioGroup,
   Radio,
   TextField,
-  Tooltip
+  Tooltip,
+  IconButton
 } from '@mui/material'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import SettingsIcon from '@mui/icons-material/Settings'
 import DownloadIcon from '@mui/icons-material/Download'
+import DeleteIcon from '@mui/icons-material/Delete'
 import WbSunnyOutlinedIcon from '@mui/icons-material/WbSunnyOutlined'
 import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined'
 import DesktopWindowsOutlinedIcon from '@mui/icons-material/DesktopWindowsOutlined'
@@ -632,14 +634,13 @@ export function Settings(): React.JSX.Element {
                         <Typography variant="body2" sx={{ flexGrow: 1 }}>
                           {email}
                         </Typography>
-                        <Button
+                        <IconButton
                           size="small"
                           color="error"
                           onClick={() => removeRecipient(email)}
-                          sx={{ minWidth: 0, p: 0.5 }}
                         >
-                          ❌
-                        </Button>
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
                       </Stack>
                     ))}
                   </Stack>

@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import { useShallow } from 'zustand/react/shallow'
 import { useMetricsStore } from '../store/metricsStore'
+import { tokens } from '../styles/tokens'
 
 function fmtTime(ts: number): string {
   return new Intl.DateTimeFormat('it-IT', {
@@ -84,7 +85,7 @@ export const ServerHistoryChart = memo(function ServerHistoryChart({ serverId }:
   return (
     <ResponsiveContainer width="100%" height={200}>
       <LineChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+        <CartesianGrid strokeDasharray="3 3" stroke={tokens.color.chartGrid} />
 
         <XAxis dataKey="label" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
 
@@ -98,9 +99,9 @@ export const ServerHistoryChart = memo(function ServerHistoryChart({ serverId }:
         {/* Soglia warning CPU */}
         <ReferenceLine
           y={80}
-          stroke="#d83b01"
+          stroke={tokens.color.warning}
           strokeDasharray="4 4"
-          label={{ value: '80%', fontSize: 10, fill: '#d83b01', position: 'insideTopRight' }}
+          label={{ value: '80%', fontSize: tokens.font.sizeXs, fill: tokens.color.warning, position: 'insideTopRight' }}
         />
 
         <Tooltip
@@ -124,7 +125,7 @@ export const ServerHistoryChart = memo(function ServerHistoryChart({ serverId }:
         <Line
           type="monotone"
           dataKey="cpu"
-          stroke="#0078d4"
+          stroke={tokens.color.chartCpu}
           strokeWidth={2}
           dot={false}
           activeDot={{ r: 4 }}
@@ -134,7 +135,7 @@ export const ServerHistoryChart = memo(function ServerHistoryChart({ serverId }:
         <Line
           type="monotone"
           dataKey="memory"
-          stroke="#107c10"
+          stroke={tokens.color.chartMemory}
           strokeWidth={2}
           dot={false}
           activeDot={{ r: 4 }}

@@ -22,7 +22,7 @@ export const useAlertsStore = create<AlertsStore>((set) => ({
   addAlert: (alert) =>
     set((state) => {
       const cutoff = Date.now() - MAX_ALERT_AGE_MS
-      let next = [...state.alerts, alert].filter((a) => a.detectedAt.getTime() >= cutoff)
+      let next = [...state.alerts, alert].filter((a) => new Date(a.detectedAt).getTime() >= cutoff)
       if (next.length > MAX_ALERTS) next = next.slice(next.length - MAX_ALERTS)
       return { alerts: next }
     }),

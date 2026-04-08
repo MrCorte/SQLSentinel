@@ -600,7 +600,6 @@ export function registerIpcHandlers(): void {
           defaultPath: path.join(app.getPath('downloads'), `inventario-sql-${new Date().toISOString().slice(0, 10)}.csv`),
           filters: [{ name: 'CSV', extensions: ['csv'] }]
         })
-        console.log('[MAIN] dialog result:', { canceled: result.canceled, filePath: result.filePath })
         if (result.canceled || !result.filePath) return { ok: true, data: null }
         const content = buildCsvContent(req.headers, req.rows)
         await fsPromises.writeFile(result.filePath, content, 'utf8')

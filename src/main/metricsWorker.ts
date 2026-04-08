@@ -285,6 +285,15 @@ function processAlerts(sid: string, metrics: ServerMetrics): void {
       if (alertCallback) alertCallback(alert)
     }
   }
+
+  // Prune acknowledged alerts older than 24 h to keep storedAlerts bounded
+  const pruneOlderThan = Date.now() - 24 * 60 * 60 * 1000
+  const spliced = storedAlerts.filter(
+    (a) => !(a.acknowledgedAt && new Date(a.acknowledgedAt).getTime() < pruneOlderThan)
+  )
+  if (spliced.length !== storedAlerts.length) {
+    storedAlerts.splice(0, storedAlerts.length, ...spliced)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -294,14 +303,13 @@ function processAlerts(sid: string, metrics: ServerMetrics): void {
 async function runJob(sid: string, job: PollJob): Promise<void> {
   const allCustomFields = getAllCustomFields()
   const hasVisibleWindow = BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.isVisible())
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => reject(new Error('poll timeout')), POLL_TIMEOUT_MS)
+  })
   try {
     const collectFn = intervalOverrides?.lightCollectors ? collectMetricsCritical : collectMetrics
-    const metrics = await Promise.race([
-      collectFn(job.server),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('poll timeout')), POLL_TIMEOUT_MS)
-      ),
-    ])
+    const metrics = await Promise.race([collectFn(job.server), timeoutPromise])
 
     // Merge campi custom (alias, referente) nei DatabaseInfo prima di pushare al renderer
     let enrichedMetrics: ServerMetrics = {
@@ -376,6 +384,7 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
       previousMetrics.delete(sid)
     }
   } finally {
+    clearTimeout(timeoutHandle)
     // Always push health state so the UI can show retry info
     const health: ServerHealthPayload = {
       serverId:    sid,
@@ -514,6 +523,7 @@ export function syncServers(servers: CollectMetricsRequest[]): void {
     if (!incoming.has(sid)) {
       jobs.delete(sid)
       previousMetrics.delete(sid)
+      metricsHistory.delete(sid)
     }
   }
 

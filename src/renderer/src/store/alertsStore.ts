@@ -13,7 +13,12 @@ interface AlertsStore {
 
 export const useAlertsStore = create<AlertsStore>((set) => ({
   alerts: [],
-  setAlerts: (alerts) => set({ alerts }),
+  setAlerts: (alerts) => {
+    const cutoff = Date.now() - MAX_ALERT_AGE_MS
+    let next = alerts.filter((a) => new Date(a.detectedAt).getTime() >= cutoff)
+    if (next.length > MAX_ALERTS) next = next.slice(next.length - MAX_ALERTS)
+    set({ alerts: next })
+  },
   addAlert: (alert) =>
     set((state) => {
       const cutoff = Date.now() - MAX_ALERT_AGE_MS

@@ -460,6 +460,8 @@ export interface SqlSentinelAPI {
   onServerRecovered(callback: (serverId: string) => void): () => void
   /** Pushed by worker when AG detection updates StoredServer records in electron-store */
   onServerConfigUpdated(callback: (servers: StoredServer[]) => void): () => void
+  onAppBackground(callback: () => void): () => void
+  onAppForeground(callback: () => void): () => void
   login(username: string, password: string): Promise<LoginResult>
   logout(): Promise<{ success: boolean }>
   checkAuth(): Promise<{ authenticated: boolean; session: AuthSession | null }>

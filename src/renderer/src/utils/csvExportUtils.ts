@@ -80,12 +80,12 @@ export function buildDbViewCsvRows(rows: DbAssetCsvInput[]): string[][] {
  * One row per database; if a server has no databases, one placeholder row
  * with empty database columns is emitted so the server still appears.
  *
- * Column order (19 columns, matches the headers in Inventory.tsx):
+ * Column order (20 columns, matches the headers in Inventory.tsx):
  *   Ambiente | Tipo | AG Nome | Server | Alias | Referente | Ruolo AG |
  *   Database | Stato DB | Dati (MB) | Log (MB) |
  *   Ultimo Backup Full | Ultimo Backup Log |
  *   Versione SQL | Uptime Server (giorni) | Stato Server | Tipo Infrastruttura |
- *   CPU Logici | CPU Fisici
+ *   CPU Logici | CPU Fisici | Note
  */
 export function buildInventoryCsvRows(
   inventory: InventoryStats,

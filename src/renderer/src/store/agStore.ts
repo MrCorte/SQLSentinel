@@ -159,30 +159,34 @@ export const useAgStore = create<AgStore>((set, get) => ({
       const replicas = replicasRes.ok ? replicasRes.data : []
       const databases = dbsRes.ok ? dbsRes.data : []
 
-      const updates: Record<string, AgDetail> = {}
+      const detailUpdates: Record<string, AgDetail> = {}
 
       for (const ag of groups) {
-        updates[ag.ag_name] = {
+        detailUpdates[ag.ag_name] = {
           ...ag,
           replicas: replicas.filter((r) => r.ag_name === ag.ag_name),
           databases: databases.filter((d) => d.ag_name === ag.ag_name),
           lastUpdated: new Date()
         }
-
-        // Also update the summary agGroups entry health
-        set((state) => ({
-          agGroups: {
-            ...state.agGroups,
-            [ag.ag_name]: state.agGroups[ag.ag_name]
-              ? { ...state.agGroups[ag.ag_name], health: ag.ag_health, primary_replica: ag.primary_replica }
-              : state.agGroups[ag.ag_name]
-          }
-        }))
       }
 
-      set((state) => ({
-        agDetails: { ...state.agDetails, ...updates }
-      }))
+      // Single set() call: update agDetails + patch health/primary_replica in agGroups
+      set((state) => {
+        const newAgGroups: Record<string, AgGroupState> = { ...state.agGroups }
+        for (const ag of groups) {
+          if (state.agGroups[ag.ag_name]) {
+            newAgGroups[ag.ag_name] = {
+              ...state.agGroups[ag.ag_name],
+              health: ag.ag_health,
+              primary_replica: ag.primary_replica
+            }
+          }
+        }
+        return {
+          agDetails: { ...state.agDetails, ...detailUpdates },
+          agGroups: newAgGroups
+        }
+      })
     } catch (err) {
       console.debug('[agStore] updateAgDetails: error', (err as Error).message)
     }

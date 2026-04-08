@@ -28,7 +28,7 @@ export function useRefreshAllServers(): UseRefreshAllServersResult {
           }
           const result = await window.sqlSentinel.collectMetrics(conn)
           if (result.ok) {
-            useMetricsStore.getState().setMetrics(`${srv.ip ?? srv.host}:${srv.port}`, result.data)
+            useMetricsStore.getState().setMetrics(srv.id, result.data)
           }
         } catch {
           // Server unreachable — skip

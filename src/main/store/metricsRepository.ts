@@ -76,6 +76,7 @@ export function findLatest(serverId: string): ServerMetrics | null {
  * ordinati dal più recente al più vecchio.
  */
 export function findHistory(serverId: string, limitDays: number): MetricsSnapshot[] {
+  const days = Math.abs(limitDays)
   const rows = getDb()
     .prepare<[string, number], SnapshotRow>(`
       SELECT * FROM metrics_snapshots
@@ -83,7 +84,7 @@ export function findHistory(serverId: string, limitDays: number): MetricsSnapsho
         AND collected_at >= datetime('now', ? || ' days')
       ORDER BY collected_at DESC
     `)
-    .all(serverId, -limitDays)
+    .all(serverId, -days)
 
   return rows.map(rowToSnapshot)
 }

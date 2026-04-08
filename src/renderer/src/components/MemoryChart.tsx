@@ -22,13 +22,6 @@ function formatTime(ts: number): string {
 }
 
 export function MemoryChart({ history }: Props): React.JSX.Element {
-  console.log(
-    '[MemoryChart] render — punti:',
-    history.length,
-    history.length > 0
-      ? `ultimo cpu=${history[history.length - 1].cpuUsagePercent.toFixed(1)}%`
-      : ''
-  )
   const data = history.map((p) => ({
     time: formatTime(p.timestamp),
     'CPU %': parseFloat(p.cpuUsagePercent.toFixed(1)),

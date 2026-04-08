@@ -9,7 +9,9 @@ export interface ThemeContextValue {
 
 export const ThemeContext = createContext<ThemeContextValue>({
   themeMode: 'system',
-  setThemeMode: async () => {},
+  setThemeMode: async () => {
+    throw new Error('useThemeContext must be used inside ThemeContext.Provider')
+  }
 })
 
 export const useThemeContext = (): ThemeContextValue => useContext(ThemeContext)

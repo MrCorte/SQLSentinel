@@ -31,8 +31,7 @@ export function NoteEditor({ serverId, initialNote }: NoteEditorProps): React.JS
       setTimeout(() => setSaved(false), 2000)
     }, 1000)
     return () => clearTimeout(timer)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [note, serverId])
+  }, [note, serverId, initialNote])
 
   return (
     <Box>

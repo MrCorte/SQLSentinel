@@ -26,12 +26,14 @@ interface Props {
   serverId: string
 }
 
+const EMPTY_HISTORY: { ts: number; value: number }[] = []
+
 export const ServerHistoryChart = memo(function ServerHistoryChart({ serverId }: Props) {
-  const cpuHistory = useMetricsStore(
-    useShallow((s) => s.historyMap[serverId]?.cpu ?? [])
-  )
-  const memHistory = useMetricsStore(
-    useShallow((s) => s.historyMap[serverId]?.memory ?? [])
+  const { cpuHistory, memHistory } = useMetricsStore(
+    useShallow((s) => ({
+      cpuHistory: s.historyMap[serverId]?.cpu ?? EMPTY_HISTORY,
+      memHistory: s.historyMap[serverId]?.memory ?? EMPTY_HISTORY
+    }))
   )
 
   // Derive unreachable from health circuit-breaker (failCount ≥ 3)

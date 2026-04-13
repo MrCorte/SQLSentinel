@@ -60,6 +60,7 @@ import type { DiscoveredServer, ScanOptions } from '../discovery/types'
 import { aiAsk } from '../ai/agent'
 import { checkOllamaHealth } from '../ai/ollama'
 import type { ChatMessage } from '../ai/ollama'
+import { langGraphAsk, type AgentHistory } from '../ai/langGraphAgent'
 import * as ragRepository from '../store/ragRepository'
 import type { RagDocument } from './types'
 import { scanSubnet, scanHost } from '../discovery/tcpScanner'
@@ -699,6 +700,23 @@ export function registerIpcHandlers(): void {
         return { ok: true, data: await aiAsk(question, history) }
       } catch (err) {
         console.error('[IPC] AI_ASK:', safeError(err))
+        return { ok: false, error: safeError(err) }
+      }
+    }
+  )
+
+  // AI_AGENT_ASK — agente DBA multi-step con tool calling (LangGraph + Ollama)
+  ipcMain.handle(
+    IpcChannel.AI_AGENT_ASK,
+    async (
+      _event: IpcMainInvokeEvent,
+      question: string,
+      history: AgentHistory[]
+    ): Promise<IpcResult<string>> => {
+      try {
+        return { ok: true, data: await langGraphAsk(question, history) }
+      } catch (err) {
+        console.error('[IPC] AI_AGENT_ASK:', safeError(err))
         return { ok: false, error: safeError(err) }
       }
     }

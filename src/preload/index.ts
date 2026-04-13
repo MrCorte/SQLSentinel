@@ -529,6 +529,11 @@ const realApi = {
 
   aiCheck: (): Promise<IpcResult<boolean>> => ipcRenderer.invoke(IpcChannel.AI_CHECK),
 
+  aiAgentAsk: (
+    question: string,
+    history: Array<{ role: 'user' | 'assistant'; content: string }>
+  ): Promise<IpcResult<string>> => ipcRenderer.invoke(IpcChannel.AI_AGENT_ASK, question, history),
+
   rag: {
     getDocuments: (): Promise<IpcResult<RagDocument[]>> =>
       ipcRenderer.invoke(IpcChannel.RAG_GET_DOCUMENTS),
@@ -836,6 +841,11 @@ const mockApi = {
 
   aiCheck: async (): Promise<IpcResult<boolean>> => ({ ok: true, data: false }),
 
+  aiAgentAsk: async (
+    _question: string,
+    _history: Array<{ role: 'user' | 'assistant'; content: string }>
+  ): Promise<IpcResult<string>> => ({ ok: false, error: 'Agent non disponibile in mock mode' }),
+
   rag: {
     getDocuments: async (): Promise<IpcResult<RagDocument[]>> => ({ ok: true, data: [] }),
   },
@@ -933,6 +943,8 @@ const bridgeApi = {
   aiAsk:   (q: string, h: Array<{ role: 'user' | 'assistant'; content: string }>) =>
     api.aiAsk(q, h),
   aiCheck: () => api.aiCheck(),
+  aiAgentAsk: (q: string, h: Array<{ role: 'user' | 'assistant'; content: string }>) =>
+    api.aiAgentAsk(q, h),
   rag: {
     getDocuments: () => api.rag.getDocuments(),
   },

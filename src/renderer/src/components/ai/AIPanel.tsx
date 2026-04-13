@@ -54,13 +54,13 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
         .messages.slice(-6)
         .map((m) => ({ role: m.role, content: m.content }))
 
-      const result = await window.sqlSentinel.aiAsk(text, history)
+      const result = await window.sqlSentinel.aiAgentAsk(text, history)
       if (result.ok) {
         addMessage({ role: 'assistant', content: result.data, ts: Date.now() })
       } else {
         addMessage({
           role: 'assistant',
-          content: `Errore: ${result.error}\n\nVerifica che Ollama sia in esecuzione:\n  ollama serve\n  ollama pull codellama:latest`,
+          content: `Errore: ${result.error}\n\nVerifica che Ollama sia in esecuzione:\n  ollama serve\n  ollama pull deepseek-coder:1.3b`,
           ts: Date.now()
         })
       }
@@ -68,7 +68,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
       addMessage({
         role: 'assistant',
         content:
-          'Connessione ad Ollama fallita.\n\nAssicurati che sia in esecuzione:\n  ollama serve\n  ollama pull codellama:latest',
+          'Connessione ad Ollama fallita.\n\nAssicurati che sia in esecuzione:\n  ollama serve\n  ollama pull deepseek-coder:1.3b',
         ts: Date.now()
       })
     } finally {
@@ -114,7 +114,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
               Assistente AI DBA
             </Typography>
             <Typography sx={{ fontSize: tokens.font.sizeXs, opacity: 0.85 }}>
-              Code Llama · tutto locale
+              deepseek-coder · LangGraph agent · tutto locale
             </Typography>
           </Box>
           {activeTab === 'chat' && (
@@ -176,7 +176,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 1 }}>
                 <CircularProgress size={14} />
                 <Typography sx={{ fontSize: tokens.font.sizeSm, color: 'text.secondary', fontStyle: 'italic' }}>
-                  Code Llama sta analizzando…
+                  L&apos;agente sta analizzando…
                 </Typography>
               </Box>
             )}

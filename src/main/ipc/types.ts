@@ -70,6 +70,8 @@ export enum IpcChannel {
   // AI assistant (Ollama local)
   AI_ASK = 'ai:ask',
   AI_CHECK = 'ai:check',
+  // AI LangGraph agent (tool calling, local Ollama)
+  AI_AGENT_ASK = 'ai:agentAsk',
   // RAG — read-only status for renderer
   RAG_GET_DOCUMENTS = 'rag:getDocuments',
 }

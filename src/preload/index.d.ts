@@ -476,6 +476,7 @@ export interface SqlSentinelAPI {
   changePassword(userId: string, oldPassword: string, newPassword: string): Promise<ChangePasswordResult>
   aiAsk(question: string, history: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<IpcResult<string>>
   aiCheck(): Promise<IpcResult<boolean>>
+  aiAgentAsk(question: string, history: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<IpcResult<string>>
   rag: {
     getDocuments(): Promise<IpcResult<RagDocument[]>>
   }

@@ -3,6 +3,8 @@ import { Box, Tabs, Tab, IconButton, Badge, Tooltip, Typography } from '@mui/mat
 import NotificationsIcon from '@mui/icons-material/Notifications'
 import SettingsIcon from '@mui/icons-material/Settings'
 import LogoutIcon from '@mui/icons-material/Logout'
+import SmartToyIcon from '@mui/icons-material/SmartToy'
+import { AIPanel } from './components/ai/AIPanel'
 import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { Discovery } from './pages/Discovery'
@@ -34,6 +36,7 @@ const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
   const [tab, setTab] = useState(0)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
 
   useMockData()
 
@@ -271,6 +274,19 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
           </IconButton>
         </Tooltip>
 
+        <Tooltip title="Assistente AI">
+          <IconButton
+            size="small"
+            onClick={() => setAiOpen(true)}
+            sx={{
+              color: aiOpen ? 'primary.main' : 'text.secondary',
+              '&:hover': { bgcolor: 'action.hover' }
+            }}
+          >
+            <SmartToyIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+
         <Tooltip title="Impostazioni">
           <IconButton
             size="small"
@@ -330,6 +346,8 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
           </Box>
         )}
       </Box>
+
+      <AIPanel open={aiOpen} onClose={() => setAiOpen(false)} />
 
       <AlertsDrawer
         open={drawerOpen}

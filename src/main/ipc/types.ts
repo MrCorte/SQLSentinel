@@ -67,6 +67,9 @@ export enum IpcChannel {
   AUTH_LOGOUT = 'auth:logout',
   AUTH_CHECK = 'auth:check',
   AUTH_CHANGE_PASSWORD = 'auth:changePassword',
+  // AI assistant (Ollama local)
+  AI_ASK = 'ai:ask',
+  AI_CHECK = 'ai:check',
 }
 
 /** Unified result envelope — never throw raw errors to the renderer. */

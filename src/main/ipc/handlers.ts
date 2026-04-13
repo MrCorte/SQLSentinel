@@ -57,6 +57,9 @@ import { getEmailSettings, saveEmailSettings } from '../store/emailSettings'
 import { sendTestEmail } from '../emailService'
 import { getCustomFields, setCustomFields, getAllCustomFields } from '../store/dbCustomFields'
 import type { DiscoveredServer, ScanOptions } from '../discovery/types'
+import { aiAsk } from '../ai/agent'
+import { checkOllamaHealth } from '../ai/ollama'
+import type { ChatMessage } from '../ai/ollama'
 import { scanSubnet, scanHost } from '../discovery/tcpScanner'
 import { collectMetrics, detectServerInfo } from '../collectors/sqlCollector'
 import { getShrinkEstimate, shrinkDatabase, shrinkFile } from '../collectors/dbAdmin'
@@ -668,6 +671,32 @@ export function registerIpcHandlers(): void {
         return await sendTestEmail()
       } catch (err) {
         console.error('[IPC] EMAIL_TEST:', safeError(err))
+        return { ok: false, error: safeError(err) }
+      }
+    }
+  )
+
+  // AI_CHECK — verifica se Ollama è raggiungibile localmente
+  ipcMain.handle(IpcChannel.AI_CHECK, async (): Promise<IpcResult<boolean>> => {
+    try {
+      return { ok: true, data: await checkOllamaHealth() }
+    } catch (err) {
+      return { ok: false, error: safeError(err) }
+    }
+  })
+
+  // AI_ASK — risposta AI con contesto RAG (metriche + alert + server)
+  ipcMain.handle(
+    IpcChannel.AI_ASK,
+    async (
+      _event: IpcMainInvokeEvent,
+      question: string,
+      history: ChatMessage[]
+    ): Promise<IpcResult<string>> => {
+      try {
+        return { ok: true, data: await aiAsk(question, history) }
+      } catch (err) {
+        console.error('[IPC] AI_ASK:', safeError(err))
         return { ok: false, error: safeError(err) }
       }
     }

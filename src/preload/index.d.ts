@@ -466,6 +466,8 @@ export interface SqlSentinelAPI {
   logout(): Promise<{ success: boolean }>
   checkAuth(): Promise<{ authenticated: boolean; session: AuthSession | null }>
   changePassword(userId: string, oldPassword: string, newPassword: string): Promise<ChangePasswordResult>
+  aiAsk(question: string, history: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<IpcResult<string>>
+  aiCheck(): Promise<IpcResult<boolean>>
 }
 
 declare global {

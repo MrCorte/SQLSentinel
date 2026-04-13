@@ -70,6 +70,8 @@ export enum IpcChannel {
   // AI assistant (Ollama local)
   AI_ASK = 'ai:ask',
   AI_CHECK = 'ai:check',
+  // RAG — read-only status for renderer
+  RAG_GET_DOCUMENTS = 'rag:getDocuments',
 }
 
 /** Unified result envelope — never throw raw errors to the renderer. */
@@ -303,6 +305,14 @@ export interface LoginResult {
 export interface ChangePasswordResult {
   success: boolean
   error?: string
+}
+
+export interface RagDocument {
+  id: string
+  filename: string
+  title: string
+  addedAt: string
+  chunkCount: number
 }
 
 // Re-export types so consumers have a single import point

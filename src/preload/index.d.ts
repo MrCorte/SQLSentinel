@@ -468,6 +468,17 @@ export interface SqlSentinelAPI {
   changePassword(userId: string, oldPassword: string, newPassword: string): Promise<ChangePasswordResult>
   aiAsk(question: string, history: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<IpcResult<string>>
   aiCheck(): Promise<IpcResult<boolean>>
+  rag: {
+    getDocuments(): Promise<IpcResult<RagDocument[]>>
+  }
+}
+
+export interface RagDocument {
+  id: string
+  filename: string
+  title: string
+  addedAt: string
+  chunkCount: number
 }
 
 declare global {

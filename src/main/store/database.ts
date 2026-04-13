@@ -64,6 +64,25 @@ const DDL = `
   CREATE INDEX IF NOT EXISTS idx_metrics_server_collected ON metrics_snapshots(server_id, collected_at DESC);
   -- Standalone index: WHERE collected_at < ? without server_id  (cleanup/purge)
   CREATE INDEX IF NOT EXISTS idx_metrics_cleanup ON metrics_snapshots(collected_at);
+
+  CREATE TABLE IF NOT EXISTS rag_documents (
+    id          TEXT    PRIMARY KEY,
+    filename    TEXT    NOT NULL UNIQUE,
+    title       TEXT    NOT NULL DEFAULT '',
+    added_at    TEXT    NOT NULL,
+    chunk_count INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS rag_chunks (
+    id           TEXT    PRIMARY KEY,
+    document_id  TEXT    NOT NULL REFERENCES rag_documents(id) ON DELETE CASCADE,
+    chunk_index  INTEGER NOT NULL,
+    content      TEXT    NOT NULL,
+    embedding    BLOB    NOT NULL,
+    UNIQUE(document_id, chunk_index)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_rag_chunks_doc ON rag_chunks(document_id);
 `
 
 /**

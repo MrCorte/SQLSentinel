@@ -71,6 +71,8 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
         styleOverrides: {
           root: { backgroundImage: 'none', borderRadius: tokens.radius.sm },
           elevation1: { boxShadow: tokens.shadow.card },
+          elevation2: { boxShadow: tokens.shadow.elevated },
+          elevation3: { boxShadow: tokens.shadow.cardHover },
         },
       },
 
@@ -81,10 +83,19 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
             textTransform: 'none',
             fontWeight: tokens.font.weightSemibold,
             fontSize: tokens.font.sizeBase,
+            transition: 'all 0.15s ease',
           },
           contained: {
-            boxShadow: 'none',
-            '&:hover': { boxShadow: 'none', backgroundColor: tokens.color.primaryHover },
+            boxShadow: '0 2px 8px rgba(0,120,212,0.25)',
+            '&:hover': {
+              boxShadow: '0 4px 14px rgba(0,120,212,0.35)',
+              backgroundColor: tokens.color.primaryHover,
+              transform: 'translateY(-1px)',
+            },
+            '&:active': { transform: 'translateY(0)', boxShadow: '0 1px 4px rgba(0,120,212,0.2)' },
+          },
+          outlined: {
+            '&:hover': { backgroundColor: tokens.color.primaryAlpha12 },
           },
         },
       },
@@ -102,7 +113,7 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
       },
 
       MuiTabs: {
-        styleOverrides: { indicator: { height: 2 } },
+        styleOverrides: { indicator: { height: 3, borderRadius: '3px 3px 0 0' } },
       },
 
       MuiTableCell: {
@@ -124,9 +135,14 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
         // Sidebar is intentionally always dark regardless of theme mode
         styleOverrides: {
           root: {
+            borderRadius: tokens.radius.sm,
+            margin: '1px 8px',
+            width: 'calc(100% - 16px)',
+            transition: 'all 0.15s ease',
             '&.Mui-selected': {
               backgroundColor: tokens.color.bgSidebarSelected,
               color: tokens.color.textOnDark,
+              boxShadow: '0 2px 8px rgba(0,120,212,0.4)',
               '&:hover': { backgroundColor: tokens.color.primaryHover },
             },
             '&:hover': { backgroundColor: tokens.color.bgSidebarHover },
@@ -137,7 +153,7 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
       MuiChip: {
         styleOverrides: {
           root: {
-            borderRadius: tokens.radius.sm,
+            borderRadius: tokens.radius.pill,
             fontWeight: tokens.font.weightSemibold,
             fontSize: tokens.font.sizeXs,
             height: 20,
@@ -152,6 +168,26 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
       MuiDivider: {
         styleOverrides: {
           root: { borderColor: isDark ? '#334155' : tokens.color.divider },
+        },
+      },
+
+      MuiIconButton: {
+        styleOverrides: {
+          root: {
+            borderRadius: tokens.radius.sm,
+            transition: 'all 0.15s ease',
+            '&:hover': { transform: 'scale(1.08)' },
+          },
+        },
+      },
+
+      MuiTooltip: {
+        styleOverrides: {
+          tooltip: {
+            borderRadius: tokens.radius.sm,
+            fontSize: tokens.font.sizeSm,
+            boxShadow: tokens.shadow.elevated,
+          },
         },
       },
     },

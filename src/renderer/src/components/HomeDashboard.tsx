@@ -73,13 +73,16 @@ const KpiCard = memo(function KpiCard({
         bgcolor: 'background.paper',
         border: '1px solid',
         borderColor: 'divider',
-        borderTop: `3px solid ${borderColor}`,
-        borderRadius: tokens.radius.sm,
+        borderLeft: `4px solid ${borderColor}`,
+        borderRadius: `${tokens.radius.md}px`,
         p: 1.5,
         cursor: onClick ? 'pointer' : 'default',
         boxShadow: tokens.shadow.card,
-        transition: 'box-shadow 150ms',
-        '&:hover': onClick ? { boxShadow: '0 2px 8px rgba(0,0,0,0.12)' } : undefined
+        transition: 'all 0.18s ease',
+        backgroundImage: `linear-gradient(135deg, transparent 55%, ${borderColor}0f 100%)`,
+        '&:hover': onClick
+          ? { boxShadow: tokens.shadow.cardHover, transform: 'translateY(-2px)' }
+          : { boxShadow: tokens.shadow.elevated }
       }}
     >
       <Typography
@@ -88,14 +91,14 @@ const KpiCard = memo(function KpiCard({
           fontWeight: tokens.font.weightBold,
           color: 'text.secondary',
           textTransform: 'uppercase',
-          letterSpacing: '0.04em',
+          letterSpacing: '0.05em',
           mb: 0.5
         }}
       >
         {label}
       </Typography>
       <Typography
-        sx={{ fontSize: 28, fontWeight: tokens.font.weightBold, color: 'text.primary', lineHeight: 1 }}
+        sx={{ fontSize: 28, fontWeight: tokens.font.weightBold, color: borderColor, lineHeight: 1 }}
       >
         {value}
       </Typography>
@@ -315,8 +318,9 @@ export function HomeDashboard({
             bgcolor: 'background.paper',
             border: '1px solid',
             borderColor: 'divider',
-            borderRadius: tokens.radius.sm,
-            boxShadow: tokens.shadow.card,
+            borderTop: `3px solid ${tokens.color.primary}`,
+            borderRadius: `${tokens.radius.md}px`,
+            boxShadow: tokens.shadow.elevated,
             p: 1.5
           }}
         >
@@ -427,8 +431,9 @@ export function HomeDashboard({
             bgcolor: 'background.paper',
             border: '1px solid',
             borderColor: 'divider',
-            borderRadius: tokens.radius.sm,
-            boxShadow: tokens.shadow.card,
+            borderTop: `3px solid ${tokens.color.chartCpu}`,
+            borderRadius: `${tokens.radius.md}px`,
+            boxShadow: tokens.shadow.elevated,
             p: 1.5,
             minWidth: 200,
             overflow: 'hidden'
@@ -507,8 +512,8 @@ export function HomeDashboard({
             bgcolor: 'background.paper',
             border: '1px solid',
             borderColor: 'divider',
-            borderRadius: tokens.radius.sm,
-            boxShadow: tokens.shadow.card,
+            borderRadius: `${tokens.radius.md}px`,
+            boxShadow: tokens.shadow.elevated,
             overflow: 'auto',
             minWidth: 0
           }}
@@ -813,8 +818,8 @@ export function HomeDashboard({
             bgcolor: 'background.paper',
             border: '1px solid',
             borderColor: 'divider',
-            borderRadius: tokens.radius.sm,
-            boxShadow: tokens.shadow.card,
+            borderRadius: `${tokens.radius.md}px`,
+            boxShadow: tokens.shadow.elevated,
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden'
@@ -830,7 +835,11 @@ export function HomeDashboard({
               py: 1,
               borderBottom: '1px solid',
               borderBottomColor: 'divider',
-              flexShrink: 0
+              flexShrink: 0,
+              backgroundImage: (theme) =>
+                theme.palette.mode === 'dark'
+                  ? 'linear-gradient(135deg, rgba(164,38,44,0.08) 0%, transparent 100%)'
+                  : 'linear-gradient(135deg, rgba(164,38,44,0.05) 0%, transparent 100%)',
             }}
           >
             <Typography
@@ -892,12 +901,14 @@ export function HomeDashboard({
                       if (srvForAlert) onNavigateToServer(srvForAlert.id)
                     }}
                     sx={{
-                      borderLeft: `3px solid ${alertBorderColor}`,
+                      borderLeft: `4px solid ${alertBorderColor}`,
                       px: 1.5,
                       py: 0.75,
                       borderBottom: '1px solid',
                       borderBottomColor: 'divider',
                       cursor: srvForAlert ? 'pointer' : 'default',
+                      transition: 'background-color 0.12s ease',
+                      backgroundImage: `linear-gradient(90deg, ${alertBorderColor}0a 0%, transparent 40%)`,
                       '&:hover': srvForAlert ? { bgcolor: 'action.hover' } : undefined
                     }}
                   >

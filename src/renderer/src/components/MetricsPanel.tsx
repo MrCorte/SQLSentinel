@@ -60,17 +60,25 @@ function KpiCard({
   const card = (
     <Box
       sx={{
+        position: 'relative',
+        overflow: 'hidden',
         bgcolor: 'background.paper',
         border: '1px solid',
         borderColor: 'divider',
-        borderTop: `3px solid ${accent}`,
-        borderRadius: tokens.radius.sm,
-        px: '20px',
-        py: '16px',
+        borderLeft: `4px solid ${accent}`,
+        borderRadius: `${tokens.radius.md}px`,
+        px: '18px',
+        py: '14px',
         minWidth: 150,
         flex: '1 1 150px',
         boxShadow: tokens.shadow.card,
-        cursor: tooltip ? 'help' : 'default'
+        cursor: tooltip ? 'help' : 'default',
+        transition: 'all 0.18s ease',
+        backgroundImage: `linear-gradient(135deg, transparent 60%, ${accent}14 100%)`,
+        '&:hover': {
+          boxShadow: tokens.shadow.cardHover,
+          transform: 'translateY(-2px)',
+        },
       }}
     >
       <Typography
@@ -78,9 +86,9 @@ function KpiCard({
           fontSize: 11,
           fontWeight: tokens.font.weightSemibold,
           textTransform: 'uppercase',
-          letterSpacing: '0.5px',
+          letterSpacing: '0.6px',
           color: 'text.secondary',
-          mb: '8px',
+          mb: '6px',
           display: 'block'
         }}
       >
@@ -88,9 +96,9 @@ function KpiCard({
       </Typography>
       <Typography
         sx={{
-          fontSize: 18,
-          fontWeight: 600,
-          color: 'text.primary',
+          fontSize: 20,
+          fontWeight: tokens.font.weightBold,
+          color: accent,
           lineHeight: 1.2
         }}
       >

@@ -7,6 +7,13 @@ export const tokens = {
     primaryDark: '#005a9e',
     primaryHover: '#106ebe',
 
+    // Brand alpha accents (for gradients and tinted backgrounds)
+    primaryAlpha12: 'rgba(0,120,212,0.12)',
+    primaryAlpha20: 'rgba(0,120,212,0.20)',
+    successAlpha12: 'rgba(16,124,16,0.12)',
+    errorAlpha12: 'rgba(164,38,44,0.12)',
+    warningAlpha12: 'rgba(216,59,1,0.12)',
+
     // Semantic
     success: '#107c10',
     successLight: '#dff6dd',
@@ -68,13 +75,17 @@ export const tokens = {
 
   radius: {
     none: 0,
-    sm: 2,
-    md: 4,
+    sm: 6,
+    md: 10,
+    lg: 16,
+    pill: 9999,
   },
 
   shadow: {
-    card: '0 1px 3px rgba(0,0,0,0.1)',
-    navbar: '0 2px 4px rgba(0,0,0,0.08)',
-    drawer: '0 4px 16px rgba(0,0,0,0.15)',
+    card: '0 1px 4px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.06)',
+    cardHover: '0 4px 16px rgba(0,0,0,0.14), 0 8px 24px rgba(0,0,0,0.08)',
+    elevated: '0 2px 8px rgba(0,0,0,0.1), 0 8px 20px rgba(0,0,0,0.08)',
+    navbar: '0 2px 8px rgba(0,0,0,0.2)',
+    drawer: '0 8px 32px rgba(0,0,0,0.2)',
   },
 }

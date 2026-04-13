@@ -189,15 +189,19 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
           height: tokens.size.navbarHeight,
           minHeight: tokens.size.navbarHeight,
           bgcolor: 'background.paper',
-          borderBottom: 1,
-          borderColor: 'divider',
+          borderBottom: `2px solid`,
+          borderColor: 'primary.main',
           boxShadow: tokens.shadow.navbar,
           display: 'flex',
           alignItems: 'center',
           zIndex: 100,
           flexShrink: 0,
           px: 2,
-          gap: 1
+          gap: 1,
+          backgroundImage: (theme) =>
+            theme.palette.mode === 'dark'
+              ? 'linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #162032 100%)'
+              : 'linear-gradient(135deg, #ffffff 0%, #f0f6ff 100%)',
         }}
       >
         {/* Logo / product name */}
@@ -205,12 +209,16 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
           onClick={() => setTab(0)}
           sx={{
             fontSize: tokens.font.sizeMd,
-            fontWeight: tokens.font.weightSemibold,
-            color: tokens.color.primary,
-            letterSpacing: '-0.01em',
+            fontWeight: tokens.font.weightBold,
+            background: `linear-gradient(135deg, ${tokens.color.primary} 0%, ${tokens.color.primaryDark} 100%)`,
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+            letterSpacing: '-0.02em',
             mr: 2,
             whiteSpace: 'nowrap',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            userSelect: 'none',
           }}
         >
           SQL Sentinel
@@ -225,7 +233,8 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
             minHeight: tokens.size.navbarHeight,
             '& .MuiTabs-indicator': {
               backgroundColor: tokens.color.primary,
-              height: 2
+              height: 3,
+              borderRadius: '3px 3px 0 0',
             }
           }}
         >

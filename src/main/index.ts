@@ -16,6 +16,7 @@ import { getSettings } from './store/settings'
 import { IpcChannel } from './ipc/types'
 import * as serverStore from './store/serverStore'
 import { scanHost } from './discovery/tcpScanner'
+import { autoIndexRagBooks } from './ai/ragAutoIndex'
 
 const isDev = !app.isPackaged
 
@@ -139,6 +140,11 @@ function createWindow(): void {
 app.whenReady().then(() => {
   // Inizializza SQLite — prima di qualsiasi IPC handler
   initDb(defaultDbPath(app.getPath('appData')))
+
+  // Auto-index SQL books from data/ folder (non-blocking — logs to console)
+  autoIndexRagBooks().catch((err) =>
+    console.error('[RAG] autoIndexRagBooks failed:', err instanceof Error ? err.message : err)
+  )
 
   // Crea utente admin di default se non esistono utenti
   initDefaultAdmin().catch((err) => console.error('[AUTH] initDefaultAdmin fallito:', err))

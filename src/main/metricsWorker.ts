@@ -353,7 +353,7 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
           pushToRenderer(IpcChannel.SERVER_CONFIG_UPDATED, updated)
         }
       })
-      .catch((err: Error) => console.warn('[worker] AG sync:', err.message)) // not in AG or insufficient permissions
+      .catch((err: unknown) => console.warn('[worker] AG sync:', err instanceof Error ? err.message : err)) // not in AG or insufficient permissions
 
     // Persist snapshot to SQLite every SAVE_EVERY_N successful polls
     job.pollCount++

@@ -78,7 +78,16 @@ export async function ingestPdf(
   const filename = basename(filePath)
   const title = (pdfData.info?.Title as string | undefined) || filename.replace(/\.pdf$/i, '')
 
-  // 3. Persist placeholder document
+  // 3. Embed all chunks BEFORE inserting anything into the DB.
+  //    This prevents ghost documents with 0 chunks when Ollama is unreachable.
+  const total = textChunks.length
+  const embeddings: number[][] = []
+  for (let i = 0; i < textChunks.length; i++) {
+    onProgress?.({ phase: 'embedding', current: i + 1, total })
+    embeddings.push(await ollamaEmbed(textChunks[i]))
+  }
+
+  // 4. Persist document + chunks atomically (embedding succeeded for all)
   const doc = ragRepository.insertDocument({
     filename,
     title,
@@ -86,16 +95,13 @@ export async function ingestPdf(
     chunkCount: 0
   })
 
-  // 4. Embed each chunk and collect
-  const total = textChunks.length
-  const chunkRows: Omit<RagChunk, 'id'>[] = []
-  for (let i = 0; i < textChunks.length; i++) {
-    onProgress?.({ phase: 'embedding', current: i + 1, total })
-    const embedding = await ollamaEmbed(textChunks[i])
-    chunkRows.push({ documentId: doc.id, chunkIndex: i, content: textChunks[i], embedding })
-  }
+  const chunkRows: Omit<RagChunk, 'id'>[] = textChunks.map((content, i) => ({
+    documentId: doc.id,
+    chunkIndex: i,
+    content,
+    embedding: embeddings[i]
+  }))
 
-  // 5. Batch save and update count
   ragRepository.insertChunks(chunkRows)
   ragRepository.updateChunkCount(doc.id, chunkRows.length)
 

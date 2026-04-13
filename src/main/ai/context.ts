@@ -41,17 +41,19 @@ export async function gatherContext(): Promise<AiContext> {
   const ids = servers.map((s) => s.id)
   const bulk = metricsRepository.findLastNBulk(ids, 1)
 
-  const metrics = Object.entries(bulk).map(([serverId, snaps]) => {
-    const m = snaps[0]
-    return {
-      serverId,
-      cpuPct: m.instanceInfo.cpuUsagePercent,
-      memUsedMb: m.instanceInfo.memoryUsedMb,
-      memTargetMb: m.instanceInfo.memoryTargetMb,
-      blockingCount: m.activeSessions.filter((s) => s.blockingSessionId > 0).length,
-      offlineDbs: m.databases.filter((d) => d.stateDesc !== 'ONLINE').map((d) => d.name)
-    }
-  })
+  const metrics = Object.entries(bulk)
+    .filter(([, snaps]) => snaps.length > 0)
+    .map(([serverId, snaps]) => {
+      const m = snaps[0]
+      return {
+        serverId,
+        cpuPct: m.instanceInfo.cpuUsagePercent,
+        memUsedMb: m.instanceInfo.memoryUsedMb,
+        memTargetMb: m.instanceInfo.memoryTargetMb,
+        blockingCount: m.activeSessions.filter((s) => s.blockingSessionId > 0).length,
+        offlineDbs: m.databases.filter((d) => d.stateDesc !== 'ONLINE').map((d) => d.name)
+      }
+    })
 
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000)
   const alerts = getAlerts()

@@ -18,7 +18,7 @@ export function RAGStatus(): React.JSX.Element {
   useEffect(() => {
     window.sqlSentinel.rag.getDocuments().then((result) => {
       if (result.ok) setDocuments(result.data)
-    })
+    }).catch(() => {}) // non bloccante
   }, [])
 
   return (

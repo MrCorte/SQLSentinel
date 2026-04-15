@@ -38,7 +38,6 @@ import type {
   AuthSession,
   LoginResult,
   ChangePasswordResult,
-  RagDocument,
 } from '../main/ipc/types'
 import type { ServerMetrics, ServerInfo } from '../main/collectors/types'
 import type { StoredServer } from '../main/store/serverStore'
@@ -533,11 +532,6 @@ const realApi = {
     question: string,
     history: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<IpcResult<string>> => ipcRenderer.invoke(IpcChannel.AI_AGENT_ASK, question, history),
-
-  rag: {
-    getDocuments: (): Promise<IpcResult<RagDocument[]>> =>
-      ipcRenderer.invoke(IpcChannel.RAG_GET_DOCUMENTS),
-  },
 }
 
 // ---------------------------------------------------------------------------
@@ -845,10 +839,6 @@ const mockApi = {
     _question: string,
     _history: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<IpcResult<string>> => ({ ok: false, error: 'Agent non disponibile in mock mode' }),
-
-  rag: {
-    getDocuments: async (): Promise<IpcResult<RagDocument[]>> => ({ ok: true, data: [] }),
-  },
 }
 
 // ---------------------------------------------------------------------------
@@ -945,9 +935,6 @@ const bridgeApi = {
   aiCheck: () => api.aiCheck(),
   aiAgentAsk: (q: string, h: Array<{ role: 'user' | 'assistant'; content: string }>) =>
     api.aiAgentAsk(q, h),
-  rag: {
-    getDocuments: () => api.rag.getDocuments(),
-  },
 }
 
 if (process.contextIsolated) {

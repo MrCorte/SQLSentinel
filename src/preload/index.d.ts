@@ -406,13 +406,6 @@ export interface AgGroup {
   serverIds: string[]   // ids of StoredServer that are part of this AG
 }
 
-export interface RagDocument {
-  id: string
-  filename: string
-  title: string
-  addedAt: string
-  chunkCount: number
-}
 
 export interface SqlSentinelAPI {
   scanSubnet(options: ScanOptions): Promise<IpcResult<DiscoveredServer[]>>
@@ -477,9 +470,6 @@ export interface SqlSentinelAPI {
   aiAsk(question: string, history: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<IpcResult<string>>
   aiCheck(): Promise<IpcResult<boolean>>
   aiAgentAsk(question: string, history: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<IpcResult<string>>
-  rag: {
-    getDocuments(): Promise<IpcResult<RagDocument[]>>
-  }
 }
 
 declare global {

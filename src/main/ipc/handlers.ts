@@ -61,8 +61,7 @@ import { aiAsk } from '../ai/agent'
 import { checkOllamaHealth } from '../ai/ollama'
 import type { ChatMessage } from '../ai/ollama'
 import { langGraphAsk, type AgentHistory } from '../ai/langGraphAgent'
-import * as ragRepository from '../store/ragRepository'
-import type { RagDocument } from './types'
+
 import { scanSubnet, scanHost } from '../discovery/tcpScanner'
 import { collectMetrics, detectServerInfo } from '../collectors/sqlCollector'
 import { getShrinkEstimate, shrinkDatabase, shrinkFile } from '../collectors/dbAdmin'
@@ -721,15 +720,6 @@ export function registerIpcHandlers(): void {
       }
     }
   )
-
-  // RAG_GET_DOCUMENTS — lista libri indicizzati (sola lettura)
-  ipcMain.handle(IpcChannel.RAG_GET_DOCUMENTS, async (): Promise<IpcResult<RagDocument[]>> => {
-    try {
-      return { ok: true, data: ragRepository.getAllDocuments() }
-    } catch (err) {
-      return { ok: false, error: safeError(err) }
-    }
-  })
 
   // Restore original ipcMain.handle after all handlers are registered
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

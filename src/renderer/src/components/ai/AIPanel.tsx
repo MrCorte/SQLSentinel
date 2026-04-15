@@ -7,16 +7,12 @@ import IconButton from '@mui/material/IconButton'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import Tooltip from '@mui/material/Tooltip'
-import Tabs from '@mui/material/Tabs'
-import Tab from '@mui/material/Tab'
 import CloseIcon from '@mui/icons-material/Close'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import SmartToyIcon from '@mui/icons-material/SmartToy'
 import { tokens } from '../../styles/tokens'
 import { useAiChatStore } from '../../store/aiChatStore'
 import type { AiMessage } from '../../store/aiChatStore'
-import { RAGStatus } from './RAGStatus'
-
 const PANEL_WIDTH = 420
 
 const WELCOME_MESSAGE =
@@ -30,7 +26,6 @@ interface AIPanelProps {
 export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
   const { messages, loading, addMessage, setLoading, clear } = useAiChatStore()
   const [input, setInput] = useState('')
-  const [activeTab, setActiveTab] = useState<'chat' | 'books'>('chat')
   const bottomRef = useRef<HTMLDivElement>(null)
 
   // Scroll to bottom when new messages arrive
@@ -117,42 +112,21 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
               deepseek-coder · LangGraph agent · tutto locale
             </Typography>
           </Box>
-          {activeTab === 'chat' && (
-            <Tooltip title="Cancella cronologia">
-              <IconButton size="small" onClick={clear} sx={{ color: 'rgba(255,255,255,0.8)' }}>
-                <DeleteOutlineIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          )}
+          <Tooltip title="Cancella cronologia">
+            <IconButton size="small" onClick={clear} sx={{ color: 'rgba(255,255,255,0.8)' }}>
+              <DeleteOutlineIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <Tooltip title="Chiudi">
             <IconButton size="small" onClick={onClose} sx={{ color: 'rgba(255,255,255,0.8)' }}>
               <CloseIcon fontSize="small" />
             </IconButton>
           </Tooltip>
         </Box>
-        <Tabs
-          value={activeTab}
-          onChange={(_e, v) => setActiveTab(v as 'chat' | 'books')}
-          sx={{
-            minHeight: 32,
-            '& .MuiTab-root': {
-              minHeight: 32,
-              fontSize: tokens.font.sizeXs,
-              color: 'rgba(255,255,255,0.7)',
-              py: 0.5
-            },
-            '& .Mui-selected': { color: '#fff !important' },
-            '& .MuiTabs-indicator': { backgroundColor: '#fff' }
-          }}
-        >
-          <Tab value="chat" label="Chat" />
-          <Tab value="books" label="Libri" />
-        </Tabs>
       </Box>
 
-      {activeTab === 'chat' ? (
-        <>
-          {/* Messages area */}
+      <>
+        {/* Messages area */}
           <Box
             sx={{
               flex: 1,
@@ -223,12 +197,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
               }}
             />
           </Box>
-        </>
-      ) : (
-        <Box sx={{ flex: 1, overflowY: 'auto', px: 2, py: 2, bgcolor: 'background.default' }}>
-          <RAGStatus />
-        </Box>
-      )}
+      </>
     </Drawer>
   )
 }

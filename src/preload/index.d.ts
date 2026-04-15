@@ -86,6 +86,8 @@ export interface DatabaseInfo {
   createDate?: string
   alias?: string
   referente?: string
+  /** ISO 8601 — impostato dal worker al momento del primo rilevamento dello stato non-ONLINE */
+  offlineSince?: string
 }
 
 export interface SessionInfo {

@@ -70,6 +70,9 @@ let saveFlushTimer: ReturnType<typeof setTimeout> | null = null
 // Track previous metrics for delta computation
 const previousMetrics = new Map<string, ServerMetrics>()
 
+// Track when each DB first went non-ONLINE: serverId → dbName → ISO 8601 timestamp
+const dbOfflineTimestamps = new Map<string, Map<string, string>>()
+
 // Batch buffer: coalesce per-server metrics pushes into a single IPC message per microtask checkpoint
 const pendingBatch: Array<{ serverId: string; metrics: ServerMetrics }> = []
 let batchFlushScheduled = false
@@ -178,8 +181,11 @@ function computeDelta(sid: string, fresh: ServerMetrics): ServerMetrics {
   const freshNames = new Set(fresh.databases.map((d) => d.name))
   const removedDbs = prev.databases.map((d) => d.name).filter((n) => !freshNames.has(n))
 
+  // Build a Map for O(1) lookups instead of O(n) find() inside filter()
+  const prevByName = new Map(prev.databases.map((d) => [d.name, d]))
+
   const changedDbs = fresh.databases.filter((db) => {
-    const prevDb = prev.databases.find((d) => d.name === db.name)
+    const prevDb = prevByName.get(db.name)
     return (
       !prevDb ||
       prevDb.sizeMb    !== db.sizeMb    ||
@@ -319,6 +325,23 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
         ...(allCustomFields[`${sid}/${db.name}`] ?? {})
       }))
     }
+
+    // Enrich databases with offlineSince timestamp (track first detection of non-ONLINE state)
+    const offlineMap = dbOfflineTimestamps.get(sid) ?? new Map<string, string>()
+    enrichedMetrics = {
+      ...enrichedMetrics,
+      databases: enrichedMetrics.databases.map((db) => {
+        if (db.stateDesc !== 'ONLINE') {
+          if (!offlineMap.has(db.name)) {
+            offlineMap.set(db.name, enrichedMetrics.collectedAt.toISOString())
+          }
+          return { ...db, offlineSince: offlineMap.get(db.name) }
+        }
+        offlineMap.delete(db.name)
+        return db
+      })
+    }
+    dbOfflineTimestamps.set(sid, offlineMap)
 
     // Rolling history
     const cap = intervalOverrides?.historyCapOverride ?? MAX_HISTORY
@@ -524,6 +547,7 @@ export function syncServers(servers: CollectMetricsRequest[]): void {
       jobs.delete(sid)
       previousMetrics.delete(sid)
       metricsHistory.delete(sid)
+      dbOfflineTimestamps.delete(sid)
     }
   }
 
@@ -597,6 +621,7 @@ export type { PollJob }
 export function __resetForTests(): void {
   stopWorker()           // clears jobs, running, tickHandle, activeDebounce, previousMetrics, flushes saveQueue
   metricsHistory.clear()
+  dbOfflineTimestamps.clear()
   saveQueue.length = 0
   storedAlerts = []
   alertCounter = 0
@@ -622,4 +647,12 @@ export function __getJobForTest(sid: string): PollJob | undefined {
  */
 export function __getAlertCallbackForTest() {
   return alertCallback
+}
+
+/**
+ * Returns the offline timestamp map for a given server.
+ * For testing only.
+ */
+export function __getDbOfflineTimestampsForTest(sid: string): Map<string, string> | undefined {
+  return dbOfflineTimestamps.get(sid)
 }

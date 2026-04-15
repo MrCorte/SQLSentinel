@@ -59,44 +59,54 @@ function watchWindowShortcuts(window: BrowserWindowType): void {
 // Health check — TCP probe every 60 s, push events to renderer
 // ---------------------------------------------------------------------------
 
+// Probe at most 20 servers concurrently to bound worst-case time to
+// 20 × 5 s = 100 s (< 2× the 60 s interval) instead of 200 × 5 s = 1000 s.
+const HEALTH_CONCURRENCY = 20
+
 async function healthCheckAll(): Promise<void> {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const servers = serverStore.getAll()
-  for (const server of servers) {
-    const addr = server.host ?? server.ip
-    try {
-      // TCP probe with 5 s timeout — no SQL credentials needed
-      await scanHost(addr, server.port, 5000)
-      if (server.unreachable) {
-        // Was marked unreachable — now back online
-        serverStore.update(server.id, {
-          unreachable: false,
-          unreachableSince: undefined,
-          lastSeen: new Date().toISOString()
-        })
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(IpcChannel.SERVER_RECOVERED, server.id)
+
+  for (let i = 0; i < servers.length; i += HEALTH_CONCURRENCY) {
+    const chunk = servers.slice(i, i + HEALTH_CONCURRENCY)
+    await Promise.allSettled(
+      chunk.map(async (server) => {
+        const addr = server.host ?? server.ip
+        try {
+          // TCP probe with 5 s timeout — no SQL credentials needed
+          await scanHost(addr, server.port, 5000)
+          if (server.unreachable) {
+            // Was marked unreachable — now back online
+            serverStore.update(server.id, {
+              unreachable: false,
+              unreachableSince: undefined,
+              lastSeen: new Date().toISOString()
+            })
+            if (!mainWindow!.isDestroyed()) {
+              mainWindow!.webContents.send(IpcChannel.SERVER_RECOVERED, server.id)
+            }
+            console.log('[HealthCheck] RECOVERED:', `${addr}:${server.port}`)
+          } else {
+            serverStore.update(server.id, { lastSeen: new Date().toISOString() })
+          }
+        } catch {
+          if (!server.unreachable) {
+            // First failure — mark as unreachable and notify renderer
+            const since = new Date().toISOString()
+            serverStore.update(server.id, { unreachable: true, unreachableSince: since })
+            if (!mainWindow!.isDestroyed()) {
+              mainWindow!.webContents.send(IpcChannel.SERVER_UNREACHABLE, {
+                serverId: server.id,
+                ip: addr,
+                port: server.port,
+                since
+              })
+            }
+            console.warn('[HealthCheck] UNREACHABLE:', `${addr}:${server.port}`)
+          }
         }
-        console.log('[HealthCheck] RECOVERED:', `${addr}:${server.port}`)
-      } else {
-        serverStore.update(server.id, { lastSeen: new Date().toISOString() })
-      }
-    } catch {
-      if (!server.unreachable) {
-        // First failure — mark as unreachable and notify renderer
-        const since = new Date().toISOString()
-        serverStore.update(server.id, { unreachable: true, unreachableSince: since })
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(IpcChannel.SERVER_UNREACHABLE, {
-            serverId: server.id,
-            ip: addr,
-            port: server.port,
-            since
-          })
-        }
-        console.warn('[HealthCheck] UNREACHABLE:', `${addr}:${server.port}`)
-      }
-    }
+      })
+    )
   }
 }
 

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, memo } from 'react'
+import { useMemo, useState, useEffect, useCallback, memo } from 'react'
 import { Box, Typography, Button, CircularProgress, Tooltip as MuiTooltip } from '@mui/material'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import {
@@ -20,8 +20,288 @@ import { useAgStore } from '../store/agStore'
 import { useAlertsStore } from '../store/alertsStore'
 import { useRefreshAllServers } from '../hooks/useRefreshAllServers'
 import { tokens } from '../styles/tokens'
-import type { StoredServer, Alert } from '../../../preload/index'
+import type { StoredServer, Alert, ServerMetrics } from '../../../preload/index'
+import type { ServerSummary } from '../store/metricsStore'
+import type { ServerGroup } from '../types/index'
 import { HOSTING_BADGE } from '../constants/hosting'
+import { useNow } from '../hooks/useNow'
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function dataAge(collectedAt: Date | string | undefined, now: Date): { label: string; color: string } {
+  if (!collectedAt) return { label: '—', color: 'rgba(128,128,128,0.4)' }
+  const minAgo = Math.floor((now.getTime() - new Date(collectedAt).getTime()) / 60_000)
+  if (minAgo < 2)  return { label: 'adesso',           color: '#107c10' }
+  if (minAgo < 10) return { label: `${minAgo} min fa`, color: 'rgba(128,128,128,0.7)' }
+  if (minAgo < 30) return { label: `${minAgo} min fa`, color: '#d83b01' }
+  return                  { label: `${minAgo} min fa`, color: '#a4262c' }
+}
+
+// ---------------------------------------------------------------------------
+// ServerRow — memoized table row
+// Re-renders only when its own server data changes (Immer structural sharing).
+// ---------------------------------------------------------------------------
+
+interface ServerRowProps {
+  s: StoredServer
+  m: ServerMetrics | undefined
+  summary: ServerSummary | undefined
+  alertCount: { crit: number; warn: number } | undefined
+  group: ServerGroup | undefined
+  serverAlias: string | undefined
+  now: Date
+  onNavigate: (id: string) => void
+}
+
+const ServerRow = memo(function ServerRow({
+  s,
+  m,
+  summary,
+  alertCount,
+  group,
+  serverAlias,
+  now,
+  onNavigate
+}: ServerRowProps): React.JSX.Element {
+  const key = `${s.host ?? s.ip}:${s.port}`
+  const name = serverAlias || s.host || s.ip || key
+  const cpu = m?.instanceInfo?.cpuUsagePercent
+  const memPct = m
+    ? Math.round((m.instanceInfo.memoryUsedMb / m.instanceInfo.memoryTargetMb) * 100)
+    : null
+  const dbCount = summary?.dbCount ?? null
+  const age = dataAge(summary?.collectedAt, now)
+  const critSrv = alertCount?.crit ?? 0
+  const warnSrv = alertCount?.warn ?? 0
+  const tipo = s.agGroupId
+    ? s.agRole === 'PRIMARY'
+      ? 'AG PRI'
+      : s.agRole === 'SECONDARY'
+        ? 'AG SEC'
+        : 'AG RES'
+    : 'Standalone'
+  const uptime = m?.instanceInfo?.uptimeDays
+  const rowBg = s.unreachable ? '#fde7e9' : 'transparent'
+
+  return (
+    <tr
+      onClick={() => onNavigate(s.id)}
+      style={{ backgroundColor: rowBg, cursor: 'pointer', transition: 'background-color 100ms' }}
+      onMouseEnter={(e) => {
+        if (!s.unreachable)
+          (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'rgba(128,128,128,0.08)'
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLTableRowElement).style.backgroundColor = rowBg
+      }}
+    >
+      <td
+        style={{
+          padding: '5px 8px',
+          borderBottom: '1px solid rgba(128,128,128,0.2)',
+          fontWeight: tokens.font.weightSemibold,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap'
+        }}
+      >
+        <MuiTooltip title={name} placement="top" arrow>
+          <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {name}
+          </span>
+        </MuiTooltip>
+      </td>
+      <td
+        style={{
+          padding: '5px 8px',
+          borderBottom: '1px solid rgba(128,128,128,0.2)',
+          opacity: 0.7,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap'
+        }}
+      >
+        {group ? (
+          <MuiTooltip title={group.name} placement="top" arrow>
+            <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ color: group.color }}>●</span> {group.name}
+            </span>
+          </MuiTooltip>
+        ) : (
+          '—'
+        )}
+      </td>
+      <td
+        style={{
+          padding: '5px 8px',
+          borderBottom: '1px solid rgba(128,128,128,0.2)',
+          whiteSpace: 'nowrap'
+        }}
+      >
+        {(() => {
+          const hBadge = HOSTING_BADGE[s.hostingType ?? 'on-premise']
+          return (
+            <span
+              style={{
+                display: 'inline-block',
+                backgroundColor: hBadge.color,
+                color: '#fff',
+                fontWeight: tokens.font.weightBold,
+                fontSize: 10,
+                borderRadius: 3,
+                padding: '1px 5px'
+              }}
+            >
+              {hBadge.label}
+            </span>
+          )
+        })()}
+      </td>
+      <td
+        style={{
+          padding: '5px 8px',
+          borderBottom: '1px solid rgba(128,128,128,0.2)',
+          opacity: 0.7,
+          whiteSpace: 'nowrap'
+        }}
+      >
+        {tipo}
+      </td>
+      <td
+        style={{
+          padding: '5px 8px',
+          borderBottom: '1px solid rgba(128,128,128,0.2)',
+          color:
+            cpu === undefined
+              ? 'rgba(128,128,128,0.5)'
+              : cpu >= 80
+                ? '#a4262c'
+                : cpu >= 60
+                  ? '#d83b01'
+                  : undefined,
+          fontWeight: cpu !== undefined && cpu >= 60 ? tokens.font.weightBold : tokens.font.weightRegular,
+          whiteSpace: 'nowrap'
+        }}
+      >
+        {cpu !== undefined ? `${Math.round(cpu * 10) / 10}%` : '—'}
+      </td>
+      <td
+        style={{
+          padding: '5px 8px',
+          borderBottom: '1px solid rgba(128,128,128,0.2)',
+          color:
+            memPct === null
+              ? 'rgba(128,128,128,0.5)'
+              : memPct >= 90
+                ? '#a4262c'
+                : undefined,
+          whiteSpace: 'nowrap'
+        }}
+      >
+        {memPct !== null ? `${memPct}%` : '—'}
+      </td>
+      <td
+        style={{
+          padding: '5px 8px',
+          borderBottom: '1px solid rgba(128,128,128,0.2)',
+          whiteSpace: 'nowrap'
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span>{dbCount !== null ? dbCount : '—'}</span>
+          <span style={{ fontSize: 10, color: age.color, lineHeight: 1.2 }}>{age.label}</span>
+        </div>
+      </td>
+      <td
+        style={{
+          padding: '5px 8px',
+          borderBottom: '1px solid rgba(128,128,128,0.2)'
+        }}
+      >
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', alignItems: 'center', minWidth: 0 }}>
+          {critSrv > 0 && (
+            <span
+              style={{
+                color: '#fff',
+                background: '#a4262c',
+                borderRadius: 3,
+                padding: '1px 5px',
+                fontSize: 10,
+                fontWeight: tokens.font.weightBold,
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {critSrv} CRIT
+            </span>
+          )}
+          {warnSrv > 0 && (
+            <span
+              style={{
+                color: '#fff',
+                background: '#d83b01',
+                borderRadius: 3,
+                padding: '1px 5px',
+                fontSize: 10,
+                fontWeight: tokens.font.weightBold,
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {warnSrv} WARN
+            </span>
+          )}
+          {critSrv === 0 && warnSrv === 0 && (
+            <span style={{ opacity: 0.4 }}>—</span>
+          )}
+        </div>
+      </td>
+      <td
+        style={{
+          padding: '5px 8px',
+          borderBottom: '1px solid rgba(128,128,128,0.2)',
+          overflow: 'hidden'
+        }}
+      >
+        {s.unreachable ? (
+          <span
+            style={{
+              display: 'block',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              color: '#a4262c',
+              fontWeight: tokens.font.weightBold,
+              fontSize: tokens.font.sizeXs
+            }}
+          >
+            ● OFFLINE
+          </span>
+        ) : m ? (
+          <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#107c10', fontWeight: tokens.font.weightBold, fontSize: tokens.font.sizeXs }}>
+            ● ONLINE
+          </span>
+        ) : (
+          <span
+            style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.4, fontSize: tokens.font.sizeXs }}
+          >
+            ● SCONOSCIUTO
+          </span>
+        )}
+      </td>
+      <td
+        style={{
+          padding: '5px 8px',
+          borderBottom: '1px solid rgba(128,128,128,0.2)',
+          opacity: 0.7,
+          whiteSpace: 'nowrap'
+        }}
+      >
+        {uptime !== undefined ? `${uptime}g` : '—'}
+      </td>
+    </tr>
+  )
+})
 
 // ---------------------------------------------------------------------------
 // Props
@@ -121,12 +401,14 @@ export function HomeDashboard({
   // Throttle: con 200+ server ogni singolo update ricevuto riscatena useMemo del dashboard.
   // Limitiamo a max 1 re-render/s — i dati nel ref sono sempre aggiornati da applyDelta.
   const [metricsMap, setMetricsMap] = useState(() => useMetricsStore.getState().metricsMap)
+  const [summaries, setSummaries] = useState(() => useMetricsStore.getState().summaries)
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null
     const unsub = useMetricsStore.subscribe(() => {
       if (timer) return
       timer = setTimeout(() => {
         setMetricsMap(useMetricsStore.getState().metricsMap)
+        setSummaries(useMetricsStore.getState().summaries)
         timer = null
       }, 1000)
     })
@@ -135,10 +417,35 @@ export function HomeDashboard({
       if (timer) clearTimeout(timer)
     }
   }, [])
+  const now = useNow()
   const { groups, serverGroups, serverAliases } = useGroupsStore()
   const { agGroups } = useAgStore()
   const alerts = useAlertsStore((s) => s.alerts)
   const { refreshing, handleRefresh } = useRefreshAllServers()
+
+  // Pre-compute O(1) lookup maps so ServerRow doesn't run O(N) filter/find per render
+  const alertCountByServer = useMemo(() => {
+    const map: Record<string, { crit: number; warn: number }> = {}
+    alerts.forEach((a) => {
+      if (a.acknowledgedAt !== null) return
+      if (!map[a.serverId]) map[a.serverId] = { crit: 0, warn: 0 }
+      if (a.severity === 'CRITICAL') map[a.serverId].crit++
+      else map[a.serverId].warn++
+    })
+    return map
+  }, [alerts])
+
+  const agGroupByServerId = useMemo(() => {
+    const map: Record<string, ServerGroup | undefined> = {}
+    servers.forEach((s) => {
+      const key = serverKey(s)
+      const groupId = serverGroups[key]
+      map[key] = groupId ? groups.find((g) => g.id === groupId) : undefined
+    })
+    return map
+  }, [servers, serverGroups, groups])
+
+  const handleNavigate = useCallback((id: string) => onNavigateToServer(id), [onNavigateToServer])
 
   // ---- Derived metrics (memoized) — must be before any early return ----
   const {
@@ -154,12 +461,13 @@ export function HomeDashboard({
     cpuData,
     hasCpuData,
     cpuChartHeight,
-    recentAlerts
+    recentAlerts,
+    offlineDbs
   } = useMemo(() => {
     const onlineCount = servers.filter((s) => !s.unreachable && metricsMap[serverKey(s)]).length
     const offlineCount = servers.filter((s) => s.unreachable).length
     const unreachableCount = servers.filter((s) => !s.unreachable && !metricsMap[serverKey(s)]).length
-    const totalDbs = Object.values(metricsMap).reduce((acc, m) => acc + (m.databases?.length ?? 0), 0)
+    const totalDbs = Object.values(summaries).reduce((acc, s) => acc + s.dbCount, 0)
     const activeAlerts: Alert[] = alerts.filter((a) => a.acknowledgedAt === null)
     const criticalCount = activeAlerts.filter((a) => a.severity === 'CRITICAL').length
     const warningCount = activeAlerts.filter((a) => a.severity === 'WARNING').length
@@ -192,6 +500,16 @@ export function HomeDashboard({
       .sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime())
       .slice(0, 10)
 
+    const offlineDbs = servers.flatMap((s) => {
+      const key = serverKey(s)
+      const m = metricsMap[key]
+      if (!m) return []
+      const serverName = serverAliases[key] || s.host || s.ip || key
+      return m.databases
+        .filter((d) => d.stateDesc !== 'ONLINE')
+        .map((d) => ({ name: d.name, serverName, serverId: key, serverRecordId: s.id, stateDesc: d.stateDesc, offlineSince: d.offlineSince }))
+    })
+
     return {
       onlineCount,
       offlineCount,
@@ -205,9 +523,10 @@ export function HomeDashboard({
       cpuData,
       hasCpuData,
       cpuChartHeight,
-      recentAlerts
+      recentAlerts,
+      offlineDbs
     }
-  }, [servers, metricsMap, alerts, serverAliases])
+  }, [servers, metricsMap, summaries, alerts, serverAliases])
 
   // ---- Empty state — after all hooks ----
   if (servers.length === 0) {
@@ -526,6 +845,18 @@ export function HomeDashboard({
               tableLayout: 'fixed'
             }}
           >
+            <colgroup>
+              <col style={{ width: '18%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '11%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '6%' }} />
+              <col style={{ width: '6%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '7%' }} />
+            </colgroup>
             <thead>
               <tr
                 style={{
@@ -559,7 +890,9 @@ export function HomeDashboard({
                       textTransform: 'uppercase',
                       letterSpacing: '0.04em',
                       borderBottom: '1px solid rgba(128,128,128,0.2)',
-                      whiteSpace: 'nowrap'
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
                     }}
                   >
                     {col}
@@ -570,240 +903,18 @@ export function HomeDashboard({
             <tbody>
               {servers.map((s) => {
                 const key = serverKey(s)
-                const m = metricsMap[key]
-                const groupId = serverGroups[key]
-                const group = groups.find((g) => g.id === groupId)
-                const alias = serverAliases[key]
-                const name = alias || s.host || s.ip || key
-                const cpu = m?.instanceInfo?.cpuUsagePercent
-                const memPct =
-                  m
-                    ? Math.round(
-                        (m.instanceInfo.memoryUsedMb / m.instanceInfo.memoryTargetMb) * 100
-                      )
-                    : null
-                const dbCount = m?.databases?.length ?? null
-                const srvAlerts = activeAlerts.filter((a) => a.serverId === key)
-                const critSrv = srvAlerts.filter((a) => a.severity === 'CRITICAL').length
-                const warnSrv = srvAlerts.filter((a) => a.severity === 'WARNING').length
-                const tipo =
-                  s.agGroupId
-                    ? s.agRole === 'PRIMARY'
-                      ? 'AG PRI'
-                      : s.agRole === 'SECONDARY'
-                        ? 'AG SEC'
-                        : 'AG RES'
-                    : 'Standalone'
-                const uptime = m?.instanceInfo?.uptimeDays
-
-                const rowBg = s.unreachable ? '#fde7e9' : 'transparent'
-
                 return (
-                  <tr
+                  <ServerRow
                     key={s.id}
-                    onClick={() => onNavigateToServer(s.id)}
-                    style={{
-                      backgroundColor: rowBg,
-                      cursor: 'pointer',
-                      transition: 'background-color 100ms'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!s.unreachable)
-                        (e.currentTarget as HTMLTableRowElement).style.backgroundColor =
-                          'rgba(128,128,128,0.08)'
-                    }}
-                    onMouseLeave={(e) => {
-                      ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = rowBg
-                    }}
-                  >
-                    <td
-                      style={{
-                        padding: '5px 8px',
-                        borderBottom: '1px solid rgba(128,128,128,0.2)',
-                        fontWeight: tokens.font.weightSemibold,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {name}
-                    </td>
-                    <td
-                      style={{
-                        padding: '5px 8px',
-                        borderBottom: '1px solid rgba(128,128,128,0.2)',
-                        opacity: 0.7,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {group ? (
-                        <span>
-                          <span style={{ color: group.color }}>●</span> {group.name}
-                        </span>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td
-                      style={{
-                        padding: '5px 8px',
-                        borderBottom: '1px solid rgba(128,128,128,0.2)',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {(() => {
-                        const hBadge = HOSTING_BADGE[s.hostingType ?? 'on-premise']
-                        return (
-                          <span
-                            style={{
-                              display: 'inline-block',
-                              backgroundColor: hBadge.color,
-                              color: '#fff',
-                              fontWeight: tokens.font.weightBold,
-                              fontSize: 10,
-                              borderRadius: 3,
-                              padding: '1px 5px'
-                            }}
-                          >
-                            {hBadge.label}
-                          </span>
-                        )
-                      })()}
-                    </td>
-                    <td
-                      style={{
-                        padding: '5px 8px',
-                        borderBottom: '1px solid rgba(128,128,128,0.2)',
-                        opacity: 0.7,
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {tipo}
-                    </td>
-                    <td
-                      style={{
-                        padding: '5px 8px',
-                        borderBottom: '1px solid rgba(128,128,128,0.2)',
-                        color:
-                          cpu === undefined
-                            ? 'rgba(128,128,128,0.5)'
-                            : cpu >= 80
-                              ? '#a4262c'
-                              : cpu >= 60
-                                ? '#d83b01'
-                                : undefined,
-                        fontWeight: cpu !== undefined && cpu >= 60 ? tokens.font.weightBold : tokens.font.weightRegular,
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {cpu !== undefined ? `${Math.round(cpu * 10) / 10}%` : '—'}
-                    </td>
-                    <td
-                      style={{
-                        padding: '5px 8px',
-                        borderBottom: '1px solid rgba(128,128,128,0.2)',
-                        color:
-                          memPct === null
-                            ? 'rgba(128,128,128,0.5)'
-                            : memPct >= 90
-                              ? '#a4262c'
-                              : undefined,
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {memPct !== null ? `${memPct}%` : '—'}
-                    </td>
-                    <td
-                      style={{
-                        padding: '5px 8px',
-                        borderBottom: '1px solid rgba(128,128,128,0.2)',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {dbCount !== null ? dbCount : '—'}
-                    </td>
-                    <td
-                      style={{
-                        padding: '5px 8px',
-                        borderBottom: '1px solid rgba(128,128,128,0.2)',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {critSrv > 0 && (
-                        <span
-                          style={{
-                            color: '#fff',
-                            background: '#a4262c',
-                            borderRadius: 3,
-                            padding: '1px 5px',
-                            fontSize: 10,
-                            fontWeight: tokens.font.weightBold,
-                            marginRight: 3
-                          }}
-                        >
-                          {critSrv} CRIT
-                        </span>
-                      )}
-                      {warnSrv > 0 && (
-                        <span
-                          style={{
-                            color: '#fff',
-                            background: '#d83b01',
-                            borderRadius: 3,
-                            padding: '1px 5px',
-                            fontSize: 10,
-                            fontWeight: tokens.font.weightBold
-                          }}
-                        >
-                          {warnSrv} WARN
-                        </span>
-                      )}
-                      {critSrv === 0 && warnSrv === 0 && (
-                        <span style={{ opacity: 0.4 }}>—</span>
-                      )}
-                    </td>
-                    <td
-                      style={{
-                        padding: '5px 8px',
-                        borderBottom: '1px solid rgba(128,128,128,0.2)',
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {s.unreachable ? (
-                        <span
-                          style={{
-                            color: '#a4262c',
-                            fontWeight: tokens.font.weightBold,
-                            fontSize: tokens.font.sizeXs
-                          }}
-                        >
-                          ● OFFLINE
-                        </span>
-                      ) : m ? (
-                        <span style={{ color: '#107c10', fontWeight: tokens.font.weightBold, fontSize: tokens.font.sizeXs }}>
-                          ● ONLINE
-                        </span>
-                      ) : (
-                        <span
-                          style={{ opacity: 0.4, fontSize: tokens.font.sizeXs }}
-                        >
-                          ● SCONOSCIUTO
-                        </span>
-                      )}
-                    </td>
-                    <td
-                      style={{
-                        padding: '5px 8px',
-                        borderBottom: '1px solid rgba(128,128,128,0.2)',
-                        opacity: 0.7,
-                        whiteSpace: 'nowrap'
-                      }}
-                    >
-                      {uptime !== undefined ? `${uptime}g` : '—'}
-                    </td>
-                  </tr>
+                    s={s}
+                    m={metricsMap[key]}
+                    summary={summaries[key]}
+                    alertCount={alertCountByServer[key]}
+                    group={agGroupByServerId[key]}
+                    serverAlias={serverAliases[key]}
+                    now={now}
+                    onNavigate={handleNavigate}
+                  />
                 )
               })}
             </tbody>
@@ -962,6 +1073,174 @@ export function HomeDashboard({
           </Box>
         </Box>
       </Box>
+
+      {/* ---- Row 5: Offline databases ---- */}
+      {offlineDbs.length > 0 && (
+        <Box
+          sx={{
+            mx: 0,
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
+            borderLeft: '4px solid #a4262c',
+            borderRadius: `${tokens.radius.md}px`,
+            boxShadow: tokens.shadow.elevated,
+            overflow: 'hidden',
+            flexShrink: 0
+          }}
+        >
+          {/* Header */}
+          <Box
+            sx={{
+              px: 2,
+              py: 1,
+              borderBottom: '1px solid',
+              borderBottomColor: 'divider',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              backgroundImage: (theme) =>
+                theme.palette.mode === 'dark'
+                  ? 'linear-gradient(135deg, rgba(164,38,44,0.10) 0%, transparent 100%)'
+                  : 'linear-gradient(135deg, rgba(164,38,44,0.06) 0%, transparent 100%)'
+            }}
+          >
+            <Typography
+              sx={{
+                fontSize: tokens.font.sizeXs,
+                fontWeight: tokens.font.weightBold,
+                color: '#a4262c',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em'
+              }}
+            >
+              Database non online
+            </Typography>
+            <Box
+              sx={{
+                ml: 0.5,
+                px: 0.75,
+                py: 0.1,
+                bgcolor: '#a4262c',
+                color: '#fff',
+                borderRadius: 1,
+                fontSize: 10,
+                fontWeight: tokens.font.weightBold,
+                lineHeight: 1.6
+              }}
+            >
+              {offlineDbs.length}
+            </Box>
+          </Box>
+
+          {/* Table */}
+          <table
+            style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              fontSize: tokens.font.sizeSm,
+              tableLayout: 'fixed'
+            }}
+          >
+            <thead>
+              <tr>
+                {['DATABASE', 'SERVER', 'STATO', 'NON ONLINE DAL'].map((col) => (
+                  <th
+                    key={col}
+                    style={{
+                      padding: '5px 10px',
+                      textAlign: 'left',
+                      fontWeight: tokens.font.weightBold,
+                      fontSize: tokens.font.sizeXs,
+                      opacity: 0.6,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      borderBottom: '1px solid rgba(128,128,128,0.2)',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {col}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {offlineDbs.map((db, i) => (
+                <tr
+                  key={`${db.serverId}/${db.name}`}
+                  onClick={() => onNavigateToServer(db.serverRecordId)}
+                  style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'rgba(164,38,44,0.03)', cursor: 'pointer' }}
+                >
+                  <td
+                    style={{
+                      padding: '5px 10px',
+                      borderBottom: '1px solid rgba(128,128,128,0.1)',
+                      fontWeight: tokens.font.weightSemibold,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {db.name}
+                  </td>
+                  <td
+                    style={{
+                      padding: '5px 10px',
+                      borderBottom: '1px solid rgba(128,128,128,0.1)',
+                      opacity: 0.75,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {db.serverName}
+                  </td>
+                  <td
+                    style={{
+                      padding: '5px 10px',
+                      borderBottom: '1px solid rgba(128,128,128,0.1)',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        padding: '1px 6px',
+                        borderRadius: 3,
+                        fontSize: 10,
+                        fontWeight: tokens.font.weightBold,
+                        background: db.stateDesc === 'OFFLINE' ? '#a4262c' : '#d83b01',
+                        color: '#fff'
+                      }}
+                    >
+                      {db.stateDesc}
+                    </span>
+                  </td>
+                  <td
+                    style={{
+                      padding: '5px 10px',
+                      borderBottom: '1px solid rgba(128,128,128,0.1)',
+                      whiteSpace: 'nowrap',
+                      color: db.offlineSince ? 'inherit' : 'rgba(128,128,128,0.5)',
+                      fontSize: tokens.font.sizeSm
+                    }}
+                  >
+                    {db.offlineSince
+                      ? new Date(db.offlineSince).toLocaleString('it-IT', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })
+                      : 'prima del riavvio'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Box>
+      )}
     </Box>
   )
 }

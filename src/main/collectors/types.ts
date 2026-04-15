@@ -42,6 +42,8 @@ export interface DatabaseInfo {
   // Campi custom — popolati dal merge con lo store, non dalla query SQL
   alias?: string
   referente?: string
+  /** ISO 8601 — impostato dal worker al momento del primo rilevamento dello stato non-ONLINE */
+  offlineSince?: string
 }
 
 export interface SessionInfo {

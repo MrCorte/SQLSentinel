@@ -16,6 +16,7 @@ import { getSettings } from './store/settings'
 import { IpcChannel } from './ipc/types'
 import * as serverStore from './store/serverStore'
 import { scanHost } from './discovery/tcpScanner'
+import { autoIndexRagBooks } from './ai/ragIndexer'
 
 const isDev = !app.isPackaged
 
@@ -174,6 +175,11 @@ app.whenReady().then(() => {
   ipcMain.on('ping', () => console.log('pong'))
 
   registerIpcHandlers()
+
+  // Indicizza i PDF in data/ in background — non bloccante, graceful se Ollama non disponibile
+  autoIndexRagBooks().catch((err) =>
+    console.error('[RAG] Auto-index failed:', err instanceof Error ? err.message : String(err))
+  )
 
   createWindow()
 

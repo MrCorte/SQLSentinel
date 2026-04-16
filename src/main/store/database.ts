@@ -65,6 +65,24 @@ const DDL = `
   -- Standalone index: WHERE collected_at < ? without server_id  (cleanup/purge)
   CREATE INDEX IF NOT EXISTS idx_metrics_cleanup ON metrics_snapshots(collected_at);
 
+  CREATE TABLE IF NOT EXISTS rag_documents (
+    id          TEXT PRIMARY KEY,
+    filename    TEXT NOT NULL UNIQUE,
+    file_size   INTEGER NOT NULL,
+    indexed_at  TEXT NOT NULL,
+    chunk_count INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS rag_chunks (
+    id          TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL REFERENCES rag_documents(id) ON DELETE CASCADE,
+    chunk_index INTEGER NOT NULL,
+    text        TEXT NOT NULL,
+    embedding   BLOB NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_rag_chunks_doc ON rag_chunks(document_id);
+
 `
 
 /**
@@ -87,6 +105,13 @@ export function initDb(dbPath: string): Database.Database {
   _db.pragma('synchronous  = NORMAL') // 2 fsync → 1 per transazione; nessun rischio di corruzione con WAL
   _db.pragma('cache_size   = -8192')  // 8 MB (default: 2 MB)
   _db.pragma('temp_store   = MEMORY') // tabelle temporanee in RAM
+
+  // Schema migration: drop tabelle RAG con schema vecchio (size_bytes → file_size)
+  const schemaVersion = (_db.pragma('user_version', { simple: true }) as number) ?? 0
+  if (schemaVersion < 1) {
+    _db.exec('DROP TABLE IF EXISTS rag_chunks; DROP TABLE IF EXISTS rag_documents;')
+    _db.pragma('user_version = 1')
+  }
 
   _db.exec(DDL)
 

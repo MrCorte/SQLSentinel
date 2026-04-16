@@ -1,11 +1,12 @@
 import { createReactAgent } from '@langchain/langgraph/prebuilt'
-import { ChatOllama } from '@langchain/ollama'
+import { ChatOllama, OllamaEmbeddings } from '@langchain/ollama'
 import { HumanMessage, AIMessage } from '@langchain/core/messages'
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { z } from 'zod'
 import * as serverStore from '../store/serverStore'
 import * as metricsRepository from '../store/metricsRepository'
 import { getAlerts } from '../metricsWorker'
+import { retrieveTopK } from '../store/ragRepository'
 
 // ---------------------------------------------------------------------------
 // System prompt
@@ -187,12 +188,48 @@ const suggestTSQLTool = new DynamicStructuredTool({
   }
 })
 
+// ---------------------------------------------------------------------------
+// Tool: search_sql_documentation (RAG)
+// ---------------------------------------------------------------------------
+
+let _embeddings: OllamaEmbeddings | null = null
+
+function getEmbeddings(): OllamaEmbeddings {
+  if (!_embeddings) {
+    _embeddings = new OllamaEmbeddings({
+      model: 'nomic-embed-text',
+      baseUrl: 'http://localhost:11434'
+    })
+  }
+  return _embeddings
+}
+
+const searchDocumentationTool = new DynamicStructuredTool({
+  name: 'search_sql_documentation',
+  description:
+    'Cerca nei libri SQL Server (DMV, troubleshooting, performance tuning) i passaggi più rilevanti per una domanda tecnica. Usare quando si vuole citare best practice o spiegazioni dai libri.',
+  schema: z.object({
+    query: z.string().describe('La domanda tecnica da cercare nei libri SQL Server')
+  }),
+  func: async ({ query }: { query: string }) => {
+    try {
+      const vec = await getEmbeddings().embedQuery(query)
+      const results = retrieveTopK(vec, 5)
+      if (results.length === 0) return 'Nessun documento ancora indicizzato.'
+      return results.map((r, i) => `[Estratto ${i + 1}]\n${r.text}`).join('\n\n---\n\n')
+    } catch {
+      return 'Documentazione non disponibile (nomic-embed-text non installato o Ollama non raggiungibile).'
+    }
+  }
+})
+
 const agentTools = [
   getServerMetricsTool,
   getRecentAlertsTool,
   getSlowQueriesTool,
   getServerNotesTool,
-  suggestTSQLTool
+  suggestTSQLTool,
+  searchDocumentationTool
 ]
 
 // ---------------------------------------------------------------------------

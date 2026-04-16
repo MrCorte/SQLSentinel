@@ -4,6 +4,9 @@ out
 .DS_Store
 .eslintcache
 *.log*
+.env.production
+.env.development
+.env.local
 
 CLAUDE.local.md
 .claude/settings.local.json

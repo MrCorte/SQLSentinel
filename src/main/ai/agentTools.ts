@@ -162,14 +162,9 @@ ORDER BY COUNT(*) DESC`
 
 export const suggestTSQLTool = new DynamicStructuredTool({
   name: 'suggest_tsql',
-  description:
-    'Restituisce una query T-SQL diagnostica pronta per un problema specifico SQL Server.',
+  description: 'Restituisce una query T-SQL diagnostica pronta per un problema specifico SQL Server.',
   schema: z.object({
-    problema: z
-      .string()
-      .describe(
-        'Tipo di problema: cpu_alta | query_lente | blocking | backup | disk | connessioni'
-      )
+    problema: z.string().describe('Tipo di problema: cpu_alta | query_lente | blocking | backup | disk | connessioni')
   }),
   func: async ({ problema }: { problema: string }) => {
     const lower = problema.toLowerCase()

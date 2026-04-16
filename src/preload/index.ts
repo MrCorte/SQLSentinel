@@ -836,9 +836,12 @@ const mockApi = {
   aiCheck: async (): Promise<IpcResult<boolean>> => ({ ok: true, data: false }),
 
   aiAgentAsk: async (
-    _question: string,
+    question: string,
     _history: Array<{ role: 'user' | 'assistant'; content: string }>
-  ): Promise<IpcResult<string>> => ({ ok: false, error: 'Agent non disponibile in mock mode' }),
+  ): Promise<IpcResult<string>> => ({
+    ok: true,
+    data: `**OSSERVAZIONE**: (mock) Ricevuta domanda: "${question}"\n\n**CAUSA PROBABILE**: Modalità mock attiva — nessun server reale monitorato.\n\n**AZIONE IMMEDIATA**: Avvia l'app senza mock mode (\`VITE_USE_MOCK=false\`) per ottenere risposte reali dall'agente AI.\n\n**PROSSIMI CHECK**: Verifica che Ollama sia in esecuzione con \`ollama serve\`.`
+  }),
 }
 
 // ---------------------------------------------------------------------------

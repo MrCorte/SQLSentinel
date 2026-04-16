@@ -55,7 +55,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
       } else {
         addMessage({
           role: 'assistant',
-          content: `Errore: ${result.error}\n\nVerifica che Ollama sia in esecuzione:\n  ollama serve\n  ollama pull deepseek-coder:1.3b`,
+          content: `Errore: ${result.error}\n\nVerifica che Ollama sia in esecuzione:\n  ollama serve\n  ollama pull llama3.2:3b`,
           ts: Date.now()
         })
       }
@@ -63,7 +63,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
       addMessage({
         role: 'assistant',
         content:
-          'Connessione ad Ollama fallita.\n\nAssicurati che sia in esecuzione:\n  ollama serve\n  ollama pull deepseek-coder:1.3b',
+          'Connessione ad Ollama fallita.\n\nAssicurati che sia in esecuzione:\n  ollama serve\n  ollama pull llama3.2:3b',
         ts: Date.now()
       })
     } finally {
@@ -109,7 +109,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
               Assistente AI DBA
             </Typography>
             <Typography sx={{ fontSize: tokens.font.sizeXs, opacity: 0.85 }}>
-              deepseek-coder · LangGraph agent · tutto locale
+              llama3.2:3b · LangGraph agent · tutto locale
             </Typography>
           </Box>
           <Tooltip title="Cancella cronologia">

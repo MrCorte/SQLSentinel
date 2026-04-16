@@ -38,7 +38,7 @@ export async function gatherContext(): Promise<AiContext> {
     unreachable: s.unreachable
   }))
 
-  const ids = servers.map((s) => s.id)
+  const ids = servers.map((s) => `${s.host ?? s.id}:${s.port}`)
   const bulk = metricsRepository.findLastNBulk(ids, 1)
 
   const metrics = Object.entries(bulk)

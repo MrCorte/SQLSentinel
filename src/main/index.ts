@@ -59,8 +59,8 @@ function watchWindowShortcuts(window: BrowserWindowType): void {
 // Health check — TCP probe every 60 s, push events to renderer
 // ---------------------------------------------------------------------------
 
-// Probe at most 20 servers concurrently to bound worst-case time to
-// 20 × 5 s = 100 s (< 2× the 60 s interval) instead of 200 × 5 s = 1000 s.
+// Probe at most 20 servers concurrently: worst case ceil(200/20) × 5 s = 50 s
+// (within the 60 s interval) instead of the sequential 200 × 5 s = 1000 s.
 const HEALTH_CONCURRENCY = 20
 
 async function healthCheckAll(): Promise<void> {

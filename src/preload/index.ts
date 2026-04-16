@@ -521,11 +521,6 @@ const realApi = {
   ): Promise<ChangePasswordResult> =>
     ipcRenderer.invoke(IpcChannel.AUTH_CHANGE_PASSWORD, userId, oldPassword, newPassword),
 
-  aiAsk: (
-    question: string,
-    history: Array<{ role: 'user' | 'assistant'; content: string }>
-  ): Promise<IpcResult<string>> => ipcRenderer.invoke(IpcChannel.AI_ASK, question, history),
-
   aiCheck: (): Promise<IpcResult<boolean>> => ipcRenderer.invoke(IpcChannel.AI_CHECK),
 
   aiAgentAsk: (
@@ -828,11 +823,6 @@ const mockApi = {
     _newPassword: string
   ): Promise<ChangePasswordResult> => Promise.resolve({ success: true }),
 
-  aiAsk: async (
-    _question: string,
-    _history: Array<{ role: 'user' | 'assistant'; content: string }>
-  ): Promise<IpcResult<string>> => ({ ok: false, error: 'AI non disponibile in mock mode' }),
-
   aiCheck: async (): Promise<IpcResult<boolean>> => ({ ok: true, data: false }),
 
   aiAgentAsk: async (
@@ -933,8 +923,6 @@ const bridgeApi = {
   checkAuth:       () => api.checkAuth(),
   changePassword:  (userId: string, oldPwd: string, newPwd: string) =>
     api.changePassword(userId, oldPwd, newPwd),
-  aiAsk:   (q: string, h: Array<{ role: 'user' | 'assistant'; content: string }>) =>
-    api.aiAsk(q, h),
   aiCheck: () => api.aiCheck(),
   aiAgentAsk: (q: string, h: Array<{ role: 'user' | 'assistant'; content: string }>) =>
     api.aiAgentAsk(q, h),

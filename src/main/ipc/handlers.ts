@@ -57,9 +57,7 @@ import { getEmailSettings, saveEmailSettings } from '../store/emailSettings'
 import { sendTestEmail } from '../emailService'
 import { getCustomFields, setCustomFields, getAllCustomFields } from '../store/dbCustomFields'
 import type { DiscoveredServer, ScanOptions } from '../discovery/types'
-import { aiAsk } from '../ai/agent'
 import { checkOllamaHealth } from '../ai/ollama'
-import type { ChatMessage } from '../ai/ollama'
 import { langGraphAsk, type AgentHistory } from '../ai/langGraphAgent'
 
 import { scanSubnet, scanHost } from '../discovery/tcpScanner'
@@ -686,23 +684,6 @@ export function registerIpcHandlers(): void {
       return { ok: false, error: safeError(err) }
     }
   })
-
-  // AI_ASK — risposta AI con contesto RAG (metriche + alert + server)
-  ipcMain.handle(
-    IpcChannel.AI_ASK,
-    async (
-      _event: IpcMainInvokeEvent,
-      question: string,
-      history: ChatMessage[]
-    ): Promise<IpcResult<string>> => {
-      try {
-        return { ok: true, data: await aiAsk(question, history) }
-      } catch (err) {
-        console.error('[IPC] AI_ASK:', safeError(err))
-        return { ok: false, error: safeError(err) }
-      }
-    }
-  )
 
   // AI_AGENT_ASK — agente DBA multi-step con tool calling (LangGraph + Ollama)
   ipcMain.handle(

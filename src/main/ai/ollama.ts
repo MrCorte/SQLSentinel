@@ -33,13 +33,3 @@ export async function checkOllamaHealth(): Promise<boolean> {
   }
 }
 
-export async function ollamaEmbed(
-  text: string,
-  model = 'nomic-embed-text'
-): Promise<number[]> {
-  const res = await client.embed({ model, input: text })
-  if (!res.embeddings || res.embeddings.length === 0) {
-    throw new Error('[ollamaEmbed] Ollama returned empty embeddings')
-  }
-  return res.embeddings[0]
-}

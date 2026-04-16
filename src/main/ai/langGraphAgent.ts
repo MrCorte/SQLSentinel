@@ -239,7 +239,10 @@ export async function langGraphAsk(
     new HumanMessage(question)
   ]
 
-  const result = await agent.invoke({ messages })
+  const result = await agent.invoke(
+    { messages },
+    { recursionLimit: 10, signal: AbortSignal.timeout(60_000) }
+  )
   const last = result.messages[result.messages.length - 1]
 
   if (typeof last.content === 'string') return last.content

@@ -10,3 +10,4 @@ out
 
 CLAUDE.local.md
 .claude/settings.local.json
+data/*.pdf

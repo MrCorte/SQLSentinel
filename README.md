@@ -39,24 +39,48 @@ Electron (main process)
 │   ├── IDLE         300s  server in background
 │   └── OFFLINE      600s  server non raggiungibile
 │       └── Circuit breaker  back-off esponenziale, cap 1 ora
-├── SQL Collector    query T-SQL via tedious
+├── SQL Collector    query T-SQL via tedious (AbortSignal su ogni fetch)
 │                    supporta Windows Auth e SQL Auth
-├── Delta IPC        invia solo i DB cambiati al renderer
+│                    errori SQL sanitizzati (no credentials in log)
+├── AG Detector      rilevamento ruoli replica Always On
+│                    throttle ogni 5 poll (evita query non necessarie)
+├── Delta IPC        batch coalescing 50ms (setTimeout macrotask)
+│                    invia solo i DB cambiati al renderer
 │                    soglia: ≤5 DB cambiati oppure ≤20% del totale
+├── IPC Auth         wrapper autenticato su tutti i canali IPC
+│                    canali esenti espliciti: auth, ping, settings read
 └── SQLite           persistenza server, metriche, allarmi
-                     retention automatica 30 giorni + VACUUM
+                     WAL mode, retention automatica via setImmediate
+                     VACUUM differito all'avvio (non blocca UI)
 
 React Renderer
 ├── Zustand + Immer  store reattivo, mutation in-place
 │                    re-render solo sul server aggiornato
 ├── Two-tier metrics summary leggero (~128B) per tutti i server
 │                    dati completi solo per il server attivo
+├── React.memo       Sidebar items memoizzati (ServerItem, GroupHeader …)
+│                    callback stabili via useCallback — nessun re-render
+│                    su tick di polling che non cambia il server visibile
 ├── Ring buffer      cpuHistory / memoryHistory
 │                    cap 60 punti server attivo / 10 punti idle
 └── @tanstack/virtual  virtualizzazione lista server (200+ server)
 ```
 
 **Target di scala: 200 server / 1500 database monitorati in tempo reale.**
+
+---
+
+## Sicurezza
+
+| Area | Meccanismo |
+|---|---|
+| IPC auth | Ogni canale IPC richiede autenticazione; canali esenti dichiarati esplicitamente in `AUTH_EXEMPT_CHANNELS` |
+| SQL errors | `sanitizeSqlError()` filtra host, porta e credenziali prima del log |
+| Path traversal | Nomi file PDF validati con regex `SAFE_PDF_NAME` prima di `path.join()` |
+| TCP scan | Handshake timer esplicito (500 ms) — evita socket pendenti su porte filtrate |
+| Credenziali | Cifrate a riposo con `safeStorage` (Electron keychain OS) |
+| Parametrizzazione | Tutte le query T-SQL usano parametri — nessuna concatenazione SQL |
+| Sandbox | `contextIsolation: true`, `nodeIntegration: false`, `sandbox: false` solo main |
 
 ---
 
@@ -119,9 +143,6 @@ Se la connessione fallisce, verifica su ogni server monitorato:
 # → SQL Server Network Configuration
 # → Protocols → TCP/IP → Enabled
 
-# SQL Server Browser attivo (necessario per istanze named)
-Get-Service -Name 'SQLBrowser' | Start-Service
-
 # Porta 1433 aperta nel firewall
 New-NetFirewallRule -DisplayName "SQL Server 1433" `
   -Direction Inbound -Protocol TCP `
@@ -130,6 +151,9 @@ New-NetFirewallRule -DisplayName "SQL Server 1433" `
 # Test connessione rapido
 sqlcmd -S localhost -E -Q "SELECT @@SERVERNAME, @@VERSION"
 ```
+
+> **Nota:** SQL Server Browser (UDP 1434) non è richiesto né supportato.
+> Le istanze named devono essere configurate con porta TCP fissa.
 
 ---
 
@@ -144,8 +168,8 @@ sqlcmd -S localhost -E -Q "SELECT @@SERVERNAME, @@VERSION"
 ### Setup
 
 ```bash
-git clone https://github.com/tuouser/sqlsentinel.git
-cd sqlsentinel
+git clone https://github.com/MrCorte/SQLSentinel.git
+cd SQLSentinel
 npm install
 ```
 
@@ -162,18 +186,19 @@ npx vitest run          # esegui tutti i test
 npx vitest              # watch mode
 ```
 
-Suite: 126 test / 9 file — copertura su PollingManager,
-delta computation, memory bounds, HomeDashboard hooks,
-CSV export, SQLite store e ServerHistoryChart.
+Suite: 179 test / 9 file — copertura su PollingManager,
+delta computation (shouldSendDelta / applyDelta / computeDelta),
+memory bounds, HomeDashboard hooks, CSV export, SQLite store
+e ServerHistoryChart.
 
 ### Build produzione
 
 ```bash
-# Build TypeScript + Vite
+# Typecheck + build TypeScript + Vite
 npm run build
 
-# Packaging Windows x64
-npx electron-builder --win --x64
+# Packaging Windows x64 (include typecheck automaticamente)
+npm run build:win
 ```
 
 Output in `dist\`:
@@ -192,13 +217,15 @@ dist\
 ```text
 src\
 ├── main\                      Electron main process
-│   ├── collectors\            Query T-SQL verso SQL Server
-│   ├── ipc\                   Handler IPC main ↔ renderer
+│   ├── collectors\            Query T-SQL verso SQL Server (+ sanitizeSqlError)
+│   ├── ipc\                   Handler IPC autenticati main ↔ renderer
 │   ├── store\                 SQLite — server, metriche, allarmi
-│   └── workers\               PollingManager, circuit breaker
+│   ├── discovery\             TCP scanner (handshake timeout esplicito)
+│   └── metricsWorker.ts       Polling, delta IPC, AG throttle, AbortController
 ├── renderer\src\
-│   ├── components\            React UI — Dashboard, Sidebar, AG, Inventario
-│   ├── store\                 Zustand stores — metrics, alerts, servers, app
+│   ├── components\            React UI — Dashboard, Sidebar (memoizzata), AG, Inventario
+│   ├── store\                 Zustand stores — metrics (applyDelta), alerts, servers, app
+│   ├── hooks\                 useNow (epoch ms, 60s tick), useShallow, …
 │   └── utils\                 CSV export, memory audit, formatters
 └── preload\                   Bridge IPC sicuro main ↔ renderer
 ```

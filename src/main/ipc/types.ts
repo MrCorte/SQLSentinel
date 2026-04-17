@@ -294,6 +294,7 @@ export interface AuthSession {
   username: string
   role: string
   expiresAt: number
+  mustChangePassword: boolean
 }
 
 export interface LoginResult {

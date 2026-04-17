@@ -1,6 +1,6 @@
 import Store from 'electron-store'
 import { randomUUID } from 'node:crypto'
-import { safeStorage } from 'electron'
+import { encrypt, decrypt, isAvailable as safeStorageAvailable } from './safeStorageUtil'
 
 // ---------------------------------------------------------------------------
 // Type — must stay JSON-serialisable (strings for dates, no Date objects)
@@ -40,19 +40,11 @@ export interface StoredServer {
 // ---------------------------------------------------------------------------
 
 function encryptPwd(plain: string): string {
-  if (!safeStorage.isEncryptionAvailable()) return plain  // rare: fallback for unsupported OS config
-  return safeStorage.encryptString(plain).toString('base64')
+  return encrypt(plain)
 }
 
 function decryptPwd(stored: string): string {
-  if (!safeStorage.isEncryptionAvailable()) return stored
-  try {
-    return safeStorage.decryptString(Buffer.from(stored, 'base64'))
-  } catch {
-    // Corrupted or migrated from different OS user — return empty to avoid crash
-    console.warn('[serverStore] decryptPwd: failed to decrypt, clearing password')
-    return ''
-  }
+  return decrypt(stored)
 }
 
 /** Inject decrypted password into a stored server before returning to callers */
@@ -63,6 +55,19 @@ function withDecryptedPassword(s: any): StoredServer {
     srv.password = decryptPwd(srv.encryptedPassword)
   }
   return srv
+}
+
+/**
+ * C2 hardening: returns a copy of a StoredServer with password and
+ * encryptedPassword fields stripped. Use before sending a StoredServer across
+ * the IPC boundary to the renderer — credentials must never leave the main
+ * process in plaintext, and the encrypted blob is also useless (and tempting)
+ * to the renderer.
+ */
+export function stripCredentials(s: StoredServer): StoredServer {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { password: _pw, encryptedPassword: _enc, ...safe } = s
+  return safe as StoredServer
 }
 
 /**
@@ -210,7 +215,7 @@ export function upsertByIpPort(params: any): StoredServer {
  */
 export function migrateEncryptCredentials(): void {
   try {
-    if (!safeStorage.isEncryptionAvailable()) return
+    if (!safeStorageAvailable()) return
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const raw = store.get('servers', []) as any[]
     const toMigrate = raw.filter((s) => s.password && !s.encryptedPassword)

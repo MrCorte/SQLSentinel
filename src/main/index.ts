@@ -13,19 +13,23 @@ import { syncServers, stopWorker, setIntervalOverrides, onAlert } from './metric
 import { initDb, closeDb, defaultDbPath } from './store/database'
 import { cleanup as purgeOldSnapshots } from './store/metricsRepository'
 import { getSettings } from './store/settings'
+import { migrateEncryptEmailPassword } from './store/emailSettings'
+import { isAvailable as safeStorageAvailable } from './store/safeStorageUtil'
 import { IpcChannel } from './ipc/types'
 import * as serverStore from './store/serverStore'
 import { scanHost } from './discovery/tcpScanner'
 import { autoIndexRagBooks } from './ai/ragIndexer'
+import { safeError as redactError } from './utils/safeLog'
 
 const isDev = !app.isPackaged
 
-// Cattura errori asincroni non gestiti nel main process prima che crashino silenziosamente
+// Cattura errori asincroni non gestiti nel main process prima che crashino silenziosamente.
+// Stack trace passano da redactError → rimuove path assoluti utente (info disclosure).
 process.on('unhandledRejection', (reason) => {
-  console.error('[main] unhandledRejection:', reason)
+  console.error('[main] unhandledRejection:', redactError(reason))
 })
 process.on('uncaughtException', (err) => {
-  console.error('[main] uncaughtException:', err)
+  console.error('[main] uncaughtException:', redactError(err))
 })
 
 // Module-level reference so the health checker can push events to the renderer
@@ -173,6 +177,17 @@ app.whenReady().then(() => {
   // One-shot migrations
   serverStore.migrateHostField()
   serverStore.migrateEncryptCredentials()
+  migrateEncryptEmailPassword()
+
+  // M4: fail loud if OS-level encryption is unavailable — users must know that
+  // credentials are falling back to plaintext storage. See safeStorageUtil.warnOnce()
+  // for the one-time warning on each encrypt/decrypt attempt; this is the startup sentinel.
+  if (!safeStorageAvailable()) {
+    console.error(
+      '[SECURITY] OS keyring/DPAPI not available — ALL stored passwords will be in plaintext. ' +
+        'Configure your OS keyring or switch user profile to restore encrypted storage.'
+    )
+  }
 
   // App User Model ID per Windows (notifiche, taskbar)
   if (process.platform === 'win32') {

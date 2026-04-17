@@ -4,6 +4,7 @@ import {
   logout,
   getSession,
   isAuthenticated,
+  isMustChangePassword,
   changePassword,
 } from '../authService'
 import { buildCsvContent } from '../csvUtils'
@@ -67,6 +68,8 @@ import { getAvailabilityGroups, getAvailabilityReplicas, getAvailabilityDatabase
 import * as serverStore from '../store/serverStore'
 import type { StoredServer } from '../store/serverStore'
 
+const stripCredentials = serverStore.stripCredentials
+
 function serverKey(ip: string, port: number): string {
   return `${ip}:${port}`
 }
@@ -86,13 +89,44 @@ function safeError(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+/**
+ * C2 hardening: resolves credentials from serverStore when the renderer-supplied
+ * request omits them. This allows handlers to accept the legacy
+ * CollectMetricsRequest shape (ip/port + optional creds) while pulling the
+ * actual password from encrypted storage on demand. SQL-auth requests without
+ * a password get their creds hydrated here; Windows-auth requests pass through.
+ */
+function resolveConnection(req: CollectMetricsRequest): CollectMetricsRequest {
+  if (req.useWindowsAuth) return req
+  if (req.password) return req
+  const stored = serverStore.getByIpPort(req.ip, req.port)
+  if (!stored) return req
+  return {
+    ...req,
+    username: req.username ?? stored.username,
+    password: stored.password
+  }
+}
+
 // Canali esenti dal check auth: usati prima del login o che implementano il login stesso.
+// SETTINGS_GET esente per permettere il caricamento del tema prima del login.
+// SETTINGS_SET rimosso: scrivere impostazioni richiede autenticazione.
 const AUTH_EXEMPT_CHANNELS = new Set<string>([
   IpcChannel.AUTH_LOGIN,
   IpcChannel.AUTH_LOGOUT,
   IpcChannel.AUTH_CHECK,
   IpcChannel.SETTINGS_GET,
-  IpcChannel.SETTINGS_SET,
+])
+
+// Canali permessi anche quando must_change_password=1 (utente autenticato ma
+// con credenziali di default). Blocca ogni altra operazione finché la password
+// non viene effettivamente cambiata.
+const MUST_CHANGE_PW_ALLOWED = new Set<string>([
+  IpcChannel.AUTH_LOGIN,
+  IpcChannel.AUTH_LOGOUT,
+  IpcChannel.AUTH_CHECK,
+  IpcChannel.AUTH_CHANGE_PASSWORD,
+  IpcChannel.SETTINGS_GET,
 ])
 
 /**
@@ -112,6 +146,9 @@ function handle<R>(
   }
   ipcMain.handle(channel, async (event: IpcMainInvokeEvent, ...args: unknown[]) => {
     if (!isAuthenticated()) throw new Error('UNAUTHORIZED')
+    if (isMustChangePassword() && !MUST_CHANGE_PW_ALLOWED.has(channel)) {
+      throw new Error('MUST_CHANGE_PASSWORD')
+    }
     return listener(event, ...args)
   })
 }
@@ -219,12 +256,14 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // SERVERS_GET_ALL — returns StoredServer[] directly (flat array, no IpcResult wrapper)
+  // SERVERS_GET_ALL — returns StoredServer[] with credentials removed (C2).
+  // The renderer never handles plaintext passwords — operations that need
+  // credentials resolve them server-side via resolveConnection().
   handle(
     IpcChannel.SERVERS_GET_ALL,
     (): StoredServer[] => {
       try {
-        return serverStore.getAll()
+        return serverStore.getAll().map(stripCredentials)
       } catch (err) {
         console.error('[IPC] SERVERS_GET_ALL:', safeError(err))
         return []
@@ -232,12 +271,15 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // SERVERS_ADD — returns { success, reason?, server? } directly (flat, no IpcResult wrapper)
+  // SERVERS_ADD — returns { success, reason?, server? } directly (flat, no IpcResult wrapper).
+  // C2: strip credentials from returned server payload before it crosses IPC.
   handle(
     IpcChannel.SERVERS_ADD,
     (_event: IpcMainInvokeEvent, params: Omit<StoredServer, 'id' | 'addedAt'>): ServerAddResult => {
       try {
-        return serverStore.add(params)
+        const result = serverStore.add(params)
+        if (result.server) result.server = stripCredentials(result.server)
+        return result
       } catch (err) {
         console.error('[IPC] SERVERS_ADD:', safeError(err))
         return { success: false, reason: safeError(err) }
@@ -293,14 +335,7 @@ export function registerIpcHandlers(): void {
     IpcChannel.DETECT_SERVER_INFO,
     async (_event: IpcMainInvokeEvent, req: CollectMetricsRequest): Promise<IpcResult<import('./types').ServerInfo>> => {
       try {
-        const info = await detectServerInfo({
-          ip: req.ip,
-          port: req.port,
-          instanceName: req.instanceName,
-          useWindowsAuth: req.useWindowsAuth,
-          username: req.username,
-          password: req.password
-        })
+        const info = await detectServerInfo(resolveConnection(req))
         return { ok: true, data: info }
       } catch (err) {
         console.error('[IPC] DETECT_SERVER_INFO:', safeError(err))
@@ -314,14 +349,7 @@ export function registerIpcHandlers(): void {
     IpcChannel.COLLECT_METRICS,
     async (_event: IpcMainInvokeEvent, req: CollectMetricsRequest): Promise<CollectMetricsResponse> => {
       try {
-        const metrics = await collectMetrics({
-          ip: req.ip,
-          port: req.port,
-          instanceName: req.instanceName,
-          useWindowsAuth: req.useWindowsAuth,
-          username: req.username,
-          password: req.password
-        })
+        const metrics = await collectMetrics(resolveConnection(req))
         // Merge campi custom nei DatabaseInfo
         const sid = `${req.ip}:${req.port}`
         const allCf = getAllCustomFields()
@@ -340,12 +368,14 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // WORKER_START — avvia il worker con intervallo e lista server
+  // WORKER_START — avvia il worker con intervallo e lista server.
+  // C2: il renderer non invia più credenziali; resolveConnection() le aggancia
+  // dal serverStore lato main per ciascun server della lista.
   handle(
     IpcChannel.WORKER_START,
     async (_event: IpcMainInvokeEvent, req: WorkerStartRequest): Promise<IpcResult<null>> => {
       try {
-        startWorker(req)
+        startWorker({ ...req, servers: req.servers.map(resolveConnection) })
         return { ok: true, data: null }
       } catch (err) {
         console.error('[IPC] WORKER_START:', safeError(err))
@@ -366,9 +396,10 @@ export function registerIpcHandlers(): void {
     return { ok: true, data: null }
   })
 
-  // WORKER_SYNC_SERVERS — UPSERT server list without full restart
+  // WORKER_SYNC_SERVERS — UPSERT server list without full restart.
+  // C2: same credential resolution pattern as WORKER_START.
   handle(IpcChannel.WORKER_SYNC_SERVERS, (_e, req: WorkerSyncServersRequest): IpcResult<null> => {
-    syncServers(req.servers)
+    syncServers(req.servers.map(resolveConnection))
     return { ok: true, data: null }
   })
 
@@ -522,7 +553,7 @@ export function registerIpcHandlers(): void {
     IpcChannel.DB_SHRINK_ESTIMATE,
     async (_event: IpcMainInvokeEvent, req: ShrinkEstimateParams): Promise<IpcResult<ShrinkEstimate[]>> => {
       try {
-        const estimates = await getShrinkEstimate(req.connection, req.dbName)
+        const estimates = await getShrinkEstimate(resolveConnection(req.connection), req.dbName)
         return { ok: true, data: estimates }
       } catch (err) {
         console.error('[IPC] DB_SHRINK_ESTIMATE:', safeError(err))
@@ -536,7 +567,7 @@ export function registerIpcHandlers(): void {
     IpcChannel.DB_SHRINK,
     async (_event: IpcMainInvokeEvent, req: ShrinkDatabaseParams): Promise<IpcResult<ShrinkResult>> => {
       try {
-        const result = await shrinkDatabase(req.connection, req.dbName, req.targetPercent)
+        const result = await shrinkDatabase(resolveConnection(req.connection), req.dbName, req.targetPercent)
         return { ok: true, data: result }
       } catch (err) {
         console.error('[IPC] DB_SHRINK:', safeError(err))
@@ -550,7 +581,7 @@ export function registerIpcHandlers(): void {
     IpcChannel.DB_SHRINK_FILE,
     async (_event: IpcMainInvokeEvent, req: ShrinkFileParams): Promise<IpcResult<ShrinkResult>> => {
       try {
-        const result = await shrinkFile(req.connection, req.dbName, req.fileName, req.targetSizeMb, req.isLog)
+        const result = await shrinkFile(resolveConnection(req.connection), req.dbName, req.fileName, req.targetSizeMb, req.isLog)
         return { ok: true, data: result }
       } catch (err) {
         console.error('[IPC] DB_SHRINK_FILE:', safeError(err))
@@ -564,7 +595,7 @@ export function registerIpcHandlers(): void {
     IpcChannel.AG_GET_GROUPS,
     async (_event: IpcMainInvokeEvent, req: AgParams): Promise<IpcResult<AvailabilityGroup[]>> => {
       try {
-        const data = await getAvailabilityGroups(req.connection)
+        const data = await getAvailabilityGroups(resolveConnection(req.connection))
         return { ok: true, data }
       } catch (err) {
         // Server non in AG o permessi insufficienti — non è un errore critico
@@ -579,7 +610,7 @@ export function registerIpcHandlers(): void {
     IpcChannel.AG_GET_REPLICAS,
     async (_event: IpcMainInvokeEvent, req: AgParams): Promise<IpcResult<AvailabilityReplica[]>> => {
       try {
-        const data = await getAvailabilityReplicas(req.connection)
+        const data = await getAvailabilityReplicas(resolveConnection(req.connection))
         return { ok: true, data }
       } catch (err) {
         console.info('[IPC] AG_GET_REPLICAS:', safeError(err))
@@ -593,7 +624,7 @@ export function registerIpcHandlers(): void {
     IpcChannel.AG_GET_DATABASES,
     async (_event: IpcMainInvokeEvent, req: AgParams): Promise<IpcResult<AvailabilityDatabase[]>> => {
       try {
-        const data = await getAvailabilityDatabases(req.connection)
+        const data = await getAvailabilityDatabases(resolveConnection(req.connection))
         return { ok: true, data }
       } catch (err) {
         console.info('[IPC] AG_GET_DATABASES:', safeError(err))

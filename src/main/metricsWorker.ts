@@ -375,7 +375,10 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
       const srvRecord = serverStore.getByIpPort(job.server.ip, job.server.port)
       if (srvRecord && (srvRecord.logicalCpus !== logicalCpus || srvRecord.physicalCpus !== physicalCpus)) {
         serverStore.update(srvRecord.id, { logicalCpus, physicalCpus })
-        pushToRenderer(IpcChannel.SERVER_CONFIG_UPDATED, [{ ...srvRecord, logicalCpus, physicalCpus }])
+        pushToRenderer(
+          IpcChannel.SERVER_CONFIG_UPDATED,
+          [serverStore.stripCredentials({ ...srvRecord, logicalCpus, physicalCpus })]
+        )
       }
     }
 
@@ -387,7 +390,7 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
       detectAndSyncReplicaRoles(job.server)
         .then((updated) => {
           if (updated.length > 0) {
-            pushToRenderer(IpcChannel.SERVER_CONFIG_UPDATED, updated)
+            pushToRenderer(IpcChannel.SERVER_CONFIG_UPDATED, updated.map(serverStore.stripCredentials))
           }
         })
         .catch((err: unknown) => console.warn('[worker] AG sync:', err instanceof Error ? err.message : err)) // not in AG or insufficient permissions

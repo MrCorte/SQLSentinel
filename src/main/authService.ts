@@ -1,6 +1,10 @@
 import bcrypt from 'bcryptjs'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash } from 'node:crypto'
 import { getDb } from './store/database'
+
+function hashToken(plain: string): string {
+  return createHash('sha256').update(plain).digest('hex')
+}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -19,6 +23,7 @@ export interface AuthSession {
   username: string
   role: string
   expiresAt: number
+  mustChangePassword: boolean
 }
 
 interface UserRow {
@@ -29,14 +34,6 @@ interface UserRow {
   created_at: number
   last_login: number | null
   must_change_password: number
-}
-
-interface SessionRow {
-  token: string
-  user_id: string
-  username: string
-  role: string
-  expires_at: number
 }
 
 // ---------------------------------------------------------------------------
@@ -78,14 +75,16 @@ export async function login(
     username: user.username,
     role: user.role,
     expiresAt,
+    mustChangePassword: user.must_change_password === 1,
   }
 
   db.prepare('UPDATE users SET last_login = ? WHERE id = ?').run(Date.now(), user.id)
 
-  // Persist session so it survives main-process hot-reloads in dev
+  // Persist hash of token so a DB dump never reveals a live session identifier.
+  // The plaintext token lives only in memory for the duration of the process.
   db.prepare(
     'INSERT OR REPLACE INTO sessions (token, user_id, username, role, expires_at) VALUES (?, ?, ?, ?, ?)'
-  ).run(token, user.id, user.username, user.role, expiresAt)
+  ).run(hashToken(token), user.id, user.username, user.role, expiresAt)
 
   return { success: true, mustChangePassword: user.must_change_password === 1 }
 }
@@ -93,7 +92,7 @@ export async function login(
 export function logout(): void {
   if (currentSession) {
     try {
-      getDb().prepare('DELETE FROM sessions WHERE token = ?').run(currentSession.token)
+      getDb().prepare('DELETE FROM sessions WHERE token = ?').run(hashToken(currentSession.token))
     } catch {
       // DB might not be open yet during tests
     }
@@ -114,34 +113,16 @@ export function getSession(): AuthSession | null {
     try {
       getDb()
         .prepare('UPDATE sessions SET expires_at = ? WHERE token = ?')
-        .run(currentSession.expiresAt, currentSession.token)
+        .run(currentSession.expiresAt, hashToken(currentSession.token))
     } catch {
       // ignore — in-memory session is still valid
     }
     return { ...currentSession }
   }
 
-  // In-memory session lost (e.g. main-process hot-reload in dev) — recover from DB
-  try {
-    const row = getDb()
-      .prepare<[number], SessionRow>(
-        'SELECT * FROM sessions WHERE expires_at > ? ORDER BY expires_at DESC LIMIT 1'
-      )
-      .get(now)
-    if (row) {
-      currentSession = {
-        token: row.token,
-        userId: row.user_id,
-        username: row.username,
-        role: row.role,
-        expiresAt: row.expires_at,
-      }
-      return { ...currentSession }
-    }
-  } catch {
-    // DB not yet open — return null
-  }
-
+  // In-memory session lost — require re-login. We no longer hydrate from DB
+  // because the DB only stores the token hash, and the plaintext is unrecoverable.
+  // Dev hot-reload therefore forces a fresh login, which is acceptable.
   return null
 }
 
@@ -177,9 +158,14 @@ export async function changePassword(
   // Update session with cleared must_change_password flag
   if (currentSession?.userId === userId) {
     currentSession.expiresAt = Date.now() + SESSION_TIMEOUT_MS
+    currentSession.mustChangePassword = false
   }
 
   return { success: true }
+}
+
+export function isMustChangePassword(): boolean {
+  return currentSession?.mustChangePassword === true
 }
 
 /**

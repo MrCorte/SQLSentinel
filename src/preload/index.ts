@@ -815,7 +815,7 @@ const mockApi = {
   checkAuth: (): Promise<{ authenticated: boolean; session: AuthSession | null }> =>
     Promise.resolve({
       authenticated: true,
-      session: { token: 'mock-token', userId: 'mock-admin', username: 'admin', role: 'admin', expiresAt: Date.now() + 8 * 3600 * 1000 },
+      session: { token: 'mock-token', userId: 'mock-admin', username: 'admin', role: 'admin', expiresAt: Date.now() + 8 * 3600 * 1000, mustChangePassword: false },
     }),
   changePassword: (
     _userId: string,

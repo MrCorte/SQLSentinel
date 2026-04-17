@@ -2,6 +2,7 @@ import * as mssql from 'mssql'
 import type { CollectMetricsRequest } from '../ipc/types'
 import type { AvailabilityGroup, AvailabilityReplica, AvailabilityDatabase } from './types'
 import * as serverStore from '../store/serverStore'
+import { sanitizeSqlError } from './sqlCollector'
 
 // ---------------------------------------------------------------------------
 // Connection helper — AG queries always run against master
@@ -66,7 +67,7 @@ export async function getAvailabilityGroups(
     `)
     return result.recordset
   } finally {
-    await pool?.close().catch((err: Error) => console.error('[agCollector] pool close:', err.message))
+    await pool?.close().catch((err: Error) => console.error('[agCollector] pool close:', sanitizeSqlError(err)))
   }
 }
 
@@ -102,7 +103,7 @@ export async function getAvailabilityReplicas(
     `)
     return result.recordset
   } finally {
-    await pool?.close().catch((err: Error) => console.error('[agCollector] pool close:', err.message))
+    await pool?.close().catch((err: Error) => console.error('[agCollector] pool close:', sanitizeSqlError(err)))
   }
 }
 
@@ -146,7 +147,7 @@ export async function detectAndSyncReplicaRoles(
     `)
     replicas = result.recordset
   } finally {
-    await pool?.close().catch((err: Error) => console.error('[agCollector] pool close:', err.message))
+    await pool?.close().catch((err: Error) => console.error('[agCollector] pool close:', sanitizeSqlError(err)))
   }
 
   if (replicas.length === 0) return []
@@ -234,6 +235,6 @@ export async function getAvailabilityDatabases(
       last_commit_time: r.last_commit_time ? r.last_commit_time.toISOString() : null
     })) as AvailabilityDatabase[]
   } finally {
-    await pool?.close().catch((err: Error) => console.error('[agCollector] pool close:', err.message))
+    await pool?.close().catch((err: Error) => console.error('[agCollector] pool close:', sanitizeSqlError(err)))
   }
 }

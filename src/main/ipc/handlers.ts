@@ -86,10 +86,40 @@ function safeError(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
 
+// Canali esenti dal check auth: usati prima del login o che implementano il login stesso.
+const AUTH_EXEMPT_CHANNELS = new Set<string>([
+  IpcChannel.AUTH_LOGIN,
+  IpcChannel.AUTH_LOGOUT,
+  IpcChannel.AUTH_CHECK,
+  IpcChannel.SETTINGS_GET,
+  IpcChannel.SETTINGS_SET,
+])
+
+/**
+ * Wrapper esplicito per ipcMain.handle che impone il check auth per
+ * tutti i canali non presenti in AUTH_EXEMPT_CHANNELS. Sostituisce il
+ * precedente monkey-patch di ipcMain.handle, che era fragile rispetto
+ * all'ordine di registrazione.
+ */
+function handle<R>(
+  channel: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  listener: (event: IpcMainInvokeEvent, ...args: any[]) => R | Promise<R>
+): void {
+  if (AUTH_EXEMPT_CHANNELS.has(channel)) {
+    ipcMain.handle(channel, listener)
+    return
+  }
+  ipcMain.handle(channel, async (event: IpcMainInvokeEvent, ...args: unknown[]) => {
+    if (!isAuthenticated()) throw new Error('UNAUTHORIZED')
+    return listener(event, ...args)
+  })
+}
+
 export function registerIpcHandlers(): void {
   // ── Auth handlers (no guard needed) ──────────────────────────────────────
 
-  ipcMain.handle(
+  handle(
     IpcChannel.AUTH_LOGIN,
     async (_event: IpcMainInvokeEvent, username: string, password: string): Promise<LoginResult> => {
       try {
@@ -100,12 +130,12 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle(IpcChannel.AUTH_LOGOUT, async (): Promise<{ success: boolean }> => {
+  handle(IpcChannel.AUTH_LOGOUT, async (): Promise<{ success: boolean }> => {
     logout()
     return { success: true }
   })
 
-  ipcMain.handle(
+  handle(
     IpcChannel.AUTH_CHECK,
     async (): Promise<{ authenticated: boolean; session: AuthSession | null }> => ({
       authenticated: isAuthenticated(),
@@ -113,7 +143,7 @@ export function registerIpcHandlers(): void {
     })
   )
 
-  ipcMain.handle(
+  handle(
     IpcChannel.AUTH_CHANGE_PASSWORD,
     async (
       _event: IpcMainInvokeEvent,
@@ -133,27 +163,10 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // ── Auth guard — protects all handlers registered after this point ───────
-  // Channels exempt from auth (needed before login or are auth themselves)
-  const AUTH_EXEMPT = new Set<string>([
-    IpcChannel.AUTH_LOGIN,
-    IpcChannel.AUTH_LOGOUT,
-    IpcChannel.AUTH_CHECK,
-    IpcChannel.SETTINGS_GET,
-    IpcChannel.SETTINGS_SET,
-  ])
-  const _origHandle = ipcMain.handle.bind(ipcMain)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(ipcMain as any).handle = (channel: string, listener: (...args: any[]) => any) => {
-    if (AUTH_EXEMPT.has(channel)) return _origHandle(channel, listener)
-    return _origHandle(channel, async (event: IpcMainInvokeEvent, ...args: unknown[]) => {
-      if (!isAuthenticated()) throw new Error('UNAUTHORIZED')
-      return listener(event, ...args)
-    })
-  }
+  // ── Handlers protetti — tutti via handle() helper con auth guard ─────────
 
   // SCAN_SUBNET — runs async TCP scan, streams progress events back to renderer
-  ipcMain.handle(
+  handle(
     IpcChannel.SCAN_SUBNET,
     async (event: IpcMainInvokeEvent, options: ScanOptions): Promise<ScanSubnetResponse> => {
       try {
@@ -169,7 +182,7 @@ export function registerIpcHandlers(): void {
   )
 
   // ADD_SERVER_MANUAL — TCP-probes the given host:port, persists to electron-store
-  ipcMain.handle(
+  handle(
     IpcChannel.ADD_SERVER_MANUAL,
     async (_event: IpcMainInvokeEvent, req: ManualServerRequest): Promise<AddServerManualResponse> => {
       try {
@@ -189,7 +202,7 @@ export function registerIpcHandlers(): void {
   )
 
   // GET_SERVERS — returns all persisted servers as DiscoveredServer shape (legacy)
-  ipcMain.handle(
+  handle(
     IpcChannel.GET_SERVERS,
     async (): Promise<GetServersResponse> => {
       return { ok: true, data: serverStore.getAll().map(toDiscovered) }
@@ -197,7 +210,7 @@ export function registerIpcHandlers(): void {
   )
 
   // REMOVE_SERVER — removes by ip:port (legacy, used by Discovery context menu)
-  ipcMain.handle(
+  handle(
     IpcChannel.REMOVE_SERVER,
     async (_event: IpcMainInvokeEvent, req: RemoveServerRequest): Promise<RemoveServerResponse> => {
       const existing = serverStore.getByIpPort(req.ip, req.port)
@@ -207,7 +220,7 @@ export function registerIpcHandlers(): void {
   )
 
   // SERVERS_GET_ALL — returns StoredServer[] directly (flat array, no IpcResult wrapper)
-  ipcMain.handle(
+  handle(
     IpcChannel.SERVERS_GET_ALL,
     (): StoredServer[] => {
       try {
@@ -220,7 +233,7 @@ export function registerIpcHandlers(): void {
   )
 
   // SERVERS_ADD — returns { success, reason?, server? } directly (flat, no IpcResult wrapper)
-  ipcMain.handle(
+  handle(
     IpcChannel.SERVERS_ADD,
     (_event: IpcMainInvokeEvent, params: Omit<StoredServer, 'id' | 'addedAt'>): ServerAddResult => {
       try {
@@ -233,7 +246,7 @@ export function registerIpcHandlers(): void {
   )
 
   // SERVERS_UPDATE — takes (id, patch) as separate args (flat response)
-  ipcMain.handle(
+  handle(
     IpcChannel.SERVERS_UPDATE,
     (_event: IpcMainInvokeEvent, id: string, patch: Partial<StoredServer>): { success: boolean } => {
       try {
@@ -247,7 +260,7 @@ export function registerIpcHandlers(): void {
   )
 
   // SERVERS_REMOVE_BY_ID — removes a server from electron-store by UUID (flat response)
-  ipcMain.handle(
+  handle(
     IpcChannel.SERVERS_REMOVE_BY_ID,
     (_event: IpcMainInvokeEvent, id: string): { success: boolean } => {
       try {
@@ -261,7 +274,7 @@ export function registerIpcHandlers(): void {
   )
 
   // SERVERS_CLEAR_MOCKS — rimuove server con id che inizia con 'mock-' (usati dal preload mock)
-  ipcMain.handle(IpcChannel.SERVERS_CLEAR_MOCKS, (): { success: boolean; removed: number; remaining: number } => {
+  handle(IpcChannel.SERVERS_CLEAR_MOCKS, (): { success: boolean; removed: number; remaining: number } => {
     try {
       const before = serverStore.getAll()
       const mocks = before.filter((s) => s.id.startsWith('mock-'))
@@ -276,7 +289,7 @@ export function registerIpcHandlers(): void {
   })
 
   // DETECT_SERVER_INFO — test connection + retrieve MachineName / InstanceName
-  ipcMain.handle(
+  handle(
     IpcChannel.DETECT_SERVER_INFO,
     async (_event: IpcMainInvokeEvent, req: CollectMetricsRequest): Promise<IpcResult<import('./types').ServerInfo>> => {
       try {
@@ -297,7 +310,7 @@ export function registerIpcHandlers(): void {
   )
 
   // COLLECT_METRICS — connects to SQL Server and collects all metrics
-  ipcMain.handle(
+  handle(
     IpcChannel.COLLECT_METRICS,
     async (_event: IpcMainInvokeEvent, req: CollectMetricsRequest): Promise<CollectMetricsResponse> => {
       try {
@@ -328,7 +341,7 @@ export function registerIpcHandlers(): void {
   )
 
   // WORKER_START — avvia il worker con intervallo e lista server
-  ipcMain.handle(
+  handle(
     IpcChannel.WORKER_START,
     async (_event: IpcMainInvokeEvent, req: WorkerStartRequest): Promise<IpcResult<null>> => {
       try {
@@ -342,30 +355,30 @@ export function registerIpcHandlers(): void {
   )
 
   // WORKER_STOP — ferma il worker
-  ipcMain.handle(IpcChannel.WORKER_STOP, async (): Promise<IpcResult<null>> => {
+  handle(IpcChannel.WORKER_STOP, async (): Promise<IpcResult<null>> => {
     stopWorker()
     return { ok: true, data: null }
   })
 
   // WORKER_SET_ACTIVE — segnala quale server è "attivo" (polling più frequente)
-  ipcMain.handle(IpcChannel.WORKER_SET_ACTIVE, (_e, req: WorkerSetActiveRequest): IpcResult<null> => {
+  handle(IpcChannel.WORKER_SET_ACTIVE, (_e, req: WorkerSetActiveRequest): IpcResult<null> => {
     setActiveServer(req.serverId)
     return { ok: true, data: null }
   })
 
   // WORKER_SYNC_SERVERS — UPSERT server list without full restart
-  ipcMain.handle(IpcChannel.WORKER_SYNC_SERVERS, (_e, req: WorkerSyncServersRequest): IpcResult<null> => {
+  handle(IpcChannel.WORKER_SYNC_SERVERS, (_e, req: WorkerSyncServersRequest): IpcResult<null> => {
     syncServers(req.servers)
     return { ok: true, data: null }
   })
 
   // ALERTS_GET_ALL — restituisce tutti gli alert (anche riconosciuti)
-  ipcMain.handle(IpcChannel.ALERTS_GET_ALL, async (): Promise<IpcResult<Alert[]>> => {
+  handle(IpcChannel.ALERTS_GET_ALL, async (): Promise<IpcResult<Alert[]>> => {
     return { ok: true, data: getAlerts() }
   })
 
   // ALERTS_ACKNOWLEDGE — segna un alert come riconosciuto
-  ipcMain.handle(
+  handle(
     IpcChannel.ALERTS_ACKNOWLEDGE,
     async (_event: IpcMainInvokeEvent, req: AcknowledgeAlertRequest): Promise<IpcResult<null>> => {
       const ok = acknowledgeAlert(req.alertId)
@@ -375,7 +388,7 @@ export function registerIpcHandlers(): void {
   )
 
   // METRICS_HISTORY — restituisce gli snapshot del worker per un server
-  ipcMain.handle(
+  handle(
     IpcChannel.METRICS_HISTORY,
     async (_event: IpcMainInvokeEvent, req: HistoryRequest): Promise<IpcResult<ServerMetrics[]>> => {
       const history = getHistory(req.ip, req.port)
@@ -385,7 +398,7 @@ export function registerIpcHandlers(): void {
   )
 
   // METRICS_HISTORY_BULK — restituisce tutta la history in-memory al boot (pre-popolata da SQLite)
-  ipcMain.handle(
+  handle(
     IpcChannel.METRICS_HISTORY_BULK,
     async (): Promise<IpcResult<Record<string, ServerMetrics[]>>> => {
       return { ok: true, data: getHistoryAll() }
@@ -393,7 +406,7 @@ export function registerIpcHandlers(): void {
   )
 
   // DB_GET_CUSTOM_FIELDS — restituisce i campi custom per un singolo DB
-  ipcMain.handle(
+  handle(
     IpcChannel.DB_GET_CUSTOM_FIELDS,
     async (_event: IpcMainInvokeEvent, req: DbCustomFieldsGetRequest): Promise<IpcResult<DbCustomFields>> => {
       return { ok: true, data: getCustomFields(req.serverId, req.dbName) }
@@ -401,7 +414,7 @@ export function registerIpcHandlers(): void {
   )
 
   // DB_SET_CUSTOM_FIELDS — salva i campi custom per un singolo DB
-  ipcMain.handle(
+  handle(
     IpcChannel.DB_SET_CUSTOM_FIELDS,
     async (_event: IpcMainInvokeEvent, req: DbCustomFieldsSetRequest): Promise<IpcResult<null>> => {
       setCustomFields(req.serverId, req.dbName, req.fields)
@@ -410,7 +423,7 @@ export function registerIpcHandlers(): void {
   )
 
   // DB_GET_ALL_CUSTOM_FIELDS — restituisce tutti i campi custom (usato dal worker per alert suppression)
-  ipcMain.handle(
+  handle(
     IpcChannel.DB_GET_ALL_CUSTOM_FIELDS,
     async (): Promise<IpcResult<Record<string, DbCustomFields>>> => {
       return { ok: true, data: getAllCustomFields() }
@@ -418,7 +431,7 @@ export function registerIpcHandlers(): void {
   )
 
   // SETTINGS_GET — restituisce le impostazioni salvate + stato autostart dal SO
-  ipcMain.handle(IpcChannel.SETTINGS_GET, async (): Promise<IpcResult<AppSettings>> => {
+  handle(IpcChannel.SETTINGS_GET, async (): Promise<IpcResult<AppSettings>> => {
     return {
       ok: true,
       data: {
@@ -429,7 +442,7 @@ export function registerIpcHandlers(): void {
   })
 
   // SETTINGS_SET — salva le impostazioni; aggiorna autostart nel registro di SO se richiesto
-  ipcMain.handle(
+  handle(
     IpcChannel.SETTINGS_SET,
     async (_event: IpcMainInvokeEvent, req: SaveSettingsRequest): Promise<IpcResult<null>> => {
       saveSettings(req)
@@ -441,7 +454,7 @@ export function registerIpcHandlers(): void {
   )
 
   // EXPORT_CUSTOM_FIELDS — genera CSV dei campi custom di tutti i DB
-  ipcMain.handle(IpcChannel.EXPORT_CUSTOM_FIELDS, async (): Promise<IpcResult<string>> => {
+  handle(IpcChannel.EXPORT_CUSTOM_FIELDS, async (): Promise<IpcResult<string>> => {
     const all = getAllCustomFields()
     const rows = Object.entries(all).map(([key, fields]) => {
       const slash = key.indexOf('/')
@@ -456,7 +469,7 @@ export function registerIpcHandlers(): void {
   })
 
   // EXPORT_INVENTORY — genera CSV dell'inventario server
-  ipcMain.handle(IpcChannel.EXPORT_INVENTORY, async (): Promise<IpcResult<string>> => {
+  handle(IpcChannel.EXPORT_INVENTORY, async (): Promise<IpcResult<string>> => {
     const all = getAllCustomFields()
     const header = 'ip,porta,raggiungibile,aggiunto_il,database'
     const rows = serverStore.getAll().map((s) => {
@@ -480,7 +493,7 @@ export function registerIpcHandlers(): void {
   })
 
   // EXPORT_ALERTS — genera CSV degli alert storici
-  ipcMain.handle(IpcChannel.EXPORT_ALERTS, async (): Promise<IpcResult<string>> => {
+  handle(IpcChannel.EXPORT_ALERTS, async (): Promise<IpcResult<string>> => {
     const alerts = getAlerts()
     const header = 'id,serverId,categoria,severita,messaggio,rilevato_il,acknowledged_il'
     const rows = alerts.map((a) =>
@@ -505,7 +518,7 @@ export function registerIpcHandlers(): void {
   })
 
   // DB_SHRINK_ESTIMATE — anteprima spazio recuperabile per un database
-  ipcMain.handle(
+  handle(
     IpcChannel.DB_SHRINK_ESTIMATE,
     async (_event: IpcMainInvokeEvent, req: ShrinkEstimateParams): Promise<IpcResult<ShrinkEstimate[]>> => {
       try {
@@ -519,7 +532,7 @@ export function registerIpcHandlers(): void {
   )
 
   // DB_SHRINK — shrink intero database
-  ipcMain.handle(
+  handle(
     IpcChannel.DB_SHRINK,
     async (_event: IpcMainInvokeEvent, req: ShrinkDatabaseParams): Promise<IpcResult<ShrinkResult>> => {
       try {
@@ -533,7 +546,7 @@ export function registerIpcHandlers(): void {
   )
 
   // DB_SHRINK_FILE — shrink file specifico (dati o log)
-  ipcMain.handle(
+  handle(
     IpcChannel.DB_SHRINK_FILE,
     async (_event: IpcMainInvokeEvent, req: ShrinkFileParams): Promise<IpcResult<ShrinkResult>> => {
       try {
@@ -547,7 +560,7 @@ export function registerIpcHandlers(): void {
   )
 
   // AG_GET_GROUPS — availability groups sul server
-  ipcMain.handle(
+  handle(
     IpcChannel.AG_GET_GROUPS,
     async (_event: IpcMainInvokeEvent, req: AgParams): Promise<IpcResult<AvailabilityGroup[]>> => {
       try {
@@ -562,7 +575,7 @@ export function registerIpcHandlers(): void {
   )
 
   // AG_GET_REPLICAS — repliche AG
-  ipcMain.handle(
+  handle(
     IpcChannel.AG_GET_REPLICAS,
     async (_event: IpcMainInvokeEvent, req: AgParams): Promise<IpcResult<AvailabilityReplica[]>> => {
       try {
@@ -576,7 +589,7 @@ export function registerIpcHandlers(): void {
   )
 
   // AG_GET_DATABASES — database in AG
-  ipcMain.handle(
+  handle(
     IpcChannel.AG_GET_DATABASES,
     async (_event: IpcMainInvokeEvent, req: AgParams): Promise<IpcResult<AvailabilityDatabase[]>> => {
       try {
@@ -590,7 +603,7 @@ export function registerIpcHandlers(): void {
   )
 
   // EXPORT_INVENTORY_CSV — apre showSaveDialog e scrive il CSV inventario con BOM UTF-8
-  ipcMain.handle(
+  handle(
     IpcChannel.EXPORT_INVENTORY_CSV,
     async (event: IpcMainInvokeEvent, req: ExportInventoryCsvRequest): Promise<IpcResult<string | null>> => {
       try {
@@ -615,7 +628,7 @@ export function registerIpcHandlers(): void {
   )
 
   // FILE_SAVE_CSV — apre showSaveDialog e scrive il file
-  ipcMain.handle(
+  handle(
     IpcChannel.FILE_SAVE_CSV,
     async (event: IpcMainInvokeEvent, req: SaveCsvRequest): Promise<IpcResult<string | null>> => {
       try {
@@ -637,7 +650,7 @@ export function registerIpcHandlers(): void {
   )
 
   // EMAIL_SETTINGS_GET
-  ipcMain.handle(
+  handle(
     IpcChannel.EMAIL_SETTINGS_GET,
     async (): Promise<IpcResult<EmailSettings>> => {
       try {
@@ -650,7 +663,7 @@ export function registerIpcHandlers(): void {
   )
 
   // EMAIL_SETTINGS_SET
-  ipcMain.handle(
+  handle(
     IpcChannel.EMAIL_SETTINGS_SET,
     async (_event: IpcMainInvokeEvent, req: SaveEmailSettingsRequest): Promise<IpcResult<null>> => {
       try {
@@ -664,7 +677,7 @@ export function registerIpcHandlers(): void {
   )
 
   // EMAIL_TEST — sendTestEmail() has internal try/catch; outer try/catch catches unexpected throws
-  ipcMain.handle(
+  handle(
     IpcChannel.EMAIL_TEST,
     async (): Promise<IpcResult<null>> => {
       try {
@@ -677,7 +690,7 @@ export function registerIpcHandlers(): void {
   )
 
   // AI_CHECK — verifica se Ollama è raggiungibile localmente
-  ipcMain.handle(IpcChannel.AI_CHECK, async (): Promise<IpcResult<boolean>> => {
+  handle(IpcChannel.AI_CHECK, async (): Promise<IpcResult<boolean>> => {
     try {
       return { ok: true, data: await checkOllamaHealth() }
     } catch (err) {
@@ -686,7 +699,7 @@ export function registerIpcHandlers(): void {
   })
 
   // AI_AGENT_ASK — agente DBA multi-step con tool calling (LangGraph + Ollama)
-  ipcMain.handle(
+  handle(
     IpcChannel.AI_AGENT_ASK,
     async (
       _event: IpcMainInvokeEvent,
@@ -702,9 +715,6 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // Restore original ipcMain.handle after all handlers are registered
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(ipcMain as any).handle = _origHandle
 }
 
 function csvEscape(v: unknown): string {

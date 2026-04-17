@@ -1,6 +1,7 @@
 import * as mssql from 'mssql'
 import type { CollectMetricsRequest } from '../ipc/types'
 import type { ShrinkEstimate, ShrinkResult } from '../ipc/types'
+import { sanitizeSqlError } from './sqlCollector'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -99,7 +100,7 @@ export async function shrinkDatabase(
     return {
       success: false,
       duration_ms: Date.now() - t0,
-      error: err instanceof Error ? err.message : String(err)
+      error: sanitizeSqlError(err)
     }
   } finally {
     await pool?.close()
@@ -169,7 +170,7 @@ export async function shrinkFile(
     return {
       success: false,
       duration_ms: Date.now() - t0,
-      error: err instanceof Error ? err.message : String(err)
+      error: sanitizeSqlError(err)
     }
   } finally {
     await pool?.close()

@@ -73,6 +73,23 @@ interface WaitStatRow {
   wait_percent: number
 }
 
+// --- Error sanitization ---
+// Rimuove identificativi sensibili dai messaggi mssql/tedious prima del logging.
+// Pattern noti: "Login failed for user 'sa'", stringhe contenenti password/token,
+// dettagli di connessione con host:port.
+const SANITIZE_PATTERNS: Array<[RegExp, string]> = [
+  [/for user\s+'[^']*'/gi, "for user '***'"],
+  [/login\s+'[^']*'/gi, "login '***'"],
+  [/password=[^;\s]+/gi, 'password=***'],
+  [/user id=[^;\s]+/gi, 'user id=***'],
+  [/uid=[^;\s]+/gi, 'uid=***']
+]
+
+export function sanitizeSqlError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err)
+  return SANITIZE_PATTERNS.reduce((msg, [re, repl]) => msg.replace(re, repl), raw)
+}
+
 // --- Configurazione connessione ---
 
 function buildConfig(conn: ServerConnection): mssql.config {
@@ -493,12 +510,23 @@ export async function detectServerInfo(connection: ServerConnection): Promise<Se
  * restituisce un valore vuoto/default senza bloccare le altre.
  * La connessione viene sempre chiusa nel finally.
  */
-export async function collectMetrics(connection: ServerConnection): Promise<ServerMetrics> {
+export async function collectMetrics(
+  connection: ServerConnection,
+  signal?: AbortSignal
+): Promise<ServerMetrics> {
   const config = buildConfig(connection)
   let pool: mssql.ConnectionPool | null = null
 
+  // Se il chiamante abortisce (es. worker timeout), chiudiamo subito il pool
+  // per evitare handle orfani sul lato TDS.
+  const onAbort = (): void => {
+    pool?.close().catch(() => {})
+  }
+  signal?.addEventListener('abort', onAbort, { once: true })
+
   try {
     pool = await mssql.connect(config)
+    if (signal?.aborted) throw new Error('aborted')
 
     const [
       instanceInfo,
@@ -511,35 +539,35 @@ export async function collectMetrics(connection: ServerConnection): Promise<Serv
       databaseFiles
     ] = await Promise.all([
       queryInstanceInfo(pool).catch((err: Error) => {
-        console.error('[collector] instance info:', err.message)
+        console.error('[collector] instance info:', sanitizeSqlError(err))
         return defaultInstanceInfo()
       }),
       queryDatabases(pool).catch((err: Error) => {
-        console.error('[collector] databases:', err.message)
+        console.error('[collector] databases:', sanitizeSqlError(err))
         return [] as DatabaseInfo[]
       }),
       querySessions(pool).catch((err: Error) => {
-        console.error('[collector] sessions:', err.message)
+        console.error('[collector] sessions:', sanitizeSqlError(err))
         return [] as SessionInfo[]
       }),
       queryTopQueries(pool).catch((err: Error) => {
-        console.error('[collector] top queries:', err.message)
+        console.error('[collector] top queries:', sanitizeSqlError(err))
         return [] as QueryInfo[]
       }),
       queryBackupStatus(pool).catch((err: Error) => {
-        console.error('[collector] backup status:', err.message)
+        console.error('[collector] backup status:', sanitizeSqlError(err))
         return [] as BackupInfo[]
       }),
       queryWaitStats(pool).catch((err: Error) => {
-        console.error('[collector] wait stats:', err.message)
+        console.error('[collector] wait stats:', sanitizeSqlError(err))
         return [] as WaitStatInfo[]
       }),
       queryDiskVolumes(pool).catch((err: Error) => {
-        console.error('[collector] disk volumes:', err.message)
+        console.error('[collector] disk volumes:', sanitizeSqlError(err))
         return [] as DiskVolume[]
       }),
       queryDatabaseFiles(pool).catch((err: Error) => {
-        console.error('[collector] database files:', err.message)
+        console.error('[collector] database files:', sanitizeSqlError(err))
         return [] as DatabaseFile[]
       })
     ])
@@ -556,8 +584,11 @@ export async function collectMetrics(connection: ServerConnection): Promise<Serv
       databaseFiles
     }
   } finally {
+    signal?.removeEventListener('abort', onAbort)
     if (pool) {
-      await pool.close().catch((err: Error) => console.error('[collector] pool close:', err.message))
+      await pool.close().catch((err: Error) =>
+        console.error('[collector] pool close:', sanitizeSqlError(err))
+      )
     }
   }
 }
@@ -568,32 +599,41 @@ export async function collectMetrics(connection: ServerConnection): Promise<Serv
  * Salta topQueries (dm_exec_query_stats), waitStats (dm_os_wait_stats) e
  * databaseFiles (FILEPROPERTY) — usato per server idle/background con lightCollectors=true.
  */
-export async function collectMetricsCritical(connection: ServerConnection): Promise<ServerMetrics> {
+export async function collectMetricsCritical(
+  connection: ServerConnection,
+  signal?: AbortSignal
+): Promise<ServerMetrics> {
   const config = buildConfig(connection)
   let pool: mssql.ConnectionPool | null = null
 
+  const onAbort = (): void => {
+    pool?.close().catch(() => {})
+  }
+  signal?.addEventListener('abort', onAbort, { once: true })
+
   try {
     pool = await mssql.connect(config)
+    if (signal?.aborted) throw new Error('aborted')
 
     const [instanceInfo, databases, activeSessions, backupStatus, diskVolumes] = await Promise.all([
       queryInstanceInfo(pool).catch((err: Error) => {
-        console.error('[collector] instance info:', err.message)
+        console.error('[collector] instance info:', sanitizeSqlError(err))
         return defaultInstanceInfo()
       }),
       queryDatabases(pool).catch((err: Error) => {
-        console.error('[collector] databases:', err.message)
+        console.error('[collector] databases:', sanitizeSqlError(err))
         return [] as DatabaseInfo[]
       }),
       querySessions(pool).catch((err: Error) => {
-        console.error('[collector] sessions:', err.message)
+        console.error('[collector] sessions:', sanitizeSqlError(err))
         return [] as SessionInfo[]
       }),
       queryBackupStatus(pool).catch((err: Error) => {
-        console.error('[collector] backup status:', err.message)
+        console.error('[collector] backup status:', sanitizeSqlError(err))
         return [] as BackupInfo[]
       }),
       queryDiskVolumes(pool).catch((err: Error) => {
-        console.error('[collector] disk volumes:', err.message)
+        console.error('[collector] disk volumes:', sanitizeSqlError(err))
         return [] as DiskVolume[]
       })
     ])
@@ -610,9 +650,10 @@ export async function collectMetricsCritical(connection: ServerConnection): Prom
       databaseFiles: []
     }
   } finally {
+    signal?.removeEventListener('abort', onAbort)
     if (pool) {
       await pool.close().catch((err: Error) =>
-        console.error('[collector] pool close:', err.message)
+        console.error('[collector] pool close:', sanitizeSqlError(err))
       )
     }
   }

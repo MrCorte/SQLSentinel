@@ -20,11 +20,15 @@ const CHUNK_SIZE = 500
 const CHUNK_OVERLAP = 50
 const EMBED_BATCH = 20
 
+// Whitelist filename: solo caratteri safe + estensione .pdf.
+// Previene path traversal (../) e null-byte injection.
+const SAFE_PDF_NAME = /^[A-Za-z0-9._-]+\.pdf$/
+
 export async function autoIndexRagBooks(): Promise<void> {
   let files: string[]
   try {
     const entries = await readdir(DATA_DIR)
-    files = entries.filter((f) => f.endsWith('.pdf'))
+    files = entries.filter((f) => f.endsWith('.pdf') && SAFE_PDF_NAME.test(f))
   } catch {
     // data/ non presente — non è un errore bloccante
     return

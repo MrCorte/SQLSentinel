@@ -310,12 +310,18 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
   const allCustomFields = getAllCustomFields()
   const hasVisibleWindow = BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.isVisible())
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+  // AbortController propagato al collector: al timeout chiudiamo il pool subito
+  // invece di lasciare la connessione TDS pendere fino alla GC.
+  const controller = new AbortController()
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutHandle = setTimeout(() => reject(new Error('poll timeout')), POLL_TIMEOUT_MS)
+    timeoutHandle = setTimeout(() => {
+      controller.abort()
+      reject(new Error('poll timeout'))
+    }, POLL_TIMEOUT_MS)
   })
   try {
     const collectFn = intervalOverrides?.lightCollectors ? collectMetricsCritical : collectMetrics
-    const metrics = await Promise.race([collectFn(job.server), timeoutPromise])
+    const metrics = await Promise.race([collectFn(job.server, controller.signal), timeoutPromise])
 
     // Merge campi custom (alias, referente) nei DatabaseInfo prima di pushare al renderer
     let enrichedMetrics: ServerMetrics = {

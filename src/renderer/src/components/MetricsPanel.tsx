@@ -730,11 +730,18 @@ export function MetricsPanel({ metrics, serverId, serverDbId, serverNotes, conne
   const topQueries = metrics?.topQueries ?? []
   const waitStats = metrics?.waitStats ?? []
 
-  // Memoizzato: evita che DataGrid esegua un full re-render per ricreazione array inline
-  const topQueriesRows = useMemo(
-    () => topQueries.map((q, i) => ({ ...q, _idx: i })),
-    [topQueries]
-  )
+  // Memoizzato: evita che DataGrid esegua un full re-render per ricreazione array inline.
+  // L'id riga è derivato dal testo della query (stabile fra refresh anche se l'ordine
+  // cambia). Duplicati rari di queryText ricevono un suffisso incrementale deterministico.
+  const topQueriesRows = useMemo(() => {
+    const seen = new Map<string, number>()
+    return topQueries.map((q) => {
+      const n = (seen.get(q.queryText) ?? 0) + 1
+      seen.set(q.queryText, n)
+      const _rowId = n === 1 ? q.queryText : `${q.queryText}#${n}`
+      return { ...q, _rowId }
+    })
+  }, [topQueries])
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -819,7 +826,7 @@ export function MetricsPanel({ metrics, serverId, serverDbId, serverNotes, conne
           <DataGrid<QueryInfo>
             rows={topQueriesRows}
             columns={queryColumns}
-            getRowId={(r) => (r as QueryInfo & { _idx: number })._idx}
+            getRowId={(r) => (r as QueryInfo & { _rowId: string })._rowId}
             density="compact"
             disableRowSelectionOnClick
             pageSizeOptions={[25, 50]}

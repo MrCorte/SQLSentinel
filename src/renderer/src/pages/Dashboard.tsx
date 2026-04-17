@@ -150,14 +150,23 @@ export function Dashboard(): React.JSX.Element {
   const stablePushSnapshotBatch = useCallback(pushSnapshotBatch, [pushSnapshotBatch])
   const stableReceiveMetrics = useCallback(receiveMetrics, [receiveMetrics])
 
+  // Ref sempre aggiornato al server corrente: evitiamo di re-sottoscriverci al canale
+  // IPC ad ogni cambio di selectedServerId (il che avrebbe potuto perdere/duplicare
+  // batch in volo). La callback legge l'id corrente dal ref.
+  const selectedServerIdRef = useRef(selectedServerId)
+  useEffect(() => {
+    selectedServerIdRef.current = selectedServerId
+  }, [selectedServerId])
+
   useEffect(() => {
     const unsubBatch = window.sqlSentinel.onMetricsBatchUpdated((batch) => {
       stablePushSnapshotBatch(batch)
-      const active = batch.find(({ serverId }) => serverId === selectedServerId)
+      const currentId = selectedServerIdRef.current
+      const active = batch.find(({ serverId }) => serverId === currentId)
       if (active) stableReceiveMetrics(active.metrics)
     })
     return unsubBatch
-  }, [selectedServerId, stablePushSnapshotBatch, stableReceiveMetrics])
+  }, [stablePushSnapshotBatch, stableReceiveMetrics])
 
   // Inline alias edit helpers
   const startEditAlias = useCallback((): void => {

@@ -55,31 +55,39 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
       return
     }
 
-    loadServers().then(() => {
-      const { servers } = useServersStore.getState()
-      console.log('[App] loadServers completato, servers:', servers.length)
-      if (servers.length > 0) {
-        window.sqlSentinel.workerStart({
-          intervalSeconds: 60,
-          servers: servers.map((s) => ({
-            ip: s.ip ?? s.host,
-            port: s.port,
-            instanceName: s.instanceName,
-            useWindowsAuth: s.useWindowsAuth ?? false,
-            username: s.username,
-            password: s.password
-          }))
-        }).then(() => {
-          if (typeof window.sqlSentinel?.getHistoryBulk === 'function') {
-            window.sqlSentinel.getHistoryBulk().then((result) => {
-              if (result.ok && Object.keys(result.data).length > 0) {
-                seedHistory(result.data)
+    loadServers()
+      .then(() => {
+        const { servers } = useServersStore.getState()
+        console.log('[App] loadServers completato, servers:', servers.length)
+        if (servers.length > 0) {
+          window.sqlSentinel
+            .workerStart({
+              intervalSeconds: 60,
+              servers: servers.map((s) => ({
+                ip: s.ip ?? s.host,
+                port: s.port,
+                instanceName: s.instanceName,
+                useWindowsAuth: s.useWindowsAuth ?? false,
+                username: s.username,
+                password: s.password
+              }))
+            })
+            .then(() => {
+              if (typeof window.sqlSentinel?.getHistoryBulk === 'function') {
+                window.sqlSentinel
+                  .getHistoryBulk()
+                  .then((result) => {
+                    if (result.ok && Object.keys(result.data).length > 0) {
+                      seedHistory(result.data)
+                    }
+                  })
+                  .catch(() => {}) // non bloccante
               }
-            }).catch(() => {}) // non bloccante
-          }
-        })
-      }
-    })
+            })
+            .catch((err) => console.error('[App] workerStart failed:', err))
+        }
+      })
+      .catch((err) => console.error('[App] loadServers failed:', err))
   }, [])
 
   // Sync server list with the background worker whenever servers are added/removed
@@ -151,15 +159,21 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    window.sqlSentinel.getSettings().then((result) => {
-      if (result.ok) setRetentionMinutes(result.data.retentionMinutes)
-    })
+    window.sqlSentinel
+      .getSettings()
+      .then((result) => {
+        if (result.ok) setRetentionMinutes(result.data.retentionMinutes)
+      })
+      .catch((err) => console.error('[App] getSettings failed:', err))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    window.sqlSentinel.getAlerts().then((result) => {
-      if (result.ok) setAlerts(result.data)
-    })
+    window.sqlSentinel
+      .getAlerts()
+      .then((result) => {
+        if (result.ok) setAlerts(result.data)
+      })
+      .catch((err) => console.error('[App] getAlerts failed:', err))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -169,11 +183,14 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleAcknowledge(alertId: string): void {
-    window.sqlSentinel.acknowledgeAlert({ alertId }).then((result) => {
-      if (result.ok) {
-        acknowledgeAlertInStore(alertId)
-      }
-    })
+    window.sqlSentinel
+      .acknowledgeAlert({ alertId })
+      .then((result) => {
+        if (result.ok) {
+          acknowledgeAlertInStore(alertId)
+        }
+      })
+      .catch((err) => console.error('[App] acknowledgeAlert failed:', err))
   }
 
   const criticalCount = alerts.filter(
@@ -382,10 +399,13 @@ function App(): React.JSX.Element {
 
   // Check if a session already exists (e.g. app restarted within the same process)
   useEffect(() => {
-    window.sqlSentinel.checkAuth().then(({ authenticated, session: s }) => {
-      if (authenticated && s) setSession(s)
-      setAuthChecking(false)
-    })
+    window.sqlSentinel
+      .checkAuth()
+      .then(({ authenticated, session: s }) => {
+        if (authenticated && s) setSession(s)
+      })
+      .catch((err) => console.error('[App] checkAuth failed:', err))
+      .finally(() => setAuthChecking(false))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Global UNAUTHORIZED handler — session expired or revoked
@@ -410,11 +430,14 @@ function App(): React.JSX.Element {
 
   // Load persisted theme preference on mount (exempt from auth — needed for login page)
   useEffect(() => {
-    window.sqlSentinel.getSettings().then((result) => {
-      if (result.ok && result.data.themeMode) {
-        setThemeModeState(result.data.themeMode as ThemeMode)
-      }
-    })
+    window.sqlSentinel
+      .getSettings()
+      .then((result) => {
+        if (result.ok && result.data.themeMode) {
+          setThemeModeState(result.data.themeMode as ThemeMode)
+        }
+      })
+      .catch((err) => console.error('[App] getSettings (theme) failed:', err))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track OS dark-mode preference for 'system' mode

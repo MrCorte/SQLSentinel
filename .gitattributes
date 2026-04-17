@@ -1,0 +1,19 @@
+# Normalizzazione line endings: sorgenti sempre LF nel repo.
+# Evita i warning "LF will be replaced by CRLF" su Windows e la formattazione
+# inconsistente dei test (es. prettier --check che fallisce su CRLF).
+
+* text=auto eol=lf
+
+# File binari — mai normalizzati
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.exe binary
+*.dll binary
+*.node binary
+*.db binary
+*.sqlite binary

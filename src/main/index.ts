@@ -222,11 +222,33 @@ app.whenReady().then(() => {
   }
 })
 
-app.on('window-all-closed', () => {
-  if (healthCheckIntervalId) clearInterval(healthCheckIntervalId)
+function cleanupResources(): void {
+  if (healthCheckIntervalId) {
+    clearInterval(healthCheckIntervalId)
+    healthCheckIntervalId = undefined
+  }
   backgroundService?.destroy()
+  backgroundService = null
   closeDb()
+}
+
+app.on('window-all-closed', () => {
+  cleanupResources()
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+// Cleanup anche quando il processo riceve segnali di terminazione (taskkill,
+// Docker stop, ecc.) — senza questi handler l'healthCheck continuerebbe a girare
+// finché il kernel non termina il processo, e il DB SQLite potrebbe chiudersi
+// senza flush.
+app.on('before-quit', cleanupResources)
+process.on('SIGTERM', () => {
+  cleanupResources()
+  app.quit()
+})
+process.on('SIGINT', () => {
+  cleanupResources()
+  app.quit()
 })

@@ -349,8 +349,9 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     }
     dbOfflineTimestamps.set(sid, offlineMap)
 
-    // Rolling history
-    const cap = intervalOverrides?.historyCapOverride ?? MAX_HISTORY
+    // Rolling history — garantiamo cap >= 1 così un override a 0 non
+    // lascia la history crescere indefinitamente.
+    const cap = Math.max(intervalOverrides?.historyCapOverride ?? MAX_HISTORY, 1)
     const hist = metricsHistory.get(sid) ?? []
     hist.push(enrichedMetrics)
     while (hist.length > cap) hist.shift()

@@ -93,7 +93,7 @@ React Renderer
 | Sistema operativo | Windows 10 / 11 x64 |
 | SQL Server | 2014 o superiore |
 | Autenticazione | Windows Auth o SQL Auth |
-| Rete | Porta 1433 raggiungibile dai server monitorati |
+| Rete | Porta TCP configurata raggiungibile dai server monitorati |
 | Dipendenze | Nessuna — SQL Sentinel è self-contained |
 | Agenti sui server | Non richiesti |
 
@@ -124,7 +124,7 @@ React Renderer
 | Campo | Esempio |
 |---|---|
 | Host | `192.168.1.10` oppure `localhost` |
-| Porta | `1433` (default) |
+| Porta | `1433` (default) o qualsiasi porta TCP configurata |
 | Istanza named | `SERVER\SQLEXPRESS` |
 | Autenticazione | Windows Auth (consigliata) o SQL Auth |
 | Ambiente | Produzione / Collaudo / Sviluppo |
@@ -143,17 +143,18 @@ Se la connessione fallisce, verifica su ogni server monitorato:
 # → SQL Server Network Configuration
 # → Protocols → TCP/IP → Enabled
 
-# Porta 1433 aperta nel firewall
-New-NetFirewallRule -DisplayName "SQL Server 1433" `
+# Porta TCP aperta nel firewall (sostituire 1433 con la porta configurata)
+New-NetFirewallRule -DisplayName "SQL Server TCP" `
   -Direction Inbound -Protocol TCP `
   -LocalPort 1433 -Action Allow
 
-# Test connessione rapido
-sqlcmd -S localhost -E -Q "SELECT @@SERVERNAME, @@VERSION"
+# Test connessione rapido (sostituire 1433 con la porta effettiva)
+sqlcmd -S localhost,1433 -E -Q "SELECT @@SERVERNAME, @@VERSION"
 ```
 
 > **Nota:** SQL Server Browser (UDP 1434) non è richiesto né supportato.
-> Le istanze named devono essere configurate con porta TCP fissa.
+> Qualsiasi porta TCP è supportata — specificala nel campo **Porta** al momento
+> dell'aggiunta del server. Le istanze named devono usare una porta TCP fissa.
 
 ---
 

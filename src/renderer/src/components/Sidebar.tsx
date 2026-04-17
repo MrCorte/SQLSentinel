@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo, memo } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   Box,
@@ -176,7 +176,7 @@ function SearchBar({
 // GroupHeader
 // ---------------------------------------------------------------------------
 
-function GroupHeader({
+const GroupHeader = memo(function GroupHeader({
   group,
   onlineCount,
   onClick
@@ -236,7 +236,7 @@ function GroupHeader({
       )}
     </Box>
   )
-}
+})
 
 // ---------------------------------------------------------------------------
 // AgGroupHeader
@@ -248,7 +248,7 @@ function agHealthColor(health: AgGroupState['health']): string {
   return '#a4262c'
 }
 
-function AgGroupHeader({
+const AgGroupHeader = memo(function AgGroupHeader({
   ag,
   isSelected,
   isExpanded,
@@ -337,7 +337,7 @@ function AgGroupHeader({
       </Box>
     </Box>
   )
-}
+})
 
 // ---------------------------------------------------------------------------
 // RoleBadge
@@ -380,11 +380,13 @@ interface ServerItemProps {
   searchText: string
   inAgGroup?: boolean
   inMachineGroup?: boolean
-  onSelect: () => void
+  // Stabile (riceve il server come argomento) così il parent non deve
+  // creare un'arrow dedicata per ogni riga — memo sotto funziona davvero.
+  onSelect: (server: StoredServer) => void
   onContextMenu: (e: React.MouseEvent, server: StoredServer) => void
 }
 
-function ServerItem({
+const ServerItem = memo(function ServerItem({
   server,
   alias,
   isSelected,
@@ -403,6 +405,15 @@ function ServerItem({
 
   const roleIcon = server.agRole === 'PRIMARY' ? '★ ' : server.agRole === 'SECONDARY' ? '○ ' : ''
 
+  const handleClick = useCallback(() => onSelect(server), [onSelect, server])
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault()
+      onContextMenu(e, server)
+    },
+    [onContextMenu, server]
+  )
+
   return (
     <Tooltip
       title={tooltipTitle}
@@ -412,11 +423,8 @@ function ServerItem({
       enterDelay={600}
     >
       <Box
-        onClick={onSelect}
-        onContextMenu={(e) => {
-          e.preventDefault()
-          onContextMenu(e, server)
-        }}
+        onClick={handleClick}
+        onContextMenu={handleContextMenu}
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -482,7 +490,7 @@ function ServerItem({
       </Box>
     </Tooltip>
   )
-}
+})
 
 // ---------------------------------------------------------------------------
 // RenameAliasDialog
@@ -757,7 +765,7 @@ export function getSidebarItemSize(item: SidebarItem | undefined): number {
 // MachineHeader — collapsible physical machine group
 // ---------------------------------------------------------------------------
 
-function MachineHeader({
+const MachineHeader = memo(function MachineHeader({
   machineName,
   instanceCount,
   isExpanded,
@@ -824,7 +832,7 @@ function MachineHeader({
       </Typography>
     </Box>
   )
-}
+})
 
 // ---------------------------------------------------------------------------
 // VirtualServerList — virtualized flat list of all sidebar items
@@ -941,7 +949,7 @@ function VirtualServerList({
                     searchText=""
                     inAgGroup={item.inAgGroup}
                     inMachineGroup={item.inMachineGroup}
-                    onSelect={() => onSelectServer(item.server)}
+                    onSelect={onSelectServer}
                     onContextMenu={onContextMenu}
                   />
                 )}
@@ -967,7 +975,7 @@ function VirtualServerList({
                     isSelected={selectedServer ? selectedServer.id === item.server.id : false}
                     searchText={searchText}
                     inMachineGroup={false}
-                    onSelect={() => onSelectServer(item.server)}
+                    onSelect={onSelectServer}
                     onContextMenu={onContextMenu}
                   />
                 )}

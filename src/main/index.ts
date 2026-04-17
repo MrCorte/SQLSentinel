@@ -154,10 +154,21 @@ app.whenReady().then(() => {
   // Crea utente admin di default se non esistono utenti
   initDefaultAdmin().catch((err) => console.error('[AUTH] initDefaultAdmin fallito:', err))
 
-  // Purge snapshots più vecchi della retention configurata: una volta al boot, poi ogni 24 h
+  // Purge snapshots più vecchi della retention configurata: una volta al boot, poi ogni 24 h.
+  // Il DELETE sincrono su DB grandi può bloccare 1-3s: defer a setImmediate così da non
+  // rallentare lo startup né congelare il main loop una volta ogni 24h.
   const retentionDays = (): number => getSettings().retentionMinutes / (60 * 24)
-  purgeOldSnapshots(retentionDays())
-  setInterval(() => purgeOldSnapshots(retentionDays()), 24 * 60 * 60 * 1000)
+  const deferredPurge = (): void => {
+    setImmediate(() => {
+      try {
+        purgeOldSnapshots(retentionDays())
+      } catch (err) {
+        console.warn('[main] purgeOldSnapshots:', err)
+      }
+    })
+  }
+  deferredPurge()
+  setInterval(deferredPurge, 24 * 60 * 60 * 1000)
 
   // One-shot migrations
   serverStore.migrateHostField()

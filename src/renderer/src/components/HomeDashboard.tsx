@@ -30,9 +30,9 @@ import { useNow } from '../hooks/useNow'
 // Helpers
 // ---------------------------------------------------------------------------
 
-function dataAge(collectedAt: Date | string | undefined, now: Date): { label: string; color: string } {
+function dataAge(collectedAt: Date | string | undefined, now: number): { label: string; color: string } {
   if (!collectedAt) return { label: '—', color: 'rgba(128,128,128,0.4)' }
-  const minAgo = Math.floor((now.getTime() - new Date(collectedAt).getTime()) / 60_000)
+  const minAgo = Math.floor((now - new Date(collectedAt).getTime()) / 60_000)
   if (minAgo < 2)  return { label: 'adesso',           color: '#107c10' }
   if (minAgo < 10) return { label: `${minAgo} min fa`, color: 'rgba(128,128,128,0.7)' }
   if (minAgo < 30) return { label: `${minAgo} min fa`, color: '#d83b01' }
@@ -51,7 +51,7 @@ interface ServerRowProps {
   alertCount: { crit: number; warn: number } | undefined
   group: ServerGroup | undefined
   serverAlias: string | undefined
-  now: Date
+  now: number
   onNavigate: (id: string) => void
 }
 

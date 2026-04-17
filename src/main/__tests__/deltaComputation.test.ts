@@ -213,11 +213,15 @@ describe('AREA 2 — applyDelta (metricsStore)', () => {
 // ── drainJobCycle ─────────────────────────────────────────────────────────────
 
 /**
- * Drains the microtask queue enough for one complete async job cycle.
- * Does NOT advance fake timers, so no new scheduled jobs are triggered.
+ * Drains the microtask queue enough for one complete async job cycle and
+ * advances the batch flush timer (BATCH_FLUSH_MS = 50 ms) so the coalesced
+ * IPC push is emitted. The advance is small enough not to trigger any poll
+ * interval (shortest is INTERVAL_ACTIVE_MS = 60 s).
  */
 async function drainJobCycle(): Promise<void> {
   for (let i = 0; i < 10; i++) await Promise.resolve()
+  vi.advanceTimersByTime(60)
+  for (let i = 0; i < 5; i++) await Promise.resolve()
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

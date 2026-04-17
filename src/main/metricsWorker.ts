@@ -32,6 +32,7 @@ const BACKOFF_CAP_MS      = 3_600_000 // 1 hour max back-off
 const POLL_TIMEOUT_MS     = 90_000   // max 90s per singolo job
 const SAVE_EVERY_N        = 5        // salva su SQLite ogni N poll (≈5 min a 60s interval)
 const SAVE_FLUSH_MS       = 300_000  // flush batch ogni 5 min
+const AG_DETECT_EVERY_N   = 5        // detect AG roles ogni N poll — ruoli cambiano solo su failover
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,9 +74,13 @@ const previousMetrics = new Map<string, ServerMetrics>()
 // Track when each DB first went non-ONLINE: serverId → dbName → ISO 8601 timestamp
 const dbOfflineTimestamps = new Map<string, Map<string, string>>()
 
-// Batch buffer: coalesce per-server metrics pushes into a single IPC message per microtask checkpoint
+// Batch buffer: coalesce per-server metrics pushes.
+// La finestra debounce macroscopica (BATCH_FLUSH_MS) raggruppa tutti i job che
+// completano entro quella finestra in un'unica IPC — con 30 job async I/O che
+// completano a tempi diversi, passiamo da ~30 IPC a 1-2 per ciclo di poll.
+const BATCH_FLUSH_MS = 50
 const pendingBatch: Array<{ serverId: string; metrics: ServerMetrics }> = []
-let batchFlushScheduled = false
+let batchFlushTimer: ReturnType<typeof setTimeout> | null = null
 
 let alertCallback: ((alert: Alert) => void) | null = null
 let intervalOverrides: IntervalOverrides | null = null
@@ -99,7 +104,7 @@ function pushToRenderer(channel: string, data: unknown): void {
 }
 
 function flushMetricsBatch(): void {
-  batchFlushScheduled = false
+  batchFlushTimer = null
   if (pendingBatch.length === 0) return
   const batch = pendingBatch.splice(0)
   pushToRenderer(IpcChannel.METRICS_BATCH_UPDATED, batch)
@@ -107,12 +112,8 @@ function flushMetricsBatch(): void {
 
 function enqueueBatchPush(sid: string, metrics: ServerMetrics): void {
   pendingBatch.push({ serverId: sid, metrics })
-  if (!batchFlushScheduled) {
-    batchFlushScheduled = true
-    // Microtask flush: coalesces all job completions within the same event-loop turn
-    // into a single IPC message. Fires before any macrotask (setTimeout), so it works
-    // transparently with Vitest fake timers.
-    Promise.resolve().then(flushMetricsBatch)
+  if (batchFlushTimer === null) {
+    batchFlushTimer = setTimeout(flushMetricsBatch, BATCH_FLUSH_MS)
   }
 }
 
@@ -141,13 +142,17 @@ function queueSave(srv: CollectMetricsRequest, metrics: ServerMetrics): void {
 }
 
 function loadHistoryFromDb(servers: CollectMetricsRequest[]): void {
-  try {
-    const retentionMinutes = getSettings().retentionMinutes
-    const retentionDays = retentionMinutes / (60 * 24)
-    metricsRepository.cleanup(retentionDays)
-  } catch (err) {
-    console.warn('[worker] SQLite cleanup:', err instanceof Error ? err.message : err)
-  }
+  // Cleanup differito al prossimo tick: con DB grandi (mesi di snapshot) il
+  // DELETE può bloccare 500ms-2s e ritardare il primo ciclo di polling.
+  setImmediate(() => {
+    try {
+      const retentionMinutes = getSettings().retentionMinutes
+      const retentionDays = retentionMinutes / (60 * 24)
+      metricsRepository.cleanup(retentionDays)
+    } catch (err) {
+      console.warn('[worker] SQLite cleanup:', err instanceof Error ? err.message : err)
+    }
+  })
 
   const recordIdToSid = new Map<string, string>()
   for (const srv of servers) {
@@ -374,16 +379,19 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
       }
     }
 
-    // AG detection — fire-and-forget: update agGroupId/agName/agRole for all
-    // replicas found from this server; push changed records to renderer.
-    // Errors are swallowed silently (server not in AG / no permissions).
-    detectAndSyncReplicaRoles(job.server)
-      .then((updated) => {
-        if (updated.length > 0) {
-          pushToRenderer(IpcChannel.SERVER_CONFIG_UPDATED, updated)
-        }
-      })
-      .catch((err: unknown) => console.warn('[worker] AG sync:', err instanceof Error ? err.message : err)) // not in AG or insufficient permissions
+    // AG detection — throttled a ogni AG_DETECT_EVERY_N poll. I ruoli di
+    // replica cambiano solo su failover/restart, quindi una rilevazione ogni
+    // ~5 minuti è abbondante; sui cicli intermedi risparmiamo una connessione
+    // SQL dedicata per ogni server in AG.
+    if (job.pollCount % AG_DETECT_EVERY_N === 0) {
+      detectAndSyncReplicaRoles(job.server)
+        .then((updated) => {
+          if (updated.length > 0) {
+            pushToRenderer(IpcChannel.SERVER_CONFIG_UPDATED, updated)
+          }
+        })
+        .catch((err: unknown) => console.warn('[worker] AG sync:', err instanceof Error ? err.message : err)) // not in AG or insufficient permissions
+    }
 
     // Persist snapshot to SQLite every SAVE_EVERY_N successful polls
     job.pollCount++
@@ -408,10 +416,14 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     // Exponential back-off: 600s, 1200s, 2400s … capped at 1h
     const backoff = INTERVAL_OFFLINE_MS * Math.pow(2, job.failCount - 1)
     job.nextRun = Date.now() + Math.min(backoff, BACKOFF_CAP_MS)
-    // Dopo 50 fallimenti consecutivi, libera la entry in previousMetrics per evitare
-    // crescita unbounded su server offline a lungo (~1 MB per entry)
+    // Dopo 50 fallimenti consecutivi, libera TUTTE le map legate al server per
+    // evitare crescita unbounded su server offline a lungo. Prima solo
+    // previousMetrics veniva pulito, ma metricsHistory e dbOfflineTimestamps
+    // restavano e accumulavano centinaia di KB per server morto.
     if (job.failCount >= 50) {
       previousMetrics.delete(sid)
+      metricsHistory.delete(sid)
+      dbOfflineTimestamps.delete(sid)
     }
   } finally {
     clearTimeout(timeoutHandle)
@@ -636,7 +648,10 @@ export function __resetForTests(): void {
   alertCallback = null
   intervalOverrides = null
   pendingBatch.length = 0
-  batchFlushScheduled = false
+  if (batchFlushTimer !== null) {
+    clearTimeout(batchFlushTimer)
+    batchFlushTimer = null
+  }
 }
 
 /**

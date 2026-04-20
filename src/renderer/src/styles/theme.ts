@@ -69,7 +69,11 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
 
       MuiPaper: {
         styleOverrides: {
-          root: { backgroundImage: 'none', borderRadius: tokens.radius.sm },
+          root: {
+            backgroundImage: 'none',
+            borderRadius: tokens.radius.sm,
+            ...(isDark && { border: `1px solid ${tokens.color.borderDark}` }),
+          },
           elevation1: { boxShadow: tokens.shadow.card },
           elevation2: { boxShadow: tokens.shadow.elevated },
           elevation3: { boxShadow: tokens.shadow.cardHover },
@@ -123,7 +127,7 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
             fontWeight: tokens.font.weightSemibold,
             textTransform: 'uppercase',
             letterSpacing: '0.04em',
-            backgroundColor: isDark ? '#1a2744' : tokens.color.bgApp,
+            backgroundColor: isDark ? '#0f1f3d' : tokens.color.bgApp,
             color: isDark ? '#94a3b8' : tokens.color.textSecondary,
             borderBottom: `2px solid ${tokens.color.primary}`,
           },
@@ -142,7 +146,7 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
             '&.Mui-selected': {
               backgroundColor: tokens.color.bgSidebarSelected,
               color: tokens.color.textOnDark,
-              boxShadow: '0 2px 8px rgba(0,120,212,0.4)',
+              boxShadow: `inset 3px 0 0 rgba(255,255,255,0.6), 0 2px 8px rgba(0,120,212,0.4)`,
               '&:hover': { backgroundColor: tokens.color.primaryHover },
             },
             '&:hover': { backgroundColor: tokens.color.bgSidebarHover },
@@ -157,6 +161,7 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
             fontWeight: tokens.font.weightSemibold,
             fontSize: tokens.font.sizeXs,
             height: 20,
+            ...(isDark && { border: '1px solid rgba(255,255,255,0.12)' }),
           },
         },
       },

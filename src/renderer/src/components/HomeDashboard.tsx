@@ -727,7 +727,12 @@ export function HomeDashboard({
                     height: 10,
                     borderRadius: '50%',
                     bgcolor: item.color,
-                    flexShrink: 0
+                    flexShrink: 0,
+                    boxShadow: item.label === 'Online'
+                      ? tokens.shadow.dotGlowSuccess
+                      : item.label === 'Non raggiungibili'
+                        ? tokens.shadow.dotGlowWarning
+                        : tokens.shadow.dotGlowError,
                   }}
                 />
                 <Typography

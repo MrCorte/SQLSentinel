@@ -78,7 +78,11 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
           p: 1.5,
           minWidth: 220,
           flex: '1 1 220px',
-          boxShadow: hovered ? '0 4px 12px rgba(0,0,0,0.15)' : tokens.shadow.card,
+          boxShadow: hovered
+            ? '0 4px 12px rgba(0,0,0,0.15)'
+            : isPrimary
+              ? `${tokens.shadow.card}, 0 0 0 1px rgba(0,120,212,0.25)`
+              : tokens.shadow.card,
           transform: hovered ? 'translateY(-1px)' : 'none',
           transition: 'box-shadow 200ms, transform 200ms',
           cursor: 'pointer',
@@ -450,6 +454,7 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
             columns={dbColumns}
             getRowId={(r) => `${r.ag_name}-${r.database_name}`}
             density="compact"
+            autoHeight
             disableRowSelectionOnClick
             hideFooter={detail.databases.length <= 25}
             pageSizeOptions={[25, 50]}

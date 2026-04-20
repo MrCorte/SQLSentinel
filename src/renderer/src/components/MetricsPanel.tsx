@@ -64,7 +64,8 @@ function KpiCard({
         overflow: 'hidden',
         bgcolor: 'background.paper',
         border: '1px solid',
-        borderColor: 'divider',
+        borderColor: (theme) =>
+          theme.palette.mode === 'dark' ? `${accent}33` : theme.palette.divider,
         borderLeft: `4px solid ${accent}`,
         borderRadius: `${tokens.radius.md}px`,
         px: '18px',
@@ -483,6 +484,7 @@ const TabDatabase = memo(function TabDatabase({
         columns={columns}
         getRowId={(r) => r.name}
         density="compact"
+        autoHeight
         disableRowSelectionOnClick
         pageSizeOptions={[25, 50]}
         initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
@@ -793,6 +795,7 @@ export function MetricsPanel({ metrics, serverId, serverDbId, serverNotes, conne
             columns={sessionColumns}
             getRowId={(r) => r.sessionId}
             density="compact"
+            autoHeight
             disableRowSelectionOnClick
             pageSizeOptions={[25, 50]}
             initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
@@ -808,6 +811,7 @@ export function MetricsPanel({ metrics, serverId, serverDbId, serverNotes, conne
             columns={backupColumns}
             getRowId={(r) => r.databaseName}
             density="compact"
+            autoHeight
             disableRowSelectionOnClick
             pageSizeOptions={[25, 50]}
             initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
@@ -828,6 +832,7 @@ export function MetricsPanel({ metrics, serverId, serverDbId, serverNotes, conne
             columns={queryColumns}
             getRowId={(r) => (r as QueryInfo & { _rowId: string })._rowId}
             density="compact"
+            autoHeight
             disableRowSelectionOnClick
             pageSizeOptions={[25, 50]}
             initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
@@ -842,6 +847,7 @@ export function MetricsPanel({ metrics, serverId, serverDbId, serverNotes, conne
             columns={waitStatColumns}
             getRowId={(r) => r.waitType}
             density="compact"
+            autoHeight
             disableRowSelectionOnClick
             pageSizeOptions={[25, 50]}
             initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}

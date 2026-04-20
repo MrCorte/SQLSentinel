@@ -57,7 +57,7 @@ export const tokens = {
     primaryGradient: 'linear-gradient(90deg, #0078d4, #60a5fa)',
     successGradient: 'linear-gradient(90deg, #107c10, #4ade80)',
     warningGradient: 'linear-gradient(90deg, #d83b01, #fb923c)',
-    errorGradient:   'linear-gradient(90deg, #a4262c, #f87171)',
+    errorGradient: 'linear-gradient(90deg, #a4262c, #f87171)',
 
     // Dark card border
     borderDark: 'rgba(255,255,255,0.08)',
@@ -97,7 +97,7 @@ export const tokens = {
     navbar: '0 2px 8px rgba(0,0,0,0.2)',
     drawer: '0 8px 32px rgba(0,0,0,0.2)',
     dotGlowSuccess: '0 0 6px rgba(78,255,145,0.7)',
-    dotGlowError:   '0 0 6px rgba(239,68,68,0.6)',
+    dotGlowError: '0 0 6px rgba(239,68,68,0.6)',
     dotGlowWarning: '0 0 6px rgba(216,59,1,0.6)',
   },
 }

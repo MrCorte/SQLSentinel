@@ -69,12 +69,14 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
 
       MuiPaper: {
         styleOverrides: {
-          root: {
-            backgroundImage: 'none',
-            borderRadius: tokens.radius.sm,
+          root: { backgroundImage: 'none', borderRadius: tokens.radius.sm },
+          elevation0: {
             ...(isDark && { border: `1px solid ${tokens.color.borderDark}` }),
           },
-          elevation1: { boxShadow: tokens.shadow.card },
+          elevation1: {
+            boxShadow: tokens.shadow.card,
+            ...(isDark && { border: `1px solid ${tokens.color.borderDark}` }),
+          },
           elevation2: { boxShadow: tokens.shadow.elevated },
           elevation3: { boxShadow: tokens.shadow.cardHover },
         },
@@ -161,7 +163,9 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
             fontWeight: tokens.font.weightSemibold,
             fontSize: tokens.font.sizeXs,
             height: 20,
-            ...(isDark && { border: '1px solid rgba(255,255,255,0.12)' }),
+          },
+          filled: {
+            ...(isDark && { border: `1px solid ${tokens.color.dividerDark}` }),
           },
         },
       },

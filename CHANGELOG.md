@@ -5,9 +5,17 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Changed — 2026-04-20 (UI Dark Accent restyling)
+- **Design tokens**: aggiunti gradient strings (`primaryGradient`, `successGradient`, `warningGradient`, `errorGradient`), glow shadow tokens (`dotGlowSuccess/Error/Warning`) e `borderDark` in `tokens.ts`
+- **MUI theme**: bordo sottile `rgba(255,255,255,0.08)` su Paper elevation0/1 in dark mode; bordo su Chip `filled` via `tokens.color.dividerDark`; header tabelle più scuri (`#0f1f3d`); inset accent stripe sulla voce attiva nella sidebar
+- **StatusDot** (Sidebar): aggiunto `boxShadow` glow verde/rosso sui dot di stato server
+- **KpiCard** (MetricsPanel): `borderColor` usa callback theme per applicare tint accent al 20% in dark mode
+- **Legend dots** (HomeDashboard): glow coerente su tutti i dot della legenda stato server (Online/Offline/Non raggiungibili)
+- **ReplicaCard PRIMARY** (AgDashboard): glow outline blu `0 0 0 1px rgba(0,120,212,0.25)` per distinguere la replica primaria
+
 ### Fixed — 2026-04-20 (bug audit)
 - **BUG-01** `metricsWorker`: `metrics.backupStatus` acceduto senza null-guard in `evaluateAlerts()` — crash silenzioso che disabilitava tutti gli alert successivi; fix: `(metrics.backupStatus ?? [])`
-- **BUG-02** `index.ts`: rimossa riga `sandbox: false` in `webPreferences` — configurazione errata che allargava la superficie di attacco anche con `contextIsolation: true` (default Electron 20+ è `true`)
+- **BUG-02** `index.ts`: REVERTITO — `sandbox: false` è necessario perché `@electron-toolkit/preload` è un modulo Node.js; rimuoverlo rompe il preload con `Error: module not found: @electron-toolkit/preload`; la security boundary è garantita da `contextIsolation: true` + `nodeIntegration: false`
 - **BUG-03** `dbAdmin.ts`: `DBCC SHRINKFILE` usava `sqEscape()` + interpolazione stringa per il nome file — sostituito con bracket escaping `[${name.replace(/]/g,']]')}]`; rimossa funzione `sqEscape` ora inutilizzata
 - **BUG-04** `settings.ts`: `parseInt()` non validato per `NaN` — aggiunta helper `safeInt()` con fallback; `setTimeout(fn, NaN)` non scattava mai in caso di DB corrotto
 - **BUG-05** `handlers.ts`: aggiunta chiamata `resetAgent()` nei handler `SERVERS_UPDATE` e `SERVERS_REMOVE_BY_ID` — il singleton LangGraph non si resettava mai dopo modifiche ai server, causando context stale nelle risposte AI

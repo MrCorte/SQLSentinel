@@ -11,16 +11,22 @@ export interface AppSettings {
   themeMode: ThemeMode
 }
 
+function safeInt(raw: string | undefined, fallback: number, min = 0): number {
+  if (raw == null) return fallback
+  const n = parseInt(raw, 10)
+  return Number.isFinite(n) && n >= min ? n : fallback
+}
+
 export function getSettings(): AppSettings {
   const db = getDb()
   const rows = db.prepare('SELECT key, value FROM settings').all() as { key: string; value: string }[]
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]))
   const rawTheme = map['theme_mode']
   return {
-    retentionMinutes:          map['retentionMinutes']             != null ? parseInt(map['retentionMinutes'], 10)             : 60,
+    retentionMinutes:          safeInt(map['retentionMinutes'], 60, 1),
     backgroundEnabled:         map['background_enabled']           != null ? map['background_enabled'] === 'true'              : true,
     backgroundMode:            (map['background_mode'] === 'full') ? 'full'                                                    : 'light',
-    backgroundIntervalMinutes: map['background_interval_minutes']  != null ? parseInt(map['background_interval_minutes'], 10)  : 30,
+    backgroundIntervalMinutes: safeInt(map['background_interval_minutes'], 30, 1),
     backgroundNotifications:   map['background_notifications']     != null ? map['background_notifications'] === 'true'         : true,
     themeMode:                 (rawTheme === 'dark' || rawTheme === 'light') ? rawTheme                                         : 'system',
   }

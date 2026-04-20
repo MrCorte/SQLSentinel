@@ -43,15 +43,14 @@ export const ServerHistoryChart = memo(function ServerHistoryChart({ serverId }:
   // MB assoluti per il tooltip — dal summary (lightweight, sempre aggiornato)
   const memoryUsedMb = useMetricsStore((s) => s.summaries[serverId]?.memoryUsedMb ?? null)
 
-  const chartData = useMemo(
-    () =>
-      cpuHistory.map((point, i) => ({
-        label: fmtTime(point.ts),
-        cpu: Math.round(point.value),
-        memory: Math.round(memHistory[i]?.value ?? 0)
-      })),
-    [cpuHistory, memHistory]
-  )
+  const chartData = useMemo(() => {
+    const memMap = new Map(memHistory.map((p) => [p.ts, p.value]))
+    return cpuHistory.map((point) => ({
+      label: fmtTime(point.ts),
+      cpu: Math.round(point.value),
+      memory: Math.round(memMap.get(point.ts) ?? 0),
+    }))
+  }, [cpuHistory, memHistory])
 
   // ── Empty states ─────────────────────────────────────────────────────────
 

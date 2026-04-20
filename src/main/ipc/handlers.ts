@@ -59,7 +59,7 @@ import { sendTestEmail } from '../emailService'
 import { getCustomFields, setCustomFields, getAllCustomFields } from '../store/dbCustomFields'
 import type { DiscoveredServer, ScanOptions } from '../discovery/types'
 import { checkOllamaHealth } from '../ai/ollama'
-import { langGraphAsk, type AgentHistory } from '../ai/langGraphAgent'
+import { langGraphAsk, resetAgent, type AgentHistory } from '../ai/langGraphAgent'
 
 import { scanSubnet, scanHost } from '../discovery/tcpScanner'
 import { collectMetrics, detectServerInfo } from '../collectors/sqlCollector'
@@ -293,6 +293,7 @@ export function registerIpcHandlers(): void {
     (_event: IpcMainInvokeEvent, id: string, patch: Partial<StoredServer>): { success: boolean } => {
       try {
         serverStore.update(id, patch)
+        resetAgent()
         return { success: true }
       } catch (err) {
         console.error('[IPC] SERVERS_UPDATE:', safeError(err))
@@ -307,6 +308,7 @@ export function registerIpcHandlers(): void {
     (_event: IpcMainInvokeEvent, id: string): { success: boolean } => {
       try {
         serverStore.remove(id)
+        resetAgent()
         return { success: true }
       } catch (err) {
         console.error('[IPC] SERVERS_REMOVE_BY_ID:', safeError(err))

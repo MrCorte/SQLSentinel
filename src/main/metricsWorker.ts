@@ -242,7 +242,7 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
 
   // Backup scaduto (escludi DB di sistema — distribution ha database_id > 4 quindi non filtrato dalla query SQL)
   const MS_24H = 86_400_000
-  const overdueDBs = metrics.backupStatus
+  const overdueDBs = (metrics.backupStatus ?? [])
     .filter((b) => !SYSTEM_DBS.has(b.databaseName))
     .filter((b) => !b.lastFullBackup || Date.now() - new Date(b.lastFullBackup).getTime() > MS_24H)
     .map((b) => b.databaseName)

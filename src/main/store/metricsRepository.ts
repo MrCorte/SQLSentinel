@@ -77,6 +77,14 @@ export function findLatest(serverId: string): ServerMetrics | null {
  */
 export function findHistory(serverId: string, limitDays: number): MetricsSnapshot[] {
   const days = Math.abs(limitDays)
+  if (days === 0) {
+    const rows = getDb()
+      .prepare<[string], SnapshotRow>(
+        `SELECT * FROM metrics_snapshots WHERE server_id = ? ORDER BY collected_at DESC`
+      )
+      .all(serverId)
+    return rows.map(rowToSnapshot)
+  }
   const rows = getDb()
     .prepare<[string, number], SnapshotRow>(`
       SELECT * FROM metrics_snapshots

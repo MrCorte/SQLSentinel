@@ -27,6 +27,14 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
   const { messages, loading, addMessage, setLoading, clear } = useAiChatStore()
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   // Scroll to bottom when new messages arrive
   useEffect(() => {
@@ -50,6 +58,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
         .map((m) => ({ role: m.role, content: m.content }))
 
       const result = await window.sqlSentinel.aiAgentAsk(text, history)
+      if (!mountedRef.current) return
       if (result.ok) {
         addMessage({ role: 'assistant', content: result.data, ts: Date.now() })
       } else {
@@ -60,6 +69,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
         })
       }
     } catch {
+      if (!mountedRef.current) return
       addMessage({
         role: 'assistant',
         content:
@@ -67,7 +77,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
         ts: Date.now()
       })
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }, [input, loading, addMessage, setLoading])
 

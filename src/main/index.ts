@@ -87,9 +87,7 @@ async function healthCheckAll(): Promise<void> {
               unreachableSince: undefined,
               lastSeen: new Date().toISOString()
             })
-            if (!mainWindow!.isDestroyed()) {
-              mainWindow!.webContents.send(IpcChannel.SERVER_RECOVERED, server.id)
-            }
+            mainWindow?.webContents.send(IpcChannel.SERVER_RECOVERED, server.id)
             console.log('[HealthCheck] RECOVERED:', `${addr}:${server.port}`)
           } else {
             serverStore.update(server.id, { lastSeen: new Date().toISOString() })
@@ -99,14 +97,12 @@ async function healthCheckAll(): Promise<void> {
             // First failure — mark as unreachable and notify renderer
             const since = new Date().toISOString()
             serverStore.update(server.id, { unreachable: true, unreachableSince: since })
-            if (!mainWindow!.isDestroyed()) {
-              mainWindow!.webContents.send(IpcChannel.SERVER_UNREACHABLE, {
+            mainWindow?.webContents.send(IpcChannel.SERVER_UNREACHABLE, {
                 serverId: server.id,
                 ip: addr,
                 port: server.port,
                 since
               })
-            }
             console.warn('[HealthCheck] UNREACHABLE:', `${addr}:${server.port}`)
           }
         }
@@ -125,7 +121,6 @@ function createWindow(): void {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
       contextIsolation: true,
       nodeIntegration: false
     }

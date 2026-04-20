@@ -5,6 +5,17 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed — 2026-04-20 (bug audit)
+- **BUG-01** `metricsWorker`: `metrics.backupStatus` acceduto senza null-guard in `evaluateAlerts()` — crash silenzioso che disabilitava tutti gli alert successivi; fix: `(metrics.backupStatus ?? [])`
+- **BUG-02** `index.ts`: rimossa riga `sandbox: false` in `webPreferences` — configurazione errata che allargava la superficie di attacco anche con `contextIsolation: true` (default Electron 20+ è `true`)
+- **BUG-03** `dbAdmin.ts`: `DBCC SHRINKFILE` usava `sqEscape()` + interpolazione stringa per il nome file — sostituito con bracket escaping `[${name.replace(/]/g,']]')}]`; rimossa funzione `sqEscape` ora inutilizzata
+- **BUG-04** `settings.ts`: `parseInt()` non validato per `NaN` — aggiunta helper `safeInt()` con fallback; `setTimeout(fn, NaN)` non scattava mai in caso di DB corrotto
+- **BUG-05** `handlers.ts`: aggiunta chiamata `resetAgent()` nei handler `SERVERS_UPDATE` e `SERVERS_REMOVE_BY_ID` — il singleton LangGraph non si resettava mai dopo modifiche ai server, causando context stale nelle risposte AI
+- **BUG-06** `index.ts`: sostituiti `mainWindow!.isDestroyed()` e `mainWindow!.webContents.send()` con optional chaining `mainWindow?.webContents.send()` — la non-null assertion poteva crashare in una Promise chain asincrona dopo che la finestra era già distrutta
+- **BUG-07** `ServerHistoryChart.tsx`: `memHistory[i]` allineato per indice — se `cpuHistory` e `memHistory` avevano lunghezze diverse (aggiornamento live), i dati RAM venivano associati al timestamp sbagliato; fix: allineamento tramite `Map<ts, value>`
+- **BUG-08** `metricsRepository.ts`: `findHistory(0)` produceva `datetime('now', '0 days')` restituendo solo i record di oggi invece di tutti; fix: branch esplicito per `days === 0` senza filtro temporale
+- **BUG-09** `AIPanel.tsx`: `aiAgentAsk` in volo non cancellata su unmount — aggiunto `mountedRef` per evitare state update su componente smontato
+
 ### Security — 2026-03-31 (cifratura credenziali a riposo)
 - **Password encryption**: le password SQL Server non vengono più scritte in plaintext nel file `electron-store` JSON su disco — uso di `safeStorage` di Electron (Windows DPAPI / macOS Keychain / Linux Secret Service) per cifrare a riposo con `encryptedPassword` in base64
 - **Migration automatica**: al primo avvio l'app rileva password in chiaro nel file JSON esistente e le migra in modo trasparente via `migrateEncryptCredentials()` — zero intervento manuale

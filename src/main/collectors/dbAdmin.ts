@@ -12,10 +12,6 @@ function bracketEscape(name: string): string {
   return `[${name.replace(/]/g, ']]')}]`
 }
 
-/** Single-quote-escape a SQL string literal value. */
-function sqEscape(name: string): string {
-  return name.replace(/'/g, "''")
-}
 
 function buildConfig(conn: CollectMetricsRequest, dbName: string): mssql.config {
   const base: mssql.config = {
@@ -149,7 +145,8 @@ export async function shrinkFile(
     const beforeMb = beforeRow.recordset[0]?.size_mb ?? 0
 
     const safeSizeMb = Math.max(0, Math.floor(targetSizeMb))
-    await pool.request().query(`DBCC SHRINKFILE (N'${sqEscape(fileName)}', ${safeSizeMb})`)
+    const safeFileId = `[${fileName.replace(/]/g, ']]')}]`
+    await pool.request().query(`DBCC SHRINKFILE (${safeFileId}, ${safeSizeMb})`)
 
     // Measure after
     const afterRow = await pool

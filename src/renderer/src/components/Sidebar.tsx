@@ -95,6 +95,7 @@ function StatusDot({ unreachable }: { unreachable?: boolean }): React.JSX.Elemen
         borderRadius: '50%',
         bgcolor: color,
         flexShrink: 0,
+        boxShadow: unreachable ? tokens.shadow.dotGlowError : tokens.shadow.dotGlowSuccess,
         animation: unreachable ? `${pulseAnim} 1.5s ease-in-out infinite` : 'none'
       }}
     />

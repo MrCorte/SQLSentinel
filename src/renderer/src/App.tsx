@@ -299,7 +299,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
 
         {/* Icon buttons — destra */}
         <Tooltip
-          title={criticalCount > 0 ? `${criticalCount} alert critici` : 'Alert'}
+          title={criticalCount > 0 ? `${criticalCount} critical alerts` : 'Alerts'}
           disableHoverListener={false}
         >
           <IconButton
@@ -316,7 +316,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
           </IconButton>
         </Tooltip>
 
-        <Tooltip title="Assistente AI">
+        <Tooltip title="AI Assistant">
           <IconButton
             size="small"
             onClick={() => setAiOpen(true)}
@@ -329,7 +329,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
           </IconButton>
         </Tooltip>
 
-        <Tooltip title="Impostazioni">
+        <Tooltip title="Settings">
           <IconButton
             size="small"
             onClick={() => setTab(4)}
@@ -342,7 +342,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
           </IconButton>
         </Tooltip>
 
-        <Tooltip title="Disconnetti">
+        <Tooltip title="Log out">
           <IconButton
             size="small"
             onClick={onLogout}

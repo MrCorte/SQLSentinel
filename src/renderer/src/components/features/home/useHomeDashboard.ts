@@ -23,18 +23,18 @@ export function dataAge(
 ): { label: string; color: string } {
   if (!collectedAt) return { label: '—', color: 'rgba(128,128,128,0.4)' }
   const minAgo = Math.floor((now - new Date(collectedAt).getTime()) / 60_000)
-  if (minAgo < 2) return { label: 'adesso', color: '#107c10' }
-  if (minAgo < 10) return { label: `${minAgo} min fa`, color: 'rgba(128,128,128,0.7)' }
-  if (minAgo < 30) return { label: `${minAgo} min fa`, color: '#d83b01' }
-  return { label: `${minAgo} min fa`, color: '#a4262c' }
+  if (minAgo < 2) return { label: 'just now', color: '#107c10' }
+  if (minAgo < 10) return { label: `${minAgo} min ago`, color: 'rgba(128,128,128,0.7)' }
+  if (minAgo < 30) return { label: `${minAgo} min ago`, color: '#d83b01' }
+  return { label: `${minAgo} min ago`, color: '#a4262c' }
 }
 
 export function formatTime(d: Date): string {
-  return d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 export function formatTimeShort(d: Date): string {
-  return d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
 }
 
 // ---------------------------------------------------------------------------
@@ -186,6 +186,7 @@ export function useHomeDashboard(onNavigateToServer: (id: string) => void): Home
         }
       })
       .sort((a, b) => b.cpu - a.cpu)
+      .slice(0, 5)
 
     const hasCpuData = cpuData.some((d) => d.hasData)
     const cpuChartHeight = Math.max(180, cpuData.length * 40)

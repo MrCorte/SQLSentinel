@@ -51,7 +51,7 @@ export function OfflineDbsTable({ offlineDbs, onNavigateToServer }: OfflineDbsTa
             letterSpacing: '0.04em'
           }}
         >
-          Database non online
+          Databases not online
         </Typography>
         <Box
           sx={{
@@ -81,7 +81,7 @@ export function OfflineDbsTable({ offlineDbs, onNavigateToServer }: OfflineDbsTa
       >
         <thead>
           <tr>
-            {['DATABASE', 'SERVER', 'STATO', 'NON ONLINE DAL'].map((col) => (
+            {['DATABASE', 'SERVER', 'STATUS', 'OFFLINE SINCE'].map((col) => (
               <th
                 key={col}
                 style={{
@@ -166,14 +166,14 @@ export function OfflineDbsTable({ offlineDbs, onNavigateToServer }: OfflineDbsTa
                 }}
               >
                 {db.offlineSince
-                  ? new Date(db.offlineSince).toLocaleString('it-IT', {
+                  ? new Date(db.offlineSince).toLocaleString('en-US', {
                       day: '2-digit',
                       month: '2-digit',
                       year: 'numeric',
                       hour: '2-digit',
                       minute: '2-digit'
                     })
-                  : 'prima del riavvio'}
+                  : 'before last restart'}
               </td>
             </tr>
           ))}

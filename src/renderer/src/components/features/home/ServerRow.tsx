@@ -260,11 +260,11 @@ export const ServerRow = memo(function ServerRow({
           </span>
         ) : (
           <span style={{ ...ellipsisSpan, opacity: 0.4, fontSize: tokens.font.sizeXs }}>
-            ● SCONOSCIUTO
+            ● UNKNOWN
           </span>
         )}
       </td>
-      <td style={tdUptimeStyle}>{uptime !== undefined ? `${uptime}g` : '—'}</td>
+      <td style={tdUptimeStyle}>{uptime !== undefined ? `${uptime}d` : '—'}</td>
     </tr>
   )
 })

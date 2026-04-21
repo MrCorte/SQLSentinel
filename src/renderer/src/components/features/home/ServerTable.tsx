@@ -12,7 +12,7 @@ import type { ServerGroup } from '../../../types/index'
 
 const COL_WIDTHS = ['18%', '12%', '11%', '8%', '6%', '6%', '8%', '14%', '10%', '7%']
 const COL_HEADERS = [
-  'SERVER', 'AMBIENTE', 'INFRASTRUTTURA', 'TIPO', 'CPU%', 'MEM%', 'DB', 'ALLARMI', 'STATO', 'UPTIME'
+  'SERVER', 'ENVIRONMENT', 'INFRASTRUCTURE', 'TYPE', 'CPU%', 'MEM%', 'DB', 'ALERTS', 'STATUS', 'UPTIME'
 ]
 
 const thStyle: React.CSSProperties = {

@@ -44,7 +44,7 @@ export function StatusDonutChart({
           mb: 1
         }}
       >
-        Stato server
+        Server status
       </Typography>
       <Box sx={{ position: 'relative', height: 200 }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -109,7 +109,7 @@ export function StatusDonutChart({
         {[
           { label: 'Online', color: '#107c10', value: onlineCount },
           { label: 'Offline', color: '#a4262c', value: offlineCount },
-          { label: 'Non raggiungibili', color: '#d83b01', value: unreachableCount }
+          { label: 'Unreachable', color: '#d83b01', value: unreachableCount }
         ].map((item) => (
           <Box key={item.label} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Box
@@ -122,7 +122,7 @@ export function StatusDonutChart({
                 boxShadow:
                   item.label === 'Online'
                     ? tokens.shadow.dotGlowSuccess
-                    : item.label === 'Non raggiungibili'
+                    : item.label === 'Unreachable'
                       ? tokens.shadow.dotGlowWarning
                       : tokens.shadow.dotGlowError
               }}

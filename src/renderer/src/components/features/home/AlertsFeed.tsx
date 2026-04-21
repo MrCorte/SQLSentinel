@@ -63,7 +63,7 @@ export function AlertsFeed({
             letterSpacing: '0.04em'
           }}
         >
-          Allarmi recenti
+          Recent alerts
         </Typography>
         <Box
           onClick={onOpenAlerts}
@@ -74,7 +74,7 @@ export function AlertsFeed({
             '&:hover': { textDecoration: 'underline' }
           }}
         >
-          Tutti →
+          All →
         </Box>
       </Box>
 
@@ -85,7 +85,7 @@ export function AlertsFeed({
             sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', p: 2 }}
           >
             <Typography sx={{ fontSize: tokens.font.sizeBase, color: 'text.secondary' }}>
-              Nessun allarme attivo
+              No active alerts
             </Typography>
           </Box>
         ) : (

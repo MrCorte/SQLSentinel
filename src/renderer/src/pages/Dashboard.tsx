@@ -129,11 +129,13 @@ export function Dashboard(): React.JSX.Element {
     refresh()
   }, [selectedServerId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-detect AG membership for each server after store loads
+  // Auto-detect AG membership for each server after store loads.
+  // Pass the full server list and updateServer so agStore can write AG metadata
+  // back to each matched replica without importing serversStore itself.
   useEffect(() => {
     if (!initialized) return
     for (const s of servers) {
-      detectAgsForServer(s.id, toCollectRequest(s))
+      detectAgsForServer(s.id, toCollectRequest(s), servers, updateServer)
     }
   }, [initialized]) // eslint-disable-line react-hooks/exhaustive-deps
 

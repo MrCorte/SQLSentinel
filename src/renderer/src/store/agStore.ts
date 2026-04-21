@@ -4,7 +4,8 @@ import type {
   AvailabilityDatabase,
   AgHealth,
   AgRole,
-  CollectMetricsRequest
+  CollectMetricsRequest,
+  StoredServer
 } from '../../../preload/index'
 import { createLogger } from '../utils/logger'
 import * as ipc from '../api/ipc'
@@ -35,13 +36,29 @@ export interface AgDetail {
   lastUpdated: Date
 }
 
+/** Callback type for writing AG metadata back to a server record. Injected by callers to avoid a circular store dependency. */
+export type OnUpdateServer = (id: string, patch: Partial<StoredServer>) => void
+
 interface AgStore {
   /** Map of ag_name → AgGroupState (sidebar display) */
   agGroups: Record<string, AgGroupState>
   /** Map of ag_name → full detail with replicas + databases */
   agDetails: Record<string, AgDetail>
-  /** Detect AG membership for one server and populate agGroups */
-  detectAgsForServer(serverId: string, connection: CollectMetricsRequest): Promise<void>
+  /**
+   * Detect AG membership for one server and populate agGroups.
+   *
+   * @param allServers - Full server list used to match replica hostnames to stored server
+   *   records. Callers already hold this (from serversStore), so we accept it as a
+   *   parameter instead of importing serversStore here.
+   * @param onUpdateServer - Optional callback to persist agGroupId/agName/agRole back to
+   *   each matched server record. Keeps agStore free of a circular serversStore import.
+   */
+  detectAgsForServer(
+    serverId: string,
+    connection: CollectMetricsRequest,
+    allServers: StoredServer[],
+    onUpdateServer?: OnUpdateServer
+  ): Promise<void>
   /** Refresh full details for all AGs visible from a given connection */
   updateAgDetails(connection: CollectMetricsRequest): Promise<void>
   /** Clear all AG state (e.g. on store reset) */
@@ -56,7 +73,7 @@ export const useAgStore = create<AgStore>((set, get) => ({
   agGroups: {},
   agDetails: {},
 
-  detectAgsForServer: async (serverId, connection) => {
+  detectAgsForServer: async (serverId, connection, allServers, onUpdateServer) => {
     if (!window.sqlSentinel?.ag?.getGroups) return
     try {
       const [groupsRes, replicasRes] = await Promise.all([
@@ -82,26 +99,23 @@ export const useAgStore = create<AgStore>((set, get) => ({
         const serverIds = new Set<string>([...existingServerIds, serverId])
 
         // Try to match other replicas to stored servers by IP (best-effort)
-        // replica_server_name may be a hostname, but if someone added by IP it'll match
-        const { useServersStore } = await import('./serversStore')
-        const allServers = useServersStore.getState().servers
+        // replica_server_name may be a hostname, but if someone added by IP it'll match.
+        // allServers is injected by the caller so agStore does not import serversStore.
         for (const replica of agReplicas) {
           const nameBase = replica.replica_server_name.split('\\')[0].toLowerCase()
-          const matched = allServers.find(
-            (s) => {
-              const addr = (s.ip ?? s.host).toLowerCase()
-              return addr === nameBase || nameBase.includes(addr) || addr.includes(nameBase)
-            }
-          )
+          const matched = allServers.find((s) => {
+            const addr = (s.ip ?? s.host).toLowerCase()
+            return addr === nameBase || nameBase.includes(addr) || addr.includes(nameBase)
+          })
           if (matched) {
             serverIds.add(matched.id)
             // Update ALL matched replicas with agGroupId + agName + agRole —
             // not just the server currently being detected.
             // This ensures SECONDARY servers are grouped even if their own
             // detectAgsForServer() run hasn't succeeded yet.
-            if (matched.id !== serverId) {
+            if (matched.id !== serverId && onUpdateServer) {
               const replicaRole = replica.role_desc as AgRole
-              useServersStore.getState().updateServer(matched.id, {
+              onUpdateServer(matched.id, {
                 agGroupId: ag.group_id,
                 agName: ag.ag_name,
                 agRole: replicaRole
@@ -121,9 +135,9 @@ export const useAgStore = create<AgStore>((set, get) => ({
           )
         })
 
-        // Persist agGroupId + agName + agRole for the current server
-        if (myReplica) {
-          useServersStore.getState().updateServer(serverId, {
+        // Persist agGroupId + agName + agRole for the current server via injected callback
+        if (myReplica && onUpdateServer) {
+          onUpdateServer(serverId, {
             agGroupId: ag.group_id,
             agName: ag.ag_name,
             agRole: myReplica.role_desc as AgRole

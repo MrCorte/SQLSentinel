@@ -54,16 +54,24 @@ export const useServersStore = create<ServersStore>((set) => ({
         const addr: string = (raw as any).host ?? (raw as any).ip ?? ''
         const addedServer: StoredServer = { ...raw, host: addr, ip: addr }
         set((state) => ({ servers: [...state.servers, addedServer] }))
-        // AG detection in background — non-blocking
+        // AG detection in background — non-blocking.
+        // We pass the current server list and updateServer callback so agStore
+        // can write AG metadata back without importing serversStore itself.
         if (addedServer.id) {
-          useAgStore.getState().detectAgsForServer(addedServer.id, {
-            ip: addedServer.ip ?? addedServer.host,
-            port: addedServer.port,
-            instanceName: addedServer.instanceName,
-            useWindowsAuth: addedServer.useWindowsAuth,
-            username: addedServer.username,
-            password: addedServer.password
-          })
+          const allServers = useServersStore.getState().servers
+          useAgStore.getState().detectAgsForServer(
+            addedServer.id,
+            {
+              ip: addedServer.ip ?? addedServer.host,
+              port: addedServer.port,
+              instanceName: addedServer.instanceName,
+              useWindowsAuth: addedServer.useWindowsAuth,
+              username: addedServer.username,
+              password: addedServer.password
+            },
+            allServers,
+            useServersStore.getState().updateServer
+          )
         }
         return { success: true, server: addedServer }
       }

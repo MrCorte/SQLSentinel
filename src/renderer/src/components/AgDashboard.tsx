@@ -235,8 +235,7 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
       return addr === nameBase || addr.includes(nameBase) || nameBase.includes(addr)
     })
     if (!match) return replicaServerName
-    const srvKey = `${match.host ?? match.ip}:${match.port}`
-    return serverAliases[srvKey] || match.host || replicaServerName
+    return serverAliases[match.id] || match.host || replicaServerName
   }, [servers, serverAliases])
 
   const handleNavigateToServer = useCallback((replica: AvailabilityReplica): void => {

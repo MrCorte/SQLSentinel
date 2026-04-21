@@ -86,7 +86,7 @@ export function Discovery(): React.JSX.Element {
   }
 
   const handleDialogSave = async (data: AddServerFormData): Promise<void> => {
-    await useServersStore.getState().addServer({
+    const result = await useServersStore.getState().addServer({
       host: data.ip,
       port: data.port,
       instanceName: data.instanceName || undefined,
@@ -96,9 +96,13 @@ export function Discovery(): React.JSX.Element {
       password: data.password || undefined,
       hostingType: data.hostingType
     })
+    // Use server UUID for group/alias keys; fall back to ip:port key for group (still keyed that way)
+    const newServer = result?.server ?? useServersStore.getState().servers.find(
+      (s) => (s.host === data.ip || s.ip === data.ip) && s.port === data.port
+    )
     const sid = `${data.ip}:${data.port}`
     if (data.groupId) setServerGroup(sid, data.groupId)
-    if (data.alias?.trim()) setServerAlias(sid, data.alias.trim())
+    if (data.alias?.trim() && newServer) setServerAlias(newServer.id, data.alias.trim())
     setDialogOpen(false)
   }
 

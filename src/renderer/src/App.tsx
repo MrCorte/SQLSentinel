@@ -28,6 +28,7 @@ import { ThemeContext, type ThemeMode } from './context/ThemeContext'
 import { AuthContext } from './context/AuthContext'
 import type { AuthSession, ServerHealthPayload, StoredServer, ServerUnreachableEvent, Alert } from '../../preload/index'
 import { createLogger } from './utils/logger'
+import { migrateAliasKeys } from './store/groupsStore'
 
 const log = createLogger('app')
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
@@ -62,6 +63,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
       .then(() => {
         const { servers } = useServersStore.getState()
         log.info('loadServers completato, servers:', servers.length)
+        migrateAliasKeys(servers)
         if (servers.length > 0) {
           window.sqlSentinel
             .workerStart({

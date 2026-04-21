@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { StoredServer } from '../../../preload/index'
 import type { ServerGroup } from '../types/index'
 
 // Stable IDs so the default groups survive a page reload without duplicating
@@ -9,12 +10,51 @@ const DEFAULT_GROUPS: ServerGroup[] = [
   { id: 'default-dev', name: 'Sviluppo', color: '#107c10', collapsed: false, order: 2 }
 ]
 
+// ---------------------------------------------------------------------------
+// Migration helper — convert legacy "ip:port" keys to server UUID id
+// ---------------------------------------------------------------------------
+
+/** Returns true if a key looks like a legacy "host:port" string rather than a UUID. */
+function looksLikeIpPort(key: string): boolean {
+  return (
+    /^.+:\d+$/.test(key) &&
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key)
+  )
+}
+
+/**
+ * One-time migration: remap any serverAliases keys that look like "ip:port"
+ * to the corresponding server UUID. Called after serversStore has loaded.
+ *
+ * Best-effort: if a server cannot be matched by host+port, the old key is
+ * preserved so no alias is silently lost. Keys already in UUID format are skipped.
+ */
+export function migrateAliasKeys(servers: StoredServer[]): void {
+  const { serverAliases } = useGroupsStore.getState()
+  const legacyEntries = Object.entries(serverAliases).filter(([k]) => looksLikeIpPort(k))
+  if (legacyEntries.length === 0) return
+
+  const next: Record<string, string> = { ...serverAliases }
+  for (const [key, alias] of legacyEntries) {
+    const colonIdx = key.lastIndexOf(':')
+    const host = key.slice(0, colonIdx)
+    const port = parseInt(key.slice(colonIdx + 1), 10)
+    const match = servers.find((s) => (s.host === host || s.ip === host) && s.port === port)
+    if (match) {
+      next[match.id] = alias
+      delete next[key]
+    }
+    // If no match found, leave the old key in place (conservative / no data loss)
+  }
+  useGroupsStore.setState({ serverAliases: next })
+}
+
 interface GroupsState {
   groups: ServerGroup[]
   serverGroups: Record<string, string> // serverId (ip:port) → groupId
-  serverAliases: Record<string, string> // serverId → display alias
-  expandedAGs: string[]       // ag_names that are expanded (empty = all collapsed)
-  expandedMachines: string[]  // machine names that are expanded in sidebar (empty = all collapsed)
+  serverAliases: Record<string, string> // server.id (UUID) → display alias
+  expandedAGs: string[] // ag_names that are expanded (empty = all collapsed)
+  expandedMachines: string[] // machine names that are expanded in sidebar (empty = all collapsed)
   addGroup: (name: string, color: string) => void
   removeGroup: (id: string) => void
   renameGroup: (id: string, name: string) => void

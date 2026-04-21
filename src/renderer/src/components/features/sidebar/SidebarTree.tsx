@@ -567,7 +567,7 @@ export function SidebarTree({
                 {item.kind === 'server' && (
                   <ServerItem
                     server={item.server}
-                    alias={serverAliases[serverLabel(item.server)]}
+                    alias={serverAliases[item.server.id]}
                     isSelected={selectedServer ? selectedServer.id === item.server.id : false}
                     searchText=""
                     inAgGroup={item.inAgGroup}
@@ -594,7 +594,7 @@ export function SidebarTree({
                 {item.kind === 'search-server' && (
                   <ServerItem
                     server={item.server}
-                    alias={serverAliases[serverLabel(item.server)]}
+                    alias={serverAliases[item.server.id]}
                     isSelected={selectedServer ? selectedServer.id === item.server.id : false}
                     searchText={searchText}
                     inMachineGroup={false}

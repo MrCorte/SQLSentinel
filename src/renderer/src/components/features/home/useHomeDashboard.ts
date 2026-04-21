@@ -178,7 +178,7 @@ export function useHomeDashboard(onNavigateToServer: (id: string) => void): Home
       const cpu = m?.instanceInfo?.cpuUsagePercent ?? 0
       const hasData = !!m
       return {
-        name: serverAliases[serverKey(s)] || s.host || s.ip || serverKey(s),
+        name: serverAliases[s.id] || s.host || s.ip || serverKey(s),
         cpu: hasData ? Math.round(cpu * 10) / 10 : 0,
         fill: cpu < 60 ? '#107c10' : cpu < 80 ? '#d83b01' : '#a4262c',
         hasData
@@ -196,7 +196,7 @@ export function useHomeDashboard(onNavigateToServer: (id: string) => void): Home
       const key = serverKey(s)
       const m = metricsMap[key]
       if (!m) return []
-      const srvName = serverAliases[key] || s.host || s.ip || key
+      const srvName = serverAliases[s.id] || s.host || s.ip || key
       return m.databases
         .filter((d) => d.stateDesc !== 'ONLINE')
         .map((d) => ({

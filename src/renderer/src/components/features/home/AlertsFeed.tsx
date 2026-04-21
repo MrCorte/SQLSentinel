@@ -92,7 +92,7 @@ export function AlertsFeed({
           recentAlerts.map((alert: Alert) => {
             const srvForAlert = servers.find((sv) => serverKey(sv) === alert.serverId)
             const alertSrvName = srvForAlert
-              ? serverAliases[alert.serverId] || srvForAlert.host || srvForAlert.ip || alert.serverId
+              ? serverAliases[srvForAlert.id] || srvForAlert.host || srvForAlert.ip || alert.serverId
               : alert.serverId
             const alertBorderColor = alert.severity === 'CRITICAL' ? '#a4262c' : '#d83b01'
 

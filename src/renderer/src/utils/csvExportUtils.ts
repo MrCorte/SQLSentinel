@@ -99,7 +99,7 @@ export function buildInventoryCsvRows(
     const standaloneRows = group.standaloneServers.flatMap((srv) => {
       if (allowedServerIds && !allowedServerIds.has(srv.serverId)) return []
       const srvLabel = `${srv.ip}:${srv.port}`
-      const alias = serverAliases[srvLabel] ?? ''
+      const alias = serverAliases[srv.serverId] ?? ''
       const metrics = metricsMap[srvLabel]
       const databases = metrics?.databases ?? []
       const backupMap = Object.fromEntries(
@@ -157,7 +157,7 @@ export function buildInventoryCsvRows(
       ag.replicas.flatMap((srv) => {
         if (allowedServerIds && !allowedServerIds.has(srv.serverId)) return []
         const srvLabel = `${srv.ip}:${srv.port}`
-        const alias = serverAliases[srvLabel] ?? ''
+        const alias = serverAliases[srv.serverId] ?? ''
         const metrics = metricsMap[srvLabel]
         const databases = metrics?.databases ?? []
         const backupMap = Object.fromEntries(

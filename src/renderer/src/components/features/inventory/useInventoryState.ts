@@ -289,8 +289,7 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
       if (filterHost !== 'all' && row.hostingType !== (filterHost as ServerHostingType)) return false
       if (filterAlias !== 'all') {
         if (row.type !== 'standalone' && row.type !== 'ag-replica') return false
-        const key = `${row.host}:${row.port}`
-        if (serverAliases[key] !== filterAlias) return false
+        if (serverAliases[row.serverId ?? ''] !== filterAlias) return false
       }
       if (filterReferente !== 'all') {
         if (row.type !== 'standalone' && row.type !== 'ag-replica') return false
@@ -503,7 +502,7 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
         if (filterState === 'online' && row.unreachable) return false
         if (filterState === 'offline' && !row.unreachable) return false
         if (filterHost !== 'all' && row.hostingType !== (filterHost as ServerHostingType)) return false
-        if (filterAlias !== 'all' && aliases[`${row.host}:${row.port}`] !== filterAlias) return false
+        if (filterAlias !== 'all' && aliases[row.serverId ?? ''] !== filterAlias) return false
         if (filterReferente !== 'all') {
           const dbs = mm[`${row.host}:${row.port}`]?.databases ?? []
           if (!dbs.some((db) => db.referente === filterReferente)) return false

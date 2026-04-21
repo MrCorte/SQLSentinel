@@ -96,7 +96,7 @@ export function ServerTable({
                 summary={summaries[key]}
                 alertCount={alertCountByServer[key]}
                 group={groupByServerKey[key]}
-                serverAlias={serverAliases[key]}
+                serverAlias={serverAliases[s.id]}
                 now={now}
                 onNavigate={onNavigate}
               />

@@ -173,14 +173,14 @@ export function Dashboard(): React.JSX.Element {
   // Inline alias edit helpers
   const startEditAlias = useCallback((): void => {
     if (!selectedServer) return
-    setAliasInput(serverAliases[serverLabel(selectedServer)] ?? '')
+    setAliasInput(serverAliases[selectedServer.id] ?? '')
     setEditingAlias(true)
     setTimeout(() => aliasInputRef.current?.select(), 0)
   }, [selectedServer, serverAliases])
 
   const confirmEditAlias = useCallback((): void => {
     if (!selectedServer) return
-    setServerAlias(serverLabel(selectedServer), aliasInput)
+    setServerAlias(selectedServer.id, aliasInput)
     setEditingAlias(false)
   }, [selectedServer, aliasInput, setServerAlias])
 
@@ -311,10 +311,10 @@ export function Dashboard(): React.JSX.Element {
                       {getServerDisplayName({
                         ip: selectedServer.ip ?? selectedServer.host,
                         port: selectedServer.port,
-                        alias: serverAliases[serverLabel(selectedServer)]
+                        alias: serverAliases[selectedServer.id]
                       })}
                     </Typography>
-                    {serverAliases[serverLabel(selectedServer)] && (
+                    {serverAliases[selectedServer.id] && (
                       <Typography
                         component="span"
                         sx={{ fontSize: 12, color: 'text.secondary', whiteSpace: 'nowrap', flexShrink: 0 }}

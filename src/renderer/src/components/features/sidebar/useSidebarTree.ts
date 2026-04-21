@@ -90,12 +90,12 @@ export function useSidebarTree(servers: StoredServer[]): SidebarTreeResult {
       searchText
         ? servers
             .filter((s) => {
-              const label = serverAliases[serverLabel(s)] || serverLabel(s)
+              const label = serverAliases[s.id] || serverLabel(s)
               return label.toLowerCase().includes(searchText.toLowerCase())
             })
             .sort((a, b) => {
-              const la = (serverAliases[serverLabel(a)] || serverLabel(a)).toLowerCase()
-              const lb = (serverAliases[serverLabel(b)] || serverLabel(b)).toLowerCase()
+              const la = (serverAliases[a.id] || serverLabel(a)).toLowerCase()
+              const lb = (serverAliases[b.id] || serverLabel(b)).toLowerCase()
               const q = searchText.toLowerCase()
               const aStarts = la.startsWith(q)
               const bStarts = lb.startsWith(q)

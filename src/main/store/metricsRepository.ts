@@ -51,7 +51,6 @@ let _stmts: {
   findHistoryDays: Statement<[string, number], SnapshotRow>
   cleanup: Statement<[number]>
   findLastN: Statement<[string, number], SnapshotRow>
-  batchInsert: Statement<[string, string, string, string]>
 } | null = null
 
 function stmts() {
@@ -87,10 +86,6 @@ function stmts() {
       WHERE server_id = ?
       ORDER BY collected_at DESC
       LIMIT ?
-    `),
-    batchInsert: db.prepare<[string, string, string, string]>(`
-      INSERT INTO metrics_snapshots (id, server_id, collected_at, metrics_json)
-      VALUES (?, ?, ?, ?)
     `),
   }
   return _stmts
@@ -183,7 +178,7 @@ export function findLastNBulk(serverIds: string[], n: number): Record<string, Se
 export function batchSave(items: SaveItem[]): void {
   if (items.length === 0) return
   const db = getDb()
-  const stmt = stmts().batchInsert
+  const stmt = stmts().insert
   const insertAll = db.transaction((list: SaveItem[]) => {
     for (const item of list) {
       stmt.run(

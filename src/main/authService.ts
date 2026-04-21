@@ -47,15 +47,15 @@ interface UserRow {
 
 let _db: Database.Database | null = null
 let _stmts: {
-  getUserByUsername: Statement
-  updateLastLogin: Statement
-  insertSession: Statement
-  deleteSession: Statement
-  updateSessionExpiry: Statement
-  getUserById: Statement
-  updatePassword: Statement
-  countUsers: Statement
-  insertUser: Statement
+  getUserByUsername: Statement<[string], UserRow>
+  updateLastLogin: Statement<[number, string]>
+  insertSession: Statement<[string, string, string, string, number]>
+  deleteSession: Statement<[string]>
+  updateSessionExpiry: Statement<[number, string]>
+  getUserById: Statement<[string], UserRow>
+  updatePassword: Statement<[string, string]>
+  countUsers: Statement<[], { n: number }>
+  insertUser: Statement<[string, string]>
 } | null = null
 
 function stmts() {

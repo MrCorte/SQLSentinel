@@ -5,6 +5,12 @@ Formato basato su [Keep a Changelog](https://keepachangelog.com/it/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed — 2026-04-21 (D3: serverAliases UUID migration)
+- **groupsStore**: `serverAliases` keys migrated from legacy `"ip:port"` strings to `server.id` (UUID) — aliases now survive IP changes
+- Added `migrateAliasKeys(servers)` one-time migration called after `loadServers()` completes; best-effort: unmatched legacy keys are preserved to avoid data loss
+- Updated all read/write sites: `AgDashboard`, `AlertsFeed`, `ServerTable`, `useHomeDashboard`, `useInventoryState`, `SidebarTree`, `useSidebarTree`, `Dashboard`, `Discovery`, `csvExportUtils`, `inventoryUtils`
+- Mock data (`MOCK_SERVER_ALIASES`) keys updated from `"ip:port"` to `"mock-sNN"` UUIDs
+
 ### Changed — 2026-04-20 (UI Dark Accent restyling)
 - **Design tokens**: aggiunti gradient strings (`primaryGradient`, `successGradient`, `warningGradient`, `errorGradient`), glow shadow tokens (`dotGlowSuccess/Error/Warning`) e `borderDark` in `tokens.ts`
 - **MUI theme**: bordo sottile `rgba(255,255,255,0.08)` su Paper elevation0/1 in dark mode; bordo su Chip `filled` via `tokens.color.dividerDark`; header tabelle più scuri (`#0f1f3d`); inset accent stripe sulla voce attiva nella sidebar

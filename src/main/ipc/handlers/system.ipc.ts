@@ -10,7 +10,6 @@ import {
   isAuthenticated,
   changePassword,
 } from '../../authService'
-import { getAlerts } from '../../metricsWorker'
 import { buildCsvContent } from '../../csvUtils'
 import { getSettings, saveSettings } from '../../store/settings'
 import { getEmailSettings, saveEmailSettings } from '../../store/emailSettings'
@@ -22,7 +21,11 @@ import {
   getAvailabilityReplicas,
   getAvailabilityDatabases,
 } from '../../collectors/agCollector'
-import * as serverStore from '../../store/serverStore'
+import {
+  exportCustomFieldsCsv,
+  exportInventoryCsv,
+  exportAlertsCsv,
+} from '../../services/SystemService'
 import {
   IpcChannel,
   type SaveSettingsRequest,
@@ -50,21 +53,8 @@ import {
 } from '../types'
 import { resolveConnection } from './servers.ipc'
 
-function serverKey(ip: string, port: number): string {
-  return `${ip}:${port}`
-}
-
-function csvEscape(v: unknown): string {
-  const s = v == null ? '' : String(v)
-  const dangerous = /^[=+\-@\t\r]/.test(s)
-  if (dangerous || s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
-    return '"' + s.replace(/"/g, '""') + '"'
-  }
-  return s
-}
-
 export function registerSystemHandlers(): void {
-  // ── Auth handlers (no guard needed) ──────────────────────────────────────
+  // ── Auth handlers ─────────────────────────────────────────────────────────
 
   handle(
     IpcChannel.AUTH_LOGIN,
@@ -114,7 +104,7 @@ export function registerSystemHandlers(): void {
     }
   )
 
-  // SETTINGS_GET — restituisce le impostazioni salvate + stato autostart dal SO
+  // SETTINGS_GET — returns saved settings + OS autostart state
   handle(IpcChannel.SETTINGS_GET, async (): Promise<IpcResult<AppSettings>> => {
     return {
       ok: true,
@@ -125,7 +115,7 @@ export function registerSystemHandlers(): void {
     }
   })
 
-  // SETTINGS_SET — salva le impostazioni; aggiorna autostart nel registro di SO se richiesto
+  // SETTINGS_SET — saves settings; updates OS autostart registry entry if requested
   handle(
     IpcChannel.SETTINGS_SET,
     async (
@@ -167,7 +157,7 @@ export function registerSystemHandlers(): void {
     }
   )
 
-  // EMAIL_TEST — sendTestEmail() has internal try/catch; outer try/catch catches unexpected throws
+  // EMAIL_TEST
   handle(IpcChannel.EMAIL_TEST, async (): Promise<IpcResult<null>> => {
     try {
       return await sendTestEmail()
@@ -177,7 +167,7 @@ export function registerSystemHandlers(): void {
     }
   })
 
-  // DB_GET_CUSTOM_FIELDS — restituisce i campi custom per un singolo DB
+  // DB_GET_CUSTOM_FIELDS — returns custom fields for a single DB
   handle(
     IpcChannel.DB_GET_CUSTOM_FIELDS,
     async (
@@ -188,7 +178,7 @@ export function registerSystemHandlers(): void {
     }
   )
 
-  // DB_SET_CUSTOM_FIELDS — salva i campi custom per un singolo DB
+  // DB_SET_CUSTOM_FIELDS — saves custom fields for a single DB
   handle(
     IpcChannel.DB_SET_CUSTOM_FIELDS,
     async (
@@ -200,7 +190,7 @@ export function registerSystemHandlers(): void {
     }
   )
 
-  // DB_GET_ALL_CUSTOM_FIELDS — restituisce tutti i campi custom (usato dal worker per alert suppression)
+  // DB_GET_ALL_CUSTOM_FIELDS — returns all custom fields (used by worker for alert suppression)
   handle(
     IpcChannel.DB_GET_ALL_CUSTOM_FIELDS,
     async (): Promise<IpcResult<Record<string, DbCustomFields>>> => {
@@ -208,7 +198,7 @@ export function registerSystemHandlers(): void {
     }
   )
 
-  // DB_SHRINK_ESTIMATE — anteprima spazio recuperabile per un database
+  // DB_SHRINK_ESTIMATE — preview recoverable space for a database
   handle(
     IpcChannel.DB_SHRINK_ESTIMATE,
     async (
@@ -225,7 +215,7 @@ export function registerSystemHandlers(): void {
     }
   )
 
-  // DB_SHRINK — shrink intero database
+  // DB_SHRINK — shrink entire database
   handle(
     IpcChannel.DB_SHRINK,
     async (
@@ -246,7 +236,7 @@ export function registerSystemHandlers(): void {
     }
   )
 
-  // DB_SHRINK_FILE — shrink file specifico (dati o log)
+  // DB_SHRINK_FILE — shrink specific file (data or log)
   handle(
     IpcChannel.DB_SHRINK_FILE,
     async (
@@ -269,7 +259,7 @@ export function registerSystemHandlers(): void {
     }
   )
 
-  // AG_GET_GROUPS — availability groups sul server
+  // AG_GET_GROUPS — availability groups on the server
   handle(
     IpcChannel.AG_GET_GROUPS,
     async (
@@ -280,14 +270,13 @@ export function registerSystemHandlers(): void {
         const data = await getAvailabilityGroups(resolveConnection(req.connection))
         return { ok: true, data }
       } catch (err) {
-        // Server non in AG o permessi insufficienti — non è un errore critico
         log.info('[IPC] AG_GET_GROUPS: no AG or insufficient perms:', safeError(err))
         return { ok: true, data: [] }
       }
     }
   )
 
-  // AG_GET_REPLICAS — repliche AG
+  // AG_GET_REPLICAS — AG replicas
   handle(
     IpcChannel.AG_GET_REPLICAS,
     async (
@@ -304,7 +293,7 @@ export function registerSystemHandlers(): void {
     }
   )
 
-  // AG_GET_DATABASES — database in AG
+  // AG_GET_DATABASES — databases in AG
   handle(
     IpcChannel.AG_GET_DATABASES,
     async (
@@ -321,65 +310,22 @@ export function registerSystemHandlers(): void {
     }
   )
 
-  // EXPORT_CUSTOM_FIELDS — genera CSV dei campi custom di tutti i DB
+  // EXPORT_CUSTOM_FIELDS — generates CSV of all DB custom fields
   handle(IpcChannel.EXPORT_CUSTOM_FIELDS, async (): Promise<IpcResult<string>> => {
-    const all = getAllCustomFields()
-    const rows = Object.entries(all).map(([key, fields]) => {
-      const slash = key.indexOf('/')
-      const serverId = slash >= 0 ? key.slice(0, slash) : key
-      const dbName = slash >= 0 ? key.slice(slash + 1) : ''
-      return [serverId, dbName, fields.alias ?? '', fields.referente ?? '']
-        .map(csvEscape)
-        .join(',')
-    })
-    const csv = ['serverId,dbName,alias,referente', ...rows].join('\r\n')
-    return { ok: true, data: csv }
+    return { ok: true, data: exportCustomFieldsCsv() }
   })
 
-  // EXPORT_INVENTORY — genera CSV dell'inventario server
+  // EXPORT_INVENTORY — generates CSV of the server inventory
   handle(IpcChannel.EXPORT_INVENTORY, async (): Promise<IpcResult<string>> => {
-    const all = getAllCustomFields()
-    const header = 'ip,porta,raggiungibile,aggiunto_il,database'
-    const rows = serverStore.getAll().map((s) => {
-      const sid = serverKey(s.host, s.port)
-      const dbEntries = Object.entries(all)
-        .filter(([key]) => key.startsWith(sid + '/'))
-        .map(([key]) => key.slice(sid.length + 1))
-        .join('; ')
-      return [s.host, String(s.port), s.unreachable ? 'NO' : 'SI', s.addedAt, dbEntries]
-        .map(csvEscape)
-        .join(',')
-    })
-    const csv = [header, ...rows].join('\r\n')
-    return { ok: true, data: csv }
+    return { ok: true, data: exportInventoryCsv() }
   })
 
-  // EXPORT_ALERTS — genera CSV degli alert storici
+  // EXPORT_ALERTS — generates CSV of historical alerts
   handle(IpcChannel.EXPORT_ALERTS, async (): Promise<IpcResult<string>> => {
-    const alerts = getAlerts()
-    const header = 'id,serverId,categoria,severita,messaggio,rilevato_il,acknowledged_il'
-    const rows = alerts.map((a) =>
-      [
-        a.id,
-        a.serverId,
-        a.category,
-        a.severity,
-        a.message,
-        a.detectedAt instanceof Date ? a.detectedAt.toISOString() : String(a.detectedAt),
-        a.acknowledgedAt
-          ? a.acknowledgedAt instanceof Date
-            ? a.acknowledgedAt.toISOString()
-            : String(a.acknowledgedAt)
-          : '',
-      ]
-        .map(csvEscape)
-        .join(',')
-    )
-    const csv = [header, ...rows].join('\r\n')
-    return { ok: true, data: csv }
+    return { ok: true, data: exportAlertsCsv() }
   })
 
-  // EXPORT_INVENTORY_CSV — apre showSaveDialog e scrive il CSV inventario con BOM UTF-8
+  // EXPORT_INVENTORY_CSV — opens showSaveDialog and writes inventory CSV with UTF-8 BOM
   handle(
     IpcChannel.EXPORT_INVENTORY_CSV,
     async (
@@ -410,7 +356,7 @@ export function registerSystemHandlers(): void {
     }
   )
 
-  // FILE_SAVE_CSV — apre showSaveDialog e scrive il file
+  // FILE_SAVE_CSV — opens showSaveDialog and writes the file
   handle(
     IpcChannel.FILE_SAVE_CSV,
     async (

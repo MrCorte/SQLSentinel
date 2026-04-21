@@ -31,6 +31,9 @@ import DesktopWindowsOutlinedIcon from '@mui/icons-material/DesktopWindowsOutlin
 import { useWorker } from '../context/useWorker'
 import { useThemeContext } from '../context/ThemeContext'
 import type { ThemeMode } from '../context/ThemeContext'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('settings')
 
 // ---------------------------------------------------------------------------
 // Opzioni retention
@@ -132,7 +135,7 @@ export function Settings(): React.JSX.Element {
     }>
   ) => {
     window.sqlSentinel.saveSettings(patch).catch((err: unknown) => {
-      console.error('[Settings] saveBgSettings failed:', err)
+      log.error('saveBgSettings failed:', err)
     })
   }
 
@@ -169,7 +172,7 @@ export function Settings(): React.JSX.Element {
 
   const saveEmail = (patch: Parameters<typeof window.sqlSentinel.saveEmailSettings>[0]) => {
     window.sqlSentinel.saveEmailSettings(patch).catch((err: unknown) => {
-      console.error('[Settings] saveEmailSettings failed:', err)
+      log.error('saveEmailSettings failed:', err)
     })
   }
 

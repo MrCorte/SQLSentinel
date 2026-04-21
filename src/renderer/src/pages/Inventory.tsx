@@ -1,467 +1,14 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
-import { alpha } from '@mui/material/styles'
-import {
-  Box,
-  Typography,
-  Button,
-  CircularProgress,
-  Tooltip,
-  Chip,
-  TextField,
-  Select,
-  MenuItem,
-  Paper,
-  InputAdornment,
-  ToggleButton,
-  ToggleButtonGroup
-} from '@mui/material'
-import RefreshIcon from '@mui/icons-material/Refresh'
-import DownloadIcon from '@mui/icons-material/Download'
-import SearchIcon from '@mui/icons-material/Search'
-import FilterListIcon from '@mui/icons-material/FilterList'
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
-import ChevronRightIcon from '@mui/icons-material/ChevronRight'
-import AccountTreeIcon from '@mui/icons-material/AccountTree'
-import StorageIcon from '@mui/icons-material/Storage'
-import LockIcon from '@mui/icons-material/Lock'
-import LockOpenIcon from '@mui/icons-material/LockOpen'
-import { useVirtualizer } from '@tanstack/react-virtual'
-import { useServersStore } from '../store/serversStore'
-import { useMetricsStore } from '../store/metricsStore'
-import { useRefreshAllServers } from '../hooks/useRefreshAllServers'
-import { useGroupsStore } from '../store/groupsStore'
-import { useAppStore } from '../store/appStore'
-import { computeInventory, getSqlServerVersion } from '../utils/inventoryUtils'
-import { buildInventoryCsvRows, buildDbViewCsvRows, DB_VIEW_CSV_HEADERS } from '../utils/csvExportUtils'
-import type { DbAssetCsvInput } from '../utils/csvExportUtils'
-import { compatLevelToSqlVersion } from '../utils/sqlVersionUtils'
-import type { GroupInventory, InventoryStats } from '../types/index'
-import type { DbCustomFields, ServerMetrics } from '../../../preload/index'
-import type { ServerHostingType } from '../constants/hosting'
-import { HOSTING_BADGE } from '../constants/hosting'
-import { tokens } from '../styles/tokens'
+import { Box } from '@mui/material'
+import { useInventoryState } from '../components/features/inventory/useInventoryState'
+import { InventoryFilters } from '../components/features/inventory/InventoryFilters'
+import { InventoryDbFilters } from '../components/features/inventory/InventoryDbFilters'
+import { InventoryServerTable } from '../components/features/inventory/InventoryServerTable'
+import { InventoryDbTable } from '../components/features/inventory/InventoryDbTable'
+import { InventoryTopBar } from '../components/features/inventory/InventoryTopBar'
+import { InventoryKpiRow } from '../components/features/inventory/InventoryKpiRow'
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function formatMb(mb: number): string {
-  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`
-  return `${Math.round(mb)} MB`
-}
-
-// ---------------------------------------------------------------------------
-// KPI card
-// ---------------------------------------------------------------------------
-
-interface KpiCardProps {
-  label: string
-  value: string
-  accentColor: string
-}
-
-function KpiCard({ label, value, accentColor }: KpiCardProps): React.JSX.Element {
-  return (
-    <Box
-      sx={{
-        flex: '1 1 0',
-        minWidth: 100,
-        bgcolor: 'background.paper',
-        border: '1px solid',
-        borderColor: 'divider',
-        borderTop: `3px solid ${accentColor}`,
-        borderRadius: '4px',
-        px: 2,
-        py: 1.5
-      }}
-    >
-      <Typography
-        sx={{ fontSize: 10, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.5px', mb: 0.5 }}
-      >
-        {label}
-      </Typography>
-      <Typography sx={{ fontSize: 22, fontWeight: 700, color: 'text.primary', lineHeight: 1 }}>
-        {value}
-      </Typography>
-    </Box>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Row types
-// ---------------------------------------------------------------------------
-
-type InventoryRowType = 'standalone' | 'ag-cluster' | 'ag-replica' | 'machine-header'
-
-interface InventoryRow {
-  id:            string
-  type:          InventoryRowType
-  depth:         number
-  serverLabel:   string
-  host:          string
-  port:          number
-  envId:         string
-  envName:       string
-  envColor:      string
-  hostingType:   ServerHostingType
-  version:       string
-  unreachable:   boolean
-  dbCount:       number
-  onlineCount:   number
-  offlineCount:  number
-  totalDataMb:   number
-  totalLogMb:    number
-  machineName?:  string
-  instanceName?: string
-  // ag-cluster + machine-header
-  agName?:       string
-  agHealthy?:    boolean
-  replicaCount?: number
-  instanceCount?: number
-  clusterKey?:   string
-  // standalone + ag-replica
-  serverId?:     string
-  agRole?:       'PRIMARY' | 'SECONDARY'
-  uptimeDays?:   number
-  logicalCpus?:  number
-  physicalCpus?: number
-  notes?:        string
-}
-
-// ---------------------------------------------------------------------------
-// Column definitions
-// ---------------------------------------------------------------------------
-
-interface ColDef {
-  key: keyof InventoryRow
-  label: string
-  width: string
-}
-
-const COLUMNS: ColDef[] = [
-  { key: 'serverLabel',  label: 'SERVER',      width: '17%' },
-  { key: 'envName',      label: 'ENVIRONMENT', width: '8%'  },
-  { key: 'type',         label: 'TYPE',        width: '8%'  },
-  { key: 'machineName',  label: 'MACHINE',     width: '8%'  },
-  { key: 'hostingType',  label: 'HOSTING',     width: '6%'  },
-  { key: 'dbCount',      label: 'DB',          width: '4%'  },
-  { key: 'onlineCount',  label: 'ONLINE',      width: '5%'  },
-  { key: 'offlineCount', label: 'OFFLINE',     width: '5%'  },
-  { key: 'totalDataMb',  label: 'DATA',        width: '7%'  },
-  { key: 'version',      label: 'VERSION',     width: '9%'  },
-  { key: 'logicalCpus',  label: 'CPU',         width: '5%'  },
-  { key: 'unreachable',  label: 'STATUS',      width: '6%'  },
-  { key: 'notes',        label: 'NOTES',       width: '12%' },
-]
-
-const GRID_TEMPLATE = COLUMNS.map((c) => c.width).join(' ')
-
-// ---------------------------------------------------------------------------
-// DB View — types, columns, row builder
-// ---------------------------------------------------------------------------
-
-type DbViewRowType = 'server-header' | 'db-row'
-
-interface DbViewRow {
-  id:                  string
-  type:                DbViewRowType
-  serverId:            string
-  serverKey:           string   // "ip:port"
-  serverLabel:         string
-  envName:             string
-  envColor:            string
-  unreachable:         boolean
-  serverVersion:       string
-  clusterKey:          string   // = serverKey, used for expand/collapse
-  // server-header only
-  dbCount?:            number
-  agRole?:             'PRIMARY' | 'SECONDARY'
-  // db-row only
-  dbName?:             string
-  stateDesc?:          string
-  recoveryModel?:      string
-  compatibilityLevel?: number
-  isEncrypted?:        boolean
-  isReadOnly?:         boolean
-  owner?:              string
-  createDate?:         string
-  sizeMb?:             number
-  logSizeMb?:          number
-  lastFullBackup?:     Date | null
-  lastLogBackup?:      Date | null
-  alias?:              string
-  referente?:          string
-}
-
-const DB_COLUMNS = [
-  { label: 'DATABASE',   width: '13%' },
-  { label: 'SERVER',     width: '10%' },
-  { label: 'ALIAS',      width: '8%'  },
-  { label: 'STATUS',     width: '6%'  },
-  { label: 'RECOVERY',   width: '6%'  },
-  { label: 'COMPAT',     width: '7%'  },
-  { label: 'TDE',        width: '5%'  },
-  { label: 'DATA',       width: '6%'  },
-  { label: 'LOG',        width: '5%'  },
-  { label: 'LAST FULL',  width: '9%'  },
-  { label: 'LAST LOG',   width: '9%'  },
-  { label: 'OWNER',      width: '8%'  },
-  { label: 'CREATED',    width: '8%'  },
-]
-
-const DB_GRID_TEMPLATE = DB_COLUMNS.map((c) => c.width).join(' ')
-
-function buildDbViewRows(
-  inventory: InventoryStats,
-  metricsMap: Record<string, ServerMetrics>,
-  expandedServers: Set<string>
-): DbViewRow[] {
-  const rows: DbViewRow[] = []
-
-  for (const group of inventory.groups) {
-    const allServers = [
-      ...group.standaloneServers,
-      ...group.agClusters.flatMap((ag) => ag.replicas)
-    ]
-
-    for (const srv of allServers) {
-      const serverKey = `${srv.ip}:${srv.port}`
-      const metrics = metricsMap[serverKey]
-      const databases = metrics?.databases ?? []
-      const backupMap = Object.fromEntries(
-        (metrics?.backupStatus ?? []).map((b) => [b.databaseName, b])
-      )
-      const isExpanded = expandedServers.has(serverKey)
-
-      rows.push({
-        id:            serverKey,
-        type:          'server-header',
-        serverId:      srv.serverId,
-        serverKey,
-        serverLabel:   srv.displayName,
-        envName:       group.groupName,
-        envColor:      group.groupColor,
-        unreachable:   srv.unreachable,
-        serverVersion: srv.version ?? '—',
-        clusterKey:    serverKey,
-        dbCount:       databases.length,
-        agRole:        (srv.agRole === 'PRIMARY' || srv.agRole === 'SECONDARY') ? srv.agRole : undefined,
-      })
-
-      if (isExpanded) {
-        for (const db of databases) {
-          const backup = backupMap[db.name]
-          rows.push({
-            id:                  `${serverKey}/${db.name}`,
-            type:                'db-row',
-            serverId:            srv.serverId,
-            serverKey,
-            serverLabel:         srv.displayName,
-            envName:             group.groupName,
-            envColor:            group.groupColor,
-            unreachable:         srv.unreachable,
-            serverVersion:       srv.version ?? '—',
-            clusterKey:          serverKey,
-            dbName:              db.name,
-            stateDesc:           db.stateDesc,
-            recoveryModel:       db.recoveryModel,
-            compatibilityLevel:  db.compatibilityLevel,
-            isEncrypted:         db.isEncrypted,
-            isReadOnly:          db.isReadOnly,
-            owner:               db.owner,
-            createDate:          db.createDate,
-            sizeMb:              db.sizeMb,
-            logSizeMb:           db.logSizeMb,
-            lastFullBackup:      backup?.lastFullBackup ?? null,
-            lastLogBackup:       backup?.lastLogBackup ?? null,
-            alias:               db.alias,
-            referente:           db.referente,
-          })
-        }
-      }
-    }
-  }
-
-  return rows
-}
-
-// ---------------------------------------------------------------------------
-// Row flattener
-// ---------------------------------------------------------------------------
-
-function buildRows(invGroups: GroupInventory[], expandedClusters: Set<string>, expandedMachines: Set<string>): InventoryRow[] {
-  const rows: InventoryRow[] = []
-
-  for (const group of invGroups) {
-    const envId    = group.groupId ?? '__ungrouped__'
-    const envName  = group.groupName
-    const envColor = group.groupColor
-
-    // ── Standalone — group by machineName if 2+ instances on same machine ──
-    const machineMap = new Map<string, typeof group.standaloneServers>()
-    for (const srv of group.standaloneServers) {
-      const key = srv.machineName ?? srv.ip
-      if (!machineMap.has(key)) machineMap.set(key, [])
-      machineMap.get(key)!.push(srv)
-    }
-    for (const [machineName, instances] of machineMap) {
-      if (instances.length >= 2) {
-        const machineKey = `${envId}__machine__${machineName}`
-        const isExpanded = expandedMachines.has(machineKey)
-        // Machine header row: aggregate stats from all instances
-        rows.push({
-          id:            machineKey,
-          type:          'machine-header',
-          depth:         0,
-          serverLabel:   machineName,
-          host:          machineName,
-          port:          1433,
-          envId, envName, envColor,
-          hostingType:   (instances[0]?.hostingType ?? 'on-premise') as ServerHostingType,
-          version:       instances[0]?.version ?? '—',
-          unreachable:   instances.every((s) => s.unreachable),
-          dbCount:       instances.reduce((s, x) => s + x.dbCount, 0),
-          onlineCount:   instances.reduce((s, x) => s + x.onlineCount, 0),
-          offlineCount:  instances.reduce((s, x) => s + x.offlineCount, 0),
-          totalDataMb:   instances.reduce((s, x) => s + x.totalDataMb, 0),
-          totalLogMb:    instances.reduce((s, x) => s + x.totalLogMb, 0),
-          machineName,
-          instanceCount: instances.length,
-          clusterKey:    machineKey,
-          logicalCpus:   instances.reduce((s, x) => s + (x.logicalCpus ?? 0), 0) || undefined,
-          physicalCpus:  instances.reduce((s, x) => s + (x.physicalCpus ?? 0), 0) || undefined,
-        })
-        // Instance rows (depth=1) — only when expanded
-        if (isExpanded) {
-          for (const srv of instances) {
-            const instanceLabel = srv.instanceName ? `\\${srv.instanceName}` : '(default)'
-            rows.push({
-              id:            `${machineKey}__${srv.serverId}`,
-              type:          'standalone',
-              depth:         1,
-              serverLabel:   instanceLabel,
-              host:          srv.ip,
-              port:          srv.port,
-              envId, envName, envColor,
-              hostingType:   (srv.hostingType ?? 'on-premise') as ServerHostingType,
-              version:       srv.version,
-              unreachable:   srv.unreachable,
-              dbCount:       srv.dbCount,
-              onlineCount:   srv.onlineCount,
-              offlineCount:  srv.offlineCount,
-              totalDataMb:   srv.totalDataMb,
-              totalLogMb:    srv.totalLogMb,
-              machineName,
-              instanceName:  srv.instanceName,
-              serverId:      srv.serverId,
-              uptimeDays:    srv.uptimeDays,
-              clusterKey:    machineKey,
-              logicalCpus:   srv.logicalCpus,
-              physicalCpus:  srv.physicalCpus,
-              notes:         srv.notes,
-            })
-          }
-        }
-      } else {
-        // Single instance on this machine — render normally
-        const srv = instances[0]
-        rows.push({
-          id:           srv.serverId,
-          type:         'standalone',
-          depth:        0,
-          serverLabel:  srv.displayName,
-          host:         srv.ip,
-          port:         srv.port,
-          envId, envName, envColor,
-          hostingType:  (srv.hostingType ?? 'on-premise') as ServerHostingType,
-          version:      srv.version,
-          unreachable:  srv.unreachable,
-          dbCount:      srv.dbCount,
-          onlineCount:  srv.onlineCount,
-          offlineCount: srv.offlineCount,
-          totalDataMb:  srv.totalDataMb,
-          totalLogMb:   srv.totalLogMb,
-          machineName,
-          instanceName: srv.instanceName,
-          serverId:     srv.serverId,
-          uptimeDays:   srv.uptimeDays,
-          logicalCpus:  srv.logicalCpus,
-          physicalCpus: srv.physicalCpus,
-          notes:        srv.notes,
-        })
-      }
-    }
-
-    // ── AG clusters ─────────────────────────────────────────────────────
-    for (const ag of group.agClusters) {
-      const clusterKey = `${envId}__${ag.agName}`
-      const primary    = ag.replicas.find((r) => r.agRole === 'PRIMARY')
-      const isExpanded = expandedClusters.has(clusterKey)
-
-      // Cluster header row
-      rows.push({
-        id:           clusterKey,
-        type:         'ag-cluster',
-        depth:        0,
-        serverLabel:  ag.agName,
-        host:         primary?.ip ?? '',
-        port:         primary?.port ?? 1433,
-        envId, envName, envColor,
-        hostingType:  (primary?.hostingType ?? 'on-premise') as ServerHostingType,
-        version:      primary?.version ?? '',
-        unreachable:  ag.replicas.every((r) => r.unreachable),
-        agName:       ag.agName,
-        agHealthy:    ag.health === 'HEALTHY',
-        replicaCount: ag.replicas.length,
-        clusterKey,
-        dbCount:      primary?.dbCount      ?? ag.dbCount,
-        onlineCount:  primary?.onlineCount  ?? ag.onlineCount,
-        offlineCount: primary?.offlineCount ?? ag.offlineCount,
-        totalDataMb:  primary?.totalDataMb  ?? ag.totalDataMb,
-        totalLogMb:   primary?.totalLogMb   ?? ag.totalLogMb,
-        logicalCpus:  primary?.logicalCpus,
-        physicalCpus: primary?.physicalCpus,
-      })
-
-      // Replica child rows — only when expanded
-      if (isExpanded) {
-        for (const srv of ag.replicas) {
-          rows.push({
-            id:           `${clusterKey}__${srv.serverId}`,
-            type:         'ag-replica',
-            depth:        1,
-            serverLabel:  srv.displayName,
-            host:         srv.ip,
-            port:         srv.port,
-            envId, envName, envColor,
-            hostingType:  (srv.hostingType ?? 'on-premise') as ServerHostingType,
-            version:      srv.version,
-            unreachable:  srv.unreachable,
-            dbCount:      srv.dbCount,
-            onlineCount:  srv.onlineCount,
-            offlineCount: srv.offlineCount,
-            totalDataMb:  srv.agRole === 'PRIMARY' ? srv.totalDataMb : 0,
-            totalLogMb:   srv.agRole === 'PRIMARY' ? srv.totalLogMb  : 0,
-            serverId:     srv.serverId,
-            agRole:       (srv.agRole === 'PRIMARY' || srv.agRole === 'SECONDARY')
-                            ? srv.agRole
-                            : 'SECONDARY',
-            uptimeDays:   srv.uptimeDays,
-            clusterKey,
-            logicalCpus:  srv.logicalCpus,
-            physicalCpus: srv.physicalCpus,
-            notes:        srv.notes,
-          })
-        }
-      }
-    }
-  }
-
-  return rows
-}
-
-// ---------------------------------------------------------------------------
-// Inventory (main export)
+// Inventory (shell)
 // ---------------------------------------------------------------------------
 
 interface InventoryProps {
@@ -469,1354 +16,184 @@ interface InventoryProps {
 }
 
 export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.Element {
-  const { refreshing, lastRefresh, handleRefresh } = useRefreshAllServers()
-  const [search,            setSearch]             = useState('')
-  const [debouncedSearch,   setDebouncedSearch]    = useState('')
-  const [filterEnv,         setFilterEnv]          = useState('all')
-  const [filterType,        setFilterType]         = useState<'all' | 'standalone' | 'ag-primary' | 'ag-secondary'>('all')
-  const [filterState,       setFilterState]        = useState<'all' | 'online' | 'offline'>('all')
-  const [filterHost,        setFilterHost]         = useState<'all' | 'on-premise' | 'cloud'>('all')
-  const [filterAlias,       setFilterAlias]        = useState('all')
-  const [filterReferente,   setFilterReferente]    = useState('all')
-  const [filterVersion,     setFilterVersion]      = useState('all')
-  const [sortKey,           setSortKey]            = useState<keyof InventoryRow>('envName')
-  const [sortDir,           setSortDir]            = useState<'asc' | 'desc'>('asc')
-  const [expandedClusters,  setExpandedClusters]   = useState<Set<string>>(new Set())
-  const [expandedMachines,  setExpandedMachines]   = useState<Set<string>>(new Set())
-  const parentRef = useRef<HTMLDivElement>(null)
+  const state = useInventoryState(onNavigateToDashboard)
 
-  // DB View state
-  const [dbView,             setDbView]             = useState(false)
-  const [expandedDbServers,  setExpandedDbServers]  = useState<Set<string>>(new Set())
-  const [dbSearch,           setDbSearch]           = useState('')
-  const [filterDbRecovery,   setFilterDbRecovery]   = useState<'all' | 'FULL' | 'SIMPLE' | 'BULK_LOGGED'>('all')
-  const [filterDbTde,        setFilterDbTde]        = useState<'all' | 'encrypted' | 'not-encrypted'>('all')
-  const [filterDbCompat,     setFilterDbCompat]     = useState('all')
-  const [filterDbOffline,    setFilterDbOffline]    = useState(false)
-  const [filterDbNoBackup,   setFilterDbNoBackup]   = useState(false)
-  const dbParentRef = useRef<HTMLDivElement>(null)
-
-  // Debounce search to avoid recomputing filteredRows on every keystroke
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 300)
-    return () => clearTimeout(t)
-  }, [search])
-
-  // Store subscriptions
-  useServersStore((s) => s.servers)
-  const envGroups     = useGroupsStore((s) => s.groups)
-  const serverAliases = useGroupsStore((s) => s.serverAliases)
-
-  // Throttle: if Dashboard and Inventory were mounted simultaneously, without throttling
-  // every metrics push (200 servers/cycle) would re-trigger filteredRows and referenteOptions.
-  const [metricsMap, setMetricsMap] = useState(() => useMetricsStore.getState().metricsMap)
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const unsub = useMetricsStore.subscribe(() => {
-      if (timer) return
-      timer = setTimeout(() => {
-        setMetricsMap(useMetricsStore.getState().metricsMap)
-        timer = null
-      }, 1000)
-    })
-    return () => {
-      unsub()
-      if (timer) clearTimeout(timer)
-    }
-  }, [])
-
-  const inventory = computeInventory()
-  const { totals } = inventory
-
-  // ── All cluster keys (for Expand all / Collapse all) ────────────────────
-  const allClusterKeys = useMemo(
-    () => inventory.groups.flatMap((g) =>
-      g.agClusters.map((ag) => `${g.groupId ?? '__ungrouped__'}__${ag.agName}`)
-    ),
-    [inventory.groups]
-  )
-
-  const allMachineKeys = useMemo(
-    () => {
-      const keys: string[] = []
-      for (const g of inventory.groups) {
-        const envId = g.groupId ?? '__ungrouped__'
-        const machineMap = new Map<string, number>()
-        for (const srv of g.standaloneServers) {
-          const key = srv.machineName ?? srv.ip
-          machineMap.set(key, (machineMap.get(key) ?? 0) + 1)
-        }
-        for (const [machineName, count] of machineMap) {
-          if (count >= 2) keys.push(`${envId}__machine__${machineName}`)
-        }
-      }
-      return keys
-    },
-    [inventory.groups]
-  )
-
-  // ── Alias / Referente dropdown options (from full unfiltered data) ──────
-  const aliasOptions = useMemo(
-    () => [...new Set(Object.values(serverAliases).filter(Boolean))].sort(),
-    [serverAliases]
-  )
-
-  const referenteOptions = useMemo(() => {
-    const refs: string[] = []
-    for (const m of Object.values(metricsMap)) {
-      for (const db of m.databases ?? []) {
-        if (db.referente) refs.push(db.referente)
-      }
-    }
-    return [...new Set(refs)].sort()
-  }, [metricsMap])
-
-  const versionOptions = useMemo(() => {
-    const versions = new Set<string>()
-    for (const g of inventory.groups) {
-      for (const ag of g.agClusters) {
-        for (const r of ag.replicas) {
-          const v = getSqlServerVersion(r.version)
-          if (v) versions.add(v)
-        }
-      }
-      for (const srv of g.standaloneServers) {
-        const v = getSqlServerVersion(srv.version)
-        if (v) versions.add(v)
-      }
-    }
-    return [...versions].sort()
-  }, [inventory.groups])
-
-  // ── DB View memos ───────────────────────────────────────────────────────
-
-  // All server keys (for "expand all" in DB View)
-  const allServerKeys = useMemo(() => {
-    const keys: string[] = []
-    for (const g of inventory.groups) {
-      for (const srv of g.standaloneServers) keys.push(`${srv.ip}:${srv.port}`)
-      for (const ag of g.agClusters)
-        for (const r of ag.replicas) keys.push(`${r.ip}:${r.port}`)
-    }
-    return keys
-  }, [inventory.groups])
-
-  // All DB rows (all servers expanded — used for filtering + KPI)
-  const allDbViewRowsExpanded = useMemo(
-    () => buildDbViewRows(inventory, metricsMap, new Set(allServerKeys)),
-    [inventory, metricsMap, allServerKeys]
-  )
-
-  // Flat list of db-rows only (for filters + KPI cards)
-  const allDbRows = useMemo(
-    () => allDbViewRowsExpanded.filter((r): r is DbViewRow & { type: 'db-row' } => r.type === 'db-row'),
-    [allDbViewRowsExpanded]
-  )
-
-  // Compat level options for DB View filter
-  const compatLevelOptions = useMemo(() => {
-    const levels = new Set<number>()
-    for (const r of allDbRows) if (r.compatibilityLevel) levels.add(r.compatibilityLevel)
-    return [...levels].sort((a, b) => b - a)
-  }, [allDbRows])
-
-  // DB View filter — applied to db-rows
-  const hasActiveDbFilters = dbSearch !== '' || filterDbRecovery !== 'all' || filterDbTde !== 'all' ||
-    filterDbCompat !== 'all' || filterDbOffline || filterDbNoBackup
-
-  const filteredDbRows = useMemo(() => {
-    if (!hasActiveDbFilters) return allDbRows
-    const q = dbSearch.toLowerCase()
-    const now = Date.now()
-    return allDbRows.filter((r) => {
-      if (q && !r.dbName?.toLowerCase().includes(q) && !r.serverLabel.toLowerCase().includes(q)) return false
-      if (filterDbRecovery !== 'all' && r.recoveryModel !== filterDbRecovery) return false
-      if (filterDbTde === 'encrypted'     && !r.isEncrypted)  return false
-      if (filterDbTde === 'not-encrypted' &&  r.isEncrypted)  return false
-      if (filterDbCompat !== 'all' && String(r.compatibilityLevel) !== filterDbCompat) return false
-      if (filterDbOffline && r.stateDesc === 'ONLINE') return false
-      if (filterDbNoBackup) {
-        const noBackup = !r.lastFullBackup || (now - new Date(r.lastFullBackup).getTime() > 86_400_000)
-        if (!noBackup) return false
-      }
-      return true
-    })
-  }, [allDbRows, dbSearch, filterDbRecovery, filterDbTde, filterDbCompat, filterDbOffline, filterDbNoBackup, hasActiveDbFilters])
-
-  // Servers that have at least one matching DB (for header-row visibility when filters active)
-  const serversWithMatchingDbs = useMemo(() => {
-    const set = new Set<string>()
-    filteredDbRows.forEach((r) => set.add(r.serverKey))
-    return set
-  }, [filteredDbRows])
-
-  // Display rows: server headers + expanded DB rows (filtered)
-  const displayDbViewRows = useMemo(() => {
-    const matchingIds = new Set(filteredDbRows.map((r) => r.id))
-    const rows: DbViewRow[] = []
-    for (const row of allDbViewRowsExpanded) {
-      if (row.type === 'server-header') {
-        if (hasActiveDbFilters && !serversWithMatchingDbs.has(row.serverKey)) continue
-        rows.push(row)
-      } else if (row.type === 'db-row' && expandedDbServers.has(row.serverKey)) {
-        if (!hasActiveDbFilters || matchingIds.has(row.id)) rows.push(row)
-      }
-    }
-    return rows
-  }, [allDbViewRowsExpanded, filteredDbRows, serversWithMatchingDbs, expandedDbServers, hasActiveDbFilters])
-
-  // DB View KPI cards
-  const dbViewStats = useMemo(() => {
-    const rows = filteredDbRows
-    const now = Date.now()
-    return {
-      total:        rows.length,
-      online:       rows.filter((r) => r.stateDesc === 'ONLINE').length,
-      offline:      rows.filter((r) => r.stateDesc !== 'ONLINE').length,
-      fullRecovery: rows.filter((r) => r.recoveryModel === 'FULL').length,
-      tdeActive:    rows.filter((r) => r.isEncrypted).length,
-      noBackup:     rows.filter((r) => !r.lastFullBackup || (now - new Date(r.lastFullBackup).getTime() > 86_400_000)).length,
-      oldCompat:    rows.filter((r) => (r.compatibilityLevel ?? 999) < 130).length,
-    }
-  }, [filteredDbRows])
-
-  // DB View virtualizer
-  const dbRowVirtualizer = useVirtualizer({
-    count:            displayDbViewRows.length,
-    getScrollElement: () => dbParentRef.current,
-    estimateSize:     () => 40,
-    overscan:         10,
-  })
-
-  // ── Rows ────────────────────────────────────────────────────────────────
-  // When filtering by AG role / alias / referente, all clusters and machines
-  // must be expanded so leaf rows are present in allRows.
-  const needsFullExpand = filterAlias !== 'all' || filterReferente !== 'all'
-
-  const effectiveExpanded = useMemo(() => {
-    if (filterType === 'ag-primary' || filterType === 'ag-secondary' || needsFullExpand) {
-      return new Set(allClusterKeys)
-    }
-    return expandedClusters
-  }, [filterType, needsFullExpand, allClusterKeys, expandedClusters])
-
-  const effectiveExpandedMachines = useMemo(() => {
-    if (filterType === 'standalone' || needsFullExpand) return new Set(allMachineKeys)
-    return expandedMachines
-  }, [filterType, needsFullExpand, allMachineKeys, expandedMachines])
-
-  const allRows = useMemo(
-    () => buildRows(inventory.groups, effectiveExpanded, effectiveExpandedMachines),
-    [inventory.groups, effectiveExpanded, effectiveExpandedMachines]
-  )
-
-  const filteredRows = useMemo(() => {
-    const q = debouncedSearch.toLowerCase()
-    return allRows.filter((row) => {
-      // Type filter
-      if (filterType !== 'all') {
-        if (filterType === 'standalone' && row.type !== 'standalone' && row.type !== 'machine-header') return false
-        if (filterType === 'ag-primary'   && !(row.type === 'ag-replica' && row.agRole === 'PRIMARY'))   return false
-        if (filterType === 'ag-secondary' && !(row.type === 'ag-replica' && row.agRole === 'SECONDARY')) return false
-      }
-      // Search
-      if (q) {
-        const lbl = row.serverLabel.toLowerCase()
-        const h   = row.host.toLowerCase()
-        const ag  = (row.agName ?? '').toLowerCase()
-        if (!lbl.includes(q) && !h.includes(q) && !ag.includes(q)) return false
-      }
-      if (filterEnv   !== 'all' && row.envId      !== filterEnv)  return false
-      if (filterState === 'online'  &&  row.unreachable)           return false
-      if (filterState === 'offline' && !row.unreachable)           return false
-      if (filterHost  !== 'all' && row.hostingType !== filterHost) return false
-      // Alias filter — only meaningful on leaf rows; headers excluded
-      if (filterAlias !== 'all') {
-        if (row.type !== 'standalone' && row.type !== 'ag-replica') return false
-        const key = `${row.host}:${row.port}`
-        if (serverAliases[key] !== filterAlias) return false
-      }
-      // Referente filter — leaf rows only; matches if any DB of this server has the referente
-      if (filterReferente !== 'all') {
-        if (row.type !== 'standalone' && row.type !== 'ag-replica') return false
-        const key = `${row.host}:${row.port}`
-        const dbs = metricsMap[key]?.databases ?? []
-        if (!dbs.some((db) => db.referente === filterReferente)) return false
-      }
-      // Version filter — applied to every row; headers carry the primary/first-instance version
-      if (filterVersion !== 'all' && getSqlServerVersion(row.version) !== filterVersion) return false
-      return true
-    })
-  }, [allRows, debouncedSearch, filterEnv, filterType, filterState, filterHost, filterAlias, filterReferente, filterVersion, serverAliases, metricsMap])
-
-  // ── Filtered KPI stats (derived from filteredRows, zero extra pass) ────
-  const filteredStats = useMemo(() => {
-    // depth=0 standalone rows only (excludes depth=1 instances under machine-header)
-    const standaloneRows = filteredRows.filter((r) => r.type === 'standalone' && r.depth === 0)
-    const machineRows    = filteredRows.filter((r) => r.type === 'machine-header')
-    const clusterRows    = filteredRows.filter((r) => r.type === 'ag-cluster')
-    const replicaRows    = filteredRows.filter((r) => r.type === 'ag-replica')
-
-    // Machine-grouped instances counted from the header's instanceCount
-    const machineInstances = machineRows.reduce((s, r) => s + (r.instanceCount ?? 0), 0)
-
-    const agServers = clusterRows.length > 0
-      ? clusterRows.reduce((sum, r) => sum + (r.replicaCount ?? 1), 0)
-      : replicaRows.length
-
-    const servers    = standaloneRows.length + machineInstances + agServers
-    const standalone = standaloneRows.length + machineInstances
-    const agClusters = clusterRows.length
-
-    // When only replica rows are visible (ag-primary/ag-secondary filter), use those for DB stats
-    // Machine-header rows already aggregate DB stats from their instances
-    const dbSourceRows =
-      clusterRows.length > 0 || standaloneRows.length > 0 || machineRows.length > 0
-        ? [...standaloneRows, ...machineRows, ...clusterRows]
-        : replicaRows
-
-    const databases  = dbSourceRows.reduce((sum, r) => sum + r.dbCount, 0)
-    const onlineDbs  = dbSourceRows.reduce((sum, r) => sum + r.onlineCount, 0)
-    const offlineDbs = dbSourceRows.reduce((sum, r) => sum + r.offlineCount, 0)
-
-    return { servers, standalone, agClusters, agServers, databases, onlineDbs, offlineDbs }
-  }, [filteredRows])
-
-  const hasActiveFilters =
-    search !== '' || filterEnv !== 'all' || filterType !== 'all' ||
-    filterState !== 'all' || filterHost !== 'all' ||
-    filterAlias !== 'all' || filterReferente !== 'all' || filterVersion !== 'all'
-
-  // Sort: keep replica rows attached to their parent cluster header
-  const sortedRows = useMemo(() => {
-    // Only treat as hierarchical when there are actual parent header rows visible.
-    // This prevents orphaned depth=1 rows from being silently dropped when
-    // alias/referente filters show leaf rows without their parent headers.
-    const hasHierarchy =
-      filteredRows.some((r) => r.depth === 1) &&
-      filteredRows.some((r) => r.depth === 0 && (r.type === 'ag-cluster' || r.type === 'machine-header'))
-
-    const compareFn = (a: InventoryRow, b: InventoryRow): number => {
-      const va = a[sortKey] ?? ''
-      const vb = b[sortKey] ?? ''
-      const cmp = String(va).localeCompare(String(vb), undefined, { numeric: true })
-      return sortDir === 'asc' ? cmp : -cmp
-    }
-
-    if (!hasHierarchy) return [...filteredRows].sort(compareFn)
-
-    const topLevel: InventoryRow[] = []
-    const childrenMap = new Map<string, InventoryRow[]>()
-
-    for (const row of filteredRows) {
-      if (row.depth === 0) {
-        topLevel.push(row)
-      } else if (row.clusterKey) {
-        const arr = childrenMap.get(row.clusterKey) ?? []
-        arr.push(row)
-        childrenMap.set(row.clusterKey, arr)
-      }
-    }
-
-    topLevel.sort(compareFn)
-
-    const result: InventoryRow[] = []
-    for (const row of topLevel) {
-      result.push(row)
-      if ((row.type === 'ag-cluster' || row.type === 'machine-header') && row.clusterKey) {
-        result.push(...(childrenMap.get(row.clusterKey) ?? []))
-      }
-    }
-    return result
-  }, [filteredRows, sortKey, sortDir])
-
-  // ── Virtualizer ─────────────────────────────────────────────────────────
-  const rowVirtualizer = useVirtualizer({
-    count:            sortedRows.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize:     () => 48,
-    overscan:         10,
-  })
-
-  // ── Handlers ────────────────────────────────────────────────────────────
-  const toggleCluster = useCallback((clusterKey: string) => {
-    setExpandedClusters((prev) => {
-      const next = new Set(prev)
-      next.has(clusterKey) ? next.delete(clusterKey) : next.add(clusterKey)
-      return next
-    })
-  }, [])
-
-  const toggleMachine = useCallback((machineKey: string) => {
-    setExpandedMachines((prev) => {
-      const next = new Set(prev)
-      next.has(machineKey) ? next.delete(machineKey) : next.add(machineKey)
-      return next
-    })
-  }, [])
-
-  const handleToggleAll = useCallback(() => {
-    const totalExpandable = allClusterKeys.length + allMachineKeys.length
-    const totalExpanded   = expandedClusters.size + expandedMachines.size
-    if (totalExpanded === totalExpandable) {
-      setExpandedClusters(new Set())
-      setExpandedMachines(new Set())
-    } else {
-      setExpandedClusters(new Set(allClusterKeys))
-      setExpandedMachines(new Set(allMachineKeys))
-    }
-  }, [expandedClusters, expandedMachines, allClusterKeys, allMachineKeys])
-
-  const handleRowClick = useCallback(
-    (row: InventoryRow) => {
-      if (row.type === 'ag-cluster') {
-        toggleCluster(row.clusterKey!)
-      } else if (row.type === 'machine-header') {
-        toggleMachine(row.clusterKey!)
-      } else if (row.serverId) {
-        useAppStore.getState().setPendingServerId(row.serverId)
-        onNavigateToDashboard()
-      }
-    },
-    [toggleCluster, toggleMachine, onNavigateToDashboard]
-  )
-
-  const handleExportCsv = useCallback(async () => {
-    // DB View export — use filtered db-rows directly (alias/referente already in db object)
-    if (dbView) {
-      const exportRows = buildDbViewCsvRows(
-        filteredDbRows.map((r): DbAssetCsvInput => ({
-          envName:             r.envName,
-          serverLabel:         r.serverLabel,
-          serverVersion:       r.serverVersion,
-          dbName:              r.dbName ?? '',
-          alias:               r.alias,
-          referente:           r.referente,
-          stateDesc:           r.stateDesc,
-          recoveryModel:       r.recoveryModel,
-          compatibilityLevel:  r.compatibilityLevel,
-          isEncrypted:         r.isEncrypted,
-          isReadOnly:          r.isReadOnly,
-          sizeMb:              r.sizeMb,
-          logSizeMb:           r.logSizeMb,
-          lastFullBackup:      r.lastFullBackup,
-          lastLogBackup:       r.lastLogBackup,
-          owner:               r.owner,
-          createDate:          r.createDate,
-        }))
-      )
-      await window.sqlSentinel.exportInventoryCsv({ headers: DB_VIEW_CSV_HEADERS, rows: exportRows })
-      return
-    }
-
-    const { serverAliases } = useGroupsStore.getState()
-    const { metricsMap }    = useMetricsStore.getState()
-    const cfResult          = await window.sqlSentinel.getAllDbCustomFields()
-    const dbCustomFields: Record<string, DbCustomFields> = cfResult.ok ? cfResult.data : {}
-
-    // When filters are active, restrict export to servers visible in the filtered table.
-    // We use a fully-expanded row set so collapsed AG/machine children are always included.
-    let allowedServerIds: Set<string> | undefined
-    if (hasActiveFilters) {
-      const fullyExpanded = buildRows(
-        inventory.groups,
-        new Set(allClusterKeys),
-        new Set(allMachineKeys)
-      )
-      const q = search.toLowerCase()
-      const matched = fullyExpanded.filter((row) => {
-        if (row.type !== 'standalone' && row.type !== 'ag-replica') return false
-        if (filterType !== 'all') {
-          if (filterType === 'standalone' && row.type !== 'standalone') return false
-          if (filterType === 'ag-primary'   && !(row.type === 'ag-replica' && row.agRole === 'PRIMARY'))   return false
-          if (filterType === 'ag-secondary' && !(row.type === 'ag-replica' && row.agRole === 'SECONDARY')) return false
-        }
-        if (q && !row.serverLabel.toLowerCase().includes(q) && !row.host.toLowerCase().includes(q) && !(row.agName ?? '').toLowerCase().includes(q)) return false
-        if (filterEnv   !== 'all' && row.envId      !== filterEnv)  return false
-        if (filterState === 'online'  &&  row.unreachable)           return false
-        if (filterState === 'offline' && !row.unreachable)           return false
-        if (filterHost  !== 'all' && row.hostingType !== filterHost) return false
-        if (filterAlias !== 'all' && serverAliases[`${row.host}:${row.port}`] !== filterAlias) return false
-        if (filterReferente !== 'all') {
-          const dbs = metricsMap[`${row.host}:${row.port}`]?.databases ?? []
-          if (!dbs.some((db) => db.referente === filterReferente)) return false
-        }
-        if (filterVersion !== 'all' && getSqlServerVersion(row.version) !== filterVersion) return false
-        return true
-      })
-      allowedServerIds = new Set(matched.map((r) => r.serverId!))
-    }
-
-    const headers = [
-      'Environment', 'Type', 'AG Name', 'Server', 'Alias', 'Owner', 'AG Role',
-      'Database', 'DB Status', 'Data (MB)', 'Log (MB)',
-      'Last Full Backup', 'Last Log Backup',
-      'SQL Version', 'Server Uptime (days)', 'Server Status', 'Infrastructure Type',
-      'Logical CPUs', 'Physical CPUs', 'Notes'
-    ]
-    const exportRows = buildInventoryCsvRows(inventory, serverAliases, metricsMap, dbCustomFields, allowedServerIds)
-    await window.sqlSentinel.exportInventoryCsv({ headers, rows: exportRows })
-  }, [dbView, filteredDbRows, inventory, hasActiveFilters, search, filterEnv, filterType, filterState, filterHost, filterAlias, filterReferente, filterVersion, allClusterKeys, allMachineKeys])
-
-  const handleSort = useCallback((key: keyof InventoryRow) => {
-    setSortKey((prev) => {
-      if (prev === key) {
-        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
-        return prev
-      }
-      setSortDir('asc')
-      return key
-    })
-  }, [])
-
-  const handleResetFilters = useCallback(() => {
-    setSearch('')
-    setFilterEnv('all')
-    setFilterType('all')
-    setFilterState('all')
-    setFilterHost('all')
-    setFilterAlias('all')
-    setFilterReferente('all')
-    setFilterVersion('all')
-  }, [])
-
-  const toggleDbServer = useCallback((serverKey: string) => {
-    setExpandedDbServers((prev) => {
-      const next = new Set(prev)
-      next.has(serverKey) ? next.delete(serverKey) : next.add(serverKey)
-      return next
-    })
-  }, [])
-
-  const handleResetDbFilters = useCallback(() => {
-    setDbSearch('')
-    setFilterDbRecovery('all')
-    setFilterDbTde('all')
-    setFilterDbCompat('all')
-    setFilterDbOffline(false)
-    setFilterDbNoBackup(false)
-  }, [])
-
-  const handleDbToggleAll = useCallback(() => {
-    if (expandedDbServers.size === allServerKeys.length) {
-      setExpandedDbServers(new Set())
-    } else {
-      setExpandedDbServers(new Set(allServerKeys))
-    }
-  }, [expandedDbServers.size, allServerKeys])
+  const {
+    refreshing,
+    lastRefresh,
+    handleRefresh,
+    dbView,
+    setDbView,
+    inventory,
+    totals,
+    // server view
+    search,
+    setSearch,
+    filterEnv,
+    setFilterEnv,
+    filterType,
+    setFilterType,
+    filterState,
+    setFilterState,
+    filterHost,
+    setFilterHost,
+    filterAlias,
+    setFilterAlias,
+    filterReferente,
+    setFilterReferente,
+    filterVersion,
+    setFilterVersion,
+    sortKey,
+    sortDir,
+    expandedClusters,
+    expandedMachines,
+    allClusterKeys,
+    allMachineKeys,
+    sortedRows,
+    filteredStats,
+    hasActiveFilters,
+    // db view
+    dbSearch,
+    setDbSearch,
+    filterDbRecovery,
+    setFilterDbRecovery,
+    filterDbTde,
+    setFilterDbTde,
+    filterDbCompat,
+    setFilterDbCompat,
+    filterDbOffline,
+    setFilterDbOffline,
+    filterDbNoBackup,
+    setFilterDbNoBackup,
+    compatLevelOptions,
+    hasActiveDbFilters,
+    displayDbViewRows,
+    filteredDbRows,
+    allDbRows,
+    allDbViewRowsExpanded,
+    expandedDbServers,
+    dbViewStats,
+    // dropdowns
+    envGroups,
+    aliasOptions,
+    referenteOptions,
+    versionOptions,
+    // handlers
+    handleRowClick,
+    handleToggleAll,
+    handleSort,
+    handleResetFilters,
+    handleExportCsv,
+    toggleDbServer,
+    handleResetDbFilters,
+    handleDbToggleAll,
+  } = state
 
   return (
     <Box sx={{ height: '100%', overflow: 'auto', bgcolor: 'background.default' }}>
       <Box sx={{ maxWidth: 1400, mx: 'auto', px: 3, py: 2 }}>
 
-        {/* ── Top bar ── */}
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
-          <Typography sx={{ fontSize: 18, fontWeight: 700, color: 'text.primary', flex: 1 }}>
-            SQL Server Inventory
-          </Typography>
-          {lastRefresh && (
-            <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>
-              Updated: {lastRefresh.toLocaleTimeString('en-US')}
-            </Typography>
-          )}
-          <Tooltip title="Export CSV">
-            <span>
-              <Button
-                size="small" variant="outlined" startIcon={<DownloadIcon />}
-                onClick={handleExportCsv} disabled={inventory.groups.length === 0}
-                sx={{ fontSize: 12 }}
-              >
-                Export CSV
-              </Button>
-            </span>
-          </Tooltip>
-          <Tooltip title="Refresh metrics from all servers">
-            <span>
-              <Button
-                size="small" variant="contained"
-                startIcon={refreshing ? <CircularProgress size={14} color="inherit" /> : <RefreshIcon />}
-                onClick={handleRefresh} disabled={refreshing}
-                sx={{ fontSize: 12, bgcolor: tokens.color.primary }}
-              >
-                {refreshing ? 'Refreshing…' : 'Refresh'}
-              </Button>
-            </span>
-          </Tooltip>
-        </Box>
+        <InventoryTopBar
+          refreshing={refreshing}
+          lastRefresh={lastRefresh}
+          dbView={dbView}
+          onSetDbView={setDbView}
+          inventoryEmpty={inventory.groups.length === 0}
+          onExportCsv={handleExportCsv}
+          onRefresh={handleRefresh}
+        />
 
-        {/* ── View toggle ── */}
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 2 }}>
-          <ToggleButtonGroup
-            value={dbView ? 'db' : 'server'}
-            exclusive
-            onChange={(_e, v) => { if (v) setDbView(v === 'db') }}
-            size="small"
-          >
-            <ToggleButton value="server" sx={{ fontSize: 12, px: 1.5, gap: 0.5 }}>
-              <AccountTreeIcon sx={{ fontSize: 15 }} /> Server View
-            </ToggleButton>
-            <ToggleButton value="db" sx={{ fontSize: 12, px: 1.5, gap: 0.5 }}>
-              <StorageIcon sx={{ fontSize: 15 }} /> DB View
-            </ToggleButton>
-          </ToggleButtonGroup>
-        </Box>
+        <InventoryKpiRow
+          dbView={dbView}
+          filteredStats={filteredStats}
+          dbViewStats={dbViewStats}
+          totals={totals}
+          hasActiveFilters={hasActiveFilters}
+          hasActiveDbFilters={hasActiveDbFilters}
+          filteredDbRows={filteredDbRows}
+          allDbRows={allDbRows}
+          inventoryEmpty={inventory.groups.length === 0}
+        />
 
-        {/* ── KPI cards ── */}
-        {!dbView && (
-          <Box sx={{ display: 'flex', gap: 1.5, mb: hasActiveFilters ? 1 : 3, flexWrap: 'wrap' }}>
-            <KpiCard label="Server"     value={String(filteredStats.servers)}    accentColor="#0078d4" />
-            <KpiCard label="Standalone" value={String(filteredStats.standalone)} accentColor="#0078d4" />
-            <KpiCard
-              label="AG Cluster"
-              value={filteredStats.agClusters > 0 ? `${filteredStats.agClusters} (${filteredStats.agServers} nodi)` : '0'}
-              accentColor="#8764b8"
-            />
-            <KpiCard label="Database" value={String(filteredStats.databases)}  accentColor="#0078d4" />
-            <KpiCard label="Online"   value={String(filteredStats.onlineDbs)}  accentColor="#107c10" />
-            <KpiCard
-              label="Offline" value={String(filteredStats.offlineDbs)}
-              accentColor={filteredStats.offlineDbs > 0 ? '#a4262c' : '#107c10'}
-            />
-          </Box>
-        )}
-        {dbView && (
-          <Box sx={{ display: 'flex', gap: 1.5, mb: hasActiveDbFilters ? 1 : 3, flexWrap: 'wrap' }}>
-            <KpiCard label="DB Totali"     value={String(dbViewStats.total)}        accentColor="#0078d4" />
-            <KpiCard label="Online"        value={String(dbViewStats.online)}       accentColor="#107c10" />
-            <KpiCard label="Offline"       value={String(dbViewStats.offline)}      accentColor={dbViewStats.offline > 0 ? '#a4262c' : '#107c10'} />
-            <KpiCard label="Full Recovery" value={String(dbViewStats.fullRecovery)} accentColor="#0078d4" />
-            <KpiCard label="TDE Active"    value={String(dbViewStats.tdeActive)}    accentColor="#038387" />
-            <KpiCard
-              label="No Backup"
-              value={String(dbViewStats.noBackup)}
-              accentColor={dbViewStats.noBackup > 0 ? '#d83b01' : '#107c10'}
-            />
-            <KpiCard
-              label="Compat < 2016"
-              value={String(dbViewStats.oldCompat)}
-              accentColor={dbViewStats.oldCompat > 0 ? '#ca5010' : '#107c10'}
-            />
-          </Box>
-        )}
-
-        {/* ── Filter indicator ── */}
-        {!dbView && hasActiveFilters && (
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-            Filtered results: {filteredStats.servers} of {totals.servers} servers
-          </Typography>
-        )}
-        {dbView && hasActiveDbFilters && (
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-            Filtered results: {filteredDbRows.length} of {allDbRows.length} databases
-          </Typography>
-        )}
-
-        {/* ── Empty placeholder ── */}
-        {inventory.groups.length === 0 && (
-          <Box sx={{ textAlign: 'center', py: 8, color: 'text.secondary' }}>
-            <Typography sx={{ fontSize: 14 }}>
-              No monitored servers. Add servers from the Discovery section.
-            </Typography>
-          </Box>
-        )}
-
-        {/* ── DB View filter bar + table ── */}
+        {/* ── DB View ── */}
         {dbView && inventory.groups.length > 0 && (
           <>
-            {/* DB View filter bar */}
-            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-              <TextField
-                size="small"
-                placeholder="Search database or server..."
-                value={dbSearch}
-                onChange={(e) => setDbSearch(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-                    </InputAdornment>
-                  )
-                }}
-                sx={{ minWidth: 220 }}
-              />
-
-              <Select size="small" value={filterDbRecovery}
-                onChange={(e) => setFilterDbRecovery(e.target.value as typeof filterDbRecovery)} sx={{ minWidth: 150 }}>
-                <MenuItem value="all">All recovery models</MenuItem>
-                <MenuItem value="FULL">FULL</MenuItem>
-                <MenuItem value="SIMPLE">SIMPLE</MenuItem>
-                <MenuItem value="BULK_LOGGED">BULK_LOGGED</MenuItem>
-              </Select>
-
-              <Select size="small" value={filterDbTde}
-                onChange={(e) => setFilterDbTde(e.target.value as typeof filterDbTde)} sx={{ minWidth: 150 }}>
-                <MenuItem value="all">TDE: All</MenuItem>
-                <MenuItem value="encrypted">Encrypted only</MenuItem>
-                <MenuItem value="not-encrypted">Not encrypted only</MenuItem>
-              </Select>
-
-              {compatLevelOptions.length > 0 && (
-                <Select size="small" value={filterDbCompat}
-                  onChange={(e) => setFilterDbCompat(e.target.value)} sx={{ minWidth: 150 }}>
-                  <MenuItem value="all">All compat levels</MenuItem>
-                  {compatLevelOptions.map((l) => (
-                    <MenuItem key={l} value={String(l)}>{compatLevelToSqlVersion(l)} ({l})</MenuItem>
-                  ))}
-                </Select>
-              )}
-
-              <Button
-                size="small" variant={filterDbOffline ? 'contained' : 'outlined'} color="error"
-                onClick={() => setFilterDbOffline((v) => !v)}
-                sx={{ fontSize: 12, height: 36 }}
-              >
-                Offline only
-              </Button>
-
-              <Button
-                size="small" variant={filterDbNoBackup ? 'contained' : 'outlined'} color="warning"
-                onClick={() => setFilterDbNoBackup((v) => !v)}
-                sx={{ fontSize: 12, height: 36 }}
-              >
-                No Backup &gt;24h
-              </Button>
-
-              <Button
-                size="small" variant="text" color="inherit"
-                startIcon={<FilterListIcon />}
-                onClick={handleResetDbFilters}
-              >
-                Reset
-              </Button>
-
-              <Button size="small" variant="text" color="inherit" onClick={handleDbToggleAll} sx={{ ml: 0 }}>
-                {expandedDbServers.size > 0 ? 'Collapse all' : 'Expand all'}
-              </Button>
-
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
-                {allDbViewRowsExpanded.filter((r) => r.type === 'server-header').length} server · {filteredDbRows.length} DB
-              </Typography>
-            </Box>
-
-            {/* DB View virtualised table */}
-            <Paper sx={{ overflow: 'hidden' }}>
-              {/* Sticky column headers */}
-              <Box
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: DB_GRID_TEMPLATE,
-                  px: 2, py: 1,
-                  bgcolor: 'background.default',
-                  borderBottom: (theme) => `2px solid ${theme.palette.divider}`,
-                  position: 'sticky',
-                  top: 0,
-                  zIndex: 1,
-                }}
-              >
-                {DB_COLUMNS.map((col) => (
-                  <Typography key={col.label} variant="caption" fontWeight={700} sx={{ color: 'text.secondary' }}>
-                    {col.label}
-                  </Typography>
-                ))}
-              </Box>
-
-              <Box
-                ref={dbParentRef}
-                sx={{ height: 'calc(100vh - 380px)', overflowY: 'auto', position: 'relative' }}
-              >
-                {displayDbViewRows.length === 0 ? (
-                  <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-                    No databases match the selected filters
-                  </Box>
-                ) : (
-                  <Box sx={{ height: dbRowVirtualizer.getTotalSize(), position: 'relative' }}>
-                    {dbRowVirtualizer.getVirtualItems().map((vRow) => {
-                      const row = displayDbViewRows[vRow.index]
-                      const isHeader = row.type === 'server-header'
-
-                      return (
-                        <Box
-                          key={row.id}
-                          onClick={() => isHeader ? toggleDbServer(row.serverKey) : undefined}
-                          sx={{
-                            position: 'absolute',
-                            top: vRow.start,
-                            height: vRow.size,
-                            width: '100%',
-                            display: 'grid',
-                            gridTemplateColumns: DB_GRID_TEMPLATE,
-                            alignItems: 'center',
-                            px: 2,
-                            cursor: isHeader ? 'pointer' : 'default',
-                            borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
-                            bgcolor: (theme) =>
-                              isHeader
-                                ? theme.palette.mode === 'dark'
-                                  ? alpha(theme.palette.primary.main, 0.12)
-                                  : '#eef4fb'
-                                : row.stateDesc !== 'ONLINE'
-                                  ? theme.palette.mode === 'dark'
-                                    ? alpha(theme.palette.error.main, 0.15)
-                                    : '#fde7e9'
-                                  : theme.palette.background.paper,
-                            '&:hover': {
-                              bgcolor: (theme) =>
-                                isHeader
-                                  ? theme.palette.mode === 'dark'
-                                    ? alpha(theme.palette.primary.main, 0.22)
-                                    : '#dce9f5'
-                                  : theme.palette.action.hover,
-                            },
-                          }}
-                        >
-                          {isHeader ? (
-                            // Server header — spans all columns
-                            <Box sx={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                              {expandedDbServers.has(row.serverKey)
-                                ? <ExpandMoreIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
-                                : <ChevronRightIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
-                              }
-                              <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: row.envColor, flexShrink: 0 }} />
-                              <Typography variant="body2" fontWeight={700} noWrap sx={{ flex: 1 }}>
-                                {row.serverLabel}
-                              </Typography>
-                              <Chip
-                                label={row.unreachable ? 'OFFLINE' : 'ONLINE'}
-                                size="small"
-                                sx={{
-                                  height: 18, fontSize: 9, fontWeight: 700, borderRadius: '3px',
-                                  bgcolor: row.unreachable ? '#a4262c' : '#107c10', color: '#fff'
-                                }}
-                              />
-                              {row.agRole && (
-                                <Chip
-                                  label={row.agRole === 'PRIMARY' ? '★ PRIMARY' : '○ SECONDARY'}
-                                  size="small"
-                                  sx={{
-                                    height: 18, fontSize: 9, fontWeight: 700, borderRadius: '3px',
-                                    bgcolor: row.agRole === 'PRIMARY' ? '#107c10' : 'transparent',
-                                    color: row.agRole === 'PRIMARY' ? '#fff' : 'text.secondary',
-                                    border: row.agRole === 'SECONDARY' ? '1px solid' : 'none',
-                                    borderColor: 'divider',
-                                  }}
-                                />
-                              )}
-                              <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                                {row.serverVersion}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary" sx={{ ml: 1, flexShrink: 0 }}>
-                                {row.dbCount} DB
-                              </Typography>
-                            </Box>
-                          ) : (
-                            // DB row — 13 cells
-                            <>
-                              {/* DATABASE */}
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, pl: 2, minWidth: 0 }}>
-                                <Typography variant="body2" noWrap fontWeight={500}>{row.dbName}</Typography>
-                                {row.isReadOnly && (
-                                  <Tooltip title="Read only">
-                                    <Typography sx={{ fontSize: 10, color: 'text.disabled', flexShrink: 0 }}>R/O</Typography>
-                                  </Tooltip>
-                                )}
-                              </Box>
-
-                              {/* SERVER */}
-                              <Typography variant="caption" color="text.secondary" noWrap>{row.serverLabel}</Typography>
-
-                              {/* ALIAS */}
-                              <Typography variant="caption" color="text.secondary" noWrap>{row.alias ?? '—'}</Typography>
-
-                              {/* STATO */}
-                              <Chip
-                                label={row.stateDesc ?? '—'}
-                                size="small"
-                                sx={{
-                                  height: 18, fontSize: 9, fontWeight: 700, borderRadius: '3px',
-                                  bgcolor: row.stateDesc === 'ONLINE' ? '#107c10' : '#a4262c',
-                                  color: '#fff', width: 'fit-content'
-                                }}
-                              />
-
-                              {/* RECOVERY */}
-                              <Chip
-                                label={row.recoveryModel ?? '—'}
-                                size="small"
-                                sx={{
-                                  height: 18, fontSize: 9, fontWeight: 700, borderRadius: '3px',
-                                  bgcolor: row.recoveryModel === 'FULL' ? '#0078d4'
-                                         : row.recoveryModel === 'BULK_LOGGED' ? '#038387' : '#737373',
-                                  color: '#fff', width: 'fit-content'
-                                }}
-                              />
-
-                              {/* COMPAT */}
-                              <Tooltip title={`Compatibility level ${row.compatibilityLevel ?? '—'}`}>
-                                <Typography variant="caption" sx={{
-                                  color: (row.compatibilityLevel ?? 999) < 130 ? '#ca5010' : 'text.secondary'
-                                }}>
-                                  {row.compatibilityLevel ? compatLevelToSqlVersion(row.compatibilityLevel) : '—'}
-                                </Typography>
-                              </Tooltip>
-
-                              {/* TDE */}
-                              <Tooltip title={row.isEncrypted ? 'TDE attivo' : 'TDE non attivo'}>
-                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                  {row.isEncrypted
-                                    ? <LockIcon sx={{ fontSize: 15, color: '#038387' }} />
-                                    : <LockOpenIcon sx={{ fontSize: 15, color: 'text.disabled' }} />
-                                  }
-                                </Box>
-                              </Tooltip>
-
-                              {/* DATI */}
-                              <Typography variant="body2">
-                                {row.sizeMb ? formatMb(row.sizeMb) : '—'}
-                              </Typography>
-
-                              {/* LOG */}
-                              <Typography variant="body2">
-                                {row.logSizeMb ? formatMb(row.logSizeMb) : '—'}
-                              </Typography>
-
-                              {/* ULTIMO FULL */}
-                              {(() => {
-                                const noBackup = !row.lastFullBackup
-                                const stale = !noBackup && (Date.now() - new Date(row.lastFullBackup!).getTime() > 86_400_000)
-                                return (
-                                  <Typography variant="caption" sx={{ color: noBackup || stale ? '#a4262c' : 'text.secondary' }}>
-                                    {noBackup ? 'Never' : new Date(row.lastFullBackup!).toLocaleDateString('en-US')}
-                                  </Typography>
-                                )
-                              })()}
-
-                              {/* ULTIMO LOG */}
-                              {(() => {
-                                if (row.recoveryModel === 'SIMPLE') {
-                                  return <Typography variant="caption" color="text.disabled">N/A</Typography>
-                                }
-                                const noLog = !row.lastLogBackup
-                                return (
-                                  <Typography variant="caption" sx={{ color: noLog ? '#d83b01' : 'text.secondary' }}>
-                                    {noLog ? 'Never' : new Date(row.lastLogBackup!).toLocaleDateString('en-US')}
-                                  </Typography>
-                                )
-                              })()}
-
-                              {/* OWNER */}
-                              <Typography variant="caption" color="text.secondary" noWrap>{row.owner || '—'}</Typography>
-
-                              {/* CREATO */}
-                              <Typography variant="caption" color="text.secondary">
-                                {row.createDate ? new Date(row.createDate).toLocaleDateString('en-US') : '—'}
-                              </Typography>
-                            </>
-                          )}
-                        </Box>
-                      )
-                    })}
-                  </Box>
-                )}
-              </Box>
-            </Paper>
+            <InventoryDbFilters
+              dbSearch={dbSearch}
+              onDbSearchChange={setDbSearch}
+              filterDbRecovery={filterDbRecovery}
+              onFilterDbRecoveryChange={setFilterDbRecovery}
+              filterDbTde={filterDbTde}
+              onFilterDbTdeChange={setFilterDbTde}
+              filterDbCompat={filterDbCompat}
+              onFilterDbCompatChange={setFilterDbCompat}
+              filterDbOffline={filterDbOffline}
+              onFilterDbOfflineToggle={() => setFilterDbOffline((v) => !v)}
+              filterDbNoBackup={filterDbNoBackup}
+              onFilterDbNoBackupToggle={() => setFilterDbNoBackup((v) => !v)}
+              compatLevelOptions={compatLevelOptions}
+              expandedDbServers={expandedDbServers}
+              onToggleAll={handleDbToggleAll}
+              onReset={handleResetDbFilters}
+              allDbViewRowsExpanded={allDbViewRowsExpanded}
+              filteredDbRows={filteredDbRows}
+            />
+            <InventoryDbTable
+              displayDbViewRows={displayDbViewRows}
+              expandedDbServers={expandedDbServers}
+              onToggleDbServer={toggleDbServer}
+            />
           </>
         )}
 
-        {/* ── Server View filter bar + table ── */}
+        {/* ── Server View ── */}
         {!dbView && inventory.groups.length > 0 && (
           <>
-            {/* Filter bar */}
-            <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
-              <TextField
-                size="small"
-                placeholder="Search server or alias..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-                    </InputAdornment>
-                  )
-                }}
-                sx={{ minWidth: 220 }}
-              />
-
-              <Select size="small" value={filterEnv}
-                onChange={(e) => setFilterEnv(e.target.value)} sx={{ minWidth: 160 }}>
-                <MenuItem value="all">All environments</MenuItem>
-                {envGroups.map((g) => (
-                  <MenuItem key={g.id} value={g.id}>{g.name}</MenuItem>
-                ))}
-              </Select>
-
-              <Select size="small" value={filterType}
-                onChange={(e) => setFilterType(e.target.value as typeof filterType)} sx={{ minWidth: 150 }}>
-                <MenuItem value="all">All types</MenuItem>
-                <MenuItem value="standalone">Standalone</MenuItem>
-                <MenuItem value="ag-primary">AG Primary</MenuItem>
-                <MenuItem value="ag-secondary">AG Secondary</MenuItem>
-              </Select>
-
-              <Select size="small" value={filterState}
-                onChange={(e) => setFilterState(e.target.value as typeof filterState)} sx={{ minWidth: 130 }}>
-                <MenuItem value="all">All statuses</MenuItem>
-                <MenuItem value="online">Online</MenuItem>
-                <MenuItem value="offline">Offline</MenuItem>
-              </Select>
-
-              <Select size="small" value={filterHost}
-                onChange={(e) => setFilterHost(e.target.value as typeof filterHost)} sx={{ minWidth: 130 }}>
-                <MenuItem value="all">All</MenuItem>
-                <MenuItem value="on-premise">On-Premise</MenuItem>
-                <MenuItem value="cloud">Cloud</MenuItem>
-              </Select>
-
-              {aliasOptions.length > 0 && (
-                <Select size="small" value={filterAlias}
-                  onChange={(e) => setFilterAlias(e.target.value)} sx={{ minWidth: 150 }}>
-                  <MenuItem value="all">All aliases</MenuItem>
-                  {aliasOptions.map((a) => (
-                    <MenuItem key={a} value={a}>{a}</MenuItem>
-                  ))}
-                </Select>
-              )}
-
-              {referenteOptions.length > 0 && (
-                <Select size="small" value={filterReferente}
-                  onChange={(e) => setFilterReferente(e.target.value)} sx={{ minWidth: 160 }}>
-                  <MenuItem value="all">All owners</MenuItem>
-                  {referenteOptions.map((r) => (
-                    <MenuItem key={r} value={r}>{r}</MenuItem>
-                  ))}
-                </Select>
-              )}
-
-              {versionOptions.length > 0 && (
-                <Select size="small" value={filterVersion}
-                  onChange={(e) => setFilterVersion(e.target.value)} sx={{ minWidth: 165 }}>
-                  <MenuItem value="all">All versions</MenuItem>
-                  {versionOptions.map((v) => (
-                    <MenuItem key={v} value={v}>{v}</MenuItem>
-                  ))}
-                </Select>
-              )}
-
-              <Button
-                size="small" variant="text" color="inherit"
-                startIcon={<FilterListIcon />}
-                onClick={handleResetFilters}
-              >
-                Reset
-              </Button>
-
-              {(allClusterKeys.length > 0 || allMachineKeys.length > 0) && (
-                <Button
-                  size="small" variant="text" color="inherit"
-                  onClick={handleToggleAll}
-                  sx={{ ml: 0 }}
-                >
-                  {expandedClusters.size > 0 || expandedMachines.size > 0 ? 'Collapse all' : 'Expand all'}
-                </Button>
-              )}
-
-              <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
-                {sortedRows.filter((r) => r.depth === 0).length} server
-              </Typography>
-            </Box>
-
-            {/* Virtualised table */}
-            <Paper sx={{ overflow: 'hidden' }}>
-              {/* Sticky column headers */}
-              <Box
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: GRID_TEMPLATE,
-                  px: 2, py: 1,
-                  bgcolor: 'background.default',
-                  borderBottom: (theme) => `2px solid ${theme.palette.divider}`,
-                  position: 'sticky',
-                  top: 0,
-                  zIndex: 1,
-                }}
-              >
-                {COLUMNS.map((col) => {
-                  const active = sortKey === col.key
-                  return (
-                    <Box
-                      key={col.key}
-                      onClick={() => handleSort(col.key)}
-                      sx={{ display: 'flex', alignItems: 'center', gap: 0.25, cursor: 'pointer', userSelect: 'none' }}
-                    >
-                      <Typography
-                        variant="caption" fontWeight={700}
-                        sx={{ color: active ? tokens.color.primary : 'text.secondary' }}
-                      >
-                        {col.label}
-                      </Typography>
-                      {active && (
-                        <Typography variant="caption" sx={{ color: tokens.color.primary, fontSize: 10 }}>
-                          {sortDir === 'asc' ? '▲' : '▼'}
-                        </Typography>
-                      )}
-                    </Box>
-                  )
-                })}
-              </Box>
-
-              {/* Scroll container */}
-              <Box
-                ref={parentRef}
-                sx={{ height: 'calc(100vh - 360px)', overflowY: 'auto', position: 'relative' }}
-              >
-                {sortedRows.length === 0 ? (
-                  <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-                    No servers match the selected filters
-                  </Box>
-                ) : (
-                  <Box sx={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}>
-                    {rowVirtualizer.getVirtualItems().map((vRow) => {
-                      const row = sortedRows[vRow.index]
-                      // Indent depth-1 rows only when their parent header is visible
-                      const isHierarchical = filterType === 'all' && filterAlias === 'all' && filterReferente === 'all' && filterVersion === 'all'
-                      const pl = row.depth === 1 && isHierarchical ? 4 : 2
-
-                      return (
-                        <Box
-                          key={row.id}
-                          onClick={() => handleRowClick(row)}
-                          sx={{
-                            position: 'absolute',
-                            top: vRow.start,
-                            height: vRow.size,
-                            width: '100%',
-                            display: 'grid',
-                            gridTemplateColumns: GRID_TEMPLATE,
-                            alignItems: 'center',
-                            px: 2,
-                            pl,
-                            cursor: 'pointer',
-                            borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
-                            bgcolor: (theme) =>
-                              theme.palette.mode === 'dark'
-                                ? row.type === 'machine-header' ? alpha(theme.palette.info.main, 0.12)
-                                  : row.type === 'ag-cluster'   ? alpha('#8b5cf6', 0.12)
-                                  : row.type === 'ag-replica'   ? alpha('#ffffff', 0.03)
-                                  : row.unreachable             ? alpha(theme.palette.error.main, 0.2)
-                                  : theme.palette.background.paper
-                                : row.type === 'machine-header' ? '#edf2f7'
-                                : row.type === 'ag-cluster'     ? '#f6f4fb'
-                                : row.type === 'ag-replica'     ? '#fafafa'
-                                : row.unreachable               ? '#fde7e9'
-                                : theme.palette.background.paper,
-                            '&:hover': {
-                              bgcolor: (theme) =>
-                                theme.palette.mode === 'dark'
-                                  ? row.type === 'machine-header' ? alpha(theme.palette.info.main, 0.22)
-                                    : row.type === 'ag-cluster'   ? alpha('#8b5cf6', 0.22)
-                                    : row.unreachable             ? alpha(theme.palette.error.main, 0.3)
-                                    : theme.palette.action.hover
-                                  : row.type === 'machine-header' ? '#dce7f0'
-                                  : row.type === 'ag-cluster'     ? '#ede8f5'
-                                  : row.unreachable               ? '#fad4d4'
-                                  : theme.palette.action.hover,
-                            },
-                          }}
-                        >
-                          {/* ── SERVER ── */}
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
-                            {/* Expand / collapse toggle for ag-cluster */}
-                            {row.type === 'ag-cluster' && (
-                              expandedClusters.has(row.clusterKey!)
-                                ? <ExpandMoreIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
-                                : <ChevronRightIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
-                            )}
-                            {/* Expand / collapse toggle for machine-header */}
-                            {row.type === 'machine-header' && (
-                              expandedMachines.has(row.clusterKey!)
-                                ? <ExpandMoreIcon fontSize="small" sx={{ color: '#4a6fa5', flexShrink: 0 }} />
-                                : <ChevronRightIcon fontSize="small" sx={{ color: '#4a6fa5', flexShrink: 0 }} />
-                            )}
-                            {/* Cluster icon */}
-                            {row.type === 'ag-cluster' && (
-                              <AccountTreeIcon fontSize="small" sx={{ color: '#8764b8', flexShrink: 0 }} />
-                            )}
-                            {/* Machine icon */}
-                            {row.type === 'machine-header' && (
-                              <Typography sx={{ fontSize: 14, flexShrink: 0 }}>🖥</Typography>
-                            )}
-                            {/* Role star / circle for replicas */}
-                            {row.type === 'ag-replica' && (
-                              <Typography sx={{ flexShrink: 0, color: row.agRole === 'PRIMARY' ? '#107c10' : 'text.secondary', fontSize: 12 }}>
-                                {row.agRole === 'PRIMARY' ? '★' : '○'}
-                              </Typography>
-                            )}
-
-                            <Box sx={{ minWidth: 0 }}>
-                              <Typography
-                                variant="body2"
-                                fontWeight={row.type === 'ag-cluster' || row.type === 'machine-header' ? 700 : 500}
-                                noWrap
-                                sx={row.type === 'machine-header' ? { color: '#2d5a8a' } : undefined}
-                              >
-                                {row.serverLabel}
-                              </Typography>
-                              {row.type === 'ag-cluster' ? (
-                                <Typography variant="caption" color="text.secondary" noWrap>
-                                  {row.replicaCount} repliche · Primary: {row.host || '—'}
-                                </Typography>
-                              ) : row.type === 'machine-header' ? (
-                                <Typography variant="caption" sx={{ color: '#4a6fa5' }} noWrap>
-                                  {row.instanceCount} istanze
-                                </Typography>
-                              ) : (
-                                <Typography variant="caption" color="text.secondary" noWrap>
-                                  {row.port !== 1433 ? `${row.host}:${row.port}` : row.host}
-                                </Typography>
-                              )}
-                            </Box>
-                          </Box>
-
-                          {/* ── AMBIENTE ── */}
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
-                            <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: row.envColor, flexShrink: 0 }} />
-                            <Typography variant="caption" noWrap>{row.envName}</Typography>
-                          </Box>
-
-                          {/* ── TIPO ── */}
-                          <Typography variant="caption">
-                            {row.type === 'machine-header' ? 'Multi-istanza' :
-                             row.type === 'standalone'     ? 'Standalone'    :
-                             row.type === 'ag-cluster'     ? 'AG Cluster'    :
-                             row.agRole === 'PRIMARY'      ? 'AG Primary'    : 'AG Secondary'}
-                          </Typography>
-
-                          {/* ── MACCHINA ── */}
-                          <Typography
-                            variant="caption" color="text.secondary"
-                            sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                          >
-                            {row.machineName || '—'}
-                          </Typography>
-
-                          {/* ── HOSTING ── */}
-                          <Chip
-                            label={HOSTING_BADGE[row.hostingType].label}
-                            size="small"
-                            sx={{
-                              height: 18, fontSize: 9, fontWeight: 700, borderRadius: '3px',
-                              bgcolor: HOSTING_BADGE[row.hostingType].color,
-                              color: '#fff', width: 'fit-content'
-                            }}
-                          />
-
-                          {/* ── DB ── */}
-                          <Typography variant="body2">
-                            {row.dbCount > 0 ? row.dbCount : '—'}
-                          </Typography>
-
-                          {/* ── ONLINE ── */}
-                          <Typography variant="body2" color="success.main">
-                            {row.dbCount > 0 ? row.onlineCount : '—'}
-                          </Typography>
-
-                          {/* ── OFFLINE ── */}
-                          {row.offlineCount > 0 ? (
-                            <Chip
-                              label={row.offlineCount} size="small"
-                              sx={{ height: 20, fontSize: 11, fontWeight: 700, bgcolor: '#a4262c', color: '#fff', borderRadius: '3px', width: 'fit-content' }}
-                            />
-                          ) : (
-                            <Typography variant="body2" color="text.secondary">
-                              {row.dbCount > 0 ? '0' : '—'}
-                            </Typography>
-                          )}
-
-                          {/* ── DATI ── */}
-                          <Typography variant="body2">
-                            {row.type === 'ag-replica' && row.agRole === 'SECONDARY'
-                              ? <em style={{ color: '#aaa' }}>replica</em>
-                              : row.totalDataMb > 0 ? formatMb(row.totalDataMb) : '—'}
-                          </Typography>
-
-                          {/* ── VERSIONE ── */}
-                          <Typography
-                            variant="caption" color="text.secondary"
-                            sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                          >
-                            {row.version || '—'}
-                          </Typography>
-
-                          {/* ── CPU ── */}
-                          <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
-                            {row.logicalCpus
-                              ? row.physicalCpus
-                                ? `${row.physicalCpus}C / ${row.logicalCpus}T`
-                                : `${row.logicalCpus} vCPU`
-                              : '—'}
-                          </Typography>
-
-                          {/* ── STATO ── */}
-                          {row.type === 'ag-cluster' ? (
-                            <Chip
-                              label={row.agHealthy ? 'HEALTHY' : 'DEGRADED'}
-                              size="small"
-                              sx={{
-                                height: 20, fontSize: 10, fontWeight: 700, borderRadius: '3px',
-                                bgcolor: row.agHealthy ? '#107c10' : '#a4262c',
-                                color: '#fff', width: 'fit-content'
-                              }}
-                            />
-                          ) : row.type === 'machine-header' ? (
-                            <Chip
-                              label={row.unreachable ? 'OFFLINE' : 'OK'}
-                              size="small"
-                              sx={{
-                                height: 20, fontSize: 10, fontWeight: 700, borderRadius: '3px',
-                                bgcolor: row.unreachable ? '#a4262c' : '#4a6fa5',
-                                color: '#fff', width: 'fit-content'
-                              }}
-                            />
-                          ) : (
-                            <Chip
-                              label={row.unreachable ? 'OFFLINE' : 'ONLINE'}
-                              size="small"
-                              sx={{
-                                height: 20, fontSize: 10, fontWeight: 700, borderRadius: '3px',
-                                bgcolor: row.unreachable ? '#a4262c' : '#107c10',
-                                color: '#fff', width: 'fit-content'
-                              }}
-                            />
-                          )}
-
-                          {/* ── NOTE ── */}
-                          {row.notes ? (
-                            <Tooltip title={row.notes} placement="top">
-                              <Typography
-                                variant="body2"
-                                sx={{
-                                  color: 'text.secondary',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                  cursor: 'help'
-                                }}
-                              >
-                                {row.notes}
-                              </Typography>
-                            </Tooltip>
-                          ) : (
-                            <Typography variant="body2" sx={{ color: 'text.disabled' }}>—</Typography>
-                          )}
-                        </Box>
-                      )
-                    })}
-                  </Box>
-                )}
-              </Box>
-            </Paper>
+            <InventoryFilters
+              search={search}
+              onSearchChange={setSearch}
+              filterEnv={filterEnv}
+              onFilterEnvChange={setFilterEnv}
+              filterType={filterType}
+              onFilterTypeChange={setFilterType}
+              filterState={filterState}
+              onFilterStateChange={setFilterState}
+              filterHost={filterHost}
+              onFilterHostChange={setFilterHost}
+              filterAlias={filterAlias}
+              onFilterAliasChange={setFilterAlias}
+              filterReferente={filterReferente}
+              onFilterReferenteChange={setFilterReferente}
+              filterVersion={filterVersion}
+              onFilterVersionChange={setFilterVersion}
+              envGroups={envGroups}
+              aliasOptions={aliasOptions}
+              referenteOptions={referenteOptions}
+              versionOptions={versionOptions}
+              allClusterKeys={allClusterKeys}
+              allMachineKeys={allMachineKeys}
+              expandedClusters={expandedClusters}
+              expandedMachines={expandedMachines}
+              onToggleAll={handleToggleAll}
+              onReset={handleResetFilters}
+              sortedRows={sortedRows}
+            />
+            <InventoryServerTable
+              sortedRows={sortedRows}
+              expandedClusters={expandedClusters}
+              expandedMachines={expandedMachines}
+              filterType={filterType}
+              filterAlias={filterAlias}
+              filterReferente={filterReferente}
+              filterVersion={filterVersion}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              onRowClick={handleRowClick}
+              onSort={handleSort}
+            />
           </>
         )}
+
       </Box>
     </Box>
   )

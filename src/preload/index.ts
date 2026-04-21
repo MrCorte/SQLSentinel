@@ -42,6 +42,16 @@ import type {
 import type { ServerMetrics, ServerInfo } from '../main/collectors/types'
 import type { StoredServer } from '../main/store/serverStore'
 
+// ---------------------------------------------------------------------------
+// Minimal dev-only logger — cannot import from renderer
+// ---------------------------------------------------------------------------
+
+const _log = {
+  info: (...a: unknown[]) => { if (process.env.NODE_ENV !== 'production') console.log('[preload]', ...a) },
+  warn: (...a: unknown[]) => { if (process.env.NODE_ENV !== 'production') console.warn('[preload]', ...a) },
+  error: (...a: unknown[]) => { console.error('[preload]', ...a) },  // always log errors
+}
+
 // Re-export types so the renderer can import them from this file.
 export type { DiscoveredServer, ScanOptions, ScanProgress } from '../main/discovery/types'
 export type { ManualServerRequest, RemoveServerRequest, CollectMetricsRequest, IpcResult } from '../main/ipc/types'
@@ -576,7 +586,7 @@ const mockApi = {
   workerStart: (req: WorkerStartRequest): Promise<IpcResult<null>> => {
     if (mockWorkerTimer) clearInterval(mockWorkerTimer)
     mockWorkerTimer = setInterval(() => {
-      console.log('[MockWorker] tick', new Date().toISOString(), `listeners: ${mockMetricsListeners.length}`)
+      _log.info('[MockWorker] tick', new Date().toISOString(), `listeners: ${mockMetricsListeners.length}`)
       // Variable values: CPU ±5%, Memory ±2% of target
       mockWorkerCpu = vary(mockWorkerCpu, 5, 0, 100)
       mockWorkerMem = vary(mockWorkerMem, MOCK_MEM_TARGET * 0.02, 0, MOCK_MEM_TARGET)
@@ -584,11 +594,11 @@ const mockApi = {
       for (const srv of req.servers) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sid = `${(srv as any).host ?? srv.ip}:${srv.port}`
-        console.log('[MockWorker] pushing metrics to', sid, `cpu=${metrics.instanceInfo.cpuUsagePercent.toFixed(1)}%`)
+        _log.info('[MockWorker] pushing metrics to', sid, `cpu=${metrics.instanceInfo.cpuUsagePercent.toFixed(1)}%`)
         mockMetricsListeners.forEach((cb) => cb({ serverId: sid, metrics }))
       }
     }, req.intervalSeconds * 1000)
-    console.log('[MockWorker] started, interval:', req.intervalSeconds, 's')
+    _log.info('[MockWorker] started, interval:', req.intervalSeconds, 's')
     return Promise.resolve({ ok: true, data: null })
   },
 
@@ -841,9 +851,9 @@ const mockApi = {
 const isMock = import.meta.env.VITE_MOCK_MODE === 'true'
 const api = isMock ? mockApi : realApi
 
-console.info(`[Preload] init — mock=${isMock}`)
+_log.info(`init — mock=${isMock}`)
 if (isMock) {
-  console.info('[SQLSentinel] MOCK MODE attivo — nessuna connessione reale al main process')
+  _log.info('MOCK MODE attivo — nessuna connessione reale al main process')
 }
 
 // Explicit wrapper object — every method listed individually so contextBridge
@@ -934,7 +944,7 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('api', {})
     contextBridge.exposeInMainWorld('sqlSentinel', bridgeApi)
   } catch (error) {
-    console.error('[Preload] contextBridge error:', error)
+    _log.error('contextBridge error:', error)
   }
 } else {
   // @ts-ignore (define in dts)

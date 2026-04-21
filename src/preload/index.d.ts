@@ -454,11 +454,11 @@ export interface SqlSentinelAPI {
     getDatabases(req: AgParams): Promise<IpcResult<AvailabilityDatabase[]>>
   }
   servers: {
-    getAll(): Promise<StoredServer[]>
-    add(params: Omit<StoredServer, 'id' | 'addedAt'>): Promise<ServerAddResult>
-    update(id: string, patch: Partial<StoredServer>): Promise<{ success: boolean }>
-    remove(id: string): Promise<{ success: boolean }>
-    clearMocks(): Promise<{ success: boolean; removed: number; remaining: number }>
+    getAll(): Promise<IpcResult<StoredServer[]>>
+    add(params: Omit<StoredServer, 'id' | 'addedAt'>): Promise<IpcResult<ServerAddResult>>
+    update(id: string, patch: Partial<StoredServer>): Promise<IpcResult<{ success: boolean }>>
+    remove(id: string): Promise<IpcResult<{ success: boolean }>>
+    clearMocks(): Promise<IpcResult<{ success: boolean; removed: number; remaining: number }>>
   }
   onServerUnreachable(callback: (data: ServerUnreachableEvent) => void): () => void
   onServerRecovered(callback: (serverId: string) => void): () => void

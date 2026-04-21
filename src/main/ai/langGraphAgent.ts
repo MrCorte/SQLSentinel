@@ -284,7 +284,7 @@ export async function langGraphAsk(
 
   if (typeof last.content === 'string') return last.content
   if (Array.isArray(last.content)) {
-    return last.content
+    return (last.content as unknown[])
       .filter((b): b is { type: 'text'; text: string } => typeof b === 'object' && b !== null && 'text' in b)
       .map((b) => b.text)
       .join('')

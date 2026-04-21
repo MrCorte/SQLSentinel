@@ -5,7 +5,7 @@ import { join } from 'path'
 const icon = app.isPackaged
   ? join(process.resourcesPath, 'icon.png')
   : join(__dirname, '../../resources/icon.png')
-import { registerIpcHandlers } from './ipc/handlers'
+import { registerIpcHandlers } from './ipc'
 import { initDefaultAdmin } from './authService'
 import { BackgroundService } from './backgroundService'
 import type { WorkerApi } from './backgroundService'
@@ -20,22 +20,26 @@ import * as serverStore from './store/serverStore'
 import { scanHost } from './discovery/tcpScanner'
 import { autoIndexRagBooks } from './ai/ragIndexer'
 import { safeError as redactError } from './utils/safeLog'
+import { createLogger } from './utils/logger'
+const log = createLogger('main')
 
 const isDev = !app.isPackaged
 
 // Catches unhandled async errors in the main process before they silently crash.
 // Stack traces go through redactError → removes absolute user paths (info disclosure).
 process.on('unhandledRejection', (reason) => {
-  console.error('[main] unhandledRejection:', redactError(reason))
+  log.error('[main] unhandledRejection:', redactError(reason))
 })
 process.on('uncaughtException', (err) => {
-  console.error('[main] uncaughtException:', redactError(err))
+  log.error('[main] uncaughtException:', redactError(err))
 })
 
 // Module-level reference so the health checker can push events to the renderer
 let mainWindow: BrowserWindow | null = null
 let backgroundService: BackgroundService | null = null
-let healthCheckIntervalId: ReturnType<typeof setInterval> | undefined
+let healthCheckIntervalId: ReturnType<typeof setInterval> | null = null
+let deferredPurgeIntervalId: ReturnType<typeof setInterval> | null = null
+let devGcIntervalId: ReturnType<typeof setInterval> | null = null
 
 function watchWindowShortcuts(window: BrowserWindowType): void {
   const { webContents } = window
@@ -88,7 +92,7 @@ async function healthCheckAll(): Promise<void> {
               lastSeen: new Date().toISOString()
             })
             mainWindow?.webContents.send(IpcChannel.SERVER_RECOVERED, server.id)
-            console.log('[HealthCheck] RECOVERED:', `${addr}:${server.port}`)
+            log.info('[HealthCheck] RECOVERED:', `${addr}:${server.port}`)
           } else {
             serverStore.update(server.id, { lastSeen: new Date().toISOString() })
           }
@@ -103,7 +107,7 @@ async function healthCheckAll(): Promise<void> {
                 port: server.port,
                 since
               })
-            console.warn('[HealthCheck] UNREACHABLE:', `${addr}:${server.port}`)
+            log.warn('[HealthCheck] UNREACHABLE:', `${addr}:${server.port}`)
           }
         }
       })
@@ -152,7 +156,7 @@ app.whenReady().then(() => {
   initDb(defaultDbPath(app.getPath('appData')))
 
   // Create default admin user if no users exist
-  initDefaultAdmin().catch((err) => console.error('[AUTH] initDefaultAdmin fallito:', err))
+  initDefaultAdmin().catch((err) => log.error('[AUTH] initDefaultAdmin failed:', err))
 
   // Purge snapshots older than the configured retention: once at boot, then every 24 h.
   // Synchronous DELETE on large DBs can block for 1-3s: defer with setImmediate to avoid
@@ -163,12 +167,12 @@ app.whenReady().then(() => {
       try {
         purgeOldSnapshots(retentionDays())
       } catch (err) {
-        console.warn('[main] purgeOldSnapshots:', err)
+        log.warn('[main] purgeOldSnapshots:', err)
       }
     })
   }
   deferredPurge()
-  setInterval(deferredPurge, 24 * 60 * 60 * 1000)
+  deferredPurgeIntervalId = setInterval(deferredPurge, 24 * 60 * 60 * 1000)
 
   // One-shot migrations
   serverStore.migrateHostField()
@@ -179,7 +183,7 @@ app.whenReady().then(() => {
   // credentials are falling back to plaintext storage. See safeStorageUtil.warnOnce()
   // for the one-time warning on each encrypt/decrypt attempt; this is the startup sentinel.
   if (!safeStorageAvailable()) {
-    console.error(
+    log.error(
       '[SECURITY] OS keyring/DPAPI not available — ALL stored passwords will be in plaintext. ' +
         'Configure your OS keyring or switch user profile to restore encrypted storage.'
     )
@@ -194,13 +198,13 @@ app.whenReady().then(() => {
     watchWindowShortcuts(window)
   })
 
-  ipcMain.on('ping', () => console.log('pong'))
+  ipcMain.on('ping', () => log.info('pong'))
 
   registerIpcHandlers()
 
   // Index PDFs in data/ in the background — non-blocking, graceful if Ollama is unavailable
   autoIndexRagBooks().catch((err) =>
-    console.error('[RAG] Auto-index failed:', err instanceof Error ? err.message : String(err))
+    log.error('[RAG] Auto-index failed:', err)
   )
 
   createWindow()
@@ -231,11 +235,11 @@ app.whenReady().then(() => {
   // GC logging (dev only — requires --expose-gc flag)
   if (isDev && typeof (globalThis as typeof globalThis & { gc?: () => void }).gc === 'function') {
     const gc = (globalThis as typeof globalThis & { gc: () => void }).gc
-    setInterval(() => {
+    devGcIntervalId = setInterval(() => {
       const mem = process.memoryUsage()
       gc()
       const after = process.memoryUsage()
-      console.log(
+      log.info(
         `[Main] heap: ${(after.heapUsed / 1024 / 1024).toFixed(1)}MB` +
         ` / ${(after.heapTotal / 1024 / 1024).toFixed(1)}MB` +
         ` | rss: ${(mem.rss / 1024 / 1024).toFixed(1)}MB`
@@ -245,9 +249,17 @@ app.whenReady().then(() => {
 })
 
 function cleanupResources(): void {
-  if (healthCheckIntervalId) {
+  if (healthCheckIntervalId !== null) {
     clearInterval(healthCheckIntervalId)
-    healthCheckIntervalId = undefined
+    healthCheckIntervalId = null
+  }
+  if (deferredPurgeIntervalId !== null) {
+    clearInterval(deferredPurgeIntervalId)
+    deferredPurgeIntervalId = null
+  }
+  if (devGcIntervalId !== null) {
+    clearInterval(devGcIntervalId)
+    devGcIntervalId = null
   }
   backgroundService?.destroy()
   backgroundService = null

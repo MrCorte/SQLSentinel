@@ -1,4 +1,6 @@
 import { BrowserWindow } from 'electron'
+import { createLogger } from './utils/logger'
+const log = createLogger('metrics-worker')
 import { IpcChannel } from './ipc/types'
 import type { Alert, AlertCategory, AlertSeverity, WorkerStartRequest, CollectMetricsRequest, ServerHealthPayload } from './ipc/types'
 import { collectMetrics, collectMetricsCritical } from './collectors/sqlCollector'
@@ -128,7 +130,7 @@ function flushSaveQueue(): void {
   try {
     metricsRepository.batchSave(toFlush)
   } catch (err) {
-    console.error('[worker] SQLite batch save:', err instanceof Error ? err.message : err)
+    log.error('[worker] SQLite batch save:', err)
   }
 }
 
@@ -150,7 +152,7 @@ function loadHistoryFromDb(servers: CollectMetricsRequest[]): void {
       const retentionDays = retentionMinutes / (60 * 24)
       metricsRepository.cleanup(retentionDays)
     } catch (err) {
-      console.warn('[worker] SQLite cleanup:', err instanceof Error ? err.message : err)
+      log.warn('[worker] SQLite cleanup:', err)
     }
   })
 
@@ -169,7 +171,7 @@ function loadHistoryFromDb(servers: CollectMetricsRequest[]): void {
         if (sid && snapshots.length > 0) metricsHistory.set(sid, snapshots)
       }
     } catch (err) {
-      console.warn('[worker] SQLite load history bulk:', err instanceof Error ? err.message : err)
+      log.warn('[worker] SQLite load history bulk:', err)
     }
   }
 }
@@ -393,7 +395,7 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
             pushToRenderer(IpcChannel.SERVER_CONFIG_UPDATED, updated.map(serverStore.stripCredentials))
           }
         })
-        .catch((err: unknown) => console.warn('[worker] AG sync:', err instanceof Error ? err.message : err)) // not in AG or insufficient permissions
+        .catch((err: unknown) => log.warn('[worker] AG sync:', err)) // not in AG or insufficient permissions
     }
 
     // Persist snapshot to SQLite every SAVE_EVERY_N successful polls
@@ -413,7 +415,7 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
       job.nextRun = Date.now() + (job.priority === 0 ? activeIntervalMs : INTERVAL_IDLE_MS)
     }
   } catch (err) {
-    console.error(`[Worker] ${sid}:`, err instanceof Error ? err.message : err)
+    log.error(`[Worker] ${sid}:`, err)
     job.lastFailed = true
     job.failCount  = (job.failCount ?? 0) + 1
     // Exponential back-off: 600s, 1200s, 2400s … capped at 1h

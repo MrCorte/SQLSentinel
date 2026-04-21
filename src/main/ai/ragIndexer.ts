@@ -5,6 +5,8 @@ import { app } from 'electron'
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters'
 import { OllamaEmbeddings } from '@langchain/ollama'
 import { isDocumentIndexed, saveDocument } from '../store/ragRepository'
+import { createLogger } from '../utils/logger'
+const log = createLogger('rag-indexer')
 
 const _require = createRequire(import.meta.url)
 // pdf-parse 1.x is a pure CJS module — createRequire guarantees the direct function
@@ -51,11 +53,11 @@ export async function autoIndexRagBooks(): Promise<void> {
     const { size } = await stat(filePath)
 
     if (isDocumentIndexed(filename, size)) {
-      console.log(`[RAG] Already indexed: ${filename}`)
+      log.info(`[RAG] Already indexed: ${filename}`)
       continue
     }
 
-    console.log(`[RAG] Indexing: ${filename} (${Math.round(size / 1024 / 1024)} MB)`)
+    log.info(`[RAG] Indexing: ${filename} (${Math.round(size / 1024 / 1024)} MB)`)
     try {
       const buffer = await readFile(filePath)
       const { text } = await pdfParse(buffer)
@@ -69,7 +71,7 @@ export async function autoIndexRagBooks(): Promise<void> {
         const vecs = await embeddings.embedDocuments(batch)
         allEmbeddings.push(...vecs)
         if (i % 200 === 0 && i > 0) {
-          console.log(`[RAG] ${filename}: ${i}/${texts.length} chunks embedded`)
+          log.info(`[RAG] ${filename}: ${i}/${texts.length} chunks embedded`)
         }
       }
 
@@ -80,9 +82,9 @@ export async function autoIndexRagBooks(): Promise<void> {
         indexedAt: new Date().toISOString(),
         chunks: texts.map((t, i) => ({ text: t, embedding: allEmbeddings[i] }))
       })
-      console.log(`[RAG] Done: ${filename} — ${texts.length} chunks`)
+      log.info(`[RAG] Done: ${filename} — ${texts.length} chunks`)
     } catch (err) {
-      console.error(
+      log.error(
         `[RAG] Failed to index ${filename}:`,
         err instanceof Error ? err.message : String(err)
       )

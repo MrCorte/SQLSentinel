@@ -52,7 +52,7 @@ function buildServerSummary(
   const ag = srv.agGroupId
     ? Object.values(agGroups).find((a) => a.id === srv.agGroupId)
     : undefined
-  const alias = serverAliases[serverLabel(srv)]
+  const alias = serverAliases[srv.id]
   return {
     serverId: srv.id,
     displayName: alias?.trim() || serverLabel(srv),

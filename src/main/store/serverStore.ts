@@ -1,6 +1,8 @@
 import Store from 'electron-store'
 import { randomUUID } from 'node:crypto'
 import { encrypt, decrypt, isAvailable as safeStorageAvailable } from './safeStorageUtil'
+import { createLogger } from '../utils/logger'
+const log = createLogger('server-store')
 
 // ---------------------------------------------------------------------------
 // Type — must stay JSON-serialisable (strings for dates, no Date objects)
@@ -148,9 +150,9 @@ export function migrateHostField(): void {
     const needsMigration = raw.some((s) => !s.host)
     if (!needsMigration) return
     store.set('servers', raw.map(normalizeServer))
-    console.log('[serverStore] migrated', raw.length, 'servers ip→host')
+    log.info('[serverStore] migrated', raw.length, 'servers ip→host')
   } catch (err) {
-    console.error('[serverStore] migration error:', err)
+    log.error('[serverStore] migration error:', err)
   }
 }
 
@@ -226,8 +228,8 @@ export function migrateEncryptCredentials(): void {
       return { ...rest, encryptedPassword: encryptPwd(password) }
     })
     store.set('servers', migrated)
-    console.log('[serverStore] migrated', toMigrate.length, 'server(s) to encrypted credentials')
+    log.info('[serverStore] migrated', toMigrate.length, 'server(s) to encrypted credentials')
   } catch (err) {
-    console.error('[serverStore] migrateEncryptCredentials error:', err)
+    log.error('[serverStore] migrateEncryptCredentials error:', err)
   }
 }

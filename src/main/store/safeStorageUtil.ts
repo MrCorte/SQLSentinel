@@ -1,11 +1,13 @@
 import { safeStorage } from 'electron'
+import { createLogger } from '../utils/logger'
+const log = createLogger('safe-storage')
 
 let warned = false
 
 function warnOnce(): void {
   if (warned) return
   warned = true
-  console.error(
+  log.error(
     '[safeStorage] ENCRYPTION UNAVAILABLE on this OS/profile — secrets will be stored in plaintext. ' +
       'On Linux ensure libsecret is installed and a keyring is unlocked; on Windows ensure the user profile supports DPAPI.'
   )

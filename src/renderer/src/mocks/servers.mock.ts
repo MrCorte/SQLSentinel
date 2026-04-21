@@ -203,22 +203,22 @@ export const MOCK_SERVER_GROUPS: Record<string, string> = {
 }
 
 // ---------------------------------------------------------------------------
-// Server aliases  (ip:port → alias)
+// Server aliases  (server.id UUID → alias)
 // ---------------------------------------------------------------------------
 
 export const MOCK_SERVER_ALIASES: Record<string, string> = {
-  '10.0.1.1:1433': 'pw01',
-  '10.0.1.2:1433': 'en01',
-  '10.0.1.3:1433': 'pippo',
-  '10.0.1.3:1434': 'report01',
-  '10.0.1.4:1433': 'PROD-IST1',
-  '10.0.1.4:1435': 'PROD-IST2',
-  '10.0.2.1:1433': 'coll01',
-  '10.0.2.2:1433': 'coll02',
-  '10.0.2.3:1433': 'coll-sa',
-  '10.0.3.1:1433': 'dev01',
-  '10.0.3.1:1434': 'dev02',
-  '10.0.3.2:1433': 'dev-unreachable',
+  'mock-s01': 'pw01',
+  'mock-s02': 'en01',
+  'mock-s03': 'pippo',
+  'mock-s04': 'report01',
+  'mock-s05': 'PROD-IST1',
+  'mock-s06': 'PROD-IST2',
+  'mock-s07': 'coll01',
+  'mock-s08': 'coll02',
+  'mock-s09': 'coll-sa',
+  'mock-s10': 'dev01',
+  'mock-s11': 'dev02',
+  'mock-s12': 'dev-unreachable',
 }
 
 // ---------------------------------------------------------------------------

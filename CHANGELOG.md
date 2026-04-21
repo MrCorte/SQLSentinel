@@ -5,6 +5,43 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Refactored — 2026-04-21 (complete refactoring Phases A–G)
+
+#### Infrastructure & Logging (Phase A)
+- **Logger — main**: `src/main/utils/logger.ts` — structured `{ level, msg, ts, ...ctx }` JSON logger; replaces all `console.*` calls (106 sites, 11 files) in main process; honours `isDev` flag to suppress debug output in production
+- **Logger — renderer**: `src/renderer/src/utils/logger.ts` — mirrors main logger API for renderer + preload; same 106-call sweep across renderer files
+- **Prepared statement caching**: all SQLite repositories (`metricsRepository`, `serverRepository`, `summaryRepository`, `historyRepository`) now cache `better-sqlite3` prepared statements at module level — eliminates repeated `db.prepare()` on every call
+- **`noImplicitAny` enabled**: `tsconfig.node.json` and `tsconfig.web.json` both set `"noImplicitAny": true`; 27 implicit-any usages across the codebase explicitly typed or eliminated
+- **Interval leak fix**: `deferredPurge` and dev GC timers in `src/main/index.ts` now cleared via `app.on('quit', ...)` — no more orphaned Node timers on window close
+- **`useDebouncedValue` hook**: `src/renderer/src/hooks/useDebouncedValue.ts` — extracted from two hand-rolled debounce timers in `Sidebar` and `NoteEditor`; `NoteEditor` delay corrected to 500 ms
+- **`useIpcEvent` hook**: `src/renderer/src/hooks/useIpcEvent.ts` — encapsulates `window.sqlSentinel.on/off` subscription lifecycle; removes six `// eslint-disable` suppressions in `App.tsx`
+- **IPC wrapper layer**: `src/renderer/src/api/ipc.ts` — typed `call<T>()` helper with 15 s timeout and `IpcResult<T>` unwrapping; all Zustand stores migrated off raw `window.sqlSentinel` calls
+
+#### IPC & Service Layer (Phase B)
+- **IPC handlers split**: monolithic `src/main/ipc/handlers.ts` (≈1 000 LOC) deleted and replaced with domain files — `serverHandlers.ts`, `metricsHandlers.ts`, `alertHandlers.ts`, `settingsHandlers.ts`, `dbAdminHandlers.ts`, `discoveryHandlers.ts`, `agHandlers.ts`, `aiHandlers.ts`
+- **Service layer extracted**: `src/main/services/` — business logic moved from IPC handlers into `ServerService`, `MetricsService`, `AlertService`, `DiscoveryService`; IPC handlers are now thin delegators (≤20 LOC each)
+- **`IpcResult` envelope standardized**: all server-level IPC handlers (`SERVERS_GET_ALL`, `SERVERS_ADD`, `SERVERS_UPDATE`, `SERVERS_REMOVE_BY_ID`, `SERVERS_TEST`) now return a consistent `{ ok, data?, error? }` envelope — eliminates thrown-string anti-pattern
+
+#### UI Decomposition (Phase C)
+- **`StatusDot` primitive**: `src/renderer/src/components/ui/StatusDot.tsx` — reusable coloured status dot with optional glow; replaces inline `sx` in four components
+- **`TruncatedCell` primitive**: `src/renderer/src/components/ui/TruncatedCell.tsx` — MUI X Data Grid cell with `textOverflow: ellipsis` and tooltip; replaces per-column `renderCell` in three grids
+- **`HomeDashboard` split**: 1 251 → 173 LOC shell; sub-components: `KpiRow`, `ServerStatusChart`, `AlertsSummary`, `RecentAlertsList`; logic in `useHomeDashboard` hook
+- **`Sidebar` split**: 1 372 → 210 LOC shell; sub-components: `SidebarSearch`, `SidebarTree`, `SidebarFooter`; logic in `useSidebarTree` hook
+- **`Inventory` split**: 1 823 → 200 LOC shell; sub-components: `InventoryToolbar`, `InventoryFilters`, `ServerGrid`, `DbGrid`; logic in `useInventoryState` hook
+- **`MetricsPanel` split**: 861 → 118 LOC shell; sub-components: `KpiCard`, `CpuMemChart`, `WaitStatsChart`, `DatabasesTab`; logic in `useMetrics` hook
+
+#### Fixes & Migrations (Phases D–F)
+- **`useVisibilityPoll` hook**: `src/renderer/src/hooks/useVisibilityPoll.ts` — visibility-aware polling; `AgDashboard` pauses SQL polling when the app window is hidden, resuming immediately on `visibilitychange`
+- **Circular import fix**: `agStore` → `serversStore` circular dependency resolved; `agStore` now reads server list via IPC call instead of importing the store directly
+- **`serverAliases` UUID migration**: `groupsStore` keys migrated from legacy `"ip:port"` strings to `server.id` (UUID) — aliases survive IP/port changes; one-time `migrateAliasKeys()` called after `loadServers()` on first boot
+- **Dependency cleanup**: `react-router-dom` removed (app uses React Router 7 via `src/renderer/src/router`); `@types/mssql` moved from `dependencies` to `devDependencies`
+
+### Fixed — 2026-04-21 (D3: serverAliases UUID migration)
+- **groupsStore**: `serverAliases` keys migrated from legacy `"ip:port"` strings to `server.id` (UUID) — aliases now survive IP changes
+- Added `migrateAliasKeys(servers)` one-time migration called after `loadServers()` completes; best-effort: unmatched legacy keys are preserved to avoid data loss
+- Updated all read/write sites: `AgDashboard`, `AlertsFeed`, `ServerTable`, `useHomeDashboard`, `useInventoryState`, `SidebarTree`, `useSidebarTree`, `Dashboard`, `Discovery`, `csvExportUtils`, `inventoryUtils`
+- Mock data (`MOCK_SERVER_ALIASES`) keys updated from `"ip:port"` to `"mock-sNN"` UUIDs
+
 ### Changed — 2026-04-20 (UI Dark Accent restyling)
 - **Design tokens**: added gradient strings (`primaryGradient`, `successGradient`, `warningGradient`, `errorGradient`), glow shadow tokens (`dotGlowSuccess/Error/Warning`) and `borderDark` in `tokens.ts`
 - **MUI theme**: thin border `rgba(255,255,255,0.08)` on Paper elevation0/1 in dark mode; border on `filled` Chip via `tokens.color.dividerDark`; darker table headers (`#0f1f3d`); inset accent stripe on the active sidebar item

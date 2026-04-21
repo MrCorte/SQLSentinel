@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Box, Typography, TextField, CircularProgress } from '@mui/material'
 import { useServersStore } from '../store/serversStore'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 interface NoteEditorProps {
   serverId: string
@@ -19,19 +20,19 @@ export function NoteEditor({ serverId, initialNote }: NoteEditorProps): React.JS
     setSaved(false)
   }, [serverId, initialNote])
 
-  // Autosave with 1s debounce — serverId in deps guards against saves to the wrong server
+  // Autosave with 500ms debounce — serverId in deps guards against saves to the wrong server
+  const debouncedNote = useDebouncedValue(note, 500)
   useEffect(() => {
-    if (note === initialNote) return
+    if (debouncedNote === initialNote) return
     setSaved(false)
-    const timer = setTimeout(async () => {
+    ;(async () => {
       setSaving(true)
-      await updateServer(serverId, { notes: note })
+      await updateServer(serverId, { notes: debouncedNote })
       setSaving(false)
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
-    }, 1000)
-    return () => clearTimeout(timer)
-  }, [note, serverId, initialNote])
+    })()
+  }, [debouncedNote, serverId, initialNote, updateServer])
 
   return (
     <Box>

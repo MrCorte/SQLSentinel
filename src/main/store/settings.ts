@@ -1,4 +1,6 @@
 import { getDb } from './database'
+import type Database from 'better-sqlite3'
+import type { Statement } from 'better-sqlite3'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -11,15 +13,38 @@ export interface AppSettings {
   themeMode: ThemeMode
 }
 
+interface SettingsRow {
+  key: string
+  value: string
+}
+
 function safeInt(raw: string | undefined, fallback: number, min = 0): number {
   if (raw == null) return fallback
   const n = parseInt(raw, 10)
   return Number.isFinite(n) && n >= min ? n : fallback
 }
 
-export function getSettings(): AppSettings {
+// --- Cached prepared statements ---
+
+let _db: Database.Database | null = null
+let _stmts: {
+  selectAll: Statement<[], SettingsRow>
+  upsert: Statement<[string, string]>
+} | null = null
+
+function stmts() {
   const db = getDb()
-  const rows = db.prepare('SELECT key, value FROM settings').all() as { key: string; value: string }[]
+  if (_stmts && _db === db) return _stmts
+  _db = db
+  _stmts = {
+    selectAll: db.prepare<[], SettingsRow>('SELECT key, value FROM settings'),
+    upsert: db.prepare<[string, string]>('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)'),
+  }
+  return _stmts
+}
+
+export function getSettings(): AppSettings {
+  const rows = stmts().selectAll.all()
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]))
   const rawTheme = map['theme_mode']
   return {
@@ -33,8 +58,7 @@ export function getSettings(): AppSettings {
 }
 
 export function saveSettings(settings: Partial<AppSettings>): void {
-  const db = getDb()
-  const upsert = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
+  const upsert = stmts().upsert
   if (settings.retentionMinutes          != null) upsert.run('retentionMinutes',            String(settings.retentionMinutes))
   if (settings.backgroundEnabled         != null) upsert.run('background_enabled',           String(settings.backgroundEnabled))
   if (settings.backgroundMode            != null) upsert.run('background_mode',              settings.backgroundMode)

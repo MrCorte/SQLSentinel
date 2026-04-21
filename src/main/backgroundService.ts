@@ -7,6 +7,8 @@ import { getSettings, saveSettings } from './store/settings'
 import * as serverStore from './store/serverStore'
 import { getAlerts } from './metricsWorker'
 import { sendAlertEmail } from './emailService'
+import { createLogger } from './utils/logger'
+const log = createLogger('background')
 
 const resourcesDir = app.isPackaged
   ? process.resourcesPath
@@ -135,7 +137,7 @@ export class BackgroundService {
 
   private maybeNotify(alert: Alert): void {
     // Email — fires for WARNING and CRITICAL, filtered by emailService settings + dedup
-    sendAlertEmail(alert).catch((err) => console.error('[BackgroundService] Email error:', err))
+    sendAlertEmail(alert).catch((err) => log.error('[BackgroundService] Email error:', err instanceof Error ? err.message : String(err)))
 
     // Toast — CRITICAL only, hidden window only
     if (alert.severity !== 'CRITICAL') return
@@ -158,7 +160,7 @@ export class BackgroundService {
       n.on('click', () => { this.win.show(); this.win.focus() })
       n.show()
     } catch (err) {
-      console.error('[BackgroundService] Notification error:', err)
+      log.error('[BackgroundService] Notification error:', err instanceof Error ? err.message : String(err))
     }
   }
 

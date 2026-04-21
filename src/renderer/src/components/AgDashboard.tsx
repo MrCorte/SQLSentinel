@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import {
   Box,
   Typography,
@@ -20,6 +20,7 @@ import { useGroupsStore } from '../store/groupsStore'
 import { useAppStore } from '../store/appStore'
 import { alpha } from '@mui/material/styles'
 import { tokens } from '../styles/tokens'
+import { useVisibilityPoll } from '../hooks/useVisibilityPoll'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -215,12 +216,17 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
 
   const [snackbarMsg, setSnackbarMsg] = useState<string | null>(null)
 
-  // Fetch details on mount and every 60s
+  // Fetch details on mount
   useEffect(() => {
     updateAgDetails(connection)
-    const timer = setInterval(() => updateAgDetails(connection), 60_000)
-    return () => clearInterval(timer)
   }, [agName, connection.ip, connection.port]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Poll every 60s, pausing when window is hidden
+  const handleUpdateDetails = useCallback(() => {
+    if (connection) updateAgDetails(connection)
+  }, [connection, updateAgDetails])
+
+  useVisibilityPoll(handleUpdateDetails, 60_000)
 
   const getDisplayName = useCallback((replicaServerName: string): string => {
     const nameBase = replicaServerName.split('\\')[0].toLowerCase()
@@ -229,8 +235,7 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
       return addr === nameBase || addr.includes(nameBase) || nameBase.includes(addr)
     })
     if (!match) return replicaServerName
-    const srvKey = `${match.host ?? match.ip}:${match.port}`
-    return serverAliases[srvKey] || match.host || replicaServerName
+    return serverAliases[match.id] || match.host || replicaServerName
   }, [servers, serverAliases])
 
   const handleNavigateToServer = useCallback((replica: AvailabilityReplica): void => {

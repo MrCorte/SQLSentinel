@@ -5,6 +5,7 @@ import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
 import type { ServerHealthPayload } from '../ipc/types'
 
 vi.mock('electron', () => ({
+  app: { isPackaged: false, getPath: () => '/tmp' },
   BrowserWindow: { getAllWindows: vi.fn(() => []) }
 }))
 vi.mock('../collectors/sqlCollector', () => ({ collectMetrics: vi.fn() }))

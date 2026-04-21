@@ -238,3 +238,11 @@ class MockDatabase {
 vi.mock('better-sqlite3', () => ({
   default: MockDatabase
 }))
+
+// ── Electron mock (global for all main-process tests) ────────────────────────
+vi.mock('electron', () => ({
+  app: {
+    isPackaged: false,
+    getPath: () => '/tmp',
+  },
+}))

@@ -1,6 +1,7 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest'
 
 vi.mock('electron', () => ({
+  app: { isPackaged: false, getPath: () => '/tmp' },
   BrowserWindow: { getAllWindows: vi.fn(() => []) }
 }))
 vi.mock('../collectors/sqlCollector', () => ({ collectMetrics: vi.fn() }))

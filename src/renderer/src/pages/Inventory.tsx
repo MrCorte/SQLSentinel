@@ -29,6 +29,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { useServersStore } from '../store/serversStore'
 import { useMetricsStore } from '../store/metricsStore'
 import { useRefreshAllServers } from '../hooks/useRefreshAllServers'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { useGroupsStore } from '../store/groupsStore'
 import { useAppStore } from '../store/appStore'
 import { computeInventory, getSqlServerVersion } from '../utils/inventoryUtils'
@@ -471,7 +472,6 @@ interface InventoryProps {
 export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.Element {
   const { refreshing, lastRefresh, handleRefresh } = useRefreshAllServers()
   const [search,            setSearch]             = useState('')
-  const [debouncedSearch,   setDebouncedSearch]    = useState('')
   const [filterEnv,         setFilterEnv]          = useState('all')
   const [filterType,        setFilterType]         = useState<'all' | 'standalone' | 'ag-primary' | 'ag-secondary'>('all')
   const [filterState,       setFilterState]        = useState<'all' | 'online' | 'offline'>('all')
@@ -497,10 +497,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
   const dbParentRef = useRef<HTMLDivElement>(null)
 
   // Debounce search to avoid recomputing filteredRows on every keystroke
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 300)
-    return () => clearTimeout(t)
-  }, [search])
+  const debouncedSearch = useDebouncedValue(search, 300)
 
   // Store subscriptions
   useServersStore((s) => s.servers)

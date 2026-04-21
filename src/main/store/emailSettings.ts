@@ -1,5 +1,8 @@
 import { getDb } from './database'
 import { encrypt, decrypt, isAvailable, isEncrypted } from './safeStorageUtil'
+import type { Statement } from 'better-sqlite3'
+import { createLogger } from '../utils/logger'
+const log = createLogger('email-settings')
 
 export interface EmailSettings {
   emailEnabled: boolean
@@ -11,9 +14,42 @@ export interface EmailSettings {
   emailRecipients: string[]
 }
 
-export function getEmailSettings(): EmailSettings {
+interface SettingsRow {
+  key: string
+  value: string
+}
+
+interface SmtpPasswordRow {
+  value: string
+}
+
+// --- Cached prepared statements ---
+
+let _stmts: {
+  selectAll: Statement<[], SettingsRow>
+  upsert: Statement<[string, string]>
+  selectSmtpPassword: Statement<[], SmtpPasswordRow>
+  updateSmtpPassword: Statement<[string]>
+} | null = null
+
+function stmts() {
+  if (_stmts) return _stmts
   const db = getDb()
-  const rows = db.prepare('SELECT key, value FROM settings').all() as { key: string; value: string }[]
+  _stmts = {
+    selectAll: db.prepare<[], SettingsRow>('SELECT key, value FROM settings'),
+    upsert: db.prepare<[string, string]>('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)'),
+    selectSmtpPassword: db.prepare<[], SmtpPasswordRow>(
+      "SELECT value FROM settings WHERE key = 'smtp_password'"
+    ),
+    updateSmtpPassword: db.prepare<[string]>(
+      "UPDATE settings SET value = ? WHERE key = 'smtp_password'"
+    ),
+  }
+  return _stmts
+}
+
+export function getEmailSettings(): EmailSettings {
+  const rows = stmts().selectAll.all()
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]))
   let recipients: string[] = []
   if (map['email_recipients'] != null) {
@@ -32,8 +68,7 @@ export function getEmailSettings(): EmailSettings {
 }
 
 export function saveEmailSettings(settings: Partial<EmailSettings>): void {
-  const db = getDb()
-  const upsert = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
+  const upsert = stmts().upsert
   if (settings.emailEnabled    != null) upsert.run('email_enabled',    String(settings.emailEnabled))
   if (settings.smtpHost        != null) upsert.run('smtp_host',        settings.smtpHost)
   if (settings.smtpPort        != null) upsert.run('smtp_port',        String(settings.smtpPort))
@@ -48,15 +83,12 @@ export function saveEmailSettings(settings: Partial<EmailSettings>): void {
 export function migrateEncryptEmailPassword(): void {
   try {
     if (!isAvailable()) return
-    const db = getDb()
-    const row = db
-      .prepare<[], { value: string }>("SELECT value FROM settings WHERE key = 'smtp_password'")
-      .get()
+    const row = stmts().selectSmtpPassword.get()
     if (!row || !row.value) return
     if (isEncrypted(row.value)) return
-    db.prepare("UPDATE settings SET value = ? WHERE key = 'smtp_password'").run(encrypt(row.value))
-    console.log('[emailSettings] migrated smtp_password to encrypted storage')
+    stmts().updateSmtpPassword.run(encrypt(row.value))
+    log.info('[emailSettings] migrated smtp_password to encrypted storage')
   } catch (err) {
-    console.error('[emailSettings] migrateEncryptEmailPassword:', err)
+    log.error('[emailSettings] migrateEncryptEmailPassword:', err instanceof Error ? err.message : String(err))
   }
 }

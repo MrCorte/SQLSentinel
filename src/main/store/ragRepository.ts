@@ -1,4 +1,5 @@
 import { getDb } from './database'
+import type { Statement } from 'better-sqlite3'
 
 export interface RagDocument {
   id: string
@@ -35,14 +36,56 @@ function cosine(a: Float32Array, b: Float32Array): number {
   return denom === 0 ? 0 : dot / denom
 }
 
+interface RagDocumentIdRow {
+  id: string
+}
+
+interface RagChunkRow {
+  text: string
+  embedding: Buffer
+}
+
+// ---------------------------------------------------------------------------
+// Cached prepared statements
+// ---------------------------------------------------------------------------
+
+let _stmts: {
+  isDocumentIndexed: Statement<[string, number], RagDocumentIdRow>
+  upsertDocument: Statement<[string, string, number, string, number]>
+  deleteChunks: Statement<[string]>
+  insertChunk: Statement<[string, string, number, string, Buffer]>
+  getAllChunks: Statement<[], RagChunkRow>
+  getAllDocuments: Statement<[], RagDocument>
+} | null = null
+
+function stmts() {
+  if (_stmts) return _stmts
+  const db = getDb()
+  _stmts = {
+    isDocumentIndexed: db.prepare<[string, number], RagDocumentIdRow>(
+      'SELECT id FROM rag_documents WHERE filename = ? AND file_size = ?'
+    ),
+    upsertDocument: db.prepare<[string, string, number, string, number]>(
+      'INSERT OR REPLACE INTO rag_documents (id, filename, file_size, indexed_at, chunk_count) VALUES (?, ?, ?, ?, ?)'
+    ),
+    deleteChunks: db.prepare<[string]>('DELETE FROM rag_chunks WHERE document_id = ?'),
+    insertChunk: db.prepare<[string, string, number, string, Buffer]>(
+      'INSERT INTO rag_chunks (id, document_id, chunk_index, text, embedding) VALUES (?, ?, ?, ?, ?)'
+    ),
+    getAllChunks: db.prepare<[], RagChunkRow>('SELECT text, embedding FROM rag_chunks'),
+    getAllDocuments: db.prepare<[], RagDocument>(
+      'SELECT id, filename, file_size AS fileSize, indexed_at AS indexedAt, chunk_count AS chunkCount FROM rag_documents ORDER BY indexed_at DESC'
+    ),
+  }
+  return _stmts
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 export function isDocumentIndexed(filename: string, fileSize: number): boolean {
-  const row = getDb()
-    .prepare('SELECT id FROM rag_documents WHERE filename = ? AND file_size = ?')
-    .get(filename, fileSize)
+  const row = stmts().isDocumentIndexed.get(filename, fileSize)
   return row !== undefined
 }
 
@@ -54,19 +97,15 @@ export function saveDocument(doc: {
   chunks: { text: string; embedding: number[] }[]
 }): void {
   const db = getDb()
+  const s = stmts()
   db.transaction(() => {
-    db.prepare(
-      'INSERT OR REPLACE INTO rag_documents (id, filename, file_size, indexed_at, chunk_count) VALUES (?, ?, ?, ?, ?)'
-    ).run(doc.id, doc.filename, doc.fileSize, doc.indexedAt, doc.chunks.length)
+    s.upsertDocument.run(doc.id, doc.filename, doc.fileSize, doc.indexedAt, doc.chunks.length)
 
     // Delete existing chunks (handles OR REPLACE on rag_documents)
-    db.prepare('DELETE FROM rag_chunks WHERE document_id = ?').run(doc.id)
+    s.deleteChunks.run(doc.id)
 
-    const ins = db.prepare(
-      'INSERT INTO rag_chunks (id, document_id, chunk_index, text, embedding) VALUES (?, ?, ?, ?, ?)'
-    )
     for (let i = 0; i < doc.chunks.length; i++) {
-      ins.run(`${doc.id}:${i}`, doc.id, i, doc.chunks[i].text, encodeEmbedding(doc.chunks[i].embedding))
+      s.insertChunk.run(`${doc.id}:${i}`, doc.id, i, doc.chunks[i].text, encodeEmbedding(doc.chunks[i].embedding))
     }
   })()
 }
@@ -75,9 +114,7 @@ export function retrieveTopK(
   queryEmbedding: number[],
   k = 5
 ): { text: string; score: number }[] {
-  const rows = getDb()
-    .prepare('SELECT text, embedding FROM rag_chunks')
-    .all() as { text: string; embedding: Buffer }[]
+  const rows = stmts().getAllChunks.all()
 
   if (rows.length === 0) return []
 
@@ -89,7 +126,5 @@ export function retrieveTopK(
 }
 
 export function getAllDocuments(): RagDocument[] {
-  return getDb()
-    .prepare('SELECT id, filename, file_size AS fileSize, indexed_at AS indexedAt, chunk_count AS chunkCount FROM rag_documents ORDER BY indexed_at DESC')
-    .all() as RagDocument[]
+  return stmts().getAllDocuments.all()
 }

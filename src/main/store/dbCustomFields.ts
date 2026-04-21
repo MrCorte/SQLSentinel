@@ -1,4 +1,5 @@
 import { getDb } from './database'
+import type { Statement } from 'better-sqlite3'
 
 // In-memory cache for getAllCustomFields().
 // Invalidated on every write so runJob() never reads stale data.
@@ -22,26 +23,42 @@ function rowToFields(row: DbCustomFieldsRow): DbCustomFields {
   }
 }
 
-export function getCustomFields(serverId: string, dbName: string): DbCustomFields {
+// --- Cached prepared statements ---
+
+let _stmts: {
+  getCustomFields: Statement<[string], DbCustomFieldsRow>
+  setCustomFields: Statement<[string, string | null, string | null]>
+  getAllCustomFields: Statement<[], DbCustomFieldsRow>
+} | null = null
+
+function stmts() {
+  if (_stmts) return _stmts
   const db = getDb()
-  const row = db
-    .prepare('SELECT * FROM db_custom_fields WHERE id = ?')
-    .get(`${serverId}/${dbName}`) as DbCustomFieldsRow | undefined
+  _stmts = {
+    getCustomFields: db.prepare<[string], DbCustomFieldsRow>(
+      'SELECT * FROM db_custom_fields WHERE id = ?'
+    ),
+    setCustomFields: db.prepare<[string, string | null, string | null]>(
+      'INSERT OR REPLACE INTO db_custom_fields (id, alias, referente) VALUES (?, ?, ?)'
+    ),
+    getAllCustomFields: db.prepare<[], DbCustomFieldsRow>('SELECT * FROM db_custom_fields'),
+  }
+  return _stmts
+}
+
+export function getCustomFields(serverId: string, dbName: string): DbCustomFields {
+  const row = stmts().getCustomFields.get(`${serverId}/${dbName}`)
   return row ? rowToFields(row) : {}
 }
 
 export function setCustomFields(serverId: string, dbName: string, fields: DbCustomFields): void {
   cachedFields = null // invalidate cache on every write
-  const db = getDb()
-  db.prepare(
-    'INSERT OR REPLACE INTO db_custom_fields (id, alias, referente) VALUES (?, ?, ?)'
-  ).run(`${serverId}/${dbName}`, fields.alias ?? null, fields.referente ?? null)
+  stmts().setCustomFields.run(`${serverId}/${dbName}`, fields.alias ?? null, fields.referente ?? null)
 }
 
 export function getAllCustomFields(): Record<string, DbCustomFields> {
   if (cachedFields !== null) return cachedFields
-  const db = getDb()
-  const rows = db.prepare('SELECT * FROM db_custom_fields').all() as DbCustomFieldsRow[]
+  const rows = stmts().getAllCustomFields.all()
   const result: Record<string, DbCustomFields> = {}
   for (const row of rows) {
     result[row.id] = rowToFields(row)

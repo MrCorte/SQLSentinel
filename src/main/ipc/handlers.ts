@@ -61,6 +61,8 @@ import type { DiscoveredServer, ScanOptions } from '../discovery/types'
 import { checkOllamaHealth } from '../ai/ollama'
 import { langGraphAsk, resetAgent, type AgentHistory } from '../ai/langGraphAgent'
 
+import { createLogger } from '../utils/logger'
+const log = createLogger('ipc')
 import { scanSubnet, scanHost } from '../discovery/tcpScanner'
 import { collectMetrics, detectServerInfo } from '../collectors/sqlCollector'
 import { getShrinkEstimate, shrinkDatabase, shrinkFile } from '../collectors/dbAdmin'
@@ -212,7 +214,7 @@ export function registerIpcHandlers(): void {
         })
         return { ok: true, data: results }
       } catch (err) {
-        console.error('[IPC] SCAN_SUBNET:', safeError(err))
+        log.error('[IPC] SCAN_SUBNET:', safeError(err))
         return { ok: false, error: 'Subnet scan failed' }
       }
     }
@@ -232,7 +234,7 @@ export function registerIpcHandlers(): void {
         })
         return { ok: true, data: probed }
       } catch (err) {
-        console.error('[IPC] ADD_SERVER_MANUAL:', safeError(err))
+        log.error('[IPC] ADD_SERVER_MANUAL:', safeError(err))
         return { ok: false, error: 'Failed to add server' }
       }
     }
@@ -265,7 +267,7 @@ export function registerIpcHandlers(): void {
       try {
         return serverStore.getAll().map(stripCredentials)
       } catch (err) {
-        console.error('[IPC] SERVERS_GET_ALL:', safeError(err))
+        log.error('[IPC] SERVERS_GET_ALL:', safeError(err))
         return []
       }
     }
@@ -281,7 +283,7 @@ export function registerIpcHandlers(): void {
         if (result.server) result.server = stripCredentials(result.server)
         return result
       } catch (err) {
-        console.error('[IPC] SERVERS_ADD:', safeError(err))
+        log.error('[IPC] SERVERS_ADD:', safeError(err))
         return { success: false, reason: safeError(err) }
       }
     }
@@ -296,7 +298,7 @@ export function registerIpcHandlers(): void {
         resetAgent()
         return { success: true }
       } catch (err) {
-        console.error('[IPC] SERVERS_UPDATE:', safeError(err))
+        log.error('[IPC] SERVERS_UPDATE:', safeError(err))
         return { success: false }
       }
     }
@@ -311,7 +313,7 @@ export function registerIpcHandlers(): void {
         resetAgent()
         return { success: true }
       } catch (err) {
-        console.error('[IPC] SERVERS_REMOVE_BY_ID:', safeError(err))
+        log.error('[IPC] SERVERS_REMOVE_BY_ID:', safeError(err))
         return { success: false }
       }
     }
@@ -324,10 +326,10 @@ export function registerIpcHandlers(): void {
       const mocks = before.filter((s) => s.id.startsWith('mock-'))
       mocks.forEach((s) => serverStore.remove(s.id))
       const after = serverStore.getAll()
-      console.log(`[clearMocks] rimossi ${mocks.length} mock, rimasti: ${after.length}`)
+      log.info(`[clearMocks] rimossi ${mocks.length} mock, rimasti: ${after.length}`)
       return { success: true, removed: mocks.length, remaining: after.length }
     } catch (err) {
-      console.error('[IPC] servers:clearMocks:', safeError(err))
+      log.error('[IPC] servers:clearMocks:', safeError(err))
       return { success: false, removed: 0, remaining: -1 }
     }
   })
@@ -340,7 +342,7 @@ export function registerIpcHandlers(): void {
         const info = await detectServerInfo(resolveConnection(req))
         return { ok: true, data: info }
       } catch (err) {
-        console.error('[IPC] DETECT_SERVER_INFO:', safeError(err))
+        log.error('[IPC] DETECT_SERVER_INFO:', safeError(err))
         return { ok: false, error: safeError(err) }
       }
     }
@@ -364,7 +366,7 @@ export function registerIpcHandlers(): void {
         }
         return { ok: true, data: enriched }
       } catch (err) {
-        console.error('[IPC] COLLECT_METRICS:', safeError(err))
+        log.error('[IPC] COLLECT_METRICS:', safeError(err))
         return { ok: false, error: safeError(err) }
       }
     }
@@ -380,7 +382,7 @@ export function registerIpcHandlers(): void {
         startWorker({ ...req, servers: req.servers.map(resolveConnection) })
         return { ok: true, data: null }
       } catch (err) {
-        console.error('[IPC] WORKER_START:', safeError(err))
+        log.error('[IPC] WORKER_START:', safeError(err))
         return { ok: false, error: safeError(err) }
       }
     }
@@ -425,7 +427,7 @@ export function registerIpcHandlers(): void {
     IpcChannel.METRICS_HISTORY,
     async (_event: IpcMainInvokeEvent, req: HistoryRequest): Promise<IpcResult<ServerMetrics[]>> => {
       const history = getHistory(req.ip, req.port)
-      console.log('[Main] metrics:history richiesta per', `${req.ip}:${req.port}`, '— snapshot:', history.length)
+      log.info('[Main] metrics:history richiesta per', `${req.ip}:${req.port}`, '— snapshot:', history.length)
       return { ok: true, data: history }
     }
   )
@@ -558,7 +560,7 @@ export function registerIpcHandlers(): void {
         const estimates = await getShrinkEstimate(resolveConnection(req.connection), req.dbName)
         return { ok: true, data: estimates }
       } catch (err) {
-        console.error('[IPC] DB_SHRINK_ESTIMATE:', safeError(err))
+        log.error('[IPC] DB_SHRINK_ESTIMATE:', safeError(err))
         return { ok: false, error: safeError(err) }
       }
     }
@@ -572,7 +574,7 @@ export function registerIpcHandlers(): void {
         const result = await shrinkDatabase(resolveConnection(req.connection), req.dbName, req.targetPercent)
         return { ok: true, data: result }
       } catch (err) {
-        console.error('[IPC] DB_SHRINK:', safeError(err))
+        log.error('[IPC] DB_SHRINK:', safeError(err))
         return { ok: false, error: safeError(err) }
       }
     }
@@ -586,7 +588,7 @@ export function registerIpcHandlers(): void {
         const result = await shrinkFile(resolveConnection(req.connection), req.dbName, req.fileName, req.targetSizeMb, req.isLog)
         return { ok: true, data: result }
       } catch (err) {
-        console.error('[IPC] DB_SHRINK_FILE:', safeError(err))
+        log.error('[IPC] DB_SHRINK_FILE:', safeError(err))
         return { ok: false, error: safeError(err) }
       }
     }
@@ -601,7 +603,7 @@ export function registerIpcHandlers(): void {
         return { ok: true, data }
       } catch (err) {
         // Server non in AG o permessi insufficienti — non è un errore critico
-        console.info('[IPC] AG_GET_GROUPS: no AG or insufficient perms:', safeError(err))
+        log.info('[IPC] AG_GET_GROUPS: no AG or insufficient perms:', safeError(err))
         return { ok: true, data: [] }
       }
     }
@@ -615,7 +617,7 @@ export function registerIpcHandlers(): void {
         const data = await getAvailabilityReplicas(resolveConnection(req.connection))
         return { ok: true, data }
       } catch (err) {
-        console.info('[IPC] AG_GET_REPLICAS:', safeError(err))
+        log.info('[IPC] AG_GET_REPLICAS:', safeError(err))
         return { ok: true, data: [] }
       }
     }
@@ -629,7 +631,7 @@ export function registerIpcHandlers(): void {
         const data = await getAvailabilityDatabases(resolveConnection(req.connection))
         return { ok: true, data }
       } catch (err) {
-        console.info('[IPC] AG_GET_DATABASES:', safeError(err))
+        log.info('[IPC] AG_GET_DATABASES:', safeError(err))
         return { ok: true, data: [] }
       }
     }
@@ -654,7 +656,7 @@ export function registerIpcHandlers(): void {
         await fsPromises.writeFile(result.filePath, content, 'utf8')
         return { ok: true, data: result.filePath }
       } catch (err) {
-        console.error('[IPC] EXPORT_INVENTORY_CSV:', safeError(err))
+        log.error('[IPC] EXPORT_INVENTORY_CSV:', safeError(err))
         return { ok: false, error: safeError(err) }
       }
     }
@@ -689,7 +691,7 @@ export function registerIpcHandlers(): void {
       try {
         return { ok: true, data: getEmailSettings() }
       } catch (err) {
-        console.error('[IPC] EMAIL_SETTINGS_GET:', safeError(err))
+        log.error('[IPC] EMAIL_SETTINGS_GET:', safeError(err))
         return { ok: false, error: safeError(err) }
       }
     }
@@ -703,7 +705,7 @@ export function registerIpcHandlers(): void {
         saveEmailSettings(req)
         return { ok: true, data: null }
       } catch (err) {
-        console.error('[IPC] EMAIL_SETTINGS_SET:', safeError(err))
+        log.error('[IPC] EMAIL_SETTINGS_SET:', safeError(err))
         return { ok: false, error: safeError(err) }
       }
     }
@@ -716,7 +718,7 @@ export function registerIpcHandlers(): void {
       try {
         return await sendTestEmail()
       } catch (err) {
-        console.error('[IPC] EMAIL_TEST:', safeError(err))
+        log.error('[IPC] EMAIL_TEST:', safeError(err))
         return { ok: false, error: safeError(err) }
       }
     }
@@ -742,7 +744,7 @@ export function registerIpcHandlers(): void {
       try {
         return { ok: true, data: await langGraphAsk(question, history) }
       } catch (err) {
-        console.error('[IPC] AI_AGENT_ASK:', safeError(err))
+        log.error('[IPC] AI_AGENT_ASK:', safeError(err))
         return { ok: false, error: safeError(err) }
       }
     }

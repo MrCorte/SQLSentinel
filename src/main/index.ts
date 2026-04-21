@@ -20,16 +20,18 @@ import * as serverStore from './store/serverStore'
 import { scanHost } from './discovery/tcpScanner'
 import { autoIndexRagBooks } from './ai/ragIndexer'
 import { safeError as redactError } from './utils/safeLog'
+import { createLogger } from './utils/logger'
+const log = createLogger('main')
 
 const isDev = !app.isPackaged
 
 // Cattura errori asincroni non gestiti nel main process prima che crashino silenziosamente.
 // Stack trace passano da redactError → rimuove path assoluti utente (info disclosure).
 process.on('unhandledRejection', (reason) => {
-  console.error('[main] unhandledRejection:', redactError(reason))
+  log.error('[main] unhandledRejection:', redactError(reason))
 })
 process.on('uncaughtException', (err) => {
-  console.error('[main] uncaughtException:', redactError(err))
+  log.error('[main] uncaughtException:', redactError(err))
 })
 
 // Module-level reference so the health checker can push events to the renderer
@@ -90,7 +92,7 @@ async function healthCheckAll(): Promise<void> {
               lastSeen: new Date().toISOString()
             })
             mainWindow?.webContents.send(IpcChannel.SERVER_RECOVERED, server.id)
-            console.log('[HealthCheck] RECOVERED:', `${addr}:${server.port}`)
+            log.info('[HealthCheck] RECOVERED:', `${addr}:${server.port}`)
           } else {
             serverStore.update(server.id, { lastSeen: new Date().toISOString() })
           }
@@ -105,7 +107,7 @@ async function healthCheckAll(): Promise<void> {
                 port: server.port,
                 since
               })
-            console.warn('[HealthCheck] UNREACHABLE:', `${addr}:${server.port}`)
+            log.warn('[HealthCheck] UNREACHABLE:', `${addr}:${server.port}`)
           }
         }
       })
@@ -154,7 +156,7 @@ app.whenReady().then(() => {
   initDb(defaultDbPath(app.getPath('appData')))
 
   // Crea utente admin di default se non esistono utenti
-  initDefaultAdmin().catch((err) => console.error('[AUTH] initDefaultAdmin fallito:', err))
+  initDefaultAdmin().catch((err) => log.error('[AUTH] initDefaultAdmin fallito:', err instanceof Error ? err.message : String(err)))
 
   // Purge snapshots più vecchi della retention configurata: una volta al boot, poi ogni 24 h.
   // Il DELETE sincrono su DB grandi può bloccare 1-3s: defer a setImmediate così da non
@@ -165,7 +167,7 @@ app.whenReady().then(() => {
       try {
         purgeOldSnapshots(retentionDays())
       } catch (err) {
-        console.warn('[main] purgeOldSnapshots:', err)
+        log.warn('[main] purgeOldSnapshots:', err instanceof Error ? err.message : String(err))
       }
     })
   }
@@ -181,7 +183,7 @@ app.whenReady().then(() => {
   // credentials are falling back to plaintext storage. See safeStorageUtil.warnOnce()
   // for the one-time warning on each encrypt/decrypt attempt; this is the startup sentinel.
   if (!safeStorageAvailable()) {
-    console.error(
+    log.error(
       '[SECURITY] OS keyring/DPAPI not available — ALL stored passwords will be in plaintext. ' +
         'Configure your OS keyring or switch user profile to restore encrypted storage.'
     )
@@ -196,13 +198,13 @@ app.whenReady().then(() => {
     watchWindowShortcuts(window)
   })
 
-  ipcMain.on('ping', () => console.log('pong'))
+  ipcMain.on('ping', () => log.info('pong'))
 
   registerIpcHandlers()
 
   // Indicizza i PDF in data/ in background — non bloccante, graceful se Ollama non disponibile
   autoIndexRagBooks().catch((err) =>
-    console.error('[RAG] Auto-index failed:', err instanceof Error ? err.message : String(err))
+    log.error('[RAG] Auto-index failed:', err instanceof Error ? err.message : String(err))
   )
 
   createWindow()
@@ -237,7 +239,7 @@ app.whenReady().then(() => {
       const mem = process.memoryUsage()
       gc()
       const after = process.memoryUsage()
-      console.log(
+      log.info(
         `[Main] heap: ${(after.heapUsed / 1024 / 1024).toFixed(1)}MB` +
         ` / ${(after.heapTotal / 1024 / 1024).toFixed(1)}MB` +
         ` | rss: ${(mem.rss / 1024 / 1024).toFixed(1)}MB`

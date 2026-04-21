@@ -22,10 +22,11 @@ import { useAppStore } from './store/appStore'
 import { useMetricsStore } from './store/metricsStore'
 import { tokens } from './styles/tokens'
 import { useMockData } from './hooks/useMockData'
+import { useIpcEvent } from './hooks/useIpcEvent'
 import { buildTheme } from './styles/theme'
 import { ThemeContext, type ThemeMode } from './context/ThemeContext'
 import { AuthContext } from './context/AuthContext'
-import type { AuthSession } from '../../preload/index'
+import type { AuthSession, ServerHealthPayload, StoredServer, ServerUnreachableEvent, Alert } from '../../preload/index'
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 
@@ -110,53 +111,63 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
   }, [])
 
   // Circuit-breaker health updates from the main process
-  useEffect(() => {
-    return window.sqlSentinel.onServerHealthUpdate((health) => {
-      useMetricsStore.getState().setServerHealth(health)
-    })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const handleServerHealthUpdate = useCallback((...args: unknown[]) => {
+    const health = args[0] as ServerHealthPayload
+    useMetricsStore.getState().setServerHealth(health)
+  }, [])
+
+  useIpcEvent(window.sqlSentinel.onServerHealthUpdate, handleServerHealthUpdate)
 
   // AG detection push: worker found replica roles — update serversStore in-place
+  const handleServerConfigUpdated = useCallback((...args: unknown[]) => {
+    const updatedServers = args[0] as StoredServer[]
+    const { updateServer } = useServersStore.getState()
+    for (const srv of updatedServers) {
+      updateServer(srv.id, {
+        agGroupId: srv.agGroupId,
+        agName: srv.agName,
+        agRole: srv.agRole,
+        logicalCpus: srv.logicalCpus,
+        physicalCpus: srv.physicalCpus
+      })
+    }
+  }, [])
+
   useEffect(() => {
     if (typeof window.sqlSentinel?.onServerConfigUpdated !== 'function') return
-    return window.sqlSentinel.onServerConfigUpdated((updatedServers) => {
-      const { updateServer } = useServersStore.getState()
-      for (const srv of updatedServers) {
-        updateServer(srv.id, {
-          agGroupId: srv.agGroupId,
-          agName: srv.agName,
-          agRole: srv.agRole,
-          logicalCpus: srv.logicalCpus,
-          physicalCpus: srv.physicalCpus
-        })
-      }
-    })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    return window.sqlSentinel.onServerConfigUpdated(handleServerConfigUpdated)
+  }, [handleServerConfigUpdated])
 
   // Listen for health-check push events
+  const handleServerUnreachable = useCallback((...args: unknown[]) => {
+    const data = args[0] as ServerUnreachableEvent
+    useServersStore.getState().updateServer(data.serverId, {
+      unreachable: true,
+      unreachableSince: data.since
+    })
+  }, [])
+
+  const handleServerRecovered = useCallback((...args: unknown[]) => {
+    const serverId = args[0] as string
+    useServersStore.getState().updateServer(serverId, {
+      unreachable: false,
+      unreachableSince: undefined,
+      lastSeen: new Date().toISOString()
+    })
+  }, [])
+
   useEffect(() => {
     if (typeof window.sqlSentinel?.onServerUnreachable !== 'function') {
       console.warn('[App] sqlSentinel.onServerUnreachable non disponibile — skip')
       return
     }
-    const unsubUnreachable = window.sqlSentinel.onServerUnreachable(({ serverId, since }) => {
-      useServersStore.getState().updateServer(serverId, {
-        unreachable: true,
-        unreachableSince: since
-      })
-    })
-    const unsubRecovered = window.sqlSentinel.onServerRecovered((serverId) => {
-      useServersStore.getState().updateServer(serverId, {
-        unreachable: false,
-        unreachableSince: undefined,
-        lastSeen: new Date().toISOString()
-      })
-    })
+    const unsubUnreachable = window.sqlSentinel.onServerUnreachable(handleServerUnreachable)
+    const unsubRecovered = window.sqlSentinel.onServerRecovered(handleServerRecovered)
     return () => {
       unsubUnreachable()
       unsubRecovered()
     }
-  }, [])
+  }, [handleServerUnreachable, handleServerRecovered])
 
   useEffect(() => {
     window.sqlSentinel
@@ -176,11 +187,12 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
       .catch((err) => console.error('[App] getAlerts failed:', err))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    return window.sqlSentinel.onAlertNew((alert) => {
-      addAlert(alert)
-    })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const handleAlertNew = useCallback((...args: unknown[]) => {
+    const alert = args[0] as Alert
+    addAlert(alert)
+  }, [addAlert])
+
+  useIpcEvent(window.sqlSentinel.onAlertNew, handleAlertNew)
 
   function handleAcknowledge(alertId: string): void {
     window.sqlSentinel

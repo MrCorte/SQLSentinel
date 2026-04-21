@@ -1,0 +1,153 @@
+/**
+ * ServerService — business logic for server management and metrics collection.
+ *
+ * IPC handlers in servers.ipc.ts are thin delegators; all non-trivial logic
+ * lives here so it can be tested independently of the Electron IPC layer.
+ */
+import { scanHost } from '../discovery/tcpScanner'
+import { collectMetrics, detectServerInfo } from '../collectors/sqlCollector'
+import * as serverStore from '../store/serverStore'
+import type { StoredServer } from '../store/serverStore'
+import { getAllCustomFields } from '../store/dbCustomFields'
+import { resetAgent } from '../ai/langGraphAgent'
+import type { DiscoveredServer } from '../discovery/types'
+import type {
+  CollectMetricsRequest,
+  ManualServerRequest,
+  RemoveServerRequest,
+  ServerAddResult,
+  ServerInfo,
+} from '../ipc/types'
+import type { ServerMetrics } from '../collectors/types'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('server-service')
+
+// ---------------------------------------------------------------------------
+// Credential resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * C2 hardening: resolves credentials from serverStore when the renderer-supplied
+ * request omits them. SQL-auth requests without a password get their creds
+ * hydrated here; Windows-auth requests pass through unchanged.
+ */
+export function resolveConnection(req: CollectMetricsRequest): CollectMetricsRequest {
+  if (req.useWindowsAuth) return req
+  if (req.password) return req
+  const stored = serverStore.getByIpPort(req.ip, req.port)
+  if (!stored) return req
+  return {
+    ...req,
+    username: req.username ?? stored.username,
+    password: stored.password,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shape conversion
+// ---------------------------------------------------------------------------
+
+/** Convert StoredServer → DiscoveredServer shape for legacy callers */
+export function toDiscovered(s: StoredServer): DiscoveredServer {
+  return {
+    ip: s.host,
+    port: s.port,
+    reachable: !s.unreachable,
+    responseTimeMs: 0,
+    discoveredAt: new Date(s.addedAt),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Server CRUD operations
+// ---------------------------------------------------------------------------
+
+/** Returns all persisted servers as DiscoveredServer shape (legacy callers). */
+export function listServersLegacy(): DiscoveredServer[] {
+  return serverStore.getAll().map(toDiscovered)
+}
+
+/** Returns all persisted servers stripped of credentials (C2). */
+export function listServers(): StoredServer[] {
+  return serverStore.getAll().map(serverStore.stripCredentials)
+}
+
+/** TCP-probes the given host:port and persists the server to the store. */
+export async function addServerManual(req: ManualServerRequest): Promise<DiscoveredServer> {
+  const probed = await scanHost(req.ip, req.port, 2000)
+  serverStore.upsertByIpPort({
+    host: probed.ip,
+    port: probed.port,
+    instanceName: req.instanceName,
+    useWindowsAuth: true,
+  })
+  return probed
+}
+
+/** Removes a server by ip:port (legacy, used by Discovery context menu). */
+export function removeServer(req: RemoveServerRequest): void {
+  const existing = serverStore.getByIpPort(req.ip, req.port)
+  if (existing) serverStore.remove(existing.id)
+}
+
+/** Adds a server by params; strips credentials from returned server (C2). */
+export function addServer(params: Omit<StoredServer, 'id' | 'addedAt'>): ServerAddResult {
+  const result = serverStore.add(params)
+  if (result.server) result.server = serverStore.stripCredentials(result.server)
+  return result
+}
+
+/** Updates a server by id and resets the AI agent (agent context may be stale). */
+export function updateServer(id: string, patch: Partial<StoredServer>): { success: boolean } {
+  serverStore.update(id, patch)
+  resetAgent()
+  return { success: true }
+}
+
+/** Removes a server by UUID and resets the AI agent. */
+export function removeServerById(id: string): void {
+  serverStore.remove(id)
+  resetAgent()
+}
+
+/**
+ * Removes all mock servers (ids starting with 'mock-').
+ * Returns counts for diagnostic logging.
+ */
+export function clearMockServers(): { removed: number; remaining: number } {
+  const before = serverStore.getAll()
+  const mocks = before.filter((s) => s.id.startsWith('mock-'))
+  mocks.forEach((s) => serverStore.remove(s.id))
+  const after = serverStore.getAll()
+  log.info(`[clearMocks] rimossi ${mocks.length} mock, rimasti: ${after.length}`)
+  return { removed: mocks.length, remaining: after.length }
+}
+
+// ---------------------------------------------------------------------------
+// Metrics collection
+// ---------------------------------------------------------------------------
+
+/** Detects server info (MachineName / InstanceName) after resolving credentials. */
+export async function detectServer(req: CollectMetricsRequest): Promise<ServerInfo> {
+  return detectServerInfo(resolveConnection(req))
+}
+
+/**
+ * Collects metrics for a server and enriches database entries with custom
+ * fields (alias, referente, etc.) stored in dbCustomFields.
+ */
+export async function collectMetricsWithCustomFields(
+  req: CollectMetricsRequest
+): Promise<ServerMetrics> {
+  const metrics = await collectMetrics(resolveConnection(req))
+  const sid = `${req.ip}:${req.port}`
+  const allCf = getAllCustomFields()
+  return {
+    ...metrics,
+    databases: metrics.databases.map((db) => ({
+      ...db,
+      ...(allCf[`${sid}/${db.name}`] ?? {}),
+    })),
+  }
+}

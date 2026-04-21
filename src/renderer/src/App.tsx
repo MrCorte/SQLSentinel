@@ -54,7 +54,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
     const { loadServers } = useServersStore.getState()
 
     if (!window.sqlSentinel?.servers?.getAll) {
-      log.error('sqlSentinel.servers non disponibile!')
+      log.error('sqlSentinel.servers not available!')
       useServersStore.setState({ initialized: true })
       return
     }
@@ -162,7 +162,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
 
   useEffect(() => {
     if (typeof window.sqlSentinel?.onServerUnreachable !== 'function') {
-      log.warn('sqlSentinel.onServerUnreachable non disponibile — skip')
+      log.warn('sqlSentinel.onServerUnreachable not available — skip')
       return
     }
     const unsubUnreachable = window.sqlSentinel.onServerUnreachable(handleServerUnreachable)

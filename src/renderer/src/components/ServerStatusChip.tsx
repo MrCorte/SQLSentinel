@@ -68,7 +68,7 @@ export function ServerStatusChip({ reachable, responseTimeMs }: Props): React.JS
       }}
     >
       <Typography component="span" sx={{ fontSize: tokens.font.sizeXs, color: tokens.color.error, fontWeight: tokens.font.weightSemibold }}>
-        Non raggiungibile
+        Unreachable
       </Typography>
     </Box>
   )

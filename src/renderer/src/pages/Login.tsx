@@ -54,14 +54,14 @@ function ChangePasswordDialog({ userId, onDone }: ChangePasswordDialogProps): Re
 
   return (
     <Dialog open disableEscapeKeyDown maxWidth="xs" fullWidth>
-      <DialogTitle>Cambio password obbligatorio</DialogTitle>
+      <DialogTitle>Password change required</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Per motivi di sicurezza devi impostare una nuova password prima di accedere.
+          For security reasons you must set a new password before logging in.
         </Typography>
         <Box component="form" id="change-pwd-form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <TextField
-            label="Password attuale"
+            label="Current password"
             type="password"
             value={oldPwd}
             onChange={(e) => setOldPwd(e.target.value)}
@@ -70,16 +70,16 @@ function ChangePasswordDialog({ userId, onDone }: ChangePasswordDialogProps): Re
             autoFocus
           />
           <TextField
-            label="Nuova password"
+            label="New password"
             type="password"
             value={newPwd}
             onChange={(e) => setNewPwd(e.target.value)}
             size="small"
             fullWidth
-            helperText="Minimo 8 caratteri, almeno 1 maiuscola e 1 numero"
+            helperText="Minimum 8 characters, at least 1 uppercase and 1 number"
           />
           <TextField
-            label="Conferma nuova password"
+            label="Confirm new password"
             type="password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
@@ -96,7 +96,7 @@ function ChangePasswordDialog({ userId, onDone }: ChangePasswordDialogProps): Re
           variant="contained"
           disabled={loading || !oldPwd || !newPwd || !confirm}
         >
-          {loading ? <CircularProgress size={18} /> : 'Imposta password'}
+          {loading ? <CircularProgress size={18} /> : 'Set password'}
         </Button>
       </DialogActions>
     </Dialog>

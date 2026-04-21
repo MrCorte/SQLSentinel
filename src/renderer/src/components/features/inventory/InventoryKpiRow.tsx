@@ -126,7 +126,7 @@ export const InventoryKpiRow = memo(function InventoryKpiRow({
             accentColor="#038387"
           />
           <KpiCard
-            label="Senza Backup"
+            label="No Backup"
             value={String(dbViewStats.noBackup)}
             accentColor={dbViewStats.noBackup > 0 ? '#d83b01' : '#107c10'}
           />
@@ -141,12 +141,12 @@ export const InventoryKpiRow = memo(function InventoryKpiRow({
       {/* ── Filter indicator ── */}
       {!dbView && hasActiveFilters && (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-          Risultati filtrati: {filteredStats.servers} di {totals.servers} server
+          Filtered results: {filteredStats.servers} of {totals.servers} servers
         </Typography>
       )}
       {dbView && hasActiveDbFilters && (
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-          Risultati filtrati: {filteredDbRows.length} di {allDbRows.length} database
+          Filtered results: {filteredDbRows.length} of {allDbRows.length} databases
         </Typography>
       )}
 
@@ -154,7 +154,7 @@ export const InventoryKpiRow = memo(function InventoryKpiRow({
       {inventoryEmpty && (
         <Box sx={{ textAlign: 'center', py: 8, color: 'text.secondary' }}>
           <Typography sx={{ fontSize: 14 }}>
-            Nessun server monitorato. Aggiungi server dalla sezione Discovery.
+            No monitored servers. Add servers from the Discovery section.
           </Typography>
         </Box>
       )}

@@ -57,7 +57,7 @@ export const ServerHistoryChart = memo(function ServerHistoryChart({ serverId }:
   if (isUnreachable) {
     return (
       <Alert severity="warning" sx={{ my: 1 }}>
-        Server non raggiungibile — storico non disponibile
+        Server unreachable — history not available
       </Alert>
     )
   }

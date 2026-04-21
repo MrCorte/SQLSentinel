@@ -55,7 +55,7 @@ export function ServerDashboard({ server, metrics, connection }: Props): React.J
             ))}
           </Select>
         ) : (
-          <Tooltip title="Clicca per modificare il tipo di infrastruttura">
+          <Tooltip title="Click to change infrastructure type">
             <Chip
               label={badge.label}
               size="small"

@@ -36,7 +36,7 @@ export const SidebarSearch = memo(function SidebarSearch({
         component="input"
         value={value}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
-        placeholder="Cerca server..."
+        placeholder="Search server..."
         sx={{
           width: '100%',
           height: 28,

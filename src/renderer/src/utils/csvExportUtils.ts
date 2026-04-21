@@ -196,12 +196,12 @@ export function buildInventoryCsvRows(
             isPrimary ? (db.sizeMb?.toFixed(1) ?? '') : '(replica)',
             isPrimary ? (db.logSizeMb?.toFixed(1) ?? '') : '(replica)',
             isPrimary
-              ? (backup?.lastFullBackup ? formatDate(backup.lastFullBackup) : 'Mai')
+              ? (backup?.lastFullBackup ? formatDate(backup.lastFullBackup) : 'Never')
               : '',
             isPrimary
               ? (backup?.lastLogBackup
                 ? formatDate(backup.lastLogBackup)
-                : db.recoveryModel === 'SIMPLE' ? 'N/A' : 'Mai')
+                : db.recoveryModel === 'SIMPLE' ? 'N/A' : 'Never')
               : '',
             srv.version ?? '',
             srv.uptimeDays?.toFixed(0) ?? '',

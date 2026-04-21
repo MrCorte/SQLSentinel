@@ -106,12 +106,12 @@ export function Dashboard(): React.JSX.Element {
     onReceived: pushSnapshot
   })
 
-  // Auto-select first server when store initializes
+  // Auto-select first server when store initializes (skip if a specific server is pending)
   useEffect(() => {
-    if (initialized && servers.length > 0 && selectedServer === null) {
+    if (initialized && servers.length > 0 && selectedServer === null && !pendingServerId) {
       setSelectedServer(servers[0])
     }
-  }, [initialized, servers.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [initialized, servers.length, pendingServerId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep selectedServer in sync if the server entry is updated in the store
   useEffect(() => {

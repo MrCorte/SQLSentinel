@@ -99,7 +99,7 @@ export function GroupManagerDialog({ open, onClose }: GroupManagerDialogProps): 
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Gestione gruppi</DialogTitle>
+      <DialogTitle>Manage groups</DialogTitle>
       <DialogContent sx={{ pb: 0 }}>
         <List dense disablePadding>
           {localGroups.map((g, idx) => (
@@ -111,7 +111,7 @@ export function GroupManagerDialog({ open, onClose }: GroupManagerDialogProps): 
               onDrop={handleDrop}
               sx={{ px: 0, gap: 1, cursor: 'grab', '&:active': { cursor: 'grabbing' } }}
               secondaryAction={
-                <Tooltip title="Elimina gruppo">
+                <Tooltip title="Delete group">
                   <IconButton
                     size="small"
                     onClick={() => {
@@ -178,7 +178,7 @@ export function GroupManagerDialog({ open, onClose }: GroupManagerDialogProps): 
         {/* Add group row */}
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', pb: 1 }}>
           <TextField
-            label="Nuovo gruppo"
+            label="New group"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
@@ -211,9 +211,9 @@ export function GroupManagerDialog({ open, onClose }: GroupManagerDialogProps): 
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Annulla</Button>
+        <Button onClick={onClose}>Cancel</Button>
         <Button variant="contained" onClick={handleSave}>
-          Salva
+          Save
         </Button>
       </DialogActions>
     </Dialog>

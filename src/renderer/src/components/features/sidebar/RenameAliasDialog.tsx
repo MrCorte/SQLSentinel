@@ -37,17 +37,17 @@ export function RenameAliasDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>Rinomina server</DialogTitle>
+      <DialogTitle>Rename server</DialogTitle>
       <DialogContent sx={{ pt: '16px !important' }}>
         <TextField
-          label="Nome visualizzato"
+          label="Display name"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder={serverId}
           fullWidth
           size="small"
           autoFocus
-          helperText="Lascia vuoto per mostrare IP:Porta"
+          helperText="Leave empty to show IP:Port"
           onKeyDown={(e) => {
             if (e.key === 'Enter') onSave(value)
             if (e.key === 'Escape') onClose()
@@ -61,9 +61,9 @@ export function RenameAliasDialog({
         </Typography>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Annulla</Button>
+        <Button onClick={onClose}>Cancel</Button>
         <Button variant="contained" onClick={() => onSave(value)}>
-          Salva
+          Save
         </Button>
       </DialogActions>
     </Dialog>

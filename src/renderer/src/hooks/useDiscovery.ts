@@ -46,7 +46,7 @@ export function useDiscovery() {
         setError(result.error)
       }
     } catch {
-      setError('Scan fallita inaspettatamente')
+      setError('Scan failed unexpectedly')
     } finally {
       removeProgressListener()
       setIsScanning(false)

@@ -371,7 +371,7 @@ export const ServerItem = memo(function ServerItem({
   const realAddr = serverLabel(server)
   const health = useMetricsStore((s) => s.serverHealth[realAddr])
   const tooltipTitle = server.unreachable
-    ? `Non raggiungibile${server.unreachableSince ? ` dal ${new Date(server.unreachableSince).toLocaleString('it-IT')}` : ''}`
+    ? `Unreachable${server.unreachableSince ? ` since ${new Date(server.unreachableSince).toLocaleString('en-US')}` : ''}`
     : realAddr
 
   const roleIcon = server.agRole === 'PRIMARY' ? '★ ' : server.agRole === 'SECONDARY' ? '○ ' : ''
@@ -511,9 +511,9 @@ export function SidebarTree({
 
       {servers.length === 0 && !serversError && (
         <Typography sx={{ px: 2, py: 1.5, fontSize: 12, color: '#666', lineHeight: 1.5 }}>
-          Nessun server.
+          No servers.
           <br />
-          Usa Discovery per aggiungerne.
+          Use Discovery to add some.
         </Typography>
       )}
 
@@ -588,7 +588,7 @@ export function SidebarTree({
                       fontWeight: 600
                     }}
                   >
-                    Senza gruppo
+                    Ungrouped
                   </Typography>
                 )}
                 {item.kind === 'search-server' && (
@@ -604,7 +604,7 @@ export function SidebarTree({
                 )}
                 {item.kind === 'no-results' && (
                   <Typography sx={{ px: 2, py: 1, fontSize: 12, color: '#666' }}>
-                    Nessun risultato.
+                    No results.
                   </Typography>
                 )}
               </Box>

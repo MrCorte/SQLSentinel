@@ -91,7 +91,7 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
       return
     }
     if (!window.sqlSentinel?.db?.shrinkEstimate) {
-      log.warn('sqlSentinel.db non disponibile')
+      log.warn('sqlSentinel.db not available')
       return
     }
     setEstimateLoading(true)
@@ -225,7 +225,7 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
             <FormControlLabel
               value="database"
               control={<Radio size="small" />}
-              label={<Typography sx={{ fontSize: 13 }}>Shrink Database (tutti i file)</Typography>}
+              label={<Typography sx={{ fontSize: 13 }}>Shrink Database (all files)</Typography>}
             />
             {mode === 'database' && (
               <Box sx={{ ml: 4, mb: 1 }}>

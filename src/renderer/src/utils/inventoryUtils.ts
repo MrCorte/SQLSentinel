@@ -155,7 +155,7 @@ export function computeInventory(): InventoryStats {
   const ungrouped = servers.filter((s) => !serverGroups[serverLabel(s)])
   if (ungrouped.length > 0) {
     groupInventories.push(
-      buildGroupInventory(null, 'Senza gruppo', '#737373', ungrouped, serverAliases, agGroups)
+      buildGroupInventory(null, 'Ungrouped', '#737373', ungrouped, serverAliases, agGroups)
     )
   }
 

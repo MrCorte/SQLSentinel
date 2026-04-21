@@ -168,7 +168,7 @@ export function AddServerDialog({
               placeholder="e.g. 192.168.1.10 or SQLSERVER01"
             />
             <TextField
-              label="Porta"
+              label="Port"
               type="number"
               value={form.port}
               onChange={(e) => set('port', Number(e.target.value))}

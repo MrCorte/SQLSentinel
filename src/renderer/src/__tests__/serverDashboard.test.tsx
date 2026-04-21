@@ -127,7 +127,7 @@ describe('ServerHistoryChart — warning when server is unreachable', () => {
   it('shows Alert when failCount >= 3', () => {
     setHealth('srv-1', 3)
     render(<ServerHistoryChart serverId="srv-1" />)
-    expect(screen.getByText(/server non raggiungibile/i)).toBeTruthy()
+    expect(screen.getByText(/server unreachable/i)).toBeTruthy()
     expect(screen.queryByTestId('line-chart')).toBeNull()
   })
 
@@ -135,7 +135,7 @@ describe('ServerHistoryChart — warning when server is unreachable', () => {
     setHealth('srv-1', 0)
     setHistory('srv-1', makePoints(3, 10), makePoints(3, 50))
     render(<ServerHistoryChart serverId="srv-1" />)
-    expect(screen.queryByText(/server non raggiungibile/i)).toBeNull()
+    expect(screen.queryByText(/server unreachable/i)).toBeNull()
     expect(screen.getByTestId('line-chart')).toBeTruthy()
   })
 
@@ -144,7 +144,7 @@ describe('ServerHistoryChart — warning when server is unreachable', () => {
     setHistory('srv-1', makePoints(10, 20), makePoints(10, 60))
     render(<ServerHistoryChart serverId="srv-1" />)
     // Warning takes precedence over the chart
-    expect(screen.getByText(/server non raggiungibile/i)).toBeTruthy()
+    expect(screen.getByText(/server unreachable/i)).toBeTruthy()
   })
 })
 

@@ -59,7 +59,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
       >
         {displayDbViewRows.length === 0 ? (
           <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-            Nessun database corrisponde ai filtri selezionati
+            No databases match the selected filters
           </Box>
         ) : (
           <Box sx={{ height: dbRowVirtualizer.getTotalSize(), position: 'relative' }}>
@@ -274,8 +274,8 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                             sx={{ color: noBackup || stale ? '#a4262c' : 'text.secondary' }}
                           >
                             {noBackup
-                              ? 'Mai'
-                              : new Date(row.lastFullBackup!).toLocaleDateString('it-IT')}
+                              ? 'Never'
+                              : new Date(row.lastFullBackup!).toLocaleDateString('en-US')}
                           </Typography>
                         )
                       })()}
@@ -296,8 +296,8 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                             sx={{ color: noLog ? '#d83b01' : 'text.secondary' }}
                           >
                             {noLog
-                              ? 'Mai'
-                              : new Date(row.lastLogBackup!).toLocaleDateString('it-IT')}
+                              ? 'Never'
+                              : new Date(row.lastLogBackup!).toLocaleDateString('en-US')}
                           </Typography>
                         )
                       })()}

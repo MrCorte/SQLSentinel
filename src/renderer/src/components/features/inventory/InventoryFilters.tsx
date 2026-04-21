@@ -74,7 +74,7 @@ export const InventoryFilters = memo(function InventoryFilters({
     <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
       <TextField
         size="small"
-        placeholder="Cerca server o alias..."
+        placeholder="Search server or alias..."
         value={search}
         onChange={(e) => onSearchChange(e.target.value)}
         InputProps={{
@@ -93,7 +93,7 @@ export const InventoryFilters = memo(function InventoryFilters({
         onChange={(e) => onFilterEnvChange(e.target.value)}
         sx={{ minWidth: 160 }}
       >
-        <MenuItem value="all">Tutti gli ambienti</MenuItem>
+        <MenuItem value="all">All environments</MenuItem>
         {envGroups.map((g) => (
           <MenuItem key={g.id} value={g.id}>
             {g.name}
@@ -107,7 +107,7 @@ export const InventoryFilters = memo(function InventoryFilters({
         onChange={(e) => onFilterTypeChange(e.target.value as FilterType)}
         sx={{ minWidth: 150 }}
       >
-        <MenuItem value="all">Tutti i tipi</MenuItem>
+        <MenuItem value="all">All types</MenuItem>
         <MenuItem value="standalone">Standalone</MenuItem>
         <MenuItem value="ag-primary">AG Primary</MenuItem>
         <MenuItem value="ag-secondary">AG Secondary</MenuItem>
@@ -119,7 +119,7 @@ export const InventoryFilters = memo(function InventoryFilters({
         onChange={(e) => onFilterStateChange(e.target.value as FilterState)}
         sx={{ minWidth: 130 }}
       >
-        <MenuItem value="all">Tutti gli stati</MenuItem>
+        <MenuItem value="all">All states</MenuItem>
         <MenuItem value="online">Online</MenuItem>
         <MenuItem value="offline">Offline</MenuItem>
       </Select>
@@ -130,7 +130,7 @@ export const InventoryFilters = memo(function InventoryFilters({
         onChange={(e) => onFilterHostChange(e.target.value as FilterHost)}
         sx={{ minWidth: 130 }}
       >
-        <MenuItem value="all">Tutti</MenuItem>
+        <MenuItem value="all">All</MenuItem>
         <MenuItem value="on-premise">On-Premise</MenuItem>
         <MenuItem value="cloud">Cloud</MenuItem>
       </Select>
@@ -142,7 +142,7 @@ export const InventoryFilters = memo(function InventoryFilters({
           onChange={(e) => onFilterAliasChange(e.target.value)}
           sx={{ minWidth: 150 }}
         >
-          <MenuItem value="all">Tutti gli alias</MenuItem>
+          <MenuItem value="all">All aliases</MenuItem>
           {aliasOptions.map((a) => (
             <MenuItem key={a} value={a}>
               {a}
@@ -158,7 +158,7 @@ export const InventoryFilters = memo(function InventoryFilters({
           onChange={(e) => onFilterReferenteChange(e.target.value)}
           sx={{ minWidth: 160 }}
         >
-          <MenuItem value="all">Tutti i referenti</MenuItem>
+          <MenuItem value="all">All referents</MenuItem>
           {referenteOptions.map((r) => (
             <MenuItem key={r} value={r}>
               {r}
@@ -174,7 +174,7 @@ export const InventoryFilters = memo(function InventoryFilters({
           onChange={(e) => onFilterVersionChange(e.target.value)}
           sx={{ minWidth: 165 }}
         >
-          <MenuItem value="all">Tutte le versioni</MenuItem>
+          <MenuItem value="all">All versions</MenuItem>
           {versionOptions.map((v) => (
             <MenuItem key={v} value={v}>
               {v}
@@ -196,8 +196,8 @@ export const InventoryFilters = memo(function InventoryFilters({
       {(allClusterKeys.length > 0 || allMachineKeys.length > 0) && (
         <Button size="small" variant="text" color="inherit" onClick={onToggleAll} sx={{ ml: 0 }}>
           {expandedClusters.size > 0 || expandedMachines.size > 0
-            ? 'Comprimi tutti'
-            : 'Espandi tutti'}
+            ? 'Collapse all'
+            : 'Expand all'}
         </Button>
       )}
 

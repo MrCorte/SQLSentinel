@@ -39,7 +39,7 @@ export interface AgentHistory {
 
 const getServerMetricsTool = new DynamicStructuredTool({
   name: 'get_server_metrics',
-  description: 'Metriche correnti di tutti i server monitorati: CPU %, RAM, sessioni bloccanti, DB offline.',
+  description: 'Current metrics for all monitored servers: CPU %, RAM, blocking sessions, offline databases.',
   schema: z.object({}),
   func: async () => {
     const servers = serverStore.getAll()
@@ -65,7 +65,7 @@ const getServerMetricsTool = new DynamicStructuredTool({
 
 const getRecentAlertsTool = new DynamicStructuredTool({
   name: 'get_recent_alerts',
-  description: 'Alert attivi (CRITICAL e WARNING) nelle ultime 24 ore.',
+  description: 'Active alerts (CRITICAL and WARNING) from the last 24 hours.',
   schema: z.object({}),
   func: async () => {
     const cutoff = Date.now() - 86400000
@@ -121,7 +121,7 @@ const getServerNotesTool = new DynamicStructuredTool({
 })
 
 const TSQL_MAP: Record<string, string> = {
-  cpu_alta: `SELECT TOP 10
+  cpu_high: `SELECT TOP 10
   total_worker_time / execution_count AS avg_cpu_ms,
   execution_count,
   SUBSTRING(text, 1, 200) AS query_text
@@ -129,7 +129,7 @@ FROM sys.dm_exec_query_stats qs
 CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle)
 ORDER BY total_worker_time DESC`,
 
-  query_lente: `SELECT TOP 10
+  slow_queries: `SELECT TOP 10
   total_elapsed_time / execution_count AS avg_elapsed_ms,
   execution_count,
   SUBSTRING(text, 1, 200) AS query_text
@@ -163,7 +163,7 @@ ORDER BY backup_finish_date DESC`,
   CAST(available_bytes * 100.0 / total_bytes AS INT) AS free_pct
 FROM sys.dm_os_volume_stats(1, 1)`,
 
-  connessioni: `SELECT
+  connections: `SELECT
   DB_NAME(database_id) AS db,
   COUNT(*) AS conn,
   login_name
@@ -175,16 +175,16 @@ ORDER BY COUNT(*) DESC`
 
 const suggestTSQLTool = new DynamicStructuredTool({
   name: 'suggest_tsql',
-  description: 'Restituisce una query T-SQL diagnostica pronta per un problema specifico SQL Server.',
+  description: 'Returns a ready-to-run diagnostic T-SQL query for a specific SQL Server problem.',
   schema: z.object({
-    problema: z.string().describe('Tipo di problema: cpu_alta | query_lente | blocking | backup | disk | connessioni')
+    problema: z.string().describe('Problem type: cpu_high | slow_queries | blocking | backup | disk | connections')
   }),
   func: async ({ problema }: { problema: string }) => {
     const lower = problema.toLowerCase()
     const key = Object.keys(TSQL_MAP).find(
       (k) => lower.includes(k) || lower.includes(k.replace('_', ' '))
     )
-    return key ? TSQL_MAP[key] : TSQL_MAP.cpu_alta
+    return key ? TSQL_MAP[key] : TSQL_MAP.cpu_high
   }
 })
 
@@ -280,6 +280,7 @@ export async function langGraphAsk(
     { messages },
     { recursionLimit: 10, signal: AbortSignal.timeout(60_000) }
   )
+  if (!result.messages?.length) throw new Error('Agent returned no messages')
   const last = result.messages[result.messages.length - 1]
 
   if (typeof last.content === 'string') return last.content

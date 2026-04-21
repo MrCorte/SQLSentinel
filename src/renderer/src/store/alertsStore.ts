@@ -2,13 +2,14 @@ import { create } from 'zustand'
 import type { Alert } from '../../../preload/index'
 
 const MAX_ALERTS = 500
-const MAX_ALERT_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 giorni
+const MAX_ALERT_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 interface AlertsStore {
   alerts: Alert[]
   setAlerts: (alerts: Alert[]) => void
   addAlert: (alert: Alert) => void
   acknowledgeAlert: (alertId: string) => void
+  deleteServerAlerts: (serverId: string) => void
 }
 
 export const useAlertsStore = create<AlertsStore>((set) => ({
@@ -31,5 +32,7 @@ export const useAlertsStore = create<AlertsStore>((set) => ({
       alerts: state.alerts.map((a) =>
         a.id === alertId ? { ...a, acknowledgedAt: new Date() } : a
       )
-    }))
+    })),
+  deleteServerAlerts: (serverId) =>
+    set((state) => ({ alerts: state.alerts.filter((a) => a.serverId !== serverId) }))
 }))

@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import type { StoredServer, ServerAddResult } from '../../../preload/index'
 import { useAgStore } from './agStore'
+import { useMetricsStore } from './metricsStore'
+import { useAlertsStore } from './alertsStore'
 import { createLogger } from '../utils/logger'
 import * as ipc from '../api/ipc'
 
@@ -84,8 +86,14 @@ export const useServersStore = create<ServersStore>((set) => ({
 
   removeServer: async (id) => {
     try {
+      const server = useServersStore.getState().servers.find((s) => s.id === id)
       await ipc.servers.remove(id)
       set((state) => ({ servers: state.servers.filter((s) => s.id !== id) }))
+      if (server) {
+        const metricsKey = `${server.host ?? server.ip}:${server.port}`
+        useMetricsStore.getState().deleteServerData(metricsKey)
+        useAlertsStore.getState().deleteServerAlerts(metricsKey)
+      }
     } catch (e) {
       log.error('removeServer error:', e)
     }

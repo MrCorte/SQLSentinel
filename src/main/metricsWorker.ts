@@ -222,16 +222,16 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
   // CPU
   const cpu = metrics.instanceInfo.cpuUsagePercent
   if (cpu > 90) {
-    alerts.push(make('cpu_high', 'CRITICAL', `CPU al ${cpu.toFixed(1)}% (soglia: 90%)`))
+    alerts.push(make('cpu_high', 'CRITICAL', `CPU at ${cpu.toFixed(1)}% (threshold: 90%)`))
   } else if (cpu > 70) {
-    alerts.push(make('cpu_high', 'WARNING', `CPU al ${cpu.toFixed(1)}% (soglia: 70%)`))
+    alerts.push(make('cpu_high', 'WARNING', `CPU at ${cpu.toFixed(1)}% (threshold: 70%)`))
   }
 
   // Sessioni bloccate
   const blocked = metrics.activeSessions.filter((s) => s.blockingSessionId > 0)
   if (blocked.length > 0) {
     const severity: AlertSeverity = blocked.length >= 5 ? 'CRITICAL' : 'WARNING'
-    alerts.push(make('blocking_sessions', severity, `${blocked.length} sessione/i bloccata/e`))
+    alerts.push(make('blocking_sessions', severity, `${blocked.length} blocking session(s)`))
   }
 
   // Database offline
@@ -250,7 +250,7 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
     .map((b) => b.databaseName)
   if (overdueDBs.length > 0) {
     alerts.push(
-      make('backup_overdue', 'WARNING', `Backup full scaduto/assente: ${overdueDBs.join(', ')}`)
+      make('backup_overdue', 'WARNING', `Full backup overdue/missing: ${overdueDBs.join(', ')}`)
     )
   }
 
@@ -261,15 +261,15 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
 
   if (criticalVolumes.length > 0) {
     const desc = criticalVolumes
-      .map((v) => `${v.volume_mount_point} (${v.free_pct.toFixed(1)}% libero)`)
+      .map((v) => `${v.volume_mount_point} (${v.free_pct.toFixed(1)}% free)`)
       .join(', ')
-    alerts.push(make('disk_space_low', 'CRITICAL', `Volume spazio critico: ${desc}`))
+    alerts.push(make('disk_space_low', 'CRITICAL', `Volume space critical: ${desc}`))
   }
   if (warnVolumes.length > 0) {
     const desc = warnVolumes
-      .map((v) => `${v.volume_mount_point} (${v.free_pct.toFixed(1)}% libero)`)
+      .map((v) => `${v.volume_mount_point} (${v.free_pct.toFixed(1)}% free)`)
       .join(', ')
-    alerts.push(make('disk_space_low', 'WARNING', `Volume spazio in esaurimento: ${desc}`))
+    alerts.push(make('disk_space_low', 'WARNING', `Volume space running low: ${desc}`))
   }
 
   // Autogrowth disabled with low available space
@@ -277,9 +277,9 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
   const noGrowthLowSpace = databaseFiles.filter((f) => f.growth === 0 && f.free_mb < 100)
   if (noGrowthLowSpace.length > 0) {
     const desc = noGrowthLowSpace
-      .map((f) => `${f.database_name} (${f.type_desc}): ${f.free_mb.toFixed(0)} MB liberi`)
+      .map((f) => `${f.database_name} (${f.type_desc}): ${f.free_mb.toFixed(0)} MB free`)
       .join(', ')
-    alerts.push(make('disk_space_low', 'WARNING', `Autogrowth disabilitato: ${desc}`))
+    alerts.push(make('disk_space_low', 'WARNING', `Autogrowth disabled: ${desc}`))
   }
 
   return alerts

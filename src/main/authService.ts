@@ -174,14 +174,14 @@ export async function changePassword(
 ): Promise<{ success: boolean; error?: string }> {
   const user = stmts().getUserById.get(userId) as UserRow | undefined
 
-  if (!user) return { success: false, error: 'Utente non trovato' }
+  if (!user) return { success: false, error: 'User not found' }
 
   const valid = await bcrypt.compare(oldPassword, user.password)
-  if (!valid) return { success: false, error: 'Password attuale non corretta' }
+  if (!valid) return { success: false, error: 'Current password incorrect' }
 
-  if (newPassword.length < 8) return { success: false, error: 'Minimo 8 caratteri' }
-  if (!/[A-Z]/.test(newPassword)) return { success: false, error: 'Almeno una lettera maiuscola' }
-  if (!/[0-9]/.test(newPassword)) return { success: false, error: 'Almeno un numero' }
+  if (newPassword.length < 8) return { success: false, error: 'Minimum 8 characters' }
+  if (!/[A-Z]/.test(newPassword)) return { success: false, error: 'At least one uppercase letter' }
+  if (!/[0-9]/.test(newPassword)) return { success: false, error: 'At least one number' }
 
   const hash = await bcrypt.hash(newPassword, SALT_ROUNDS)
   stmts().updatePassword.run(hash, userId)

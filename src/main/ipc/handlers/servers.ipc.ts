@@ -70,10 +70,14 @@ export function registerServerHandlers(): void {
   )
 
   // GET_SERVERS — returns all persisted servers as DiscoveredServer shape (legacy)
-  handle(
-    IpcChannel.GET_SERVERS,
-    async (): Promise<GetServersResponse> => ({ ok: true, data: listServersLegacy() })
-  )
+  handle(IpcChannel.GET_SERVERS, async (): Promise<GetServersResponse> => {
+    try {
+      return { ok: true, data: listServersLegacy() }
+    } catch (err) {
+      log.error('[IPC] GET_SERVERS:', safeError(err))
+      return { ok: false, error: safeError(err) }
+    }
+  })
 
   // REMOVE_SERVER — removes by ip:port (legacy, used by Discovery context menu)
   handle(
@@ -82,8 +86,13 @@ export function registerServerHandlers(): void {
       _event: IpcMainInvokeEvent,
       req: RemoveServerRequest
     ): Promise<RemoveServerResponse> => {
-      removeServer(req)
-      return { ok: true, data: null }
+      try {
+        removeServer(req)
+        return { ok: true, data: null }
+      } catch (err) {
+        log.error('[IPC] REMOVE_SERVER:', safeError(err))
+        return { ok: false, error: safeError(err) }
+      }
     }
   )
 

@@ -173,7 +173,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                           {row.dbName}
                         </Typography>
                         {row.isReadOnly && (
-                          <Tooltip title="Sola lettura">
+                          <Tooltip title="Read-only">
                             <Typography sx={{ fontSize: 10, color: 'text.disabled', flexShrink: 0 }}>
                               R/O
                             </Typography>
@@ -242,7 +242,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                       </Tooltip>
 
                       {/* TDE */}
-                      <Tooltip title={row.isEncrypted ? 'TDE attivo' : 'TDE non attivo'}>
+                      <Tooltip title={row.isEncrypted ? 'TDE enabled' : 'TDE disabled'}>
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
                           {row.isEncrypted ? (
                             <LockIcon sx={{ fontSize: 15, color: '#038387' }} />
@@ -310,7 +310,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                       {/* CREATO */}
                       <Typography variant="caption" color="text.secondary">
                         {row.createDate
-                          ? new Date(row.createDate).toLocaleDateString('it-IT')
+                          ? new Date(row.createDate).toLocaleDateString('en-US')
                           : '—'}
                       </Typography>
                     </>

@@ -88,6 +88,8 @@ interface MetricsStore {
   evictFullMetrics: (serverId: string) => void
   /** Clear ring-buffer history. Pass serverId to reset one server, omit to reset all. */
   resetHistory: (serverId?: string) => void
+  /** Remove all stored data for a server (call when server is deleted). */
+  deleteServerData: (serverId: string) => void
   /**
    * Pre-populates the store at boot from the SQLite history (called once only).
    * For each server: updates metricsMap/summaries with the most recent snapshot and
@@ -126,6 +128,14 @@ export const useMetricsStore = create<MetricsStore>()(
             state.historyMap[id] = { cpu: [], memory: [] }
           })
         }
+      }),
+
+    deleteServerData: (serverId) =>
+      set((state) => {
+        delete state.metricsMap[serverId]
+        delete state.summaries[serverId]
+        delete state.historyMap[serverId]
+        delete state.serverHealth[serverId]
       }),
 
     seedFromHistory: (allHistory) =>

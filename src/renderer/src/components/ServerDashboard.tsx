@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Paper, Box, Tooltip, Chip, Select, MenuItem } from '@mui/material'
+import { Paper, Box, Tooltip, Chip, Select, MenuItem, Typography } from '@mui/material'
 import type { StoredServer, CollectMetricsRequest, ServerMetrics } from '../../../preload/index'
 import { MetricsPanel } from './MetricsPanel'
 import { ServerHistorySection } from './ServerHistoryChart'
@@ -26,6 +26,7 @@ export function ServerDashboard({ server, metrics, connection }: Props): React.J
   const serverId = `${server.ip ?? server.host}:${server.port}`
   const updateServer = useServersStore((s) => s.updateServer)
   const [editingHosting, setEditingHosting] = useState(false)
+  const [hostingError, setHostingError] = useState<string | null>(null)
 
   const currentHosting: ServerHostingType = server.hostingType ?? 'on-premise'
   const badge = HOSTING_BADGE[currentHosting]
@@ -35,25 +36,35 @@ export function ServerDashboard({ server, metrics, connection }: Props): React.J
       {/* ── Hosting badge (inline edit) ───────────────────────────────── */}
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
         {editingHosting ? (
-          <Select
-            size="small"
-            autoFocus
-            value={currentHosting}
-            onChange={async (e) => {
-              await updateServer(server.id, { hostingType: e.target.value as ServerHostingType })
-              setEditingHosting(false)
-            }}
-            onBlur={() => setEditingHosting(false)}
-            sx={{ fontSize: 12, height: 28 }}
-          >
-            {HOSTING_OPTIONS.map((opt) => (
-              <MenuItem key={opt.value} value={opt.value} sx={{ fontSize: 12 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  {opt.icon} {opt.label}
-                </Box>
-              </MenuItem>
-            ))}
-          </Select>
+          <>
+            <Select
+              size="small"
+              autoFocus
+              value={currentHosting}
+              onChange={async (e) => {
+                try {
+                  setHostingError(null)
+                  await updateServer(server.id, { hostingType: e.target.value as ServerHostingType })
+                  setEditingHosting(false)
+                } catch {
+                  setHostingError('Failed to save')
+                }
+              }}
+              onBlur={() => { setEditingHosting(false); setHostingError(null) }}
+              sx={{ fontSize: 12, height: 28 }}
+            >
+              {HOSTING_OPTIONS.map((opt) => (
+                <MenuItem key={opt.value} value={opt.value} sx={{ fontSize: 12 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {opt.icon} {opt.label}
+                  </Box>
+                </MenuItem>
+              ))}
+            </Select>
+            {hostingError && (
+              <Typography sx={{ fontSize: 11, color: 'error.main', ml: 1 }}>{hostingError}</Typography>
+            )}
+          </>
         ) : (
           <Tooltip title="Click to change infrastructure type">
             <Chip

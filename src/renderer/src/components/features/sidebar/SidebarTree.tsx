@@ -336,7 +336,7 @@ export const MachineHeader = memo(function MachineHeader({
           flexShrink: 0
         }}
       >
-        {instanceCount} istanze
+        {instanceCount} {instanceCount === 1 ? 'instance' : 'instances'}
       </Typography>
     </Box>
   )
@@ -445,7 +445,7 @@ export const ServerItem = memo(function ServerItem({
         })()}
         {health && health.failCount > 0 && (
           <Tooltip
-            title={`${health.failCount} ${health.failCount === 1 ? 'tentativo fallito' : 'tentativi falliti'} — prossimo retry: ${new Date(health.nextRetry).toLocaleTimeString('it-IT')}`}
+            title={`${health.failCount} ${health.failCount === 1 ? 'failed attempt' : 'failed attempts'} — next retry: ${new Date(health.nextRetry).toLocaleTimeString('en-US')}`}
             placement="right"
             arrow
           >

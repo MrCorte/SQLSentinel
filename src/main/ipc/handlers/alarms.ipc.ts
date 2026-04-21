@@ -1,5 +1,5 @@
 import type { IpcMainInvokeEvent } from 'electron'
-import { handle } from '../handleWrapper'
+import { handle, safeError, log } from '../handleWrapper'
 import { getAlerts, acknowledgeAlert } from '../../metricsWorker'
 import {
   IpcChannel,
@@ -9,21 +9,29 @@ import {
 } from '../types'
 
 export function registerAlarmHandlers(): void {
-  // ALERTS_GET_ALL — restituisce tutti gli alert (anche riconosciuti)
   handle(IpcChannel.ALERTS_GET_ALL, async (): Promise<IpcResult<Alert[]>> => {
-    return { ok: true, data: getAlerts() }
+    try {
+      return { ok: true, data: getAlerts() }
+    } catch (err) {
+      log.error('[IPC] ALERTS_GET_ALL:', safeError(err))
+      return { ok: false, error: safeError(err) }
+    }
   })
 
-  // ALERTS_ACKNOWLEDGE — segna un alert come riconosciuto
   handle(
     IpcChannel.ALERTS_ACKNOWLEDGE,
     async (
       _event: IpcMainInvokeEvent,
       req: AcknowledgeAlertRequest
     ): Promise<IpcResult<null>> => {
-      const ok = acknowledgeAlert(req.alertId)
-      if (!ok) return { ok: false, error: `Alert ${req.alertId} non trovato` }
-      return { ok: true, data: null }
+      try {
+        const ok = acknowledgeAlert(req.alertId)
+        if (!ok) return { ok: false, error: `Alert ${req.alertId} not found` }
+        return { ok: true, data: null }
+      } catch (err) {
+        log.error('[IPC] ALERTS_ACKNOWLEDGE:', safeError(err))
+        return { ok: false, error: safeError(err) }
+      }
     }
   )
 }

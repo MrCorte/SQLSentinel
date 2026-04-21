@@ -152,7 +152,7 @@ export function migrateHostField(): void {
     store.set('servers', raw.map(normalizeServer))
     log.info('[serverStore] migrated', raw.length, 'servers ip→host')
   } catch (err) {
-    log.error('[serverStore] migration error:', err instanceof Error ? err.message : String(err))
+    log.error('[serverStore] migration error:', err)
   }
 }
 
@@ -230,6 +230,6 @@ export function migrateEncryptCredentials(): void {
     store.set('servers', migrated)
     log.info('[serverStore] migrated', toMigrate.length, 'server(s) to encrypted credentials')
   } catch (err) {
-    log.error('[serverStore] migrateEncryptCredentials error:', err instanceof Error ? err.message : String(err))
+    log.error('[serverStore] migrateEncryptCredentials error:', err)
   }
 }

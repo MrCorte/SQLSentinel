@@ -37,7 +37,7 @@ process.on('uncaughtException', (err) => {
 // Module-level reference so the health checker can push events to the renderer
 let mainWindow: BrowserWindow | null = null
 let backgroundService: BackgroundService | null = null
-let healthCheckIntervalId: ReturnType<typeof setInterval> | undefined
+let healthCheckIntervalId: ReturnType<typeof setInterval> | null = null
 let deferredPurgeIntervalId: ReturnType<typeof setInterval> | null = null
 let devGcIntervalId: ReturnType<typeof setInterval> | null = null
 
@@ -156,7 +156,7 @@ app.whenReady().then(() => {
   initDb(defaultDbPath(app.getPath('appData')))
 
   // Crea utente admin di default se non esistono utenti
-  initDefaultAdmin().catch((err) => log.error('[AUTH] initDefaultAdmin fallito:', err instanceof Error ? err.message : String(err)))
+  initDefaultAdmin().catch((err) => log.error('[AUTH] initDefaultAdmin fallito:', err))
 
   // Purge snapshots più vecchi della retention configurata: una volta al boot, poi ogni 24 h.
   // Il DELETE sincrono su DB grandi può bloccare 1-3s: defer a setImmediate così da non
@@ -167,7 +167,7 @@ app.whenReady().then(() => {
       try {
         purgeOldSnapshots(retentionDays())
       } catch (err) {
-        log.warn('[main] purgeOldSnapshots:', err instanceof Error ? err.message : String(err))
+        log.warn('[main] purgeOldSnapshots:', err)
       }
     })
   }
@@ -204,7 +204,7 @@ app.whenReady().then(() => {
 
   // Indicizza i PDF in data/ in background — non bloccante, graceful se Ollama non disponibile
   autoIndexRagBooks().catch((err) =>
-    log.error('[RAG] Auto-index failed:', err instanceof Error ? err.message : String(err))
+    log.error('[RAG] Auto-index failed:', err)
   )
 
   createWindow()
@@ -249,9 +249,9 @@ app.whenReady().then(() => {
 })
 
 function cleanupResources(): void {
-  if (healthCheckIntervalId) {
+  if (healthCheckIntervalId !== null) {
     clearInterval(healthCheckIntervalId)
-    healthCheckIntervalId = undefined
+    healthCheckIntervalId = null
   }
   if (deferredPurgeIntervalId !== null) {
     clearInterval(deferredPurgeIntervalId)

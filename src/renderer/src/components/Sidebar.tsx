@@ -7,7 +7,7 @@ import { SidebarSearch } from './features/sidebar/SidebarSearch'
 import { SidebarTree } from './features/sidebar/SidebarTree'
 import { RenameAliasDialog } from './features/sidebar/RenameAliasDialog'
 import { GroupManagerDialog } from './features/sidebar/GroupManagerDialog'
-import { useSidebarTree, serverLabel } from './features/sidebar/useSidebarTree'
+import { useSidebarTree } from './features/sidebar/useSidebarTree'
 
 // Re-export types consumed by external code
 export type { SidebarItem } from './features/sidebar/types'
@@ -69,7 +69,7 @@ export function Sidebar({
 
   const handleRenameOpen = (): void => {
     if (!ctxMenu) return
-    setRenameServerId(serverLabel(ctxMenu.server))
+    setRenameServerId(ctxMenu.server.id)
     setRenameOpen(true)
     handleCloseCtx()
   }

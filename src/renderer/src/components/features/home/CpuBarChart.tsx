@@ -52,10 +52,11 @@ export function CpuBarChart({ cpuData, hasCpuData, cpuChartHeight }: CpuBarChart
       {!hasCpuData ? (
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 180 }}>
           <Typography sx={{ fontSize: tokens.font.sizeBase, color: 'text.secondary' }}>
-            Nessuna metrica disponibile
+            No metrics available
           </Typography>
         </Box>
       ) : (
+        <Box sx={{ overflowY: 'auto', maxHeight: 400 }}>
         <ResponsiveContainer width="100%" height={cpuChartHeight}>
           <BarChart layout="vertical" data={cpuData} margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
             <CartesianGrid horizontal={false} stroke={tokens.color.chartGrid} />
@@ -86,6 +87,7 @@ export function CpuBarChart({ cpuData, hasCpuData, cpuChartHeight }: CpuBarChart
             </Bar>
           </BarChart>
         </ResponsiveContainer>
+        </Box>
       )}
     </Box>
   )

@@ -688,6 +688,8 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
     allDbViewRowsExpanded,
     expandedDbServers,
     dbViewStats,
+    // aliases (for display in server table)
+    serverAliases,
     // dropdown options
     envGroups,
     aliasOptions,

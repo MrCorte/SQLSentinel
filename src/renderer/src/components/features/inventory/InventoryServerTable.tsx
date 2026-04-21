@@ -20,6 +20,7 @@ interface InventoryServerTableProps {
   filterVersion: string
   sortKey: keyof InventoryRow
   sortDir: 'asc' | 'desc'
+  serverAliases: Record<string, string>
   onRowClick: (row: InventoryRow) => void
   onSort: (key: keyof InventoryRow) => void
 }
@@ -34,6 +35,7 @@ export const InventoryServerTable = memo(function InventoryServerTable({
   filterVersion,
   sortKey,
   sortDir,
+  serverAliases,
   onRowClick,
   onSort,
 }: InventoryServerTableProps) {
@@ -94,7 +96,7 @@ export const InventoryServerTable = memo(function InventoryServerTable({
       >
         {sortedRows.length === 0 ? (
           <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-            Nessun server corrisponde ai filtri selezionati
+            No servers match the selected filters
           </Box>
         ) : (
           <Box sx={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}>
@@ -204,15 +206,17 @@ export const InventoryServerTable = memo(function InventoryServerTable({
                         noWrap
                         sx={row.type === 'machine-header' ? { color: '#2d5a8a' } : undefined}
                       >
-                        {row.serverLabel}
+                        {(row.type === 'standalone' || row.type === 'ag-replica') && row.serverId
+                          ? (serverAliases[row.serverId] || row.serverLabel)
+                          : row.serverLabel}
                       </Typography>
                       {row.type === 'ag-cluster' ? (
                         <Typography variant="caption" color="text.secondary" noWrap>
-                          {row.replicaCount} repliche · Primary: {row.host || '—'}
+                          {row.replicaCount} replicas · Primary: {row.host || '—'}
                         </Typography>
                       ) : row.type === 'machine-header' ? (
                         <Typography variant="caption" sx={{ color: '#4a6fa5' }} noWrap>
-                          {row.instanceCount} istanze
+                          {row.instanceCount} instances
                         </Typography>
                       ) : (
                         <Typography variant="caption" color="text.secondary" noWrap>
@@ -235,7 +239,7 @@ export const InventoryServerTable = memo(function InventoryServerTable({
                   {/* ── TIPO ── */}
                   <Typography variant="caption">
                     {row.type === 'machine-header'
-                      ? 'Multi-istanza'
+                      ? 'Multi-instance'
                       : row.type === 'standalone'
                         ? 'Standalone'
                         : row.type === 'ag-cluster'

@@ -26,6 +26,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
     setDbView,
     inventory,
     totals,
+    serverAliases,
     // server view
     search,
     setSearch,
@@ -188,6 +189,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
               filterVersion={filterVersion}
               sortKey={sortKey}
               sortDir={sortDir}
+              serverAliases={serverAliases}
               onRowClick={handleRowClick}
               onSort={handleSort}
             />

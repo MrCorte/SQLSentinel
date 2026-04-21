@@ -168,25 +168,27 @@ export function useHomeDashboard(onNavigateToServer: (id: string) => void): Home
     const donutData = [
       { name: 'Online', value: onlineCount, fill: '#107c10' },
       { name: 'Offline', value: offlineCount, fill: '#a4262c' },
-      { name: 'Non raggiungibili', value: unreachableCount, fill: '#d83b01' }
+      { name: 'Unreachable', value: unreachableCount, fill: '#d83b01' }
     ].filter((d) => d.value > 0)
     const donutFinal =
-      donutData.length > 0 ? donutData : [{ name: 'Nessuno', value: 1, fill: '#e0e0e0' }]
+      donutData.length > 0 ? donutData : [{ name: 'None', value: 1, fill: '#e0e0e0' }]
 
-    const cpuData = servers.map((s) => {
-      const m = metricsMap[serverKey(s)]
-      const cpu = m?.instanceInfo?.cpuUsagePercent ?? 0
-      const hasData = !!m
-      return {
-        name: serverAliases[s.id] || s.host || s.ip || serverKey(s),
-        cpu: hasData ? Math.round(cpu * 10) / 10 : 0,
-        fill: cpu < 60 ? '#107c10' : cpu < 80 ? '#d83b01' : '#a4262c',
-        hasData
-      }
-    })
+    const cpuData = servers
+      .map((s) => {
+        const m = metricsMap[serverKey(s)]
+        const cpu = m?.instanceInfo?.cpuUsagePercent ?? 0
+        const hasData = !!m
+        return {
+          name: serverAliases[s.id] || s.host || s.ip || serverKey(s),
+          cpu: hasData ? Math.round(cpu * 10) / 10 : 0,
+          fill: cpu < 60 ? '#107c10' : cpu < 80 ? '#d83b01' : '#a4262c',
+          hasData
+        }
+      })
+      .sort((a, b) => b.cpu - a.cpu)
 
     const hasCpuData = cpuData.some((d) => d.hasData)
-    const cpuChartHeight = Math.max(180, servers.length * 40)
+    const cpuChartHeight = Math.max(180, cpuData.length * 40)
 
     const recentAlerts = [...activeAlerts]
       .sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime())

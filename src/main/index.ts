@@ -36,6 +36,8 @@ process.on('uncaughtException', (err) => {
 let mainWindow: BrowserWindow | null = null
 let backgroundService: BackgroundService | null = null
 let healthCheckIntervalId: ReturnType<typeof setInterval> | undefined
+let deferredPurgeIntervalId: ReturnType<typeof setInterval> | null = null
+let devGcIntervalId: ReturnType<typeof setInterval> | null = null
 
 function watchWindowShortcuts(window: BrowserWindowType): void {
   const { webContents } = window
@@ -168,7 +170,7 @@ app.whenReady().then(() => {
     })
   }
   deferredPurge()
-  setInterval(deferredPurge, 24 * 60 * 60 * 1000)
+  deferredPurgeIntervalId = setInterval(deferredPurge, 24 * 60 * 60 * 1000)
 
   // One-shot migrations
   serverStore.migrateHostField()
@@ -231,7 +233,7 @@ app.whenReady().then(() => {
   // GC logging (dev only — requires --expose-gc flag)
   if (isDev && typeof (globalThis as typeof globalThis & { gc?: () => void }).gc === 'function') {
     const gc = (globalThis as typeof globalThis & { gc: () => void }).gc
-    setInterval(() => {
+    devGcIntervalId = setInterval(() => {
       const mem = process.memoryUsage()
       gc()
       const after = process.memoryUsage()
@@ -248,6 +250,14 @@ function cleanupResources(): void {
   if (healthCheckIntervalId) {
     clearInterval(healthCheckIntervalId)
     healthCheckIntervalId = undefined
+  }
+  if (deferredPurgeIntervalId !== null) {
+    clearInterval(deferredPurgeIntervalId)
+    deferredPurgeIntervalId = null
+  }
+  if (devGcIntervalId !== null) {
+    clearInterval(devGcIntervalId)
+    devGcIntervalId = null
   }
   backgroundService?.destroy()
   backgroundService = null

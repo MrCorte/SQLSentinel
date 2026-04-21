@@ -20,8 +20,8 @@ export function NoteEditor({ serverId, initialNote }: NoteEditorProps): React.JS
     setSaved(false)
   }, [serverId, initialNote])
 
-  // Autosave with 1s debounce — serverId in deps guards against saves to the wrong server
-  const debouncedNote = useDebouncedValue(note, 1000)
+  // Autosave with 500ms debounce — serverId in deps guards against saves to the wrong server
+  const debouncedNote = useDebouncedValue(note, 500)
   useEffect(() => {
     if (debouncedNote === initialNote) return
     setSaved(false)

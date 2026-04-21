@@ -6,6 +6,10 @@ import type {
   AgRole,
   CollectMetricsRequest
 } from '../../../preload/index'
+import { createLogger } from '../utils/logger'
+import * as ipc from '../api/ipc'
+
+const log = createLogger('ag-store')
 
 // ---------------------------------------------------------------------------
 // Types
@@ -56,8 +60,8 @@ export const useAgStore = create<AgStore>((set, get) => ({
     if (!window.sqlSentinel?.ag?.getGroups) return
     try {
       const [groupsRes, replicasRes] = await Promise.all([
-        window.sqlSentinel.ag.getGroups({ connection }),
-        window.sqlSentinel.ag.getReplicas({ connection })
+        ipc.ag.getGroups({ connection }),
+        ipc.ag.getReplicas({ connection })
       ])
 
       if (!groupsRes.ok || !groupsRes.data.length) return
@@ -140,7 +144,7 @@ export const useAgStore = create<AgStore>((set, get) => ({
       }))
     } catch (err) {
       // Server not in AG or insufficient permissions — silent
-      console.debug('[agStore] detectAgsForServer: no AG or error', (err as Error).message)
+      log.debug('detectAgsForServer: no AG or error', (err as Error).message)
     }
   },
 
@@ -148,9 +152,9 @@ export const useAgStore = create<AgStore>((set, get) => ({
     if (!window.sqlSentinel?.ag?.getGroups) return
     try {
       const [groupsRes, replicasRes, dbsRes] = await Promise.all([
-        window.sqlSentinel.ag.getGroups({ connection }),
-        window.sqlSentinel.ag.getReplicas({ connection }),
-        window.sqlSentinel.ag.getDatabases({ connection })
+        ipc.ag.getGroups({ connection }),
+        ipc.ag.getReplicas({ connection }),
+        ipc.ag.getDatabases({ connection })
       ])
 
       if (!groupsRes.ok || !groupsRes.data.length) return
@@ -188,7 +192,7 @@ export const useAgStore = create<AgStore>((set, get) => ({
         }
       })
     } catch (err) {
-      console.debug('[agStore] updateAgDetails: error', (err as Error).message)
+      log.debug('updateAgDetails: error', (err as Error).message)
     }
   },
 

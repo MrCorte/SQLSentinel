@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import type { StoredServer, ServerAddResult } from '../../../preload/index'
 import { useAgStore } from './agStore'
+import { createLogger } from '../utils/logger'
+import * as ipc from '../api/ipc'
+
+const log = createLogger('servers-store')
 
 interface ServersStore {
   servers: StoredServer[]
@@ -17,9 +21,9 @@ export const useServersStore = create<ServersStore>((set) => ({
 
   loadServers: async () => {
     try {
-      console.log('[serversStore] loadServers START')
-      const result = await window.sqlSentinel.servers.getAll()
-      console.log('[serversStore] getAll result:', JSON.stringify(result))
+      log.info('loadServers START')
+      const result = await ipc.servers.getAll()
+      log.info('getAll result:', JSON.stringify(result))
 
       const list: StoredServer[] = Array.isArray(result) ? result : []
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -29,20 +33,20 @@ export const useServersStore = create<ServersStore>((set) => ({
         return { ...s, host: addr, ip: addr }
       })
 
-      console.log('[serversStore] set servers:', normalized.length)
+      log.info('set servers:', normalized.length)
       set({ servers: normalized, initialized: true })
-      console.log('[serversStore] loadServers DONE')
+      log.info('loadServers DONE')
     } catch (e) {
-      console.error('[serversStore] loadServers ERROR:', e)
+      log.error('loadServers ERROR:', e)
       set({ initialized: true })
     }
   },
 
   addServer: async (params) => {
     try {
-      console.log('[serversStore] addServer — params:', JSON.stringify(params))
-      const result = await window.sqlSentinel.servers.add(params)
-      console.log('[serversStore] add IPC result:', JSON.stringify(result))
+      log.info('addServer — params:', JSON.stringify(params))
+      const result = await ipc.servers.add(params)
+      log.info('add IPC result:', JSON.stringify(result))
       // result is flat { success, reason?, server? }
       if (result?.success !== false) {
         const raw = result?.server ?? (params as StoredServer)
@@ -65,28 +69,28 @@ export const useServersStore = create<ServersStore>((set) => ({
       }
       return result ?? { success: false }
     } catch (e) {
-      console.error('[serversStore] addServer error:', e)
+      log.error('addServer error:', e)
       return { success: false, reason: String(e) }
     }
   },
 
   removeServer: async (id) => {
     try {
-      await window.sqlSentinel.servers.remove(id)
+      await ipc.servers.remove(id)
       set((state) => ({ servers: state.servers.filter((s) => s.id !== id) }))
     } catch (e) {
-      console.error('[serversStore] removeServer error:', e)
+      log.error('removeServer error:', e)
     }
   },
 
   updateServer: async (id, patch) => {
     try {
-      await window.sqlSentinel.servers.update(id, patch)
+      await ipc.servers.update(id, patch)
       set((state) => ({
         servers: state.servers.map((s) => (s.id === id ? { ...s, ...patch } : s))
       }))
     } catch (e) {
-      console.error('[serversStore] updateServer error:', e)
+      log.error('updateServer error:', e)
     }
   }
 }))

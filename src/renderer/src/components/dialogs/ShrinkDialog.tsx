@@ -24,6 +24,9 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
 import type { DatabaseFile, ShrinkEstimate, ShrinkResult, CollectMetricsRequest } from '../../../../preload/index'
 import { tokens } from '../../styles/tokens'
+import { createLogger } from '../../utils/logger'
+
+const log = createLogger('shrink-dialog')
 
 // ---------------------------------------------------------------------------
 // Types
@@ -88,7 +91,7 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
       return
     }
     if (!window.sqlSentinel?.db?.shrinkEstimate) {
-      console.warn('[ShrinkDialog] sqlSentinel.db non disponibile')
+      log.warn('sqlSentinel.db non disponibile')
       return
     }
     setEstimateLoading(true)

@@ -32,6 +32,9 @@ const DisksTab = lazy(() => import('./tabs/DisksTab').then((m) => ({ default: m.
 import { NoteEditor } from './NoteEditor'
 import { compatLevelToSqlVersion } from '../utils/sqlVersionUtils'
 import { tokens } from '../styles/tokens'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('metrics-panel')
 
 interface Props {
   metrics: ServerMetrics
@@ -344,9 +347,9 @@ const TabDatabase = memo(function TabDatabase({
       .getAllDbCustomFields()
       .then((r) => {
         if (r.ok) setCustomFields(r.data)
-        else console.error('[TabDatabase] getAllDbCustomFields error:', r.error)
+        else log.error('getAllDbCustomFields error:', r.error)
       })
-      .catch((err) => console.error('[TabDatabase] getAllDbCustomFields threw:', err))
+      .catch((err) => log.error('getAllDbCustomFields threw:', err))
   }, [])
 
   const databases: DatabaseRow[] = useMemo(

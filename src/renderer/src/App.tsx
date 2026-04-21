@@ -27,7 +27,9 @@ import { buildTheme } from './styles/theme'
 import { ThemeContext, type ThemeMode } from './context/ThemeContext'
 import { AuthContext } from './context/AuthContext'
 import type { AuthSession, ServerHealthPayload, StoredServer, ServerUnreachableEvent, Alert } from '../../preload/index'
+import { createLogger } from './utils/logger'
 
+const log = createLogger('app')
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 
 // ---------------------------------------------------------------------------
@@ -47,11 +49,11 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
   // Load persisted servers on mount — runs in both real and mock mode so that
   // servers added manually while VITE_USE_MOCK=true are preserved across restarts
   useEffect(() => {
-    console.log('[App] init — chiamata loadServers')
+    log.info('init — chiamata loadServers')
     const { loadServers } = useServersStore.getState()
 
     if (!window.sqlSentinel?.servers?.getAll) {
-      console.error('[App] sqlSentinel.servers non disponibile!')
+      log.error('sqlSentinel.servers non disponibile!')
       useServersStore.setState({ initialized: true })
       return
     }
@@ -59,7 +61,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
     loadServers()
       .then(() => {
         const { servers } = useServersStore.getState()
-        console.log('[App] loadServers completato, servers:', servers.length)
+        log.info('loadServers completato, servers:', servers.length)
         if (servers.length > 0) {
           window.sqlSentinel
             .workerStart({
@@ -85,10 +87,10 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
                   .catch(() => {}) // non bloccante
               }
             })
-            .catch((err) => console.error('[App] workerStart failed:', err))
+            .catch((err) => log.error('workerStart failed:', err))
         }
       })
-      .catch((err) => console.error('[App] loadServers failed:', err))
+      .catch((err) => log.error('loadServers failed:', err))
   }, [])
 
   // Sync server list with the background worker whenever servers are added/removed
@@ -158,7 +160,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
 
   useEffect(() => {
     if (typeof window.sqlSentinel?.onServerUnreachable !== 'function') {
-      console.warn('[App] sqlSentinel.onServerUnreachable non disponibile — skip')
+      log.warn('sqlSentinel.onServerUnreachable non disponibile — skip')
       return
     }
     const unsubUnreachable = window.sqlSentinel.onServerUnreachable(handleServerUnreachable)
@@ -175,7 +177,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
       .then((result) => {
         if (result.ok) setRetentionMinutes(result.data.retentionMinutes)
       })
-      .catch((err) => console.error('[App] getSettings failed:', err))
+      .catch((err) => log.error('getSettings failed:', err))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -184,7 +186,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
       .then((result) => {
         if (result.ok) setAlerts(result.data)
       })
-      .catch((err) => console.error('[App] getAlerts failed:', err))
+      .catch((err) => log.error('getAlerts failed:', err))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAlertNew = useCallback((...args: unknown[]) => {
@@ -202,7 +204,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
           acknowledgeAlertInStore(alertId)
         }
       })
-      .catch((err) => console.error('[App] acknowledgeAlert failed:', err))
+      .catch((err) => log.error('acknowledgeAlert failed:', err))
   }
 
   const criticalCount = alerts.filter(
@@ -416,7 +418,7 @@ function App(): React.JSX.Element {
       .then(({ authenticated, session: s }) => {
         if (authenticated && s) setSession(s)
       })
-      .catch((err) => console.error('[App] checkAuth failed:', err))
+      .catch((err) => log.error('checkAuth failed:', err))
       .finally(() => setAuthChecking(false))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -449,7 +451,7 @@ function App(): React.JSX.Element {
           setThemeModeState(result.data.themeMode as ThemeMode)
         }
       })
-      .catch((err) => console.error('[App] getSettings (theme) failed:', err))
+      .catch((err) => log.error('getSettings (theme) failed:', err))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track OS dark-mode preference for 'system' mode

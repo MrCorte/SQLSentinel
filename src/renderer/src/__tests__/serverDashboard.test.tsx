@@ -3,12 +3,12 @@
 /**
  * AREA 4 — ServerHistoryChart
  *
- * Verifica:
- *  - renderizza N punti dal ring buffer historyMap
- *  - mostra empty state se history vuota
- *  - mostra warning se server unreachable (failCount ≥ 3)
- *  - non si re-renderizza se cambiano metriche di un altro server
- *  - cpu e memory sono allineati per indice nel chartData
+ * Verifies:
+ *  - renders N points from the historyMap ring buffer
+ *  - shows empty state when history is empty
+ *  - shows warning when server is unreachable (failCount ≥ 3)
+ *  - does not re-render when metrics change for a different server
+ *  - cpu and memory are index-aligned in chartData
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
@@ -17,7 +17,7 @@ import { ServerHistoryChart } from '../components/ServerHistoryChart'
 import { useMetricsStore } from '../store/metricsStore'
 import type { ServerHealthPayload } from '../../../preload/index'
 
-// ── Mock recharts (JSDOM non supporta SVG layout) ────────────────────────────
+// ── Mock recharts (JSDOM does not support SVG layout) ───────────────────────
 
 vi.mock('recharts', () => {
   const React = require('react')
@@ -36,7 +36,7 @@ vi.mock('recharts', () => {
   }
 })
 
-// ── Cleanup DOM + store tra i test ───────────────────────────────────────────
+// ── Cleanup DOM + store between tests ───────────────────────────────────────
 
 afterEach(() => cleanup())
 
@@ -87,18 +87,18 @@ function setHealth(serverId: string, failCount: number): void {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 
-describe('ServerHistoryChart — renderizza N punti dal ring buffer', () => {
-  it('mostra il grafico con 5 punti nel ring buffer', () => {
+describe('ServerHistoryChart — renders N points from the ring buffer', () => {
+  it('shows the chart with 5 points in the ring buffer', () => {
     setHistory('srv-1', makePoints(5, 20), makePoints(5, 60))
 
     render(<ServerHistoryChart serverId="srv-1" />)
 
-    // Il LineChart mock deve essere presente (dati non vuoti → nessun empty state)
+    // The mock LineChart must be present (non-empty data → no empty state)
     expect(screen.getByTestId('line-chart')).toBeTruthy()
     expect(screen.queryByText(/in attesa del primo campione/i)).toBeNull()
   })
 
-  it('mostra il grafico anche con un solo punto', () => {
+  it('shows the chart even with a single point', () => {
     setHistory('srv-1', makePoints(1, 30), makePoints(1, 70))
     render(<ServerHistoryChart serverId="srv-1" />)
     expect(screen.getByTestId('line-chart')).toBeTruthy()
@@ -107,14 +107,14 @@ describe('ServerHistoryChart — renderizza N punti dal ring buffer', () => {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 
-describe('ServerHistoryChart — empty state se history vuota', () => {
-  it('mostra "In attesa del primo campione" quando historyMap è vuota', () => {
-    // historyMap non contiene il server — tutto vuoto
+describe('ServerHistoryChart — empty state when history is empty', () => {
+  it('shows the waiting-for-first-sample message when historyMap is empty', () => {
+    // historyMap does not contain the server — everything empty
     render(<ServerHistoryChart serverId="srv-1" />)
     expect(screen.getByText(/in attesa del primo campione/i)).toBeTruthy()
   })
 
-  it('mostra empty state quando cpu array esplicito è vuoto', () => {
+  it('shows empty state when explicit cpu array is empty', () => {
     setHistory('srv-1', [], [])
     render(<ServerHistoryChart serverId="srv-1" />)
     expect(screen.getByText(/in attesa del primo campione/i)).toBeTruthy()
@@ -123,15 +123,15 @@ describe('ServerHistoryChart — empty state se history vuota', () => {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 
-describe('ServerHistoryChart — warning se server unreachable', () => {
-  it('mostra Alert quando failCount >= 3', () => {
+describe('ServerHistoryChart — warning when server is unreachable', () => {
+  it('shows Alert when failCount >= 3', () => {
     setHealth('srv-1', 3)
     render(<ServerHistoryChart serverId="srv-1" />)
     expect(screen.getByText(/server non raggiungibile/i)).toBeTruthy()
     expect(screen.queryByTestId('line-chart')).toBeNull()
   })
 
-  it('non mostra warning quando failCount = 0', () => {
+  it('does not show warning when failCount = 0', () => {
     setHealth('srv-1', 0)
     setHistory('srv-1', makePoints(3, 10), makePoints(3, 50))
     render(<ServerHistoryChart serverId="srv-1" />)
@@ -139,19 +139,19 @@ describe('ServerHistoryChart — warning se server unreachable', () => {
     expect(screen.getByTestId('line-chart')).toBeTruthy()
   })
 
-  it('mostra warning anche se history ha dati (failCount ha priorità)', () => {
+  it('shows warning even when history has data (failCount takes priority)', () => {
     setHealth('srv-1', 5)
     setHistory('srv-1', makePoints(10, 20), makePoints(10, 60))
     render(<ServerHistoryChart serverId="srv-1" />)
-    // Warning ha precedenza sul grafico
+    // Warning takes precedence over the chart
     expect(screen.getByText(/server non raggiungibile/i)).toBeTruthy()
   })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
 
-describe('ServerHistoryChart — non si re-renderizza per metriche di altri server', () => {
-  it('aggiornare historyMap["srv-2"] non causa re-render di ServerHistoryChart per "srv-1"', () => {
+describe('ServerHistoryChart — does not re-render for other servers metrics', () => {
+  it('updating historyMap["srv-2"] does not cause re-render of ServerHistoryChart for "srv-1"', () => {
     setHistory('srv-1', makePoints(3, 10), makePoints(3, 50))
 
     let renderCount = 0
@@ -160,7 +160,7 @@ describe('ServerHistoryChart — non si re-renderizza per metriche di altri serv
       return null
     }
 
-    // Monta il componente con un Spy dentro: contiamo render via stato React
+    // Mount the component with a Spy inside: count renders via React state
     function Wrapper(): React.JSX.Element {
       return (
         <>
@@ -173,22 +173,22 @@ describe('ServerHistoryChart — non si re-renderizza per metriche di altri serv
     render(<Wrapper />)
     const initialRenders = renderCount
 
-    // Aggiorna un server DIVERSO — srv-1 non deve re-renderizzare
+    // Update a DIFFERENT server — srv-1 must not re-render
     act(() => {
       setHistory('srv-2', makePoints(5, 40), makePoints(5, 80))
     })
 
-    // renderCount non deve essere cambiato (Spy non ha dipendenze sullo store)
-    // ServerHistoryChart usa selettori per-server → non si aggiorna per srv-2
+    // renderCount must not have changed (Spy has no store dependencies)
+    // ServerHistoryChart uses per-server selectors → does not update for srv-2
     expect(renderCount).toBe(initialRenders)
   })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
 
-describe('ServerHistoryChart — allineamento indice cpu/memory in chartData', () => {
-  it('cpu[i] e memory[i] corrispondono allo stesso indice nel chartData', () => {
-    // Tre punti: cpu 10,20,30 — memory 100,200,300 — stesso ts per allineamento
+describe('ServerHistoryChart — cpu/memory index alignment in chartData', () => {
+  it('cpu[i] and memory[i] correspond to the same index in chartData', () => {
+    // Three points: cpu 10,20,30 — memory 100,200,300 — same ts for alignment
     const now = Date.now()
     const cpu = [
       { ts: now,              value: 10 },
@@ -204,23 +204,23 @@ describe('ServerHistoryChart — allineamento indice cpu/memory in chartData', (
 
     render(<ServerHistoryChart serverId="srv-1" />)
 
-    // Il grafico è renderizzato (non empty state)
+    // The chart is rendered (not empty state)
     expect(screen.getByTestId('line-chart')).toBeTruthy()
 
-    // Verifica che i valori nel chartData siano allineati per indice
-    // leggendo direttamente dallo store (la logica di mapping è in useMemo)
+    // Verify that values in chartData are aligned by index
+    // reading directly from the store (the mapping logic is in useMemo)
     const hist = useMetricsStore.getState().historyMap['srv-1']
     expect(hist.cpu[0].value).toBe(10)
     expect(hist.memory[0].value).toBe(100)
     expect(hist.cpu[2].value).toBe(30)
     expect(hist.memory[2].value).toBe(300)
 
-    // Verifica che cpu e memory abbiano la stessa lunghezza (push atomico garantisce questo)
+    // Verify that cpu and memory have the same length (atomic push guarantees this)
     expect(hist.cpu.length).toBe(hist.memory.length)
   })
 
-  it('gli array cpu e memory hanno sempre la stessa lunghezza dopo setMetrics', () => {
-    // Simula 10 cicli di polling tramite store direttamente
+  it('cpu and memory arrays always have the same length after setMetrics', () => {
+    // Simulate 10 polling cycles via store directly
     for (let i = 0; i < 10; i++) {
       useMetricsStore.getState().setMetrics('srv-1', {
         collectedAt: new Date(Date.now() + i * 60_000),
@@ -249,8 +249,8 @@ describe('ServerHistoryChart — allineamento indice cpu/memory in chartData', (
     expect(hist.cpu.length).toBe(10)
   })
 
-  it('memory ring buffer contiene % (0-100) non MB assoluti', () => {
-    // 4096 MB su 8192 MB target → 50%
+  it('memory ring buffer contains % (0-100) not absolute MB', () => {
+    // 4096 MB out of 8192 MB target → 50%
     useMetricsStore.getState().setMetrics('srv-1', {
       collectedAt: new Date(),
       instanceInfo: {
@@ -275,11 +275,11 @@ describe('ServerHistoryChart — allineamento indice cpu/memory in chartData', (
     const hist = useMetricsStore.getState().historyMap['srv-1']
     expect(hist.memory[0].value).toBe(50)          // 4096/8192 = 50%
     expect(hist.cpu[0].value).toBe(25)
-    // Non deve mai essere un valore MB (es. 4096) — sempre ≤ 100
+    // Must never be an MB value (e.g. 4096) — always ≤ 100
     expect(hist.memory[0].value).toBeLessThanOrEqual(100)
   })
 
-  it('resetHistory svuota il ring buffer del singolo server', () => {
+  it('resetHistory empties the ring buffer for the single server', () => {
     useMetricsStore.getState().setMetrics('srv-1', {
       collectedAt: new Date(),
       instanceInfo: {

@@ -49,9 +49,9 @@ export function findById(id: string): StoredServer | null {
 }
 
 /**
- * Insert o update basato su ip:port (la coppia è UNIQUE).
- * Se esiste già un record con stesso ip:port, aggiorna tutti i campi
- * tranne id e added_at. Restituisce il record finale.
+ * Insert or update based on ip:port (the pair is UNIQUE).
+ * If a record with the same ip:port already exists, all fields are updated
+ * except id and added_at. Returns the final record.
  */
 export function upsert(server: Omit<StoredServer, 'id' | 'addedAt'> & Partial<Pick<StoredServer, 'id' | 'addedAt'>>): StoredServer {
   const db = getDb()
@@ -84,7 +84,7 @@ export function upsert(server: Omit<StoredServer, 'id' | 'addedAt'> & Partial<Pi
     server.lastMetricsAt?.toISOString() ?? null
   )
 
-  // Rileva l'id effettivo (potrebbe essere quello del record pre-esistente)
+  // Detect the effective id (may be that of the pre-existing record)
   const saved = db
     .prepare<[string, number], ServerRow>('SELECT * FROM servers WHERE ip = ? AND port = ?')
     .get(server.ip, server.port)

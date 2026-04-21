@@ -4,7 +4,7 @@ import { findAll, findById, upsert, remove, updateLastSeen } from './serverRepos
 import { save, findLatest, findHistory, cleanup, findLastN, batchSave } from './metricsRepository'
 import type { ServerMetrics } from '../collectors/types'
 
-// DB in memoria: ogni test parte da zero
+// In-memory DB: each test starts from scratch
 beforeEach(() => {
   initDb(':memory:')
 })
@@ -71,7 +71,7 @@ function makeMetrics(overrides: Partial<ServerMetrics> = {}): ServerMetrics {
 
 describe('serverRepository', () => {
   describe('upsert + findAll', () => {
-    it('inserisce un nuovo server e lo restituisce in findAll', () => {
+    it('inserts a new server and returns it in findAll', () => {
       const saved = upsert(SERVER_A)
 
       expect(saved.id).toBeTypeOf('string')
@@ -87,17 +87,17 @@ describe('serverRepository', () => {
       expect(all[0].id).toBe(saved.id)
     })
 
-    it('aggiorna il record esistente se ip:port coincide (non duplica)', () => {
+    it('updates the existing record if ip:port matches (no duplicate)', () => {
       const first = upsert(SERVER_A)
       const updated = upsert({ ...SERVER_A, username: 'admin' })
 
-      // Stesso id, non duplicato
+      // Same id, no duplicate
       expect(updated.id).toBe(first.id)
       expect(updated.username).toBe('admin')
       expect(findAll()).toHaveLength(1)
     })
 
-    it('inserisce server multipli correttamente', () => {
+    it('correctly inserts multiple servers', () => {
       upsert(SERVER_A)
       upsert(SERVER_B)
 
@@ -107,7 +107,7 @@ describe('serverRepository', () => {
   })
 
   describe('findById', () => {
-    it('restituisce il server corretto per id', () => {
+    it('returns the correct server by id', () => {
       const saved = upsert(SERVER_A)
       const found = findById(saved.id)
 
@@ -115,13 +115,13 @@ describe('serverRepository', () => {
       expect(found!.ip).toBe('192.168.1.10')
     })
 
-    it('restituisce null per id inesistente', () => {
+    it('returns null for a non-existent id', () => {
       expect(findById('00000000-0000-0000-0000-000000000000')).toBeNull()
     })
   })
 
   describe('remove', () => {
-    it('elimina il server e non lo restituisce più in findAll', () => {
+    it('deletes the server and no longer returns it in findAll', () => {
       const saved = upsert(SERVER_A)
       remove(saved.id)
 
@@ -129,13 +129,13 @@ describe('serverRepository', () => {
       expect(findById(saved.id)).toBeNull()
     })
 
-    it('non lancia errori se l\'id non esiste', () => {
+    it('does not throw errors if the id does not exist', () => {
       expect(() => remove('id-inesistente')).not.toThrow()
     })
   })
 
   describe('updateLastSeen', () => {
-    it('aggiorna lastSeenAt correttamente', () => {
+    it('correctly updates lastSeenAt', () => {
       const saved = upsert(SERVER_A)
       const now = new Date('2026-03-16T12:00:00Z')
 
@@ -146,14 +146,14 @@ describe('serverRepository', () => {
     })
   })
 
-  describe('tipi booleani e date', () => {
-    it('converte useWindowsAuth da INTEGER a boolean', () => {
+  describe('boolean types and dates', () => {
+    it('converts useWindowsAuth from INTEGER to boolean', () => {
       const saved = upsert(SERVER_B)
       expect(saved.useWindowsAuth).toBe(true)
       expect(typeof saved.useWindowsAuth).toBe('boolean')
     })
 
-    it('addedAt è un oggetto Date, non una stringa', () => {
+    it('addedAt is a Date object, not a string', () => {
       const saved = upsert(SERVER_A)
       expect(saved.addedAt).toBeInstanceOf(Date)
     })
@@ -166,7 +166,7 @@ describe('serverRepository', () => {
 
 describe('metricsRepository', () => {
   describe('save + findLatest', () => {
-    it('salva e recupera le metriche più recenti', () => {
+    it('saves and retrieves the most recent metrics', () => {
       const server = upsert(SERVER_A)
       const metrics = makeMetrics()
 
@@ -179,7 +179,7 @@ describe('metricsRepository', () => {
       expect(latest!.databases).toHaveLength(1)
     })
 
-    it('deserializza le Date correttamente (non stringhe)', () => {
+    it('correctly deserializes Dates (not strings)', () => {
       const server = upsert(SERVER_A)
       save(server.id, makeMetrics())
 
@@ -189,12 +189,12 @@ describe('metricsRepository', () => {
       expect(latest.backupStatus[0].lastDiffBackup).toBeNull()
     })
 
-    it('restituisce null se non ci sono metriche per il server', () => {
+    it('returns null when there are no metrics for the server', () => {
       const server = upsert(SERVER_A)
       expect(findLatest(server.id)).toBeNull()
     })
 
-    it('restituisce lo snapshot più recente se ne esistono più', () => {
+    it('returns the most recent snapshot when multiple exist', () => {
       const server = upsert(SERVER_A)
       const older = makeMetrics({ collectedAt: new Date('2026-03-14T10:00:00Z') })
       const newer = makeMetrics({ collectedAt: new Date('2026-03-16T10:00:00Z') })
@@ -208,10 +208,10 @@ describe('metricsRepository', () => {
   })
 
   describe('findHistory', () => {
-    it('restituisce gli snapshot nel range di giorni richiesto', () => {
+    it('returns snapshots within the requested day range', () => {
       const server = upsert(SERVER_A)
 
-      // Snapshot recente (oggi)
+      // Recent snapshot (today)
       save(server.id, makeMetrics({ collectedAt: new Date() }))
 
       const history = findHistory(server.id, 7)
@@ -223,7 +223,7 @@ describe('metricsRepository', () => {
   })
 
   describe('findLastN', () => {
-    it('restituisce i last N snapshot ordinati dal più vecchio al più recente (ASC)', () => {
+    it('returns the last N snapshots ordered from oldest to most recent (ASC)', () => {
       const server = upsert(SERVER_A)
       const dates = [
         new Date('2026-03-01T10:00:00Z'),
@@ -236,24 +236,24 @@ describe('metricsRepository', () => {
 
       const result = findLastN(server.id, 3)
       expect(result).toHaveLength(3)
-      // deve restituire i 3 più recenti in ordine ASC (oldest first)
+      // must return the 3 most recent in ASC order (oldest first)
       expect(result[0].collectedAt).toEqual(new Date('2026-03-03T10:00:00Z'))
       expect(result[1].collectedAt).toEqual(new Date('2026-03-04T10:00:00Z'))
       expect(result[2].collectedAt).toEqual(new Date('2026-03-05T10:00:00Z'))
     })
 
-    it('restituisce tutti gli snapshot se n > count', () => {
+    it('returns all snapshots when n > count', () => {
       const server = upsert(SERVER_A)
       save(server.id, makeMetrics())
       expect(findLastN(server.id, 10)).toHaveLength(1)
     })
 
-    it('restituisce [] per server senza snapshot', () => {
+    it('returns [] for a server with no snapshots', () => {
       const server = upsert(SERVER_A)
       expect(findLastN(server.id, 5)).toHaveLength(0)
     })
 
-    it('deserializza collectedAt come Date', () => {
+    it('deserializes collectedAt as Date', () => {
       const server = upsert(SERVER_A)
       save(server.id, makeMetrics())
       const [snap] = findLastN(server.id, 1)
@@ -262,7 +262,7 @@ describe('metricsRepository', () => {
   })
 
   describe('batchSave', () => {
-    it('inserisce più snapshot in una transazione e li recupera con findLastN', () => {
+    it('inserts multiple snapshots in a transaction and retrieves them with findLastN', () => {
       const server = upsert(SERVER_A)
       batchSave([
         { serverId: server.id, metrics: makeMetrics({ collectedAt: new Date('2026-03-01T10:00:00Z') }) },
@@ -272,11 +272,11 @@ describe('metricsRepository', () => {
       expect(findLastN(server.id, 10)).toHaveLength(3)
     })
 
-    it('batchSave([]) non lancia errori', () => {
+    it('batchSave([]) does not throw errors', () => {
       expect(() => batchSave([])).not.toThrow()
     })
 
-    it('i dati inseriti con batchSave sono deserializzati correttamente da findLastN', () => {
+    it('data inserted with batchSave is correctly deserialized by findLastN', () => {
       const server = upsert(SERVER_A)
       const metrics = makeMetrics({ collectedAt: new Date('2026-03-10T10:00:00Z') })
       batchSave([{ serverId: server.id, metrics }])
@@ -287,13 +287,13 @@ describe('metricsRepository', () => {
   })
 
   describe('cleanup', () => {
-    it('elimina gli snapshot più vecchi del periodo di retention', () => {
+    it('deletes snapshots older than the retention period', () => {
       const server = upsert(SERVER_A)
 
-      // Snapshot recente
+      // Recent snapshot
       save(server.id, makeMetrics({ collectedAt: new Date() }))
 
-      // Snapshot molto vecchio — inseriamo manualmente con data passata
+      // Very old snapshot — insert manually with a past date
       getDb().prepare(`
         INSERT INTO metrics_snapshots (id, server_id, collected_at, metrics_json)
         VALUES (?, ?, ?, ?)
@@ -304,16 +304,16 @@ describe('metricsRepository', () => {
         JSON.stringify(makeMetrics())
       )
 
-      // Prima del cleanup ci sono 2 snapshot
+      // Before cleanup there are 2 snapshots
       expect(findHistory(server.id, 9999)).toHaveLength(2)
 
-      cleanup(30) // elimina tutto ciò che ha più di 30 giorni
+      cleanup(30) // delete everything older than 30 days
 
-      // Solo il recente rimane
+      // Only the recent one remains
       expect(findHistory(server.id, 9999)).toHaveLength(1)
     })
 
-    it('non elimina snapshot nel periodo di retention', () => {
+    it('does not delete snapshots within the retention period', () => {
       const server = upsert(SERVER_A)
       save(server.id, makeMetrics({ collectedAt: new Date() }))
 

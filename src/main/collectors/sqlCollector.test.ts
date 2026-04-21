@@ -3,12 +3,12 @@ import * as mssql from 'mssql'
 import { collectMetrics, collectMetricsCritical } from './sqlCollector'
 import type { ServerConnection } from './types'
 
-// Mock dell'intero modulo mssql — nessuna connessione reale
+// Mock the entire mssql module — no real connection
 vi.mock('mssql', () => ({
   connect: vi.fn()
 }))
 
-// Fixture connessione di test
+// Test connection fixture
 const CONN: ServerConnection = {
   ip: '192.168.1.10',
   port: 1433,
@@ -17,7 +17,7 @@ const CONN: ServerConnection = {
   password: 'TestPass1!'
 }
 
-// Righe di risposta minime per ogni query
+// Minimal response rows for each query
 const INSTANCE_ROW = {
   version: 'Microsoft SQL Server 2019 (RTM)',
   edition: 'Enterprise Edition',
@@ -54,7 +54,7 @@ function recordsetForSql(sql: string): unknown[] {
   if (sql.includes('dm_os_process_memory')) return [INSTANCE_ROW]
   if (sql.includes('dm_exec_requests')) return []
   if (sql.includes('dm_exec_query_stats')) return []
-  if (sql.includes('backupset')) return [BACKUP_ROW]   // prima di sys.databases (la query fa JOIN)
+  if (sql.includes('backupset')) return [BACKUP_ROW]   // before sys.databases (the query does a JOIN)
   if (sql.includes('sys.databases')) return [DB_ROW]
   return []
 }
@@ -79,7 +79,7 @@ describe('collectMetrics', () => {
     vi.clearAllMocks()
   })
 
-  it('restituisce ServerMetrics completo quando tutte le query hanno successo', async () => {
+  it('returns complete ServerMetrics when all queries succeed', async () => {
     const { mockPool } = makeMockPool()
     vi.mocked(mssql.connect as (config: mssql.config | string) => Promise<mssql.ConnectionPool>).mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
 
@@ -87,7 +87,7 @@ describe('collectMetrics', () => {
 
     expect(metrics.collectedAt).toBeInstanceOf(Date)
 
-    // Instance info mappata correttamente
+    // Instance info correctly mapped
     expect(metrics.instanceInfo.version).toBe(INSTANCE_ROW.version)
     expect(metrics.instanceInfo.edition).toBe(INSTANCE_ROW.edition)
     expect(metrics.instanceInfo.memoryUsedMb).toBe(4096)
@@ -108,7 +108,7 @@ describe('collectMetrics', () => {
     expect(metrics.databases[0].owner).toBe('sa')
     expect(metrics.databases[0].createDate).toBe(new Date('2020-01-01T00:00:00Z').toISOString())
 
-    // Sessioni e top queries vuote (recordset vuoti)
+    // Sessions and top queries are empty (empty recordsets)
     expect(metrics.activeSessions).toEqual([])
     expect(metrics.topQueries).toEqual([])
 
@@ -118,17 +118,17 @@ describe('collectMetrics', () => {
     expect(metrics.backupStatus[0].lastFullBackup).toEqual(BACKUP_ROW.last_full_backup)
     expect(metrics.backupStatus[0].lastDiffBackup).toBeNull()
 
-    // Pool sempre chiuso
+    // Pool is always closed
     expect(mockPool.close).toHaveBeenCalledOnce()
   })
 
-  it('propaga l\'errore al chiamante quando la connessione fallisce', async () => {
+  it('propagates the error to the caller when the connection fails', async () => {
     vi.mocked(mssql.connect).mockRejectedValue(new Error('Login failed for user'))
 
     await expect(collectMetrics(CONN)).rejects.toThrow('Login failed for user')
   })
 
-  it('propaga l\'errore al chiamante in caso di timeout di connessione', async () => {
+  it('propagates the error to the caller on connection timeout', async () => {
     vi.mocked(mssql.connect).mockRejectedValue(
       new Error('ConnectionError: Connection timeout: failed to create a connection')
     )
@@ -136,9 +136,9 @@ describe('collectMetrics', () => {
     await expect(collectMetrics(CONN)).rejects.toThrow('Connection timeout')
   })
 
-  it('restituisce metriche parziali quando una singola query fallisce (backup negato)', async () => {
+  it('returns partial metrics when a single query fails (backup denied)', async () => {
     const { mockPool } = makeMockPool(async (sql: string) => {
-      // Simula permesso negato su msdb per la query backup
+      // Simulate denied permission on msdb for the backup query
       if (sql.includes('backupset')) {
         throw new Error("The server principal 'sa' is not able to access the database 'msdb'")
       }
@@ -150,20 +150,20 @@ describe('collectMetrics', () => {
 
     const metrics = await collectMetrics(CONN)
 
-    // Le altre query devono aver avuto successo
+    // The other queries must have succeeded
     expect(metrics.instanceInfo.version).toBe(INSTANCE_ROW.version)
     expect(metrics.databases).toHaveLength(1)
 
-    // backupStatus è array vuoto (fallback del catch)
+    // backupStatus is an empty array (catch fallback)
     expect(metrics.backupStatus).toEqual([])
 
-    // L'errore deve essere loggato senza esporre credenziali
+    // The error must be logged without exposing credentials
     expect(consoleSpy).toHaveBeenCalledWith(
       expect.stringContaining('[collector] backup status:'),
       expect.stringContaining('msdb')
     )
 
-    // Pool sempre chiuso anche con query parziale fallita
+    // Pool is always closed even with a partially failed query
     expect(mockPool.close).toHaveBeenCalledOnce()
 
     consoleSpy.mockRestore()
@@ -175,7 +175,7 @@ describe('collectMetricsCritical', () => {
     vi.clearAllMocks()
   })
 
-  it('esegue solo 5 query (salta dm_exec_query_stats, dm_os_wait_stats, FILEPROPERTY)', async () => {
+  it('executes only 5 queries (skips dm_exec_query_stats, dm_os_wait_stats, FILEPROPERTY)', async () => {
     const { mockPool, mockRequest } = makeMockPool()
     vi.mocked(mssql.connect as (config: mssql.config | string) => Promise<mssql.ConnectionPool>)
       .mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
@@ -184,32 +184,32 @@ describe('collectMetricsCritical', () => {
 
     const executedSqls: string[] = mockRequest.query.mock.calls.map(([sql]: [string]) => sql)
 
-    // Le 3 query costose NON devono essere eseguite
+    // The 3 expensive queries must NOT be executed
     expect(executedSqls.some((sql) => sql.includes('dm_exec_query_stats'))).toBe(false)
     expect(executedSqls.some((sql) => sql.includes('dm_os_wait_stats'))).toBe(false)
     expect(executedSqls.some((sql) => sql.includes('FILEPROPERTY'))).toBe(false)
 
-    // Le 5 query critiche DEVONO essere eseguite
+    // The 5 critical queries MUST be executed
     expect(executedSqls.some((sql) => sql.includes('dm_os_process_memory'))).toBe(true)
     expect(executedSqls.some((sql) => sql.includes('sys.databases'))).toBe(true)
     expect(executedSqls.some((sql) => sql.includes('dm_exec_requests'))).toBe(true)
     expect(executedSqls.some((sql) => sql.includes('backupset'))).toBe(true)
     expect(executedSqls.some((sql) => sql.includes('dm_os_volume_stats'))).toBe(true)
 
-    // Esattamente 5 chiamate .query()
+    // Exactly 5 .query() calls
     expect(mockRequest.query).toHaveBeenCalledTimes(5)
 
-    // I campi saltati sono array vuoti
+    // Skipped fields are empty arrays
     expect(result.topQueries).toEqual([])
     expect(result.waitStats).toEqual([])
     expect(result.databaseFiles).toEqual([])
 
-    // I campi critici sono valorizzati
+    // Critical fields are populated
     expect(result.instanceInfo.version).toBe(INSTANCE_ROW.version)
     expect(result.databases).toHaveLength(1)
     expect(result.backupStatus).toHaveLength(1)
 
-    // Pool sempre chiuso
+    // Pool always closed
     expect(mockPool.close).toHaveBeenCalledOnce()
   })
 })

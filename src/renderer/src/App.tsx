@@ -30,7 +30,7 @@ import type { AuthSession } from '../../preload/index'
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 
 // ---------------------------------------------------------------------------
-// Inner — accede a WorkerContext (deve essere dentro WorkerProvider)
+// Inner — accesses WorkerContext (must be inside WorkerProvider)
 // ---------------------------------------------------------------------------
 
 function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
@@ -81,7 +81,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
                       seedHistory(result.data)
                     }
                   })
-                  .catch(() => {}) // non bloccante
+                  .catch(() => {}) // non-blocking
               }
             })
             .catch((err) => console.error('[App] workerStart failed:', err))

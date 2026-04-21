@@ -86,7 +86,7 @@ export interface DatabaseInfo {
   createDate?: string
   alias?: string
   referente?: string
-  /** ISO 8601 — impostato dal worker al momento del primo rilevamento dello stato non-ONLINE */
+  /** ISO 8601 — set by the worker on first detection of a non-ONLINE state */
   offlineSince?: string
 }
 
@@ -126,11 +126,11 @@ export interface WaitStatInfo {
 
 export interface StoredServer {
   id: string
-  host: string              // canonical address — obbligatorio
-  ip?: string               // legacy alias; popolato dalla normalizzazione in serversStore.ts
+  host: string              // canonical address — required
+  ip?: string               // legacy alias; populated by normalization in serversStore.ts
   port: number
   instanceName?: string
-  machineName?: string      // SERVERPROPERTY('MachineName') — usato per raggruppare istanze multiple sulla stessa macchina fisica
+  machineName?: string      // SERVERPROPERTY('MachineName') — used to group multiple instances on the same physical machine
   useWindowsAuth: boolean
   username?: string
   password?: string

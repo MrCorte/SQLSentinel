@@ -1,17 +1,17 @@
 /**
- * AREA 2 — Correttezza logica applyDelta / computeDelta / shouldSendDelta
+ * AREA 2 — Logic correctness of applyDelta / computeDelta / shouldSendDelta
  *
- * Copre:
- *  - shouldSendDelta (funzione pura in deltaUtils.ts)
- *  - applyDelta nel metricsStore Zustand (merge in-place con Immer)
- *  - computeDelta nel metricsWorker (verifica tramite push eventi al renderer)
+ * Covers:
+ *  - shouldSendDelta (pure function in deltaUtils.ts)
+ *  - applyDelta in the metricsStore Zustand (in-place merge with Immer)
+ *  - computeDelta in the metricsWorker (verified via renderer push events)
  */
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
 
-// ── shouldSendDelta — pura, importata direttamente ──────────────────────────
+// ── shouldSendDelta — pure function, imported directly ──────────────────────
 import { shouldSendDelta } from '../deltaUtils'
 
-// ── Mock electron / dipendenze del worker ───────────────────────────────────
+// ── Mock electron / worker dependencies ─────────────────────────────────────
 vi.mock('electron', () => ({
   BrowserWindow: { getAllWindows: vi.fn(() => []) }
 }))
@@ -68,48 +68,48 @@ function makeMetrics(dbs: DbSpec[] = []): ServerMetrics {
   }
 }
 
-// ── Reset store Zustand tra i test ───────────────────────────────────────────
+// ── Reset Zustand store between tests ──────────────────────────────────────
 
 const STORE_RESET = { metricsMap: {}, lastUpdate: null, serverHealth: {} }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// shouldSendDelta — funzione pura
+// shouldSendDelta — pure function
 // ═══════════════════════════════════════════════════════════════════════════════
 
-describe('AREA 2 — shouldSendDelta (soglia ibrida)', () => {
+describe('AREA 2 — shouldSendDelta (hybrid threshold)', () => {
 
-  it('true se changed ≤ 5, indipendentemente dal totale', () => {
+  it('true if changed ≤ 5, regardless of total', () => {
     expect(shouldSendDelta(0, 1_000)).toBe(true)
     expect(shouldSendDelta(3, 1_000)).toBe(true)
-    expect(shouldSendDelta(5, 1_000)).toBe(true)   // boundary inclusivo
+    expect(shouldSendDelta(5, 1_000)).toBe(true)   // inclusive boundary
   })
 
-  it('false se changed = 6 e total = 10 (60% > 20%)', () => {
+  it('false if changed = 6 and total = 10 (60% > 20%)', () => {
     expect(shouldSendDelta(6, 10)).toBe(false)
   })
 
-  it('true se changed/total ≤ 0.20 (20%)', () => {
-    expect(shouldSendDelta(20, 100)).toBe(true)    // esatto 20%
+  it('true if changed/total ≤ 0.20 (20%)', () => {
+    expect(shouldSendDelta(20, 100)).toBe(true)    // exactly 20%
     expect(shouldSendDelta(10, 100)).toBe(true)    // 10%
     expect(shouldSendDelta(19, 100)).toBe(true)    // 19%
   })
 
-  it('false se changed > 5 E changed/total > 0.20', () => {
+  it('false if changed > 5 AND changed/total > 0.20', () => {
     expect(shouldSendDelta(21, 100)).toBe(false)   // 21%
     expect(shouldSendDelta(11, 30)).toBe(false)    // 36.7%
     expect(shouldSendDelta(6, 20)).toBe(false)     // 30%
   })
 
-  it('removedDbs inclusi nel conteggio changed: 4 changed + 3 removed > soglia se total basso', () => {
-    // changed=7 (4+3), total=8 → 87.5% > 20% e 7 > 5 → false
+  it('removedDbs included in changed count: 4 changed + 3 removed > threshold when total is low', () => {
+    // changed=7 (4+3), total=8 → 87.5% > 20% and 7 > 5 → false
     expect(shouldSendDelta(7, 8)).toBe(false)
   })
 
-  it('non lancia su total=0: 0 changed → true (≤ 5)', () => {
+  it('does not throw on total=0: 0 changed → true (≤ 5)', () => {
     expect(shouldSendDelta(0, 0)).toBe(true)
   })
 
-  it('non lancia su total=0: 6 changed → false (> 5 e total=0 salta la percentuale)', () => {
+  it('does not throw on total=0: 6 changed → false (> 5 and total=0 skips percentage)', () => {
     expect(shouldSendDelta(6, 0)).toBe(false)
   })
 })
@@ -126,7 +126,7 @@ describe('AREA 2 — applyDelta (metricsStore)', () => {
     useMetricsStore.setState(STORE_RESET)
   })
 
-  it('rimuove i DB in removedDbs dall\'array databases esistente', () => {
+  it('removes DBs in removedDbs from the existing databases array', () => {
     useMetricsStore.getState().setMetrics(SID, makeMetrics([
       { name: 'DB_A' }, { name: 'DB_B' }, { name: 'DB_C' }
     ]))
@@ -143,7 +143,7 @@ describe('AREA 2 — applyDelta (metricsStore)', () => {
     expect(names).not.toContain('DB_C')
   })
 
-  it('aggiorna in-place i DB cambiati (match per name, non per index)', () => {
+  it('updates changed DBs in-place (matched by name, not by index)', () => {
     useMetricsStore.getState().setMetrics(SID, makeMetrics([
       { name: 'DB_A', sizeMb: 100 },
       { name: 'DB_B', sizeMb: 200 }
@@ -156,10 +156,10 @@ describe('AREA 2 — applyDelta (metricsStore)', () => {
 
     const dbs = useMetricsStore.getState().metricsMap[SID].databases
     expect(dbs.find((d) => d.name === 'DB_A')?.sizeMb).toBe(999)
-    expect(dbs.find((d) => d.name === 'DB_B')?.sizeMb).toBe(200)  // invariato
+    expect(dbs.find((d) => d.name === 'DB_B')?.sizeMb).toBe(200)  // unchanged
   })
 
-  it('aggiunge nuovi DB non presenti nel prev senza rimuovere gli esistenti', () => {
+  it('adds new DBs not present in prev without removing existing ones', () => {
     useMetricsStore.getState().setMetrics(SID, makeMetrics([{ name: 'DB_A' }]))
 
     useMetricsStore.getState().applyDelta(SID, {
@@ -172,7 +172,7 @@ describe('AREA 2 — applyDelta (metricsStore)', () => {
     expect(names).toContain('DB_NEW')
   })
 
-  it('cancella isDelta e removedDbs dallo store dopo il merge (no stale metadata)', () => {
+  it('clears isDelta and removedDbs from the store after the merge (no stale metadata)', () => {
     useMetricsStore.getState().setMetrics(SID, makeMetrics([{ name: 'DB_A' }]))
 
     useMetricsStore.getState().applyDelta(SID, {
@@ -186,7 +186,7 @@ describe('AREA 2 — applyDelta (metricsStore)', () => {
     expect(stored['removedDbs']).toBeUndefined()
   })
 
-  it('isDelta:false (full refresh) sostituisce l\'intero array databases', () => {
+  it('isDelta:false (full refresh) replaces the entire databases array', () => {
     useMetricsStore.getState().setMetrics(SID, makeMetrics([
       { name: 'OLD_DB_1' }, { name: 'OLD_DB_2' }
     ]))
@@ -199,8 +199,8 @@ describe('AREA 2 — applyDelta (metricsStore)', () => {
     expect(names).not.toContain('OLD_DB_1')
   })
 
-  it('applyDelta su server non presente in metricsMap imposta l\'intero snapshot', () => {
-    // SID non esiste ancora in store
+  it('applyDelta on a server not yet in metricsMap sets the entire snapshot', () => {
+    // SID does not exist in store yet
     const delta = { ...makeMetrics([{ name: 'DB_X' }]), isDelta: true } as ServerMetrics
     useMetricsStore.getState().applyDelta('99.99.99.99:1433', delta)
 
@@ -257,12 +257,12 @@ describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
     ])
     const freshMetrics = makeMetrics([{ name: 'DB_KEEP' }])
 
-    // Prima collect: stabilisce il prev (invia full)
+    // First collect: establishes the prev (sends full)
     vi.mocked(collectMetrics).mockResolvedValueOnce(prevMetrics)
     vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))  // hang after first
     startWorker({ intervalSeconds: 60, servers: [{ ip: '10.0.0.1', port: 1433, useWindowsAuth: true }] })
     await drainJobCycle()
-    pushed.length = 0  // reset cattura
+    pushed.length = 0  // reset capture
 
     // Seconda collect: 2 DB rimossi → deve comparire in removedDbs
     vi.mocked(collectMetrics).mockResolvedValueOnce(freshMetrics)
@@ -279,7 +279,7 @@ describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
     expect(payload?.metrics?.removedDbs).toHaveLength(2)
   })
 
-  it('prima collect invia sempre full (isDelta undefined o false)', async () => {
+  it('first collect always sends full (isDelta undefined or false)', async () => {
     const pushed: { channel: string; data: unknown }[] = []
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
       {
@@ -296,11 +296,11 @@ describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
 
     const evt = pushed.find((m) => m.channel === 'metrics:batchUpdated')
     const batch = evt?.data as Array<{ serverId: string; metrics: ServerMetrics }>
-    // Prima collect: nessun isDelta
+    // First collect: no isDelta
     expect(batch?.[0]?.metrics?.isDelta).toBeFalsy()
   })
 
-  it('nessun DB cambiato → isDelta:true con databases array vuoto', async () => {
+  it('no DB changed → isDelta:true with empty databases array', async () => {
     const pushed: { channel: string; data: unknown }[] = []
     vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
       {
@@ -312,14 +312,14 @@ describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
 
     const metrics = makeMetrics([{ name: 'DB_A', sizeMb: 100 }])
 
-    // Prima collect
+    // First collect
     vi.mocked(collectMetrics).mockResolvedValueOnce(metrics)
     vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))
     startWorker({ intervalSeconds: 60, servers: [{ ip: '10.0.0.1', port: 1433, useWindowsAuth: true }] })
     await drainJobCycle()
     pushed.length = 0
 
-    // Seconda collect identica → nessun changed
+    // Identical second collect → no changed fields
     vi.mocked(collectMetrics).mockResolvedValueOnce(metrics)
     vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))
     vi.advanceTimersByTime(300_001)  // INTERVAL_IDLE_MS = 300_000

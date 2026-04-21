@@ -126,7 +126,7 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
       }
       if (res.ok) {
         setResult(res.data)
-        if (!res.data.success) setResultError(res.data.error ?? 'Operazione fallita')
+        if (!res.data.success) setResultError(res.data.error ?? 'Operation failed')
       } else {
         setResultError(res.error)
       }
@@ -160,8 +160,8 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
         >
           <WarningAmberIcon sx={{ fontSize: 16, color: '#7a4f00', mt: 0.25, flexShrink: 0 }} />
           <Typography sx={{ fontSize: 12, color: '#7a4f00', lineHeight: 1.5 }}>
-            Lo shrink frammenta gli indici. Pianifica un{' '}
-            <strong>REBUILD degli indici</strong> dopo questa operazione.
+            Shrink fragments indexes. Plan an{' '}
+            <strong>index REBUILD</strong> after this operation.
           </Typography>
         </Box>
 
@@ -176,15 +176,15 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
           }}
         >
           <Typography sx={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: tokens.color.textSecondary, mb: 1 }}>
-            Stima spazio recuperabile
+            Reclaimable space estimate
           </Typography>
           {estimateLoading ? (
             <Stack direction="row" spacing={1} alignItems="center">
               <CircularProgress size={12} />
-              <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>Calcolo...</Typography>
+              <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>Calculating...</Typography>
             </Stack>
           ) : estimates.length === 0 ? (
-            <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>Nessun dato disponibile</Typography>
+            <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>No data available</Typography>
           ) : (
             <Stack spacing={0.5}>
               {estimates.map((e) => (
@@ -195,7 +195,7 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
                   <Typography sx={{ fontSize: 12, color: tokens.color.textSecondary }}>
                     {e.used_mb}/{e.current_mb} MB{' '}
                     <strong style={{ color: e.reclaimable_mb > 0 ? tokens.color.success : tokens.color.textSecondary }}>
-                      → {e.reclaimable_mb} MB recuperabili
+                      → {e.reclaimable_mb} MB reclaimable
                     </strong>
                   </Typography>
                 </Stack>
@@ -204,7 +204,7 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
                 <>
                   <Divider sx={{ my: 0.5 }} />
                   <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.color.textPrimary, textAlign: 'right' }}>
-                    Totale: {totalReclaimable} MB
+                    Total: {totalReclaimable} MB
                   </Typography>
                 </>
               )}
@@ -215,7 +215,7 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
         {/* Mode selector */}
         <FormControl>
           <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.color.textPrimary, mb: 0.5 }}>
-            Modalità
+            Mode
           </Typography>
           <RadioGroup value={mode} onChange={(e) => setMode(e.target.value as ShrinkMode)}>
             {/* Database mode */}
@@ -227,7 +227,7 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
             {mode === 'database' && (
               <Box sx={{ ml: 4, mb: 1 }}>
                 <TextField
-                  label="Target spazio libero (%)"
+                  label="Target free space (%)"
                   type="number"
                   size="small"
                   value={targetPercent}
@@ -242,7 +242,7 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
             <FormControlLabel
               value="file"
               control={<Radio size="small" />}
-              label={<Typography sx={{ fontSize: 13 }}>Shrink File specifico</Typography>}
+              label={<Typography sx={{ fontSize: 13 }}>Shrink specific file</Typography>}
               disabled={dataFiles.length === 0}
             />
             {mode === 'file' && (
@@ -279,9 +279,9 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
               control={<Radio size="small" />}
               label={
                 <Typography sx={{ fontSize: 13 }}>
-                  Solo Log{' '}
+                  Log only{' '}
                   <Typography component="span" sx={{ fontSize: 11, color: tokens.color.textSecondary }}>
-                    (include BACKUP LOG TO NUL se recovery FULL)
+                    (includes BACKUP LOG TO NUL if recovery is FULL)
                   </Typography>
                 </Typography>
               }
@@ -322,7 +322,7 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
           <Stack direction="row" spacing={1.5} alignItems="center" sx={{ py: 1 }}>
             <CircularProgress size={18} />
             <Typography sx={{ fontSize: 13, color: tokens.color.textSecondary }}>
-              Shrink in corso... (potrebbe richiedere alcuni minuti)
+              Shrink in progress... (may take several minutes)
             </Typography>
           </Stack>
         )}
@@ -341,16 +341,16 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
               <CheckCircleOutlineIcon sx={{ fontSize: 16, color: '#107c10' }} />
               <Typography sx={{ fontSize: 13, fontWeight: 600, color: '#107c10' }}>
-                Shrink completato in {formatDuration(result.duration_ms)}
+                Shrink completed in {formatDuration(result.duration_ms)}
               </Typography>
             </Stack>
             {result.reclaimedMb !== undefined && result.reclaimedMb > 0 && (
               <Typography sx={{ fontSize: 12, color: '#107c10', ml: 3 }}>
-                Spazio recuperato: <strong>{result.reclaimedMb} MB</strong>
+                Space reclaimed: <strong>{result.reclaimedMb} MB</strong>
               </Typography>
             )}
             <Typography sx={{ fontSize: 11, color: '#107c10', ml: 3, mt: 0.5, fontStyle: 'italic' }}>
-              Ricorda di eseguire il REBUILD degli indici.
+              Remember to run index REBUILD.
             </Typography>
           </Box>
         )}
@@ -376,7 +376,7 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
 
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose} disabled={running} size="small">
-          {result?.success ? 'Chiudi' : 'Annulla'}
+          {result?.success ? 'Close' : 'Cancel'}
         </Button>
         <Button
           variant="contained"
@@ -390,7 +390,7 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
             '&:disabled': { bgcolor: '#f4b8a0', color: '#fff' }
           }}
         >
-          {running ? 'Esecuzione...' : 'Esegui Shrink ⚠'}
+          {running ? 'Running...' : 'Run Shrink ⚠'}
         </Button>
       </DialogActions>
     </Dialog>

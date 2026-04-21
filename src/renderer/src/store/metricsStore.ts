@@ -89,9 +89,9 @@ interface MetricsStore {
   /** Clear ring-buffer history. Pass serverId to reset one server, omit to reset all. */
   resetHistory: (serverId?: string) => void
   /**
-   * Pre-popola lo store al boot dalla history SQLite (chiamata una volta sola).
-   * Per ogni server: aggiorna metricsMap/summaries con lo snapshot più recente e
-   * costruisce i ring-buffer historyMap da tutti gli snapshot disponibili.
+   * Pre-populates the store at boot from the SQLite history (called once only).
+   * For each server: updates metricsMap/summaries with the most recent snapshot and
+   * builds the historyMap ring-buffers from all available snapshots.
    */
   seedFromHistory: (allHistory: Record<string, ServerMetrics[]>) => void
 }

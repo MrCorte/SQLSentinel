@@ -275,7 +275,7 @@ const AgGroupHeader = memo(function AgGroupHeader({
         transition: 'background 150ms'
       }}
     >
-      {/* ZONA 1 — solo expand/collapse */}
+      {/* ZONE 1 — expand/collapse only */}
       <IconButton
         size="small"
         onClick={(e) => { e.stopPropagation(); onToggleCollapse() }}
@@ -290,7 +290,7 @@ const AgGroupHeader = memo(function AgGroupHeader({
         />
       </IconButton>
 
-      {/* ZONA 2 — naviga alla AG Dashboard */}
+      {/* ZONE 2 — navigate to AG Dashboard */}
       <Box
         onClick={onSelect}
         sx={{
@@ -381,8 +381,8 @@ interface ServerItemProps {
   searchText: string
   inAgGroup?: boolean
   inMachineGroup?: boolean
-  // Stabile (riceve il server come argomento) così il parent non deve
-  // creare un'arrow dedicata per ogni riga — memo sotto funziona davvero.
+  // Stable (receives the server as an argument) so the parent does not need
+  // to create a dedicated arrow function per row — memo below actually works.
   onSelect: (server: StoredServer) => void
   onContextMenu: (e: React.MouseEvent, server: StoredServer) => void
 }
@@ -401,7 +401,7 @@ const ServerItem = memo(function ServerItem({
   const realAddr = serverLabel(server)
   const health = useMetricsStore((s) => s.serverHealth[realAddr])
   const tooltipTitle = server.unreachable
-    ? `Non raggiungibile${server.unreachableSince ? ` dal ${new Date(server.unreachableSince).toLocaleString('it-IT')}` : ''}`
+    ? `Unreachable${server.unreachableSince ? ` since ${new Date(server.unreachableSince).toLocaleString('en-US')}` : ''}`
     : realAddr
 
   const roleIcon = server.agRole === 'PRIMARY' ? '★ ' : server.agRole === 'SECONDARY' ? '○ ' : ''
@@ -481,7 +481,7 @@ const ServerItem = memo(function ServerItem({
         })()}
         {health && health.failCount > 0 && (
           <Tooltip
-            title={`${health.failCount} ${health.failCount === 1 ? 'tentativo fallito' : 'tentativi falliti'} — prossimo retry: ${new Date(health.nextRetry).toLocaleTimeString('it-IT')}`}
+            title={`${health.failCount} ${health.failCount === 1 ? 'failed attempt' : 'failed attempts'} — next retry: ${new Date(health.nextRetry).toLocaleTimeString('en-US')}`}
             placement="right"
             arrow
           >
@@ -518,17 +518,17 @@ function RenameAliasDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>Rinomina server</DialogTitle>
+      <DialogTitle>Rename server</DialogTitle>
       <DialogContent sx={{ pt: '16px !important' }}>
         <TextField
-          label="Nome visualizzato"
+          label="Display name"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder={serverId}
           fullWidth
           size="small"
           autoFocus
-          helperText="Lascia vuoto per mostrare IP:Porta"
+          helperText="Leave empty to show IP:Port"
           onKeyDown={(e) => {
             if (e.key === 'Enter') onSave(value)
             if (e.key === 'Escape') onClose()
@@ -542,9 +542,9 @@ function RenameAliasDialog({
         </Typography>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Annulla</Button>
+        <Button onClick={onClose}>Cancel</Button>
         <Button variant="contained" onClick={() => onSave(value)}>
-          Salva
+          Save
         </Button>
       </DialogActions>
     </Dialog>
@@ -615,7 +615,7 @@ function GroupManagerDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Gestione gruppi</DialogTitle>
+      <DialogTitle>Manage groups</DialogTitle>
       <DialogContent sx={{ pb: 0 }}>
         <List dense disablePadding>
           {localGroups.map((g, idx) => (
@@ -627,7 +627,7 @@ function GroupManagerDialog({
               onDrop={handleDrop}
               sx={{ px: 0, gap: 1, cursor: 'grab', '&:active': { cursor: 'grabbing' } }}
               secondaryAction={
-                <Tooltip title="Elimina gruppo">
+                <Tooltip title="Delete group">
                   <IconButton
                     size="small"
                     onClick={() => {
@@ -694,7 +694,7 @@ function GroupManagerDialog({
         {/* Add group row */}
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', pb: 1 }}>
           <TextField
-            label="Nuovo gruppo"
+            label="New group"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
@@ -727,9 +727,9 @@ function GroupManagerDialog({
         </Box>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Annulla</Button>
+        <Button onClick={onClose}>Cancel</Button>
         <Button variant="contained" onClick={handleSave}>
-          Salva
+          Save
         </Button>
       </DialogActions>
     </Dialog>
@@ -829,7 +829,7 @@ const MachineHeader = memo(function MachineHeader({
           flexShrink: 0
         }}
       >
-        {instanceCount} istanze
+        {instanceCount} instances
       </Typography>
     </Box>
   )
@@ -889,9 +889,9 @@ function VirtualServerList({
 
       {servers.length === 0 && !serversError && (
         <Typography sx={{ px: 2, py: 1.5, fontSize: 12, color: '#666', lineHeight: 1.5 }}>
-          Nessun server.
+          No servers.
           <br />
-          Usa Discovery per aggiungerne.
+          Use Discovery to add some.
         </Typography>
       )}
 
@@ -966,7 +966,7 @@ function VirtualServerList({
                       fontWeight: 600
                     }}
                   >
-                    Senza gruppo
+                    No group
                   </Typography>
                 )}
                 {item.kind === 'search-server' && (
@@ -982,7 +982,7 @@ function VirtualServerList({
                 )}
                 {item.kind === 'no-results' && (
                   <Typography sx={{ px: 2, py: 1, fontSize: 12, color: '#666' }}>
-                    Nessun risultato.
+                    No results.
                   </Typography>
                 )}
               </Box>
@@ -1267,9 +1267,9 @@ export function Sidebar({
             flex: 1
           }}
         >
-          Server monitorati
+          Monitored servers
         </Typography>
-        <Tooltip title="Gestisci gruppi">
+        <Tooltip title="Manage groups">
           <IconButton
             size="small"
             onClick={() => setGroupManagerOpen(true)}
@@ -1314,12 +1314,12 @@ export function Sidebar({
           ref={moveMenuRef}
           onClick={() => setMoveMenuOpen(true)}
         >
-          Sposta in gruppo ▶
+          Move to group ▶
         </MenuItem>
         <Divider />
-        <MenuItem onClick={handleRenameOpen}>Rinomina alias</MenuItem>
+        <MenuItem onClick={handleRenameOpen}>Rename alias</MenuItem>
         <MenuItem onClick={handleRemove} sx={{ color: tokens.color.error }}>
-          Rimuovi server
+          Remove server
         </MenuItem>
       </Menu>
 
@@ -1350,7 +1350,7 @@ export function Sidebar({
           </MenuItem>
         ))}
         <Divider />
-        <MenuItem onClick={() => handleMoveToGroup(undefined)}>Senza gruppo</MenuItem>
+        <MenuItem onClick={() => handleMoveToGroup(undefined)}>No group</MenuItem>
       </Menu>
 
       {/* Rename alias dialog */}

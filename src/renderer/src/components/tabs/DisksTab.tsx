@@ -14,7 +14,7 @@ import { ShrinkDialog } from '../dialogs/ShrinkDialog'
 // ---------------------------------------------------------------------------
 
 function autogrowthLabel(file: DatabaseFile): { text: string; isDisabled: boolean } {
-  if (file.growth === 0) return { text: 'Autogrowth: Disabilitato', isDisabled: true }
+  if (file.growth === 0) return { text: 'Autogrowth: Disabled', isDisabled: true }
   if (file.is_percent_growth)
     return { text: `Autogrowth: ${file.growth}%`, isDisabled: false }
   const mb = (file.growth * 8) / 1024
@@ -22,12 +22,12 @@ function autogrowthLabel(file: DatabaseFile): { text: string; isDisabled: boolea
 }
 
 function maxSizeLabel(max_mb: number | null): string {
-  return max_mb === null ? 'Illimitato' : `${max_mb.toLocaleString('it-IT')} MB`
+  return max_mb === null ? 'Unlimited' : `${max_mb.toLocaleString('en-US')} MB`
 }
 
 function volumeBadge(free_pct: number): { label: string; color: string } | null {
-  if (free_pct < 10) return { label: '⚠ Critico', color: tokens.color.error }
-  if (free_pct < 30) return { label: '⚠ Attenzione', color: tokens.color.warning }
+  if (free_pct < 10) return { label: '⚠ Critical', color: tokens.color.error }
+  if (free_pct < 30) return { label: '⚠ Warning', color: tokens.color.warning }
   return null
 }
 
@@ -83,15 +83,15 @@ function VolumeCard({ vol }: { vol: DiskVolume }): React.JSX.Element {
 
       <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          Usato:{' '}
+          Used:{' '}
           <strong style={{ color: 'inherit' }}>{vol.used_gb.toFixed(1)} GB</strong>
         </Typography>
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          Libero:{' '}
+          Free:{' '}
           <strong style={{ color: 'inherit' }}>{vol.free_gb.toFixed(1)} GB</strong>
         </Typography>
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          Totale:{' '}
+          Total:{' '}
           <strong style={{ color: 'inherit' }}>{vol.total_gb.toFixed(1)} GB</strong>
         </Typography>
       </Stack>
@@ -288,13 +288,13 @@ export function DisksTab({ diskVolumes, databaseFiles, connection }: DisksTabPro
               color: 'text.secondary'
             }}
           >
-            Volumi Server
+            Server Volumes
           </Typography>
         </Stack>
 
         {diskVolumes.length === 0 ? (
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Nessun dato volume disponibile.
+            No volume data available.
           </Typography>
         ) : (
           <Box
@@ -326,13 +326,13 @@ export function DisksTab({ diskVolumes, databaseFiles, connection }: DisksTabPro
               color: 'text.secondary'
             }}
           >
-            File Database
+            Database Files
           </Typography>
         </Stack>
 
         {sortedDbNames.length === 0 ? (
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Nessun file database disponibile.
+            No database files available.
           </Typography>
         ) : (
           <Stack spacing={1.5}>

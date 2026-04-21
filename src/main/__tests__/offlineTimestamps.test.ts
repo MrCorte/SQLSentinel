@@ -1,7 +1,7 @@
 /**
  * AREA — dbOfflineTimestamps enrichment
- * Verifica che offlineSince venga impostato al primo rilevamento di stateDesc != 'ONLINE',
- * non avanzi ai poll successivi, e venga rimosso quando il DB torna ONLINE.
+ * Verifies that offlineSince is set on the first detection of stateDesc != 'ONLINE',
+ * does not advance on subsequent polls, and is removed when the DB comes back ONLINE.
  */
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
 
@@ -103,7 +103,7 @@ describe('dbOfflineTimestamps — enrichment', () => {
     expect(offlineMap?.get('TestDB')).toBe(t0.toISOString())
   })
 
-  it('non aggiorna offlineSince al secondo poll dello stesso DB offline', async () => {
+  it('does not update offlineSince on the second poll of the same offline DB', async () => {
     captureRendererMessages()
     const t0 = new Date('2025-01-01T10:00:00.000Z')
     const t1 = new Date('2025-01-01T10:01:00.000Z')
@@ -119,20 +119,20 @@ describe('dbOfflineTimestamps — enrichment', () => {
         databases: [{ name: 'TestDB', stateDesc: 'OFFLINE', recoveryModel: 'FULL', sizeMb: 100, logSizeMb: 10 }]
       }))
 
-    // activeServerId → priority 0 → intervallo 60s (non 300s)
+    // activeServerId → priority 0 → interval 60s (not 300s)
     startWorker({ intervalSeconds: 60, servers: [makeServer()], activeServerId: SID })
     await drainJobCycle()
 
-    // Secondo poll
+    // Second poll
     vi.setSystemTime(t1)
     await vi.advanceTimersByTimeAsync(60_000)
 
     const offlineMap = __getDbOfflineTimestampsForTest(SID)
-    // Deve essere rimasto t0, non t1
+    // Must have remained t0, not t1
     expect(offlineMap?.get('TestDB')).toBe(t0.toISOString())
   })
 
-  it('rimuove offlineSince quando il DB torna ONLINE', async () => {
+  it('removes offlineSince when the DB comes back ONLINE', async () => {
     captureRendererMessages()
     const t0 = new Date('2025-01-01T10:00:00.000Z')
     const t1 = new Date('2025-01-01T10:01:00.000Z')
@@ -148,11 +148,11 @@ describe('dbOfflineTimestamps — enrichment', () => {
         databases: [{ name: 'TestDB', stateDesc: 'ONLINE', recoveryModel: 'FULL', sizeMb: 100, logSizeMb: 10 }]
       }))
 
-    // activeServerId → priority 0 → intervallo 60s (non 300s)
+    // activeServerId → priority 0 → interval 60s (not 300s)
     startWorker({ intervalSeconds: 60, servers: [makeServer()], activeServerId: SID })
     await drainJobCycle()
 
-    // Verifica che fosse offline dopo il primo poll
+    // Verify that it was offline after the first poll
     expect(__getDbOfflineTimestampsForTest(SID)?.has('TestDB')).toBe(true)
 
     // Secondo poll: DB torna ONLINE
@@ -182,7 +182,7 @@ describe('dbOfflineTimestamps — enrichment', () => {
     expect(__getDbOfflineTimestampsForTest(SID)).toBeUndefined()
   })
 
-  it('syncServers rimuove dbOfflineTimestamps del server eliminato', async () => {
+  it('syncServers removes dbOfflineTimestamps of the deleted server', async () => {
     captureRendererMessages()
     const t0 = new Date('2025-01-01T10:00:00.000Z')
     vi.setSystemTime(t0)
@@ -197,7 +197,7 @@ describe('dbOfflineTimestamps — enrichment', () => {
 
     expect(__getDbOfflineTimestampsForTest(SID)?.has('TestDB')).toBe(true)
 
-    // Rimuoviamo il server dalla lista
+    // Remove the server from the list
     syncServers([])
 
     expect(__getDbOfflineTimestampsForTest(SID)).toBeUndefined()

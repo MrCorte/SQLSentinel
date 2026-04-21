@@ -61,7 +61,7 @@ export function Discovery(): React.JSX.Element {
   const handleScan = async (): Promise<void> => {
     const cidrTrimmed = cidr.trim()
     if (!/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\/\d{1,2}$/.test(cidrTrimmed)) {
-      setCidrError('Formato non valido. Usa la notazione CIDR, es. 192.168.1.0/24')
+      setCidrError('Invalid format. Use CIDR notation, e.g. 192.168.1.0/24')
       return
     }
     setCidrError('')
@@ -115,7 +115,7 @@ export function Discovery(): React.JSX.Element {
     },
     {
       field: 'port',
-      headerName: 'Porta',
+      headerName: 'Port',
       width: 80,
       type: 'number',
       align: 'left',
@@ -123,7 +123,7 @@ export function Discovery(): React.JSX.Element {
     },
     {
       field: 'reachable',
-      headerName: 'Stato',
+      headerName: 'Status',
       width: 190,
       sortable: false,
       renderCell: (params) => (
@@ -132,7 +132,7 @@ export function Discovery(): React.JSX.Element {
     },
     {
       field: 'responseTimeMs',
-      headerName: 'Risposta (ms)',
+      headerName: 'Response (ms)',
       width: 130,
       type: 'number',
       align: 'left',
@@ -141,11 +141,11 @@ export function Discovery(): React.JSX.Element {
     },
     {
       field: 'discoveryType',
-      headerName: 'Tipo discovery',
+      headerName: 'Discovery type',
       width: 130,
       renderCell: (params) => (
         <Chip
-          label={params.row.discoveryType === 'auto-tcp' ? 'Auto-TCP' : 'Manuale'}
+          label={params.row.discoveryType === 'auto-tcp' ? 'Auto-TCP' : 'Manual'}
           size="small"
           variant="outlined"
           color={params.row.discoveryType === 'auto-tcp' ? 'primary' : 'secondary'}
@@ -154,12 +154,12 @@ export function Discovery(): React.JSX.Element {
     },
     {
       field: 'actions',
-      headerName: 'Azioni',
+      headerName: 'Actions',
       width: 200,
       sortable: false,
       renderCell: (params) =>
         isAlreadySaved(params.row) ? (
-          <Chip label="Già monitorato" size="small" variant="outlined" sx={{ fontSize: 11 }} />
+          <Chip label="Already monitored" size="small" variant="outlined" sx={{ fontSize: 11 }} />
         ) : (
           <Button size="small" variant="outlined" onClick={() => openDialogFromRow(params.row)}>
             + Monitora
@@ -174,7 +174,7 @@ export function Discovery(): React.JSX.Element {
 
   const progressPercent = progress ? Math.round((progress.completed / progress.total) * 100) : 0
   const progressLabel = progress
-    ? `${progress.completed}/${progress.total} host scansionati, ${progress.found} trovati`
+    ? `${progress.completed}/${progress.total} hosts scanned, ${progress.found} found`
     : ''
 
   // -----------------------------------------------------------------------
@@ -185,8 +185,8 @@ export function Discovery(): React.JSX.Element {
     <Box sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
       {/* Banner warning named instances */}
       <Alert severity="warning">
-        <strong>Named instances su porte dinamiche non sono auto-discoverable.</strong> Se conosci
-        l'IP e la porta statica, aggiungile manualmente con il pulsante qui sotto.
+        <strong>Named instances on dynamic ports are not auto-discoverable.</strong> If you know
+        the IP and static port, add them manually using the button below.
       </Alert>
 
       {/* Form di scan */}
@@ -197,24 +197,24 @@ export function Discovery(): React.JSX.Element {
             value={cidr}
             onChange={(e) => setCidr(e.target.value)}
             error={!!cidrError}
-            helperText={cidrError || 'es. 192.168.1.0/24'}
+            helperText={cidrError || 'e.g. 192.168.1.0/24'}
             size="small"
             sx={{ minWidth: 200 }}
           />
           <TextField
-            label="Porte aggiuntive"
+            label="Additional ports"
             value={portsInput}
             onChange={(e) => setPortsInput(e.target.value)}
-            helperText="Separate da virgola"
+            helperText="Comma-separated"
             size="small"
             sx={{ minWidth: 160 }}
           />
           <TextField
-            label="Concorrenza"
+            label="Concurrency"
             type="number"
             value={concurrency}
             onChange={(e) => setConcurrency(Math.max(1, Math.min(200, Number(e.target.value))))}
-            helperText="Probe parallele (1–200)"
+            helperText="Parallel probes (1–200)"
             size="small"
             inputProps={{ min: 1, max: 200 }}
             sx={{ width: 130 }}
@@ -225,10 +225,10 @@ export function Discovery(): React.JSX.Element {
               onClick={handleScan}
               disabled={isScanning}
             >
-              {isScanning ? 'Scansione...' : 'Avvia Scan'}
+              {isScanning ? 'Scanning...' : 'Start Scan'}
             </Button>
             <Button variant="outlined" onClick={openDialogManual} disabled={isScanning}>
-              Aggiungi Manualmente
+              Add Manually
             </Button>
           </Stack>
         </Stack>
@@ -263,7 +263,7 @@ export function Discovery(): React.JSX.Element {
           pageSizeOptions={[25, 50, 100]}
           initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
           localeText={{
-            noRowsLabel: isScanning ? 'Scansione in corso...' : 'Nessun server trovato. Avvia una scan o aggiungi manualmente.'
+            noRowsLabel: isScanning ? 'Scan in progress...' : 'No servers found. Start a scan or add manually.'
           }}
           sx={{ border: 0, '& .row-already-saved': { opacity: 0.45 } }}
         />

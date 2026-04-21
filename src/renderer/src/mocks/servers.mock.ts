@@ -1,17 +1,17 @@
 /**
- * Mock data realistici per testare tutti i filtri dell'Inventario.
+ * Realistic mock data for testing all Inventory filters.
  *
- * Copertura:
- *   Ambiente  → PRODUZIONE / COLLAUDO / SVILUPPO
- *   Tipo      → AG Primary / AG Secondary / Standalone
- *   Stato     → Online / Offline (unreachable)
- *   Hosting   → Cloud / On-Premise
- *   Alias     → 12 valori distinti
- *   Referente → Andrea Cortesi / Mario Rossi / Luca Bianchi / Sara Verdi / null
- *   Macchina  → SQLPROD03 e SQLPROD04 con 2 istanze → machine-header in inventario
- *               SQLDEV01 con 2 istanze
+ * Coverage:
+ *   Environment → PRODUZIONE / COLLAUDO / SVILUPPO
+ *   Type        → AG Primary / AG Secondary / Standalone
+ *   Status      → Online / Offline (unreachable)
+ *   Hosting     → Cloud / On-Premise
+ *   Alias       → 12 distinct values
+ *   Referente   → Andrea Cortesi / Mario Rossi / Luca Bianchi / Sara Verdi / null
+ *   Machine     → SQLPROD03 and SQLPROD04 with 2 instances → machine-header in inventory
+ *                 SQLDEV01 with 2 instances
  *
- * Attivazione: VITE_USE_MOCK=true in .env.development
+ * Activation: VITE_USE_MOCK=true in .env.development
  */
 
 import type { StoredServer, ServerMetrics, DatabaseInfo } from '../../../preload/index'
@@ -120,7 +120,7 @@ export const MOCK_SERVERS: StoredServer[] = [
     hostingType: 'cloud',
   }),
 
-  // ── Produzione — Standalone, stessa macchina SQLPROD03 (machine-header) ──
+  // ── Production — Standalone, same machine SQLPROD03 (machine-header) ──
   makeServer('mock-s03', '10.0.1.3', 1433, {
     machineName: 'SQLPROD03',
     hostingType: 'on-premise',
@@ -131,7 +131,7 @@ export const MOCK_SERVERS: StoredServer[] = [
     unreachable: true,
   }),
 
-  // ── Produzione — Standalone, stessa macchina SQLPROD04 (machine-header) ──
+  // ── Production — Standalone, same machine SQLPROD04 (machine-header) ──
   makeServer('mock-s05', '10.0.1.4', 1433, {
     machineName: 'SQLPROD04',
     hostingType: 'on-premise',
@@ -165,7 +165,7 @@ export const MOCK_SERVERS: StoredServer[] = [
     unreachable: true,
   }),
 
-  // ── Sviluppo — Standalone, stessa macchina SQLDEV01 (machine-header) ─────
+  // ── Development — Standalone, same machine SQLDEV01 (machine-header) ─────
   makeServer('mock-s10', '10.0.3.1', 1433, {
     machineName: 'SQLDEV01',
     hostingType: 'on-premise',
@@ -340,7 +340,7 @@ export const MOCK_METRICS_MAP: Record<string, ServerMetrics> = {
     { version: V2019, uptimeDays: 0, cpu: 0 }
   ),
 
-  // dev01 — SQLDEV01 istanza default, 12 DB, referente: Luca Bianchi
+  // dev01 — SQLDEV01 default instance, 12 DBs, owner: Luca Bianchi
   '10.0.3.1:1433': makeMetrics(
     Array.from({ length: 12 }, (_, i) =>
       makeDb(`DevDB_${String(i + 1).padStart(2, '0')}`, 100 + i * 30, {

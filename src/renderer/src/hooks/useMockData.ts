@@ -1,14 +1,14 @@
 /**
- * Seed tutte le Zustand store con dati mock quando VITE_USE_MOCK=true.
+ * Seeds all Zustand stores with mock data when VITE_USE_MOCK=true.
  *
- * Strategia:
- * - Attende che loadServers() completi (initialized=true) prima di agire.
- * - Semina i mock SOLO se lo store è vuoto (nessun server reale configurato).
- *   Se l'utente ha aggiunto server reali, questi hanno priorità e i mock
- *   non vengono caricati — così il flusso di aggiunta server reale non viene
- *   mai interferito, nemmeno con VITE_USE_MOCK=true.
- * - serverGroups/serverAliases vengono MERGIATI (non sostituiti) per non
- *   corrompere i group-assignment dei server reali nel localStorage persistito.
+ * Strategy:
+ * - Waits for loadServers() to complete (initialized=true) before acting.
+ * - Seeds mocks ONLY if the store is empty (no real server configured).
+ *   If the user has added real servers, those take priority and the mocks
+ *   are not loaded — so the real server add flow is never interfered with,
+ *   even when VITE_USE_MOCK=true.
+ * - serverGroups/serverAliases are MERGED (not replaced) to avoid
+ *   corrupting the group-assignments of real servers in persisted localStorage.
  */
 import { useEffect } from 'react'
 import { useServersStore } from '../store/serversStore'
@@ -32,16 +32,16 @@ export function useMockData(): void {
     if (!USE_MOCK) return
     if (!initialized) return
 
-    // Se ci sono già server reali (aggiunti manualmente), non sovrascrivere.
-    // I mock vengono caricati solo su uno store vuoto (dev environment pulito).
+    // If real servers already exist (added manually), do not overwrite.
+    // Mocks are loaded only into an empty store (clean dev environment).
     const existing = useServersStore.getState().servers
     if (existing.length > 0) return
 
-    // Seed serversStore con i 12 server mock
+    // Seed serversStore with the 12 mock servers
     useServersStore.setState({ servers: MOCK_SERVERS })
 
-    // Merge nel groupsStore persistito: aggiunge le voci mock senza cancellare
-    // i group-assignment e alias dei server reali già salvati in localStorage
+    // Merge into the persisted groupsStore: adds mock entries without removing
+    // the group assignments and aliases of real servers already saved in localStorage
     useGroupsStore.setState((state) => ({
       ...state,
       serverGroups: { ...state.serverGroups, ...MOCK_SERVER_GROUPS },
@@ -50,14 +50,14 @@ export function useMockData(): void {
       expandedMachines: ['SQLPROD03', 'SQLPROD04', 'SQLDEV01']
     }))
 
-    // Merge metricsMap (mock metrics non entrano in conflitto con server reali)
+    // Merge metricsMap (mock metrics do not conflict with real servers)
     useMetricsStore.setState((state) => ({
       ...state,
       metricsMap: { ...state.metricsMap, ...MOCK_METRICS_MAP },
       lastUpdate: new Date()
     }))
 
-    // Merge agGroups (mock AG non entrano in conflitto con AG reali)
+    // Merge agGroups (mock AGs do not conflict with real AGs)
     useAgStore.setState((state) => ({
       ...state,
       agGroups: { ...state.agGroups, ...MOCK_AG_GROUPS }

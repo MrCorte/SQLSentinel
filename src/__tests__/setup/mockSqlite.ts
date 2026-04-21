@@ -1,9 +1,9 @@
 /**
- * Mock di better-sqlite3 con store in-memoria.
- * Usato da store.test.ts per girare senza il binario nativo better_sqlite3.node.
+ * In-memory store mock for better-sqlite3.
+ * Used by store.test.ts to run without the native better_sqlite3.node binary.
  *
- * Ogni new Database() crea uno store indipendente → i test si isolano tramite
- * il ciclo initDb(':memory:') / closeDb() nei beforeEach / afterEach di store.test.ts.
+ * Each new Database() creates an independent store → tests are isolated through
+ * the initDb(':memory:') / closeDb() cycle in beforeEach / afterEach of store.test.ts.
  */
 import { vi } from 'vitest'
 
@@ -16,7 +16,7 @@ interface Tables {
   metrics_snapshots: Map<string, Row>
 }
 
-// ── Helper: calcola la data di cutoff da un offset in giorni ─────────────────
+// ── Helper: computes the cutoff date from a day offset ───────────────────────
 
 function daysOffset(days: number): string {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
@@ -33,7 +33,7 @@ class MockStatement {
     this.tables = tables
   }
 
-  // Normalizza il testo SQL per i pattern match
+  // Normalize SQL text for pattern matching
   private s(): string {
     return this.sql.replace(/\s+/g, ' ').toLowerCase().trim()
   }
@@ -42,12 +42,12 @@ class MockStatement {
     const s = this.s()
     const { servers, metrics_snapshots } = this.tables
 
-    // ── INSERT INTO servers (upsert con ON CONFLICT) ──────────────────────────
+    // ── INSERT INTO servers (upsert with ON CONFLICT) ────────────────────────
     if (s.includes('insert into servers') && s.includes('on conflict')) {
       const [id, ip, port, instance_name, use_windows_auth, username, encrypted_password,
              added_at, last_seen_at, last_metrics_at] = args
 
-      // Cerca un record esistente per ip:port
+      // Look for an existing record by ip:port
       const existing = [...servers.values()].find(r => r.ip === ip && r.port === port)
       if (existing) {
         Object.assign(existing, {

@@ -39,16 +39,16 @@ import type { ThemeMode } from '../context/ThemeContext'
 interface RetentionOption {
   minutes: number
   label: string
-  snapshots: number // a 30s di intervallo (worst case)
+  snapshots: number // at 30s interval (worst case)
 }
 
 const RETENTION_OPTIONS: RetentionOption[] = [
-  { minutes: 15, label: '15 minuti', snapshots: 30 },
-  { minutes: 30, label: '30 minuti', snapshots: 60 },
-  { minutes: 60, label: '1 ora', snapshots: 120 },
-  { minutes: 180, label: '3 ore', snapshots: 360 },
-  { minutes: 360, label: '6 ore', snapshots: 720 },
-  { minutes: 720, label: '12 ore', snapshots: 1440 }
+  { minutes: 15, label: '15 minutes', snapshots: 30 },
+  { minutes: 30, label: '30 minutes', snapshots: 60 },
+  { minutes: 60, label: '1 hour', snapshots: 120 },
+  { minutes: 180, label: '3 hours', snapshots: 360 },
+  { minutes: 360, label: '6 hours', snapshots: 720 },
+  { minutes: 720, label: '12 hours', snapshots: 1440 }
 ]
 
 // ---------------------------------------------------------------------------
@@ -61,7 +61,7 @@ function calcRetainedPoints(retentionMinutes: number, intervalSeconds: number): 
 }
 
 function intervalLabel(intervalSeconds: number): string {
-  if (intervalSeconds <= 0) return 'non configurato'
+  if (intervalSeconds <= 0) return 'not configured'
   if (intervalSeconds < 60) return `${intervalSeconds}s`
   return `${intervalSeconds / 60} min`
 }
@@ -77,10 +77,10 @@ async function runExport(key: ExportKey): Promise<void> {
   let filename: string
   if (key === 'customFields') {
     result = await window.sqlSentinel.exportCustomFields()
-    filename = 'sqlsentinel_campi_custom.csv'
+    filename = 'sqlsentinel_custom_fields.csv'
   } else if (key === 'inventory') {
     result = await window.sqlSentinel.exportInventory()
-    filename = 'sqlsentinel_inventario.csv'
+    filename = 'sqlsentinel_inventory.csv'
   } else {
     result = await window.sqlSentinel.exportAlerts()
     filename = 'sqlsentinel_alert.csv'
@@ -106,7 +106,7 @@ export function Settings(): React.JSX.Element {
   const [autostartEnabled, setAutostartEnabled] = useState(false)
   const [bgLoaded, setBgLoaded] = useState(false)
 
-  // true solo nell'exe installato — in dev setLoginItemSettings registrerebbe electron.exe
+  // true only in the installed exe — in dev setLoginItemSettings would register electron.exe
   const isPackaged: boolean = !import.meta.env.DEV
 
   useEffect(() => {
@@ -178,15 +178,15 @@ export function Settings(): React.JSX.Element {
   const addRecipient = () => {
     const email = recipientInput.trim()
     if (!EMAIL_REGEX.test(email)) {
-      setRecipientError('Email non valida')
+      setRecipientError('Invalid email')
       return
     }
     if (emailRecipients.includes(email)) {
-      setRecipientError('Email già presente')
+      setRecipientError('Email already added')
       return
     }
     if (emailRecipients.length >= 20) {
-      setRecipientError('Massimo 20 destinatari')
+      setRecipientError('Maximum 20 recipients')
       return
     }
     const next = [...emailRecipients, email]
@@ -240,7 +240,7 @@ export function Settings(): React.JSX.Element {
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
         <SettingsIcon color="action" />
         <Typography variant="h5" fontWeight={700}>
-          Impostazioni
+          Settings
         </Typography>
       </Box>
 
@@ -248,10 +248,10 @@ export function Settings(): React.JSX.Element {
       <Card variant="outlined">
         <CardContent>
           <Typography variant="subtitle2" gutterBottom>
-            Aspetto
+            Appearance
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-            Scegli il tema dell&apos;applicazione
+            Choose the application theme
           </Typography>
           <ToggleButtonGroup
             value={themeMode}
@@ -261,17 +261,17 @@ export function Settings(): React.JSX.Element {
             }}
             size="small"
           >
-            <ToggleButton value="light" aria-label="tema chiaro">
+            <ToggleButton value="light" aria-label="light theme">
               <WbSunnyOutlinedIcon fontSize="small" sx={{ mr: 0.5 }} />
-              Chiaro
+              Light
             </ToggleButton>
-            <ToggleButton value="dark" aria-label="tema scuro">
+            <ToggleButton value="dark" aria-label="dark theme">
               <DarkModeOutlinedIcon fontSize="small" sx={{ mr: 0.5 }} />
-              Scuro
+              Dark
             </ToggleButton>
-            <ToggleButton value="system" aria-label="tema sistema">
+            <ToggleButton value="system" aria-label="system theme">
               <DesktopWindowsOutlinedIcon fontSize="small" sx={{ mr: 0.5 }} />
-              Sistema
+              System
             </ToggleButton>
           </ToggleButtonGroup>
         </CardContent>
@@ -282,18 +282,18 @@ export function Settings(): React.JSX.Element {
         <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <Box>
             <Typography variant="subtitle1" fontWeight={700}>
-              Retention dati storici
+              Historical data retention
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Definisce per quanto tempo vengono mantenuti in memoria i dati raccolti dal worker
-              per ogni server monitorato.
+              Defines how long the data collected by the worker is kept in memory
+              for each monitored server.
             </Typography>
           </Box>
 
           <FormControl size="small" sx={{ maxWidth: 240 }}>
-            <InputLabel>Periodo di retention</InputLabel>
+            <InputLabel>Retention period</InputLabel>
             <Select
-              label="Periodo di retention"
+              label="Retention period"
               value={retentionMinutes}
               onChange={(e) => handleRetentionChange(e.target.value as number)}
             >
@@ -308,14 +308,14 @@ export function Settings(): React.JSX.Element {
           <Typography variant="body2" color="text.secondary">
             {intervalSeconds > 0 ? (
               <>
-                Stai raccogliendo metriche ogni <strong>{interval}</strong> → con questa retention
-                conservi circa <strong>{retainedPoints}</strong> punti per server.
+                You are collecting metrics every <strong>{interval}</strong> → with this retention
+                you keep approximately <strong>{retainedPoints}</strong> points per server.
               </>
             ) : (
               <>
-                Auto-refresh <strong>non configurato</strong> → con questa retention conserverai
-                circa <strong>{retainedPoints}</strong> punti per server (calcolato a 30 s di
-                intervallo).
+                Auto-refresh <strong>not configured</strong> → with this retention you will keep
+                approximately <strong>{retainedPoints}</strong> points per server (calculated at 30 s
+                interval).
               </>
             )}
           </Typography>
@@ -327,10 +327,10 @@ export function Settings(): React.JSX.Element {
         <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <Box>
             <Typography variant="subtitle1" fontWeight={700}>
-              Export dati
+              Data export
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Esporta i dati in formato CSV. Il file viene salvato nella posizione scelta.
+              Export data in CSV format. The file is saved to the chosen location.
             </Typography>
           </Box>
 
@@ -356,10 +356,10 @@ export function Settings(): React.JSX.Element {
                 onClick={() => handleExport('customFields')}
                 sx={{ minWidth: 220 }}
               >
-                Campi custom database
+                Custom database fields
               </Button>
               <Typography variant="body2" color="text.secondary">
-                Alias, referente e stato dismesso per tutti i DB configurati
+                Alias, owner and decommissioned status for all configured DBs
               </Typography>
             </Box>
 
@@ -378,10 +378,10 @@ export function Settings(): React.JSX.Element {
                 onClick={() => handleExport('inventory')}
                 sx={{ minWidth: 220 }}
               >
-                Inventario server
+                Server inventory
               </Button>
               <Typography variant="body2" color="text.secondary">
-                Lista completa dei server monitorati con dettagli di connessione
+                Complete list of monitored servers with connection details
               </Typography>
             </Box>
 
@@ -400,10 +400,10 @@ export function Settings(): React.JSX.Element {
                 onClick={() => handleExport('alerts')}
                 sx={{ minWidth: 220 }}
               >
-                Alert storici
+                Historical alerts
               </Button>
               <Typography variant="body2" color="text.secondary">
-                Tutti gli alert rilevati, con categoria, severità e data
+                All detected alerts, with category, severity and date
               </Typography>
             </Box>
           </Stack>
@@ -429,7 +429,7 @@ export function Settings(): React.JSX.Element {
                   }}
                 />
               }
-              label="Mantieni attivo in background alla chiusura"
+              label="Keep active in background on close"
             />
             <Box
               sx={{
@@ -439,7 +439,7 @@ export function Settings(): React.JSX.Element {
               }}
             >
               <Typography variant="body2" sx={{ mb: 1 }}>
-                Modalità polling background
+                Background polling mode
               </Typography>
               <RadioGroup
                 value={bgMode}
@@ -475,7 +475,7 @@ export function Settings(): React.JSX.Element {
                 <FormControlLabel
                   value="full"
                   control={<Radio />}
-                  label="Full — stesso intervallo del foreground"
+                  label="Full — same interval as foreground"
                 />
               </RadioGroup>
             </Box>
@@ -489,10 +489,10 @@ export function Settings(): React.JSX.Element {
                   }}
                 />
               }
-              label="Notifiche sistema per alert critici"
+              label="System notifications for critical alerts"
             />
             <Tooltip
-              title={!isPackaged ? 'Disponibile solo nella versione installata (.exe)' : ''}
+              title={!isPackaged ? 'Available only in the installed version (.exe)' : ''}
               placement="right"
             >
               <span>
@@ -507,7 +507,7 @@ export function Settings(): React.JSX.Element {
                       }}
                     />
                   }
-                  label="Avvia con Windows"
+                  label="Start with Windows"
                 />
               </span>
             </Tooltip>
@@ -521,7 +521,7 @@ export function Settings(): React.JSX.Element {
           <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Box>
               <Typography variant="subtitle1" fontWeight={700}>
-                Notifiche Email
+                Email Notifications
               </Typography>
             </Box>
 
@@ -535,7 +535,7 @@ export function Settings(): React.JSX.Element {
                   }}
                 />
               }
-              label="Abilita notifiche email"
+              label="Enable email notifications"
             />
 
             <Box
@@ -579,12 +579,12 @@ export function Settings(): React.JSX.Element {
                   />
                 </Stack>
                 <TextField
-                  label="SMTP User (mittente)"
+                  label="SMTP User (sender)"
                   size="small"
                   value={smtpUser}
                   onChange={(e) => setSmtpUser(e.target.value)}
                   onBlur={() => saveEmail({ smtpUser })}
-                  placeholder="alerts@azienda.it"
+                  placeholder="alerts@company.com"
                 />
                 <TextField
                   label="SMTP Password"
@@ -598,12 +598,12 @@ export function Settings(): React.JSX.Element {
                 {/* Recipient list */}
                 <Box>
                   <Typography variant="body2" gutterBottom>
-                    Destinatari ({emailRecipients.length}/20)
+                    Recipients ({emailRecipients.length}/20)
                   </Typography>
                   <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
                     <TextField
                       size="small"
-                      placeholder="destinatario@azienda.it"
+                      placeholder="recipient@company.com"
                       value={recipientInput}
                       onChange={(e) => {
                         setRecipientInput(e.target.value)
@@ -625,7 +625,7 @@ export function Settings(): React.JSX.Element {
                       onClick={addRecipient}
                       disabled={emailRecipients.length >= 20}
                     >
-                      Aggiungi
+                      Add
                     </Button>
                   </Stack>
                   <Stack spacing={0.5}>
@@ -658,16 +658,16 @@ export function Settings(): React.JSX.Element {
                       emailRecipients.length === 0
                     }
                   >
-                    {testEmailStatus === 'sending' ? 'Invio in corso…' : 'Invia email di test'}
+                    {testEmailStatus === 'sending' ? 'Sending…' : 'Send test email'}
                   </Button>
                   {testEmailStatus === 'success' && (
                     <Alert severity="success" sx={{ mt: 1 }}>
-                      Email di test inviata con successo
+                      Test email sent successfully
                     </Alert>
                   )}
                   {testEmailStatus === 'error' && (
                     <Alert severity="error" sx={{ mt: 1 }}>
-                      Errore invio: {testEmailError}
+                      Send error: {testEmailError}
                     </Alert>
                   )}
                 </Box>

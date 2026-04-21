@@ -25,13 +25,13 @@ function categoryLabel(cat: Alert['category']): string {
     case 'cpu_high':
       return 'CPU'
     case 'blocking_sessions':
-      return 'Blocchi'
+      return 'Blocking'
     case 'database_offline':
       return 'DB Offline'
     case 'backup_overdue':
       return 'Backup'
     case 'disk_space_low':
-      return 'Disco'
+      return 'Disk'
   }
 }
 
@@ -132,7 +132,7 @@ function AlertRow({
                 component="span"
                 sx={{ fontSize: tokens.font.sizeXs, color: 'text.secondary' }}
               >
-                {new Date(alert.detectedAt).toLocaleString('it-IT')}
+                {new Date(alert.detectedAt).toLocaleString('en-US')}
               </Typography>
               {!isAcknowledged && (
                 <Typography
@@ -146,7 +146,7 @@ function AlertRow({
                     '&:hover': { textDecoration: 'underline' }
                   }}
                 >
-                  Riconosci →
+                  Acknowledge →
                 </Typography>
               )}
             </Stack>
@@ -203,7 +203,7 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
               color: 'text.primary'
             }}
           >
-            Alert attivi
+            Active alerts
             {criticalFirst.length > 0 && (
               <Typography
                 component="span"
@@ -238,13 +238,13 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
               variant="body2"
               sx={{ p: 3, textAlign: 'center', color: 'text.secondary' }}
             >
-              Nessun alert attivo.
+              No active alerts.
             </Typography>
           )}
 
           {criticalFirst.length > 0 && (
             <>
-              <SectionHeader label="Attivi" />
+              <SectionHeader label="Active" />
               <List dense disablePadding sx={{ px: 1, pt: 0.5 }}>
                 {criticalFirst.map((a) => (
                   <AlertRow key={a.id} alert={a} onAcknowledge={onAcknowledge} />
@@ -256,7 +256,7 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
           {acked.length > 0 && (
             <>
               <Divider sx={{ my: 1 }} />
-              <SectionHeader label="Riconosciuti" />
+              <SectionHeader label="Acknowledged" />
               <List dense disablePadding sx={{ px: 1, pt: 0.5 }}>
                 {acked.map((a) => (
                   <AlertRow key={a.id} alert={a} onAcknowledge={onAcknowledge} />

@@ -10,7 +10,7 @@ export interface SaveItem {
   metrics: ServerMetrics
 }
 
-// --- Reviver per deserializzare le date da JSON ---
+// --- Reviver to deserialize dates from JSON ---
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
 
@@ -42,7 +42,7 @@ function rowToSnapshot(row: SnapshotRow): MetricsSnapshot {
 // --- Repository ---
 
 /**
- * Salva un nuovo snapshot delle metriche per il server indicato.
+ * Saves a new metrics snapshot for the specified server.
  */
 export function save(serverId: string, metrics: ServerMetrics): void {
   getDb()
@@ -54,7 +54,7 @@ export function save(serverId: string, metrics: ServerMetrics): void {
 }
 
 /**
- * Restituisce l'ultimo ServerMetrics raccolto per il server, o null se assente.
+ * Returns the most recent ServerMetrics collected for the server, or null if absent.
  */
 export function findLatest(serverId: string): ServerMetrics | null {
   const row = getDb()
@@ -72,8 +72,8 @@ export function findLatest(serverId: string): ServerMetrics | null {
 }
 
 /**
- * Restituisce tutti gli snapshot per il server negli ultimi N giorni,
- * ordinati dal più recente al più vecchio.
+ * Returns all snapshots for the server within the last N days,
+ * ordered from most recent to oldest.
  */
 export function findHistory(serverId: string, limitDays: number): MetricsSnapshot[] {
   const days = Math.abs(limitDays)
@@ -98,7 +98,7 @@ export function findHistory(serverId: string, limitDays: number): MetricsSnapsho
 }
 
 /**
- * Elimina tutti gli snapshot più vecchi di retentionDays giorni.
+ * Deletes all snapshots older than retentionDays days.
  */
 export function cleanup(retentionDays: number): void {
   getDb()
@@ -110,7 +110,7 @@ export function cleanup(retentionDays: number): void {
 }
 
 /**
- * Restituisce gli ultimi N snapshot per il server, ordinati dal più vecchio al più recente.
+ * Returns the last N snapshots for the server, ordered from oldest to most recent.
  */
 export function findLastN(serverId: string, n: number): ServerMetrics[] {
   const rows = getDb()
@@ -125,10 +125,10 @@ export function findLastN(serverId: string, n: number): ServerMetrics[] {
 }
 
 /**
- * Restituisce gli ultimi N snapshot per ciascun server nella lista, in un'unica query SQLite.
- * Usa ROW_NUMBER() OVER (PARTITION BY server_id) — richiede SQLite ≥ 3.25 (disponibile
- * con better-sqlite3 su Node 18+).
- * Più efficiente di N chiamate findLastN() separate su avvii con molti server.
+ * Returns the last N snapshots for each server in the list, in a single SQLite query.
+ * Uses ROW_NUMBER() OVER (PARTITION BY server_id) — requires SQLite ≥ 3.25 (available
+ * with better-sqlite3 on Node 18+).
+ * More efficient than N separate findLastN() calls on startup with many servers.
  */
 export function findLastNBulk(serverIds: string[], n: number): Record<string, ServerMetrics[]> {
   if (serverIds.length === 0) return {}
@@ -156,7 +156,7 @@ export function findLastNBulk(serverIds: string[], n: number): Record<string, Se
 }
 
 /**
- * Inserisce più snapshot in un'unica transazione SQLite.
+ * Inserts multiple snapshots in a single SQLite transaction.
  */
 export function batchSave(items: SaveItem[]): void {
   if (items.length === 0) return

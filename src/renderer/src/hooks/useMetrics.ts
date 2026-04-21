@@ -63,8 +63,8 @@ export function useMetrics(
     }
   }, [])
 
-  // Resetta errore e metriche locali al cambio server — il Dashboard mostrerà
-  // i dati cached da metricsStore (metricsMap) durante il refresh silenzioso
+  // Reset error and local metrics on server change — the Dashboard will show
+  // cached data from metricsStore (metricsMap) during the silent refresh
   useEffect(() => {
     setError(null)
     setMetrics(null)

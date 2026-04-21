@@ -13,7 +13,7 @@ import type {
   DatabaseFile
 } from './types'
 
-// --- Tipi interni per le righe restituite dalle query T-SQL ---
+// --- Internal types for rows returned by T-SQL queries ---
 
 interface InstanceInfoRow {
   version: string
@@ -74,9 +74,9 @@ interface WaitStatRow {
 }
 
 // --- Error sanitization ---
-// Rimuove identificativi sensibili dai messaggi mssql/tedious prima del logging.
-// Pattern noti: "Login failed for user 'sa'", stringhe contenenti password/token,
-// dettagli di connessione con host:port.
+// Removes sensitive identifiers from mssql/tedious messages before logging.
+// Known patterns: "Login failed for user 'sa'", strings containing passwords/tokens,
+// connection details with host:port.
 const SANITIZE_PATTERNS: Array<[RegExp, string]> = [
   [/for user\s+'[^']*'/gi, "for user '***'"],
   [/login\s+'[^']*'/gi, "login '***'"],
@@ -90,21 +90,21 @@ export function sanitizeSqlError(err: unknown): string {
   return SANITIZE_PATTERNS.reduce((msg, [re, repl]) => msg.replace(re, repl), raw)
 }
 
-// --- Configurazione connessione ---
+// --- Connection configuration ---
 
 function buildConfig(conn: ServerConnection): mssql.config {
   const base: mssql.config = {
     server: conn.ip,
     port: conn.port,
     database: 'master',
-    // requestTimeout è direttamente su config (non in options)
+    // requestTimeout goes directly on config (not inside options)
     requestTimeout: 30000,
     options: {
       encrypt: false,
       trustServerCertificate: true,
-      // connectTimeout è in options (via IOptions extends tds.ConnectionOptions)
+      // connectTimeout goes in options (via IOptions extends tds.ConnectionOptions)
       connectTimeout: 15000
-      // instanceName NON passato: SQL Browser è disabilitato e la porta è sempre esplicita
+      // instanceName NOT passed: SQL Browser is disabled and the port is always explicit
     }
   }
 
@@ -189,8 +189,8 @@ async function queryInstanceInfo(pool: mssql.ConnectionPool): Promise<InstanceIn
 }
 
 /**
- * Elenco database con stato, recovery model e dimensioni.
- * Fonte: sys.databases JOIN sys.master_files GROUP BY
+ * List of databases with status, recovery model and sizes.
+ * Source: sys.databases JOIN sys.master_files GROUP BY
  */
 async function queryDatabases(pool: mssql.ConnectionPool): Promise<DatabaseInfo[]> {
   const sql = `
@@ -233,8 +233,8 @@ async function queryDatabases(pool: mssql.ConnectionPool): Promise<DatabaseInfo[
 }
 
 /**
- * Sessioni attive (session_id > 50 = no sessioni di sistema).
- * Fonte: sys.dm_exec_requests
+ * Active sessions (session_id > 50 = no system sessions).
+ * Source: sys.dm_exec_requests
  */
 async function querySessions(pool: mssql.ConnectionPool): Promise<SessionInfo[]> {
   const sql = `
@@ -265,8 +265,8 @@ async function querySessions(pool: mssql.ConnectionPool): Promise<SessionInfo[]>
 }
 
 /**
- * Top 20 query per elapsed time totale.
- * Fonte: sys.dm_exec_query_stats CROSS APPLY sys.dm_exec_sql_text
+ * Top 20 queries by total elapsed time.
+ * Source: sys.dm_exec_query_stats CROSS APPLY sys.dm_exec_sql_text
  */
 async function queryTopQueries(pool: mssql.ConnectionPool): Promise<QueryInfo[]> {
   const sql = `
@@ -300,14 +300,14 @@ async function queryTopQueries(pool: mssql.ConnectionPool): Promise<QueryInfo[]>
 }
 
 /**
- * Stato backup per ogni database (ultimi 7 giorni).
- * Fonte: msdb.dbo.backupset GROUP BY database_name, type
+ * Backup status for each database (last 7 days).
+ * Source: msdb.dbo.backupset GROUP BY database_name, type
  */
 async function queryBackupStatus(pool: mssql.ConnectionPool): Promise<BackupInfo[]> {
-  // LEFT JOIN: tutti i DB user-level compaiono anche se non hanno mai avuto un backup.
-  // Il filtro su bs.type è spinto nella JOIN così l'optimizer può usare l'indice
-  // backupset_database + sfoltire le righe subito; su msdb con milioni di righe
-  // questo taglia drasticamente il costo della query (da 1-5s a <200ms).
+  // LEFT JOIN: all user-level DBs appear even if they have never had a backup.
+  // The bs.type filter is pushed into the JOIN so the optimizer can use the
+  // backupset_database index and prune rows early; on msdb with millions of rows
+  // this drastically cuts query cost (from 1-5s to <200ms).
   const sql = `
     SELECT
       d.name                                                                    AS database_name,
@@ -334,8 +334,8 @@ async function queryBackupStatus(pool: mssql.ConnectionPool): Promise<BackupInfo
 }
 
 /**
- * Top 20 wait types per wait time totale, escluse le idle waits.
- * Fonte: sys.dm_os_wait_stats
+ * Top 20 wait types by total wait time, excluding idle waits.
+ * Source: sys.dm_os_wait_stats
  */
 async function queryWaitStats(pool: mssql.ConnectionPool): Promise<WaitStatInfo[]> {
   const sql = `
@@ -403,8 +403,8 @@ interface DatabaseFileRow {
 }
 
 /**
- * Volumi disco su cui risiedono i file di SQL Server.
- * Fonte: sys.master_files CROSS APPLY sys.dm_os_volume_stats
+ * Disk volumes hosting SQL Server files.
+ * Source: sys.master_files CROSS APPLY sys.dm_os_volume_stats
  */
 async function queryDiskVolumes(pool: mssql.ConnectionPool): Promise<DiskVolume[]> {
   const sql = `
@@ -434,9 +434,9 @@ async function queryDiskVolumes(pool: mssql.ConnectionPool): Promise<DiskVolume[
 }
 
 /**
- * File fisici dei database utente con info di occupazione e autogrowth.
- * Fonte: sys.master_files JOIN sys.databases
- * Nota: used_mb e free_mb possono essere 0 per DB non in contesto corrente.
+ * Physical files for user databases with space usage and autogrowth info.
+ * Source: sys.master_files JOIN sys.databases
+ * Note: used_mb and free_mb may be 0 for DBs not in the current context.
  */
 async function queryDatabaseFiles(pool: mssql.ConnectionPool): Promise<DatabaseFile[]> {
   const sql = `
@@ -476,7 +476,7 @@ async function queryDatabaseFiles(pool: mssql.ConnectionPool): Promise<DatabaseF
   }))
 }
 
-// --- Valori di default per query fallite ---
+// --- Default values for failed queries ---
 
 function defaultInstanceInfo(): InstanceInfo {
   return { version: 'unknown', edition: 'unknown', memoryUsedMb: 0, memoryTargetMb: 0, cpuUsagePercent: 0, uptimeDays: 0, logicalCpus: 0, physicalCpus: 0 }
@@ -485,9 +485,9 @@ function defaultInstanceInfo(): InstanceInfo {
 // --- Entry points pubblici ---
 
 /**
- * Esegue una connessione di test e recupera MachineName e InstanceName.
- * Usato dal form "Aggiungi server" per auto-popolare alias e istanza.
- * La connessione viene sempre chiusa nel finally.
+ * Runs a test connection and retrieves MachineName and InstanceName.
+ * Used by the "Add server" form to auto-populate alias and instance name.
+ * The connection is always closed in the finally block.
  */
 export async function detectServerInfo(connection: ServerConnection): Promise<ServerInfo> {
   const config = buildConfig(connection)
@@ -510,10 +510,10 @@ export async function detectServerInfo(connection: ServerConnection): Promise<Se
 }
 
 /**
- * Raccoglie tutte le metriche dal server SQL indicato.
- * Ogni query gira in parallelo con il proprio catch: se una fallisce
- * restituisce un valore vuoto/default senza bloccare le altre.
- * La connessione viene sempre chiusa nel finally.
+ * Collects all metrics from the specified SQL server.
+ * Each query runs in parallel with its own catch: if one fails
+ * it returns an empty/default value without blocking the others.
+ * The connection is always closed in the finally block.
  */
 export async function collectMetrics(
   connection: ServerConnection,
@@ -522,8 +522,8 @@ export async function collectMetrics(
   const config = buildConfig(connection)
   let pool: mssql.ConnectionPool | null = null
 
-  // Se il chiamante abortisce (es. worker timeout), chiudiamo subito il pool
-  // per evitare handle orfani sul lato TDS.
+  // If the caller aborts (e.g. worker timeout), close the pool immediately
+  // to avoid orphaned handles on the TDS side.
   const onAbort = (): void => {
     pool?.close().catch(() => {})
   }
@@ -599,10 +599,10 @@ export async function collectMetrics(
 }
 
 /**
- * Raccoglie solo le metriche necessarie per la valutazione degli alert:
- * CPU/memoria, stato DB, sessioni bloccate, backup age, spazio disco.
- * Salta topQueries (dm_exec_query_stats), waitStats (dm_os_wait_stats) e
- * databaseFiles (FILEPROPERTY) — usato per server idle/background con lightCollectors=true.
+ * Collects only the metrics needed for alert evaluation:
+ * CPU/memory, DB state, blocked sessions, backup age, disk space.
+ * Skips topQueries (dm_exec_query_stats), waitStats (dm_os_wait_stats) and
+ * databaseFiles (FILEPROPERTY) — used for idle/background servers with lightCollectors=true.
  */
 export async function collectMetricsCritical(
   connection: ServerConnection,

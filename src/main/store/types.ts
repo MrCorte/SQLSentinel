@@ -5,7 +5,7 @@ export interface StoredServer {
   instanceName?: string
   useWindowsAuth: boolean
   username?: string
-  /** Password cifrata — mai loggare questo campo */
+  /** Encrypted password — never log this field */
   encryptedPassword?: string
   addedAt: Date
   lastSeenAt: Date | null
@@ -16,6 +16,6 @@ export interface MetricsSnapshot {
   id: string
   serverId: string
   collectedAt: Date
-  /** ServerMetrics serializzato come JSON */
+  /** ServerMetrics serialized as JSON */
   metricsJson: string
 }

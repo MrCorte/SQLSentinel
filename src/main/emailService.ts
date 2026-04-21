@@ -134,7 +134,7 @@ export async function sendTestEmail(): Promise<IpcResult<null>> {
       'TEST-SERVER',
       'test',
       'WARNING',
-      'Questa è una email di test da SQL Sentinel. Configurazione SMTP corretta ✅',
+      'This is a test email from SQL Sentinel. SMTP configuration is correct ✅',
       Date.now(),
     )
     await sendEmail(settings, settings.emailRecipients, subject, html)

@@ -3,22 +3,22 @@ import type { CollectMetricsRequest, ServerMetrics } from '../../../preload/inde
 import type { MetricsHistoryPoint } from '../hooks/useMetrics'
 
 export interface WorkerContextValue {
-  /** Secondi tra un refresh e l'altro. 0 = disabilitato. */
+  /** Seconds between refreshes. 0 = disabled. */
   intervalSeconds: number
-  /** Server attualmente monitorato dal worker. */
+  /** Server currently monitored by the worker. */
   connection: CollectMetricsRequest | null
-  /** Minuti di retention — determina quanti snapshot conservare per server. */
+  /** Retention minutes — determines how many snapshots to keep per server. */
   retentionMinutes: number
   setIntervalSeconds: (s: number) => void
   setConnection: (c: CollectMetricsRequest | null) => void
-  /** Aggiunge un punto allo storico del server specificato. */
+  /** Adds a point to the history of the specified server. */
   pushSnapshot: (serverId: string, m: ServerMetrics) => void
-  /** Versione batch di pushSnapshot — singola transazione Zustand per tutti gli update. */
+  /** Batch version of pushSnapshot — single Zustand transaction for all updates. */
   pushSnapshotBatch: (batch: Array<{ serverId: string; metrics: ServerMetrics }>) => void
-  /** Legge lo storico per un server. Dipende da historyVersion → re-render garantito. */
+  /** Reads the history for a server. Depends on historyVersion → re-render guaranteed. */
   getHistory: (serverId: string) => MetricsHistoryPoint[]
   setRetentionMinutes: (minutes: number) => void
-  /** Pre-popola la history al boot da SQLite (chiamata una volta sola da App.tsx). */
+  /** Pre-populates history at boot from SQLite (called once only from App.tsx). */
   seedHistory: (allHistory: Record<string, ServerMetrics[]>) => void
 }
 

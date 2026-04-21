@@ -18,14 +18,14 @@ interface Props {
 
 function formatTime(ts: number): string {
   const d = new Date(ts)
-  return d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 export function MemoryChart({ history }: Props): React.JSX.Element {
   const data = history.map((p) => ({
     time: formatTime(p.timestamp),
     'CPU %': parseFloat(p.cpuUsagePercent.toFixed(1)),
-    'Memoria %': parseFloat(p.memoryPercent.toFixed(1))
+    'Memory %': parseFloat(p.memoryPercent.toFixed(1))
   }))
 
   return (
@@ -62,7 +62,7 @@ export function MemoryChart({ history }: Props): React.JSX.Element {
           />
           <Line
             type="monotone"
-            dataKey="Memoria %"
+            dataKey="Memory %"
             stroke={tokens.color.chartMemory}
             strokeWidth={2}
             dot={false}

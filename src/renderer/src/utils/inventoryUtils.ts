@@ -14,10 +14,10 @@ const SQL_VERSION_MAP: Record<number, string> = {
 }
 
 /**
- * Ricava la versione major leggibile da qualsiasi formato:
- *   - "15.0.4375.4"  (ProductVersion puro)
+ * Extracts the human-readable major version from any format:
+ *   - "15.0.4375.4"  (pure ProductVersion)
  *   - "Microsoft SQL Server 2019 (RTM-CU27) - 15.0.4375.4 (X64) ..."  (@@VERSION)
- * Ritorna '' se la stringa è vuota/sconosciuta.
+ * Returns '' if the string is empty or unknown.
  */
 export function getSqlServerVersion(version: string | undefined): string {
   if (!version) return ''

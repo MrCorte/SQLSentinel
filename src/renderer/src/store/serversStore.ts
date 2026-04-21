@@ -25,7 +25,7 @@ export const useServersStore = create<ServersStore>((set) => ({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const normalized = list.map((s: any) => {
         const addr: string = s.host ?? s.ip ?? ''
-        // Imposta sia host (canonical) che ip (compat con tutto il codice renderer che usa s.ip)
+        // Set both host (canonical) and ip (compat with all renderer code that uses s.ip)
         return { ...s, host: addr, ip: addr }
       })
 

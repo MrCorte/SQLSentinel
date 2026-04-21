@@ -5,7 +5,7 @@ export interface DiscoveryRow extends DiscoveredServer {
   discoveryType: 'auto-tcp' | 'manual'
 }
 
-/** Parametri per aggiungere un server manualmente (credenziali incluse per uso futuro) */
+/** Parameters for adding a server manually (credentials included for future use) */
 export interface AddServerParams {
   ip: string
   port: number
@@ -36,7 +36,7 @@ export function useDiscovery() {
           discoveryType: 'auto-tcp' as const
         }))
         setServers((prev) => {
-          // I server aggiunti manualmente vengono preservati, salvo conflitto ip:porta
+          // Manually added servers are preserved unless there is an ip:port conflict
           const manualServers = prev.filter((s) => s.discoveryType === 'manual')
           const autoKeys = new Set(autoRows.map((s) => `${s.ip}:${s.port}`))
           const remainingManual = manualServers.filter((s) => !autoKeys.has(`${s.ip}:${s.port}`))
@@ -54,8 +54,8 @@ export function useDiscovery() {
   }, [])
 
   /**
-   * Aggiunge (o aggiorna) un server manuale.
-   * Esegue una probe TCP per verificare la raggiungibilità, poi aggiorna la lista.
+   * Adds (or updates) a manual server.
+   * Runs a TCP probe to verify reachability, then updates the server list.
    */
   const addServer = useCallback(async (params: AddServerParams): Promise<void> => {
     setError(null)

@@ -16,7 +16,7 @@ import { useMetricsStore } from '../store/metricsStore'
 import { tokens } from '../styles/tokens'
 
 function fmtTime(ts: number): string {
-  return new Intl.DateTimeFormat('it-IT', {
+  return new Intl.DateTimeFormat('en-US', {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit'
@@ -40,7 +40,7 @@ export const ServerHistoryChart = memo(function ServerHistoryChart({ serverId }:
   // Derive unreachable from health circuit-breaker (failCount ≥ 3)
   const isUnreachable = useMetricsStore((s) => (s.serverHealth[serverId]?.failCount ?? 0) >= 3)
 
-  // MB assoluti per il tooltip — dal summary (lightweight, sempre aggiornato)
+  // Absolute MB for the tooltip — from the summary (lightweight, always up to date)
   const memoryUsedMb = useMetricsStore((s) => s.summaries[serverId]?.memoryUsedMb ?? null)
 
   const chartData = useMemo(() => {
@@ -95,7 +95,7 @@ export const ServerHistoryChart = memo(function ServerHistoryChart({ serverId }:
           width={38}
         />
 
-        {/* Soglia warning CPU */}
+        {/* CPU warning threshold */}
         <ReferenceLine
           y={80}
           stroke={tokens.color.warning}
@@ -107,8 +107,8 @@ export const ServerHistoryChart = memo(function ServerHistoryChart({ serverId }:
           formatter={(value, name) => {
             const pct = typeof value === 'number' ? value : 0
             if (name === 'memory') {
-              const mbLabel = memoryUsedMb != null ? ` (${memoryUsedMb.toLocaleString('it-IT')} MB)` : ''
-              return [`${pct}%${mbLabel}`, 'Memoria'] as [string, string]
+              const mbLabel = memoryUsedMb != null ? ` (${memoryUsedMb.toLocaleString('en-US')} MB)` : ''
+              return [`${pct}%${mbLabel}`, 'Memory'] as [string, string]
             }
             return [`${pct}%`, 'CPU'] as [string, string]
           }}

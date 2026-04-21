@@ -12,17 +12,17 @@ import { retrieveTopK } from '../store/ragRepository'
 // System prompt
 // ---------------------------------------------------------------------------
 
-const SYSTEM_PROMPT = `Sei un DBA esperto SQL Server. Rispondi SEMPRE in italiano.
-Prima di rispondere usa i tool per raccogliere dati reali sui server monitorati.
+const SYSTEM_PROMPT = `You are an expert SQL Server DBA. ALWAYS respond in English.
+Before answering, use the tools to gather real data about the monitored servers.
 
-Struttura la risposta con queste sezioni:
-**OSSERVAZIONE**: dati rilevanti trovati tramite i tool
-**CAUSA PROBABILE**: diagnosi basata sui dati
-**AZIONE IMMEDIATA**: usa suggest_tsql e mostra la query T-SQL pronta
-**PROSSIMI CHECK**: lista azioni di follow-up consigliate
+Structure the response with these sections:
+**OBSERVATION**: relevant data found via the tools
+**PROBABLE CAUSE**: diagnosis based on the data
+**IMMEDIATE ACTION**: use suggest_tsql and show the ready-to-run T-SQL query
+**NEXT CHECKS**: list of recommended follow-up actions
 
-Usa solo query SELECT, mai DML (no INSERT/UPDATE/DELETE/DROP).
-Se non hai abbastanza dati scrivi "Ho bisogno di più contesto."`
+Use SELECT-only queries, never DML (no INSERT/UPDATE/DELETE/DROP).
+If you do not have enough data, write "I need more context."`
 
 // ---------------------------------------------------------------------------
 // Types
@@ -85,7 +85,7 @@ const getRecentAlertsTool = new DynamicStructuredTool({
 
 const getSlowQueriesTool = new DynamicStructuredTool({
   name: 'get_slow_queries',
-  description: 'Top 10 query più lente (per elapsed time totale) da tutte le istanze monitorate.',
+  description: 'Top 10 slowest queries (by total elapsed time) across all monitored instances.',
   schema: z.object({}),
   func: async () => {
     const servers = serverStore.getAll()
@@ -108,7 +108,7 @@ const getSlowQueriesTool = new DynamicStructuredTool({
 
 const getServerNotesTool = new DynamicStructuredTool({
   name: 'get_server_notes',
-  description: 'Note DBA associate ai server: ambiente, applicazione, criticità, contatti.',
+  description: 'DBA notes associated with servers: environment, application, criticality, contacts.',
   schema: z.object({}),
   func: async () => {
     return JSON.stringify(
@@ -207,18 +207,18 @@ function getEmbeddings(): OllamaEmbeddings {
 const searchDocumentationTool = new DynamicStructuredTool({
   name: 'search_sql_documentation',
   description:
-    'Cerca nei libri SQL Server (DMV, troubleshooting, performance tuning) i passaggi più rilevanti per una domanda tecnica. Usare quando si vuole citare best practice o spiegazioni dai libri.',
+    'Search SQL Server books (DMV, troubleshooting, performance tuning) for the most relevant passages for a technical question. Use when citing best practices or explanations from the books.',
   schema: z.object({
-    query: z.string().describe('La domanda tecnica da cercare nei libri SQL Server')
+    query: z.string().describe('The technical question to search for in the SQL Server books')
   }),
   func: async ({ query }: { query: string }) => {
     try {
       const vec = await getEmbeddings().embedQuery(query)
       const results = retrieveTopK(vec, 5)
-      if (results.length === 0) return 'Nessun documento ancora indicizzato.'
-      return results.map((r, i) => `[Estratto ${i + 1}]\n${r.text}`).join('\n\n---\n\n')
+      if (results.length === 0) return 'No documents indexed yet.'
+      return results.map((r, i) => `[Excerpt ${i + 1}]\n${r.text}`).join('\n\n---\n\n')
     } catch {
-      return 'Documentazione non disponibile (nomic-embed-text non installato o Ollama non raggiungibile).'
+      return 'Documentation not available (nomic-embed-text not installed or Ollama unreachable).'
     }
   }
 })

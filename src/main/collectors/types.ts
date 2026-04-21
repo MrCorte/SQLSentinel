@@ -39,10 +39,10 @@ export interface DatabaseInfo {
   owner?: string
   /** Creation date — ISO 8601 string — undefined for snapshots from older app versions */
   createDate?: string
-  // Campi custom — popolati dal merge con lo store, non dalla query SQL
+  // Custom fields — populated by the merge with the store, not from the SQL query
   alias?: string
   referente?: string
-  /** ISO 8601 — impostato dal worker al momento del primo rilevamento dello stato non-ONLINE */
+  /** ISO 8601 — set by the worker at the moment of first detection of the non-ONLINE state */
   offlineSince?: string
 }
 

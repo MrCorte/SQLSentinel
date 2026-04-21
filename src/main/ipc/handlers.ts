@@ -108,9 +108,9 @@ function resolveConnection(req: CollectMetricsRequest): CollectMetricsRequest {
   }
 }
 
-// Canali esenti dal check auth: usati prima del login o che implementano il login stesso.
-// SETTINGS_GET esente per permettere il caricamento del tema prima del login.
-// SETTINGS_SET rimosso: scrivere impostazioni richiede autenticazione.
+// Channels exempt from auth check: used before login or that implement login itself.
+// SETTINGS_GET is exempt to allow theme loading before login.
+// SETTINGS_SET removed: writing settings requires authentication.
 const AUTH_EXEMPT_CHANNELS = new Set<string>([
   IpcChannel.AUTH_LOGIN,
   IpcChannel.AUTH_LOGOUT,
@@ -118,9 +118,9 @@ const AUTH_EXEMPT_CHANNELS = new Set<string>([
   IpcChannel.SETTINGS_GET,
 ])
 
-// Canali permessi anche quando must_change_password=1 (utente autenticato ma
-// con credenziali di default). Blocca ogni altra operazione finché la password
-// non viene effettivamente cambiata.
+// Channels allowed even when must_change_password=1 (authenticated user but
+// with default credentials). Blocks all other operations until the password
+// is actually changed.
 const MUST_CHANGE_PW_ALLOWED = new Set<string>([
   IpcChannel.AUTH_LOGIN,
   IpcChannel.AUTH_LOGOUT,
@@ -130,10 +130,10 @@ const MUST_CHANGE_PW_ALLOWED = new Set<string>([
 ])
 
 /**
- * Wrapper esplicito per ipcMain.handle che impone il check auth per
- * tutti i canali non presenti in AUTH_EXEMPT_CHANNELS. Sostituisce il
- * precedente monkey-patch di ipcMain.handle, che era fragile rispetto
- * all'ordine di registrazione.
+ * Explicit wrapper for ipcMain.handle that enforces the auth check for
+ * all channels not present in AUTH_EXEMPT_CHANNELS. Replaces the previous
+ * monkey-patch of ipcMain.handle, which was brittle with respect to
+ * registration order.
  */
 function handle<R>(
   channel: string,
@@ -200,7 +200,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // ── Handlers protetti — tutti via handle() helper con auth guard ─────────
+  // ── Protected handlers — all via handle() helper with auth guard ──────────
 
   // SCAN_SUBNET — runs async TCP scan, streams progress events back to renderer
   handle(
@@ -317,7 +317,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // SERVERS_CLEAR_MOCKS — rimuove server con id che inizia con 'mock-' (usati dal preload mock)
+  // SERVERS_CLEAR_MOCKS — removes servers whose id starts with 'mock-' (used by the preload mock)
   handle(IpcChannel.SERVERS_CLEAR_MOCKS, (): { success: boolean; removed: number; remaining: number } => {
     try {
       const before = serverStore.getAll()
@@ -370,9 +370,9 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // WORKER_START — avvia il worker con intervallo e lista server.
-  // C2: il renderer non invia più credenziali; resolveConnection() le aggancia
-  // dal serverStore lato main per ciascun server della lista.
+  // WORKER_START — starts the worker with interval and server list.
+  // C2: the renderer no longer sends credentials; resolveConnection() attaches
+  // them from the main-side serverStore for each server in the list.
   handle(
     IpcChannel.WORKER_START,
     async (_event: IpcMainInvokeEvent, req: WorkerStartRequest): Promise<IpcResult<null>> => {
@@ -386,13 +386,13 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // WORKER_STOP — ferma il worker
+  // WORKER_STOP — stops the worker
   handle(IpcChannel.WORKER_STOP, async (): Promise<IpcResult<null>> => {
     stopWorker()
     return { ok: true, data: null }
   })
 
-  // WORKER_SET_ACTIVE — segnala quale server è "attivo" (polling più frequente)
+  // WORKER_SET_ACTIVE — signals which server is "active" (more frequent polling)
   handle(IpcChannel.WORKER_SET_ACTIVE, (_e, req: WorkerSetActiveRequest): IpcResult<null> => {
     setActiveServer(req.serverId)
     return { ok: true, data: null }
@@ -405,12 +405,12 @@ export function registerIpcHandlers(): void {
     return { ok: true, data: null }
   })
 
-  // ALERTS_GET_ALL — restituisce tutti gli alert (anche riconosciuti)
+  // ALERTS_GET_ALL — returns all alerts (including acknowledged ones)
   handle(IpcChannel.ALERTS_GET_ALL, async (): Promise<IpcResult<Alert[]>> => {
     return { ok: true, data: getAlerts() }
   })
 
-  // ALERTS_ACKNOWLEDGE — segna un alert come riconosciuto
+  // ALERTS_ACKNOWLEDGE — marks an alert as acknowledged
   handle(
     IpcChannel.ALERTS_ACKNOWLEDGE,
     async (_event: IpcMainInvokeEvent, req: AcknowledgeAlertRequest): Promise<IpcResult<null>> => {
@@ -420,7 +420,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // METRICS_HISTORY — restituisce gli snapshot del worker per un server
+  // METRICS_HISTORY — returns worker snapshots for a server
   handle(
     IpcChannel.METRICS_HISTORY,
     async (_event: IpcMainInvokeEvent, req: HistoryRequest): Promise<IpcResult<ServerMetrics[]>> => {
@@ -430,7 +430,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // METRICS_HISTORY_BULK — restituisce tutta la history in-memory al boot (pre-popolata da SQLite)
+  // METRICS_HISTORY_BULK — returns the full in-memory history at boot (pre-populated from SQLite)
   handle(
     IpcChannel.METRICS_HISTORY_BULK,
     async (): Promise<IpcResult<Record<string, ServerMetrics[]>>> => {
@@ -438,7 +438,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // DB_GET_CUSTOM_FIELDS — restituisce i campi custom per un singolo DB
+  // DB_GET_CUSTOM_FIELDS — returns custom fields for a single DB
   handle(
     IpcChannel.DB_GET_CUSTOM_FIELDS,
     async (_event: IpcMainInvokeEvent, req: DbCustomFieldsGetRequest): Promise<IpcResult<DbCustomFields>> => {
@@ -446,7 +446,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // DB_SET_CUSTOM_FIELDS — salva i campi custom per un singolo DB
+  // DB_SET_CUSTOM_FIELDS — saves custom fields for a single DB
   handle(
     IpcChannel.DB_SET_CUSTOM_FIELDS,
     async (_event: IpcMainInvokeEvent, req: DbCustomFieldsSetRequest): Promise<IpcResult<null>> => {
@@ -455,7 +455,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // DB_GET_ALL_CUSTOM_FIELDS — restituisce tutti i campi custom (usato dal worker per alert suppression)
+  // DB_GET_ALL_CUSTOM_FIELDS — returns all custom fields (used by the worker for alert suppression)
   handle(
     IpcChannel.DB_GET_ALL_CUSTOM_FIELDS,
     async (): Promise<IpcResult<Record<string, DbCustomFields>>> => {
@@ -463,7 +463,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // SETTINGS_GET — restituisce le impostazioni salvate + stato autostart dal SO
+  // SETTINGS_GET — returns saved settings + autostart status from the OS
   handle(IpcChannel.SETTINGS_GET, async (): Promise<IpcResult<AppSettings>> => {
     return {
       ok: true,
@@ -474,7 +474,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // SETTINGS_SET — salva le impostazioni; aggiorna autostart nel registro di SO se richiesto
+  // SETTINGS_SET — saves settings; updates autostart in the OS registry if requested
   handle(
     IpcChannel.SETTINGS_SET,
     async (_event: IpcMainInvokeEvent, req: SaveSettingsRequest): Promise<IpcResult<null>> => {
@@ -486,7 +486,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // EXPORT_CUSTOM_FIELDS — genera CSV dei campi custom di tutti i DB
+  // EXPORT_CUSTOM_FIELDS — generates CSV of custom fields for all DBs
   handle(IpcChannel.EXPORT_CUSTOM_FIELDS, async (): Promise<IpcResult<string>> => {
     const all = getAllCustomFields()
     const rows = Object.entries(all).map(([key, fields]) => {
@@ -501,7 +501,7 @@ export function registerIpcHandlers(): void {
     return { ok: true, data: csv }
   })
 
-  // EXPORT_INVENTORY — genera CSV dell'inventario server
+  // EXPORT_INVENTORY — generates CSV of the server inventory
   handle(IpcChannel.EXPORT_INVENTORY, async (): Promise<IpcResult<string>> => {
     const all = getAllCustomFields()
     const header = 'ip,porta,raggiungibile,aggiunto_il,database'
@@ -525,7 +525,7 @@ export function registerIpcHandlers(): void {
     return { ok: true, data: csv }
   })
 
-  // EXPORT_ALERTS — genera CSV degli alert storici
+  // EXPORT_ALERTS — generates CSV of historical alerts
   handle(IpcChannel.EXPORT_ALERTS, async (): Promise<IpcResult<string>> => {
     const alerts = getAlerts()
     const header = 'id,serverId,categoria,severita,messaggio,rilevato_il,acknowledged_il'
@@ -550,7 +550,7 @@ export function registerIpcHandlers(): void {
     return { ok: true, data: csv }
   })
 
-  // DB_SHRINK_ESTIMATE — anteprima spazio recuperabile per un database
+  // DB_SHRINK_ESTIMATE — preview of recoverable space for a database
   handle(
     IpcChannel.DB_SHRINK_ESTIMATE,
     async (_event: IpcMainInvokeEvent, req: ShrinkEstimateParams): Promise<IpcResult<ShrinkEstimate[]>> => {
@@ -600,14 +600,14 @@ export function registerIpcHandlers(): void {
         const data = await getAvailabilityGroups(resolveConnection(req.connection))
         return { ok: true, data }
       } catch (err) {
-        // Server non in AG o permessi insufficienti — non è un errore critico
+        // Server not in AG or insufficient permissions — not a critical error
         console.info('[IPC] AG_GET_GROUPS: no AG or insufficient perms:', safeError(err))
         return { ok: true, data: [] }
       }
     }
   )
 
-  // AG_GET_REPLICAS — repliche AG
+  // AG_GET_REPLICAS — AG replicas
   handle(
     IpcChannel.AG_GET_REPLICAS,
     async (_event: IpcMainInvokeEvent, req: AgParams): Promise<IpcResult<AvailabilityReplica[]>> => {
@@ -635,7 +635,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // EXPORT_INVENTORY_CSV — apre showSaveDialog e scrive il CSV inventario con BOM UTF-8
+  // EXPORT_INVENTORY_CSV — opens showSaveDialog and writes the inventory CSV with UTF-8 BOM
   handle(
     IpcChannel.EXPORT_INVENTORY_CSV,
     async (event: IpcMainInvokeEvent, req: ExportInventoryCsvRequest): Promise<IpcResult<string | null>> => {
@@ -660,7 +660,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // FILE_SAVE_CSV — apre showSaveDialog e scrive il file
+  // FILE_SAVE_CSV — opens showSaveDialog and writes the file
   handle(
     IpcChannel.FILE_SAVE_CSV,
     async (event: IpcMainInvokeEvent, req: SaveCsvRequest): Promise<IpcResult<string | null>> => {
@@ -722,7 +722,7 @@ export function registerIpcHandlers(): void {
     }
   )
 
-  // AI_CHECK — verifica se Ollama è raggiungibile localmente
+  // AI_CHECK — checks whether Ollama is reachable locally
   handle(IpcChannel.AI_CHECK, async (): Promise<IpcResult<boolean>> => {
     try {
       return { ok: true, data: await checkOllamaHealth() }
@@ -731,7 +731,7 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // AI_AGENT_ASK — agente DBA multi-step con tool calling (LangGraph + Ollama)
+  // AI_AGENT_ASK — multi-step DBA agent with tool calling (LangGraph + Ollama)
   handle(
     IpcChannel.AI_AGENT_ASK,
     async (

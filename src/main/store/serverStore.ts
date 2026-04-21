@@ -10,7 +10,7 @@ export type ServerHostingType = 'on-premise' | 'cloud'
 
 export interface StoredServer {
   id: string
-  host: string              // canonical address — obbligatorio
+  host: string              // canonical address — required
   ip?: string               // legacy alias kept for migration; normalizeServer() strips it
   port: number
   instanceName?: string
@@ -24,7 +24,7 @@ export interface StoredServer {
   lastSeen?: string         // ISO 8601 — last successful connection
   unreachable?: boolean     // true while health-check reports failure
   unreachableSince?: string // ISO 8601 — timestamp of first failure
-  machineName?: string      // SERVERPROPERTY('MachineName') — usato per raggruppare istanze multiple sulla stessa macchina fisica
+  machineName?: string      // SERVERPROPERTY('MachineName') — used to group multiple instances on the same physical machine
   // Always On AG membership — populated at runtime, refreshed on startup
   agGroupId?: string        // group_id UUID if this server belongs to an AG
   agName?: string           // AG name, e.g. "AG-PROD-01" — used for sidebar grouping

@@ -12,10 +12,10 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
   const [connection, setConnection] = useState<CollectMetricsRequest | null>(null)
   const [retentionMinutes, setRetentionMinutes] = useState(60)
 
-  // useRef per la Map: non viene mai ricreata → nessuna perdita di dati al re-render
+  // useRef for the Map: never recreated → no data loss on re-render
   const historyMapRef = useRef<Map<string, MetricsHistoryPoint[]>>(new Map())
 
-  // maxPoints: basato su worst-case 30s di intervallo
+  // maxPoints: based on worst-case 30s interval
   const maxPoints = Math.ceil((retentionMinutes * 60) / 30)
 
   const pushSnapshot = useCallback(
@@ -45,7 +45,7 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
     [maxPoints]
   )
 
-  // Quando cambia retentionMinutes, taglia le entry esistenti in-place
+  // When retentionMinutes changes, trim existing entries in-place
   useEffect(() => {
     const map = historyMapRef.current
     for (const [serverId, points] of map) {
@@ -55,15 +55,15 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
     }
   }, [maxPoints])
 
-  // getHistory legge dalla ref aggiornata: deps vuote perché i ref sono sempre correnti.
-  // I consumer si ri-renderizzano tramite useMetricsStore (aggiornato da pushSnapshot).
+  // getHistory reads from the up-to-date ref: empty deps because refs are always current.
+  // Consumers re-render via useMetricsStore (updated by pushSnapshot).
   const getHistory = useCallback(
     (serverId: string): MetricsHistoryPoint[] => historyMapRef.current.get(serverId) ?? [],
     [] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
-  // Chiamata una volta sola da App.tsx al boot per pre-popolare la history da SQLite.
-  // Setta historyMapRef (grafici dettaglio) + metricsStore (KPI + sparkline corrente).
+  // Called once from App.tsx at boot to pre-populate history from SQLite.
+  // Sets historyMapRef (detail charts) + metricsStore (KPIs + current sparkline).
   const seedHistory = useCallback(
     (allHistory: Record<string, ServerMetrics[]>) => {
       const map = historyMapRef.current
@@ -79,9 +79,9 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
     [maxPoints] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
-  // Notifica il main process quale server è "attivo" (riceve polling più frequente).
-  // Il worker globale viene avviato da App.tsx con tutti i server.
-  // NON ha cleanup su unmount: il worker deve sopravvivere alla navigazione.
+  // Notifies the main process which server is "active" (receives more frequent polling).
+  // The global worker is started from App.tsx with all servers.
+  // NO cleanup on unmount: the worker must survive navigation.
   useEffect(() => {
     if (!connection) return
     window.sqlSentinel.workerSetActive({ serverId: `${connection.ip}:${connection.port}` })

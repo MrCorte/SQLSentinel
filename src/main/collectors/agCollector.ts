@@ -112,14 +112,14 @@ export async function getAvailabilityReplicas(
 // ---------------------------------------------------------------------------
 
 /**
- * Chiamato dal worker dopo ogni poll riuscito.
- * Interroga sys.availability_replicas sul server corrente, poi per ogni
- * replica trovata cerca il server corrispondente in electron-store e aggiorna
+ * Called by the worker after each successful poll.
+ * Queries sys.availability_replicas on the current server, then for each
+ * replica found it looks up the corresponding server in electron-store and updates
  * agGroupId + agName + agRole.
  *
- * Ritorna l'array dei StoredServer effettivamente modificati (per il push
- * al renderer via SERVER_CONFIG_UPDATED).
- * Non lancia eccezioni — server non in AG restituisce [].
+ * Returns the array of StoredServer records that were actually modified (for the push
+ * to the renderer via SERVER_CONFIG_UPDATED).
+ * Does not throw — a server not in an AG returns [].
  */
 export async function detectAndSyncReplicaRoles(
   conn: CollectMetricsRequest

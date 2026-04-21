@@ -65,7 +65,7 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
   const isConnected = replica.connected_state_desc === 'CONNECTED'
 
   return (
-    <Tooltip title={`Apri dashboard: ${replica.replica_server_name}`} arrow>
+    <Tooltip title={`Open dashboard: ${replica.replica_server_name}`} arrow>
       <Box
         onClick={() => onNavigate(replica)}
         onMouseEnter={() => setHovered(true)}
@@ -119,7 +119,7 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
 
         <Stack spacing={0.5}>
           <Stack direction="row" justifyContent="space-between">
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>Modalità</Typography>
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>Mode</Typography>
             <Typography variant="caption" sx={{ color: 'text.primary', fontWeight: 600 }}>
               {replica.availability_mode_desc === 'SYNCHRONOUS_COMMIT' ? 'SYNC' : 'ASYNC'}
               {' — '}
@@ -128,7 +128,7 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
           </Stack>
 
           <Stack direction="row" justifyContent="space-between">
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>Connessione</Typography>
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>Connection</Typography>
             <Typography
               variant="caption"
               sx={{ color: isConnected ? tokens.color.success : tokens.color.error, fontWeight: 600 }}
@@ -150,7 +150,7 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
 
           {replica.operational_state_desc && (
             <Stack direction="row" justifyContent="space-between">
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Stato op.</Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Op. state</Typography>
               <Typography variant="caption" sx={{ color: 'text.primary' }}>
                 {replica.operational_state_desc}
               </Typography>
@@ -158,7 +158,7 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
           )}
         </Stack>
 
-        {/* Freccia "→ Dashboard" visibile solo al hover */}
+        {/* "→ Dashboard" arrow — visible only on hover */}
         <Typography
           sx={{
             position: 'absolute',
@@ -243,7 +243,7 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
       setPendingServerId(match.id)
     } else {
       setSnackbarMsg(
-        `Server "${replica.replica_server_name}" non presente nella lista server monitorati. Aggiungilo prima dalla Discovery.`
+        `Server "${replica.replica_server_name}" is not in the monitored servers list. Add it first from Discovery.`
       )
     }
   }, [servers, setPendingServerId])
@@ -253,7 +253,7 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 3 }}>
         <CircularProgress size={20} />
         <Typography sx={{ color: 'text.secondary' }}>
-          Caricamento dati AG...
+          Loading AG data...
         </Typography>
       </Box>
     )
@@ -318,12 +318,12 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
         return (
           <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end" sx={{ width: '100%' }}>
             {v > LOG_QUEUE_WARN_KB && (
-              <Tooltip title={`Log queue elevata: ${v.toLocaleString('it-IT')} KB`}>
+              <Tooltip title={`High log queue: ${v.toLocaleString('en-US')} KB`}>
                 <WarningAmberIcon sx={{ fontSize: 14, color: '#d83b01' }} />
               </Tooltip>
             )}
             <Typography variant="body2" sx={{ color: v > LOG_QUEUE_WARN_KB ? '#d83b01' : 'inherit', fontWeight: v > LOG_QUEUE_WARN_KB ? 700 : 400 }}>
-              {v.toLocaleString('it-IT')}
+              {v.toLocaleString('en-US')}
             </Typography>
           </Stack>
         )
@@ -336,7 +336,7 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
       type: 'number',
       align: 'right',
       headerAlign: 'right',
-      valueFormatter: (v: number) => v.toLocaleString('it-IT')
+      valueFormatter: (v: number) => v.toLocaleString('en-US')
     },
     {
       field: 'last_commit_time',
@@ -344,7 +344,7 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
       width: 160,
       renderCell: (p) => (
         <Typography variant="body2">
-          {p.value ? new Date(p.value as string).toLocaleString('it-IT') : '—'}
+          {p.value ? new Date(p.value as string).toLocaleString('en-US') : '—'}
         </Typography>
       )
     }
@@ -385,12 +385,12 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
             Primary: <strong style={{ color: 'inherit' }}>{detail.primary_replica || '—'}</strong>
           </Typography>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            Aggiornato: <strong style={{ color: 'inherit' }}>
-              {detail.lastUpdated.toLocaleTimeString('it-IT')}
+            Updated: <strong style={{ color: 'inherit' }}>
+              {detail.lastUpdated.toLocaleTimeString('en-US')}
             </strong>
           </Typography>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            {detail.replicas.length} repliche · {detail.databases.length} DB
+            {detail.replicas.length} replicas · {detail.databases.length} DB
           </Typography>
         </Stack>
       </Box>
@@ -407,11 +407,11 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
             mb: 1.5
           }}
         >
-          Repliche — clicca per aprire il dashboard del server
+          Replicas — click to open the server dashboard
         </Typography>
         {detail.replicas.length === 0 ? (
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Nessuna replica disponibile.
+            No replicas available.
           </Typography>
         ) : (
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
@@ -441,12 +441,11 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
             mb: 1.5
           }}
         >
-          Database AG
+          AG Databases
         </Typography>
         {detail.databases.length === 0 ? (
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Nessun database AG disponibile (questa replica potrebbe essere SECONDARY — i dati
-            sono visibili solo dalla PRIMARY).
+            No AG databases available (this replica may be SECONDARY — data is only visible from the PRIMARY).
           </Typography>
         ) : (
           <DataGrid<AvailabilityDatabase>
@@ -470,7 +469,7 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
         )}
       </Box>
 
-      {/* Toast warning — server non monitorato */}
+      {/* Toast warning — server not monitored */}
       <Snackbar
         open={snackbarMsg !== null}
         autoHideDuration={5000}

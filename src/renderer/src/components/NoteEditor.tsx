@@ -45,7 +45,7 @@ export function NoteEditor({ serverId, initialNote }: NoteEditorProps): React.JS
         {saving && <CircularProgress size={11} />}
         {saved && (
           <Typography variant="caption" sx={{ color: 'success.main' }}>
-            Salvato
+            Saved
           </Typography>
         )}
       </Box>
@@ -54,7 +54,7 @@ export function NoteEditor({ serverId, initialNote }: NoteEditorProps): React.JS
         fullWidth
         minRows={2}
         maxRows={6}
-        placeholder="Aggiungi note sul server… (es. 'In manutenzione venerdì sera', 'Usato da SAP')"
+        placeholder="Add server notes… (e.g. 'Under maintenance Friday evening', 'Used by SAP')"
         value={note}
         onChange={(e) => setNote(e.target.value)}
         inputProps={{ maxLength: 1000 }}

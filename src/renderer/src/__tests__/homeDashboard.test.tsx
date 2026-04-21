@@ -1,22 +1,22 @@
 // @vitest-environment jsdom
 
 /**
- * AREA 4 — Render e hooks (React 19 + Zustand + @tanstack/react-virtual)
+ * AREA 4 — Render and hooks (React 19 + Zustand + @tanstack/react-virtual)
  *
- * Prerequisito: npm install --save-dev jsdom @testing-library/react
- *   (jsdom è già incluso in vitest se si usa environment: 'jsdom')
+ * Prerequisite: npm install --save-dev jsdom @testing-library/react
+ *   (jsdom is already included in vitest when using environment: 'jsdom')
  *
- * Verifica:
- *  - HomeDashboard non viola le Rules of Hooks passando da servers=[] a servers=[...]
- *  - useMemo non si ricalcola quando le dipendenze non cambiano
- *  - getSidebarItemSize restituisce 40 per group/ungrouped-header, 36 per tutto il resto
- *  - Sidebar virtualizer non renderizza tutti i 200 item contemporaneamente
+ * Verifies:
+ *  - HomeDashboard does not violate Rules of Hooks when transitioning from servers=[] to servers=[...]
+ *  - useMemo does not recompute when dependencies have not changed
+ *  - getSidebarItemSize returns 40 for group/ungrouped-header, 36 for everything else
+ *  - Sidebar virtualizer does not render all 200 items at the same time
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act, screen } from '@testing-library/react'
 import type { StoredServer } from '../../../preload/index'
 
-// ── Mock window.sqlSentinel (non disponibile in jsdom) ───────────────────────
+// ── Mock window.sqlSentinel (not available in jsdom) ────────────────────────
 vi.stubGlobal('sqlSentinel', {
   getSettings: vi.fn().mockResolvedValue({ ok: true, data: { retentionMinutes: 60 } }),
   getAlerts: vi.fn().mockResolvedValue({ ok: true, data: [] }),
@@ -34,7 +34,7 @@ vi.stubGlobal('sqlSentinel', {
   }
 })
 
-// ── Mock zustand-persist (groupsStore usa localStorage) ──────────────────────
+// ── Mock zustand-persist (groupsStore uses localStorage) ────────────────────
 vi.mock('../store/groupsStore', () => ({
   useGroupsStore: vi.fn(() => ({
     groups: [],
@@ -70,7 +70,7 @@ function makeStoredServer(ip: string, id?: string): StoredServer {
 
 const noop = () => {}
 
-// ── Reset store tra i test ────────────────────────────────────────────────────
+// ── Reset store between tests ────────────────────────────────────────────────
 
 beforeEach(() => {
   useServersStore.setState({ servers: [], initialized: true })
@@ -91,8 +91,8 @@ beforeEach(() => {
 
 describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
 
-  it('non lancia "Rendered more hooks than during previous render" quando servers passa da [] a [srv]', () => {
-    // Partenza: lista vuota → mostra <EmptyState>
+  it('does not throw "Rendered more hooks than during previous render" when servers changes from [] to [srv]', () => {
+    // Starting point: empty list → shows <EmptyState>
     const { rerender } = render(
       <HomeDashboard
         onNavigateToServer={noop}
@@ -101,9 +101,9 @@ describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
       />
     )
 
-    expect(screen.getAllByText(/nessun server monitorato/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/no monitored servers/i).length).toBeGreaterThan(0)
 
-    // Aggiunge un server → deve renderizzare senza eccezioni hooks
+    // Adds a server → must render without hook exceptions
     act(() => {
       useServersStore.setState({
         servers: [makeStoredServer('10.0.0.1'), makeStoredServer('10.0.0.2')],
@@ -111,7 +111,7 @@ describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
       })
     })
 
-    // Nessun errore significa che hooks sono stabili tra i render
+    // No errors mean hooks are stable across renders
     expect(() =>
       rerender(
         <HomeDashboard
@@ -123,7 +123,7 @@ describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
     ).not.toThrow()
   })
 
-  it('non lancia errori hooks quando alerts cambia', () => {
+  it('does not throw hook errors when alerts changes', () => {
     useServersStore.setState({ servers: [makeStoredServer('10.0.0.1')], initialized: true })
 
     const { rerender } = render(
@@ -159,7 +159,7 @@ describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
     ).not.toThrow()
   })
 
-  it('mostra la EmptyState solo quando servers è vuoto', () => {
+  it('shows EmptyState only when servers is empty', () => {
     render(
       <HomeDashboard
         onNavigateToServer={noop}
@@ -167,10 +167,10 @@ describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
         onOpenAlerts={noop}
       />
     )
-    expect(screen.getAllByText(/nessun server monitorato/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/no monitored servers/i).length).toBeGreaterThan(0)
   })
 
-  it('mostra la tabella server quando servers non è vuoto', () => {
+  it('shows the server table when servers is not empty', () => {
     useServersStore.setState({
       servers: [makeStoredServer('10.0.0.1'), makeStoredServer('10.0.0.2')],
       initialized: true
@@ -184,18 +184,18 @@ describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
       />
     )
 
-    // Deve mostrare la Home Dashboard con le KPI card "SERVER TOTALI"
-    expect(screen.getAllByText(/SERVER TOTALI/i).length).toBeGreaterThan(0)
+    // Must show the Home Dashboard with the "TOTAL SERVERS" KPI card
+    expect(screen.getAllByText(/TOTAL SERVERS/i).length).toBeGreaterThan(0)
   })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// HomeDashboard — stabilità useMemo
+// HomeDashboard — useMemo stability
 // ═══════════════════════════════════════════════════════════════════════════════
 
-describe('AREA 4 — HomeDashboard: useMemo non si ricalcola inutilmente', () => {
+describe('AREA 4 — HomeDashboard: useMemo does not recalculate unnecessarily', () => {
 
-  it('il valore "SERVER TOTALI" rimane coerente dopo re-render con deps invariate', () => {
+  it('the "TOTAL SERVERS" value remains consistent after re-render with unchanged deps', () => {
     useServersStore.setState({
       servers: [makeStoredServer('10.0.0.1'), makeStoredServer('10.0.0.2')],
       initialized: true
@@ -209,9 +209,9 @@ describe('AREA 4 — HomeDashboard: useMemo non si ricalcola inutilmente', () =>
       />
     )
 
-    const kpiBefore = screen.getAllByText('2').length  // "2" come valore KPI
+    const kpiBefore = screen.getAllByText('2').length  // "2" as KPI value
 
-    // Re-render con stesse props e stesso store — memo non deve cambiare output
+    // Re-render with same props and same store — memo must not change output
     rerender(
       <HomeDashboard
         onNavigateToServer={noop}
@@ -225,12 +225,12 @@ describe('AREA 4 — HomeDashboard: useMemo non si ricalcola inutilmente', () =>
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// getSidebarItemSize — logica estimateSize del virtualizer
+// getSidebarItemSize — estimateSize logic for the virtualizer
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('AREA 4 — getSidebarItemSize (estimateSize virtualizer)', () => {
 
-  it('restituisce 40 per kind="group"', () => {
+  it('returns 40 for kind="group"', () => {
     const item: SidebarItem = {
       kind: 'group',
       group: { id: 'g1', name: 'Prod', color: '#f00', collapsed: false, order: 0 },
@@ -239,12 +239,12 @@ describe('AREA 4 — getSidebarItemSize (estimateSize virtualizer)', () => {
     expect(getSidebarItemSize(item)).toBe(40)
   })
 
-  it('restituisce 40 per kind="ungrouped-header"', () => {
+  it('returns 40 for kind="ungrouped-header"', () => {
     const item: SidebarItem = { kind: 'ungrouped-header' }
     expect(getSidebarItemSize(item)).toBe(40)
   })
 
-  it('restituisce 36 per kind="server"', () => {
+  it('returns 36 for kind="server"', () => {
     const item: SidebarItem = {
       kind: 'server',
       server: makeStoredServer('10.0.0.1'),
@@ -254,7 +254,7 @@ describe('AREA 4 — getSidebarItemSize (estimateSize virtualizer)', () => {
     expect(getSidebarItemSize(item)).toBe(36)
   })
 
-  it('restituisce 36 per kind="ag"', () => {
+  it('returns 36 for kind="ag"', () => {
     const item: SidebarItem = {
       kind: 'ag',
       agName: 'AG1',
@@ -270,7 +270,7 @@ describe('AREA 4 — getSidebarItemSize (estimateSize virtualizer)', () => {
     expect(getSidebarItemSize(item)).toBe(36)
   })
 
-  it('restituisce 36 per kind="search-server"', () => {
+  it('returns 36 for kind="search-server"', () => {
     const item: SidebarItem = {
       kind: 'search-server',
       server: makeStoredServer('10.0.0.1')
@@ -278,12 +278,12 @@ describe('AREA 4 — getSidebarItemSize (estimateSize virtualizer)', () => {
     expect(getSidebarItemSize(item)).toBe(36)
   })
 
-  it('restituisce 36 per kind="no-results"', () => {
+  it('returns 36 for kind="no-results"', () => {
     const item: SidebarItem = { kind: 'no-results' }
     expect(getSidebarItemSize(item)).toBe(36)
   })
 
-  it('restituisce 36 quando item è undefined (guard)', () => {
+  it('returns 36 when item is undefined (guard)', () => {
     expect(getSidebarItemSize(undefined)).toBe(36)
   })
 })

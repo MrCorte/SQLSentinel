@@ -1,17 +1,17 @@
 /**
- * AREA 5 — Export CSV
+ * AREA 5 — CSV Export
  *
- * Testa in modo isolato (senza IPC, senza React):
+ * Tests in isolation (no IPC, no React):
  *  - escapeCsvValue (src/main/csvUtils.ts)
- *  - buildCsvContent (src/main/csvUtils.ts) — BOM, \r\n, escape celle
+ *  - buildCsvContent (src/main/csvUtils.ts) — BOM, \r\n, cell escaping
  *  - buildInventoryCsvRows (src/renderer/src/utils/csvExportUtils.ts)
- *      · una riga per DB
- *      · server senza DB → 1 riga placeholder
- *      · replica SECONDARY → "(replica)" nelle colonne Dati/Log/Backup
- *      · referente DB ha priorità sul referente server (fallback non applicato qui:
- *        buildInventoryCsvRows usa solo dbCustomFields, non serverCustomFields)
- *      · server UNREACHABLE → colonna Stato Server = "UNREACHABLE"
- *      · replica PRIMARY → mostra valori numerici
+ *      · one row per DB
+ *      · server with no DBs → 1 placeholder row
+ *      · SECONDARY replica → "(replica)" in Data/Log/Backup columns
+ *      · DB referente takes priority over server referente (fallback not applied here:
+ *        buildInventoryCsvRows uses only dbCustomFields, not serverCustomFields)
+ *      · UNREACHABLE server → Server Status column = "UNREACHABLE"
+ *      · PRIMARY replica → shows numeric values
  */
 import { describe, it, expect } from 'vitest'
 import { escapeCsvValue, buildCsvContent } from '../../../main/csvUtils'
@@ -25,32 +25,32 @@ import type { ServerMetrics, DatabaseInfo, BackupInfo } from '../../../preload/i
 
 describe('AREA 5 — escapeCsvValue', () => {
 
-  it('wrappa in virgolette doppie un valore semplice', () => {
+  it('wraps a simple value in double quotes', () => {
     expect(escapeCsvValue('hello')).toBe('"hello"')
   })
 
-  it('wrappa in "" i valori con virgola', () => {
+  it('wraps values containing a comma in double quotes', () => {
     const result = escapeCsvValue('Rossi, Mario')
     expect(result).toBe('"Rossi, Mario"')
-    // il valore wrappato contiene la virgola — deve essere distinto da separatore
+    // the wrapped value contains the comma — it must be distinct from the separator
     expect(result.startsWith('"')).toBe(true)
     expect(result.endsWith('"')).toBe(true)
   })
 
-  it('wrappa in "" i valori con newline', () => {
-    const result = escapeCsvValue('riga1\nriga2')
-    expect(result).toBe('"riga1\nriga2"')
+  it('wraps values containing a newline in double quotes', () => {
+    const result = escapeCsvValue('line1\nline2')
+    expect(result).toBe('"line1\nline2"')
   })
 
-  it('esegue l\'escape delle virgolette interne (doubled-quote)', () => {
+  it('escapes internal quotes (doubled-quote)', () => {
     expect(escapeCsvValue('say "hi"')).toBe('"say ""hi"""')
   })
 
-  it('gestisce stringa vuota → ""', () => {
+  it('handles empty string → ""', () => {
     expect(escapeCsvValue('')).toBe('""')
   })
 
-  it('gestisce valori con \r\n (CRLF interno)', () => {
+  it('handles values with \\r\\n (internal CRLF)', () => {
     const result = escapeCsvValue('a\r\nb')
     expect(result).toBe('"a\r\nb"')
     expect(result.startsWith('"')).toBe(true)
@@ -63,48 +63,48 @@ describe('AREA 5 — escapeCsvValue', () => {
 
 describe('AREA 5 — buildCsvContent', () => {
 
-  it('il CSV inizia con BOM \\uFEFF', () => {
+  it('CSV starts with BOM \uFEFF', () => {
     const csv = buildCsvContent(['Col'], [['val']])
     expect(csv.charCodeAt(0)).toBe(0xFEFF)
   })
 
-  it('usa \\r\\n come line separator (RFC 4180)', () => {
+  it('uses \r\n as line separator (RFC 4180)', () => {
     const csv = buildCsvContent(['A', 'B'], [['1', '2'], ['3', '4']])
-    // Rimuove il BOM
+    // Strips the BOM
     const body = csv.slice(1)
     const lines = body.split('\r\n')
-    expect(lines).toHaveLength(3)   // header + 2 righe dati
-    expect(body).not.toContain('\n\r')  // no line ending invertiti
+    expect(lines).toHaveLength(3)   // header + 2 data rows
+    expect(body).not.toContain('\n\r')  // no inverted line endings
   })
 
-  it('ogni cella è escapata con virgolette', () => {
+  it('every cell is escaped with quotes', () => {
     const csv = buildCsvContent(['H'], [['value']])
     expect(csv).toContain('"H"')
     expect(csv).toContain('"value"')
   })
 
-  it('genera intestazione corretta come prima riga (dopo il BOM)', () => {
-    const headers = ['Ambiente', 'Server', 'Database']
+  it('generates correct header as first row (after BOM)', () => {
+    const headers = ['Environment', 'Server', 'Database']
     const csv = buildCsvContent(headers, [])
     const firstLine = csv.slice(1).split('\r\n')[0]
-    expect(firstLine).toBe('"Ambiente";"Server";"Database"')
+    expect(firstLine).toBe('"Environment";"Server";"Database"')
   })
 
-  it('genera N+1 righe per N righe di dati (header + dati)', () => {
+  it('generates N+1 rows for N data rows (header + data)', () => {
     const rows = [['a', 'b'], ['c', 'd'], ['e', 'f']]
     const csv = buildCsvContent(['X', 'Y'], rows)
     const lines = csv.slice(1).split('\r\n')
-    expect(lines).toHaveLength(4)  // 1 header + 3 righe
+    expect(lines).toHaveLength(4)  // 1 header + 3 data rows
   })
 
-  it('doppio escape su cella con virgolette interne', () => {
+  it('double-escapes a cell with internal quotes', () => {
     const csv = buildCsvContent(['col'], [['"quoted"']])
     expect(csv).toContain('"""quoted"""')
   })
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// buildInventoryCsvRows — helpers per costruire fixture
+// buildInventoryCsvRows — helpers for building fixtures
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function makeDb(name: string, overrides: Partial<DatabaseInfo> = {}): DatabaseInfo {
@@ -198,7 +198,7 @@ function makeInventory(groups: GroupInventory[]): InventoryStats {
 
 describe('AREA 5 — buildInventoryCsvRows', () => {
 
-  it('genera una riga per ogni database del server', () => {
+  it('generates one row per server database', () => {
     const srv = makeServer('10.0.0.1', 'srv1')
     const metrics = makeMetrics([makeDb('DB_A'), makeDb('DB_B'), makeDb('DB_C')])
     const inventory = makeInventory([{
@@ -215,7 +215,7 @@ describe('AREA 5 — buildInventoryCsvRows', () => {
     expect(rows.map((r) => r[7])).toEqual(['DB_A', 'DB_B', 'DB_C'])  // col 7 = Database
   })
 
-  it('server con 0 DB genera esattamente 1 riga placeholder (campi DB vuoti)', () => {
+  it('server with 0 DBs generates exactly 1 placeholder row (empty DB fields)', () => {
     const srv = makeServer('10.0.0.1', 'srv1')
     const inventory = makeInventory([{
       groupId: 'g1', groupName: 'Prod', groupColor: '#00f',
@@ -225,18 +225,18 @@ describe('AREA 5 — buildInventoryCsvRows', () => {
       agClusters: [], agDbCount: 0, agOnline: 0, agOffline: 0, agDataMb: 0, agLogMb: 0
     }])
 
-    const rows = buildInventoryCsvRows(inventory, {}, {}, {})  // nessuna metrica
+    const rows = buildInventoryCsvRows(inventory, {}, {}, {})  // no metrics
 
     expect(rows).toHaveLength(1)
-    expect(rows[0][7]).toBe('')   // Database = vuoto
-    expect(rows[0][8]).toBe('')   // Stato DB = vuoto
-    expect(rows[0][9]).toBe('')   // Dati (MB) = vuoto
+    expect(rows[0][7]).toBe('')   // Database = empty
+    expect(rows[0][8]).toBe('')   // DB Status = empty
+    expect(rows[0][9]).toBe('')   // Data (MB) = empty
   })
 
-  it('server UNREACHABLE → colonna Stato Server = "UNREACHABLE"', () => {
+  it('UNREACHABLE server → Server Status column = "UNREACHABLE"', () => {
     const srv = makeServer('10.0.0.1', 'srv1', { unreachable: true })
     const inventory = makeInventory([{
-      groupId: null, groupName: 'Senza gruppo', groupColor: '#777',
+      groupId: null, groupName: 'No group', groupColor: '#777',
       standaloneServers: [srv],
       standaloneDbCount: 0, standaloneOnline: 0, standaloneOffline: 0,
       standaloneDataMb: 0, standaloneLogMb: 0,
@@ -245,13 +245,13 @@ describe('AREA 5 — buildInventoryCsvRows', () => {
 
     const rows = buildInventoryCsvRows(inventory, {}, {}, {})
 
-    expect(rows[0][15]).toBe('UNREACHABLE')  // colonna indice 15 = Stato Server
+    expect(rows[0][15]).toBe('UNREACHABLE')  // column index 15 = Server Status
   })
 
-  it('server ONLINE → colonna Stato Server = "ONLINE"', () => {
+  it('ONLINE server → Server Status column = "ONLINE"', () => {
     const srv = makeServer('10.0.0.1', 'srv1', { unreachable: false })
     const inventory = makeInventory([{
-      groupId: null, groupName: 'Senza gruppo', groupColor: '#777',
+      groupId: null, groupName: 'No group', groupColor: '#777',
       standaloneServers: [srv],
       standaloneDbCount: 0, standaloneOnline: 0, standaloneOffline: 0,
       standaloneDataMb: 0, standaloneLogMb: 0,
@@ -262,7 +262,7 @@ describe('AREA 5 — buildInventoryCsvRows', () => {
     expect(rows[0][15]).toBe('ONLINE')
   })
 
-  it('referente DB ha priorità: usa dbCustomFields se presente', () => {
+  it('DB owner takes priority: uses dbCustomFields when present', () => {
     const srv = makeServer('10.0.0.1', 'srv1')
     const db = makeDb('DB_A')
     const metrics = makeMetrics([db], [makeBackup('DB_A')])
@@ -277,10 +277,10 @@ describe('AREA 5 — buildInventoryCsvRows', () => {
 
     const rows = buildInventoryCsvRows(inventory, {}, { '10.0.0.1:1433': metrics }, dbCf)
 
-    expect(rows[0][5]).toBe('Mario Rossi')  // colonna Referente (indice 5)
+    expect(rows[0][5]).toBe('Mario Rossi')  // Referente column (index 5)
   })
 
-  it('referente è stringa vuota quando dbCustomFields non contiene la chiave', () => {
+  it('referente is empty string when dbCustomFields does not contain the key', () => {
     const srv = makeServer('10.0.0.1', 'srv1')
     const db = makeDb('DB_A')
     const metrics = makeMetrics([db], [makeBackup('DB_A')])
@@ -320,7 +320,7 @@ describe('AREA 5 — buildInventoryCsvRows', () => {
       return { inv, metrics: { '10.0.0.1:1433': metrics } }
     }
 
-    it('replica SECONDARY → colonne Dati e Log mostrano "(replica)"', () => {
+    it('SECONDARY replica → Data and Log columns show "(replica)"', () => {
       const { inv, metrics } = makeAgInventory('SECONDARY')
       const rows = buildInventoryCsvRows(inv, {}, metrics, {})
 
@@ -328,32 +328,32 @@ describe('AREA 5 — buildInventoryCsvRows', () => {
       expect(rows[0][10]).toBe('(replica)')  // Log (MB)
     })
 
-    it('replica SECONDARY → colonne Backup Full e Log sono stringa vuota', () => {
+    it('SECONDARY replica → Full and Log Backup columns are empty string', () => {
       const { inv, metrics } = makeAgInventory('SECONDARY')
       const rows = buildInventoryCsvRows(inv, {}, metrics, {})
 
-      expect(rows[0][11]).toBe('')  // Ultimo Backup Full
-      expect(rows[0][12]).toBe('')  // Ultimo Backup Log
+      expect(rows[0][11]).toBe('')  // Last Full Backup
+      expect(rows[0][12]).toBe('')  // Last Log Backup
     })
 
-    it('replica PRIMARY → colonne Dati e Log mostrano il valore numerico', () => {
+    it('PRIMARY replica → Data and Log columns show the numeric value', () => {
       const { inv, metrics } = makeAgInventory('PRIMARY')
       const rows = buildInventoryCsvRows(inv, {}, metrics, {})
 
       expect(rows[0][9]).not.toBe('(replica)')
-      expect(parseFloat(rows[0][9])).toBeGreaterThan(0)  // es. "500.0"
+      expect(parseFloat(rows[0][9])).toBeGreaterThan(0)  // e.g. "500.0"
       expect(rows[0][10]).not.toBe('(replica)')
     })
 
-    it('replica PRIMARY → colonne Backup mostrano la data (non stringa vuota)', () => {
+    it('PRIMARY replica → Backup columns show the date (not empty string)', () => {
       const { inv, metrics } = makeAgInventory('PRIMARY')
       const rows = buildInventoryCsvRows(inv, {}, metrics, {})
 
-      expect(rows[0][11]).not.toBe('')   // Ultimo Backup Full
+      expect(rows[0][11]).not.toBe('')   // Last Full Backup
     })
   })
 
-  it('colonna Tipo = "Standalone" per server standalone', () => {
+  it('Type column = "Standalone" for standalone servers', () => {
     const srv = makeServer('10.0.0.1', 'srv1')
     const inventory = makeInventory([{
       groupId: 'g1', groupName: 'Prod', groupColor: '#f0f',
@@ -364,10 +364,10 @@ describe('AREA 5 — buildInventoryCsvRows', () => {
     }])
 
     const rows = buildInventoryCsvRows(inventory, {}, {}, {})
-    expect(rows[0][1]).toBe('Standalone')  // colonna Tipo
+    expect(rows[0][1]).toBe('Standalone')  // Type column
   })
 
-  it('colonna Tipo = "Always On" per repliche AG', () => {
+  it('Type column = "Always On" for AG replicas', () => {
     const rep = makeServer('10.0.0.1', 'srv1', { isAg: true, agRole: 'PRIMARY', agName: 'AG1' })
     const ag: AgClusterSummary = {
       agName: 'AG1', health: 'HEALTHY', primaryReplica: '10.0.0.1',
@@ -385,7 +385,7 @@ describe('AREA 5 — buildInventoryCsvRows', () => {
     expect(rows[0][1]).toBe('Always On')
   })
 
-  it('DB con recoveryModel SIMPLE e lastLogBackup null → "N/A" (non "Mai")', () => {
+  it('DB with SIMPLE recovery model and null lastLogBackup → "N/A" (not "Never")', () => {
     const srv = makeServer('10.0.0.1', 'srv1')
     const db = makeDb('DB_SIMPLE', { recoveryModel: 'SIMPLE' })
     const metrics = makeMetrics([db], [{ databaseName: 'DB_SIMPLE', lastFullBackup: new Date('2024-01-01'), lastDiffBackup: null, lastLogBackup: null }])
@@ -398,6 +398,6 @@ describe('AREA 5 — buildInventoryCsvRows', () => {
     }])
 
     const rows = buildInventoryCsvRows(inventory, {}, { '10.0.0.1:1433': metrics }, {})
-    expect(rows[0][12]).toBe('N/A')  // Ultimo Backup Log
+    expect(rows[0][12]).toBe('N/A')  // Last Log Backup
   })
 })

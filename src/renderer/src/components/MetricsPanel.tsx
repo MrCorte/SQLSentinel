@@ -121,11 +121,11 @@ const TabPanoramica = memo(function TabPanoramica({
   return (
     <Stack spacing={2}>
       <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-        <KpiCard label="Versione" value={info.version} accent={kpiAccent('blue', 0)} />
-        <KpiCard label="Edizione" value={info.edition} accent={kpiAccent('blue', 0)} />
+        <KpiCard label="Version" value={info.version} accent={kpiAccent('blue', 0)} />
+        <KpiCard label="Edition" value={info.edition} accent={kpiAccent('blue', 0)} />
         <KpiCard
-          label="Memoria usata"
-          value={`${info.memoryUsedMb.toLocaleString('it-IT')} MB`}
+          label="Memory used"
+          value={`${info.memoryUsedMb.toLocaleString('en-US')} MB`}
           accent={kpiAccent('health', memPercent > 90 ? 90 : memPercent > 70 ? 70 : 0)}
         />
         <KpiCard
@@ -133,13 +133,13 @@ const TabPanoramica = memo(function TabPanoramica({
           value={`${info.cpuUsagePercent.toFixed(1)} %`}
           accent={kpiAccent('health', info.cpuUsagePercent)}
         />
-        <KpiCard label="Uptime" value={`${info.uptimeDays.toFixed(1)} giorni`} accent={kpiAccent('blue', 0)} />
+        <KpiCard label="Uptime" value={`${info.uptimeDays.toFixed(1)} days`} accent={kpiAccent('blue', 0)} />
         {info.logicalCpus > 0 && (
           <KpiCard
-            label="CPU Logici"
+            label="Logical CPUs"
             value={`${info.physicalCpus}C / ${info.logicalCpus}T`}
             accent={kpiAccent('blue', 0)}
-            tooltip={`Core fisici: ${info.physicalCpus}\nThread logici: ${info.logicalCpus}\nHyperthreading: ${info.logicalCpus > info.physicalCpus ? 'Attivo' : 'Non attivo'}`}
+            tooltip={`Physical cores: ${info.physicalCpus}\nLogical threads: ${info.logicalCpus}\nHyperthreading: ${info.logicalCpus > info.physicalCpus ? 'Active' : 'Inactive'}`}
           />
         )}
       </Box>
@@ -210,7 +210,7 @@ function DbEditDialog({
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>Modifica — {dbName}</DialogTitle>
+      <DialogTitle>Edit — {dbName}</DialogTitle>
       <DialogContent
         sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}
       >
@@ -232,9 +232,9 @@ function DbEditDialog({
         />
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Annulla</Button>
+        <Button onClick={onClose}>Cancel</Button>
         <Button variant="contained" onClick={handleSave}>
-          Salva
+          Save
         </Button>
       </DialogActions>
     </Dialog>
@@ -391,7 +391,7 @@ const TabDatabase = memo(function TabDatabase({
       },
       {
         field: 'stateDesc',
-        headerName: 'Stato',
+        headerName: 'Status',
         width: 130,
         renderCell: (p) => <StatoCell stateDesc={p.value as string} />
       },
@@ -411,7 +411,7 @@ const TabDatabase = memo(function TabDatabase({
       },
       {
         field: 'referente',
-        headerName: 'Referente',
+        headerName: 'Owner',
         width: 130,
         renderCell: (p) => (
           <Typography
@@ -426,12 +426,12 @@ const TabDatabase = memo(function TabDatabase({
       { field: 'recoveryModel', headerName: 'Recovery', width: 100 },
       {
         field: 'sizeMb',
-        headerName: 'Dati (MB)',
+        headerName: 'Data (MB)',
         headerAlign: 'right',
         width: 110,
         type: 'number',
         align: 'right',
-        valueFormatter: (v: number) => v.toLocaleString('it-IT')
+        valueFormatter: (v: number) => v.toLocaleString('en-US')
       },
       {
         field: 'logSizeMb',
@@ -440,7 +440,7 @@ const TabDatabase = memo(function TabDatabase({
         type: 'number',
         align: 'right',
         headerAlign: 'right',
-        valueFormatter: (v: number) => v.toLocaleString('it-IT')
+        valueFormatter: (v: number) => v.toLocaleString('en-US')
       },
       {
         field: 'compatibilityLevel',
@@ -463,7 +463,7 @@ const TabDatabase = memo(function TabDatabase({
       },
       {
         field: 'actions',
-        headerName: 'Azioni',
+        headerName: 'Actions',
         width: 70,
         sortable: false,
         filterable: false,
@@ -534,10 +534,10 @@ const SESSION_SX = {
 
 const sessionColumns: GridColDef<SessionInfo>[] = [
   { field: 'sessionId', headerName: 'SID', width: 70, type: 'number' },
-  { field: 'status', headerName: 'Stato', width: 90 },
+  { field: 'status', headerName: 'Status', width: 90 },
   {
     field: 'blockingSessionId',
-    headerName: 'Bloccato da',
+    headerName: 'Blocked by',
     width: 105,
     type: 'number',
     renderCell: (p) =>
@@ -561,7 +561,7 @@ const sessionColumns: GridColDef<SessionInfo>[] = [
   },
   { field: 'waitTimeMs', headerName: 'Wait (ms)', width: 95, type: 'number' },
   { field: 'cpuTime', headerName: 'CPU (ms)', width: 95, type: 'number' },
-  { field: 'logicalReads', headerName: 'Letture logiche', width: 130, type: 'number' }
+  { field: 'logicalReads', headerName: 'Logical reads', width: 130, type: 'number' }
 ]
 
 // -----------------------------------------------------------------------
@@ -579,7 +579,7 @@ function backupCellStyle(date: Date | null): React.CSSProperties {
 }
 
 function formatBackupDate(date: Date | null): string {
-  return date ? new Date(date).toLocaleString('it-IT') : 'Mai'
+  return date ? new Date(date).toLocaleString('en-US') : 'Never'
 }
 
 const backupColumns: GridColDef<BackupInfo>[] = [
@@ -591,7 +591,7 @@ const backupColumns: GridColDef<BackupInfo>[] = [
   },
   {
     field: 'lastFullBackup',
-    headerName: 'Ultimo Full',
+    headerName: 'Last Full',
     width: 175,
     renderCell: (p) => (
       <span style={backupCellStyle(p.value as Date | null)}>
@@ -601,7 +601,7 @@ const backupColumns: GridColDef<BackupInfo>[] = [
   },
   {
     field: 'lastDiffBackup',
-    headerName: 'Ultimo Diff',
+    headerName: 'Last Diff',
     width: 175,
     renderCell: (p) => (
       <span style={backupCellStyle(p.value as Date | null)}>
@@ -611,7 +611,7 @@ const backupColumns: GridColDef<BackupInfo>[] = [
   },
   {
     field: 'lastLogBackup',
-    headerName: 'Ultimo Log',
+    headerName: 'Last Log',
     width: 175,
     renderCell: (p) => (
       <span style={backupCellStyle(p.value as Date | null)}>
@@ -638,10 +638,10 @@ const queryColumns: GridColDef<QueryInfo>[] = [
       </Tooltip>
     )
   },
-  { field: 'executionCount', headerName: 'Esecuzioni', width: 105, type: 'number' },
-  { field: 'totalElapsedTimeMs', headerName: 'Elapsed tot (ms)', width: 140, type: 'number' },
+  { field: 'executionCount', headerName: 'Executions', width: 105, type: 'number' },
+  { field: 'totalElapsedTimeMs', headerName: 'Total elapsed (ms)', width: 140, type: 'number' },
   { field: 'avgCpuTimeMs', headerName: 'Avg CPU (ms)', width: 120, type: 'number' },
-  { field: 'avgLogicalReads', headerName: 'Avg letture', width: 110, type: 'number' }
+  { field: 'avgLogicalReads', headerName: 'Avg reads', width: 110, type: 'number' }
 ]
 
 // -----------------------------------------------------------------------
@@ -687,7 +687,7 @@ const waitStatColumns: GridColDef<WaitStatInfo>[] = [
     type: 'number',
     align: 'right',
     headerAlign: 'right',
-    valueFormatter: (v: number) => v.toLocaleString('it-IT')
+    valueFormatter: (v: number) => v.toLocaleString('en-US')
   },
   {
     field: 'maxWaitTimeMs',
@@ -696,7 +696,7 @@ const waitStatColumns: GridColDef<WaitStatInfo>[] = [
     type: 'number',
     align: 'right',
     headerAlign: 'right',
-    valueFormatter: (v: number) => v.toLocaleString('it-IT')
+    valueFormatter: (v: number) => v.toLocaleString('en-US')
   },
   {
     field: 'signalWaitTimeMs',
@@ -705,11 +705,11 @@ const waitStatColumns: GridColDef<WaitStatInfo>[] = [
     type: 'number',
     align: 'right',
     headerAlign: 'right',
-    valueFormatter: (v: number) => v.toLocaleString('it-IT')
+    valueFormatter: (v: number) => v.toLocaleString('en-US')
   },
   {
     field: 'waitingTasksCount',
-    headerName: 'Tasks in attesa',
+    headerName: 'Waiting tasks',
     width: 130,
     type: 'number',
     align: 'right',
@@ -732,9 +732,9 @@ export function MetricsPanel({ metrics, serverId, serverDbId, serverNotes, conne
   const topQueries = metrics?.topQueries ?? []
   const waitStats = metrics?.waitStats ?? []
 
-  // Memoizzato: evita che DataGrid esegua un full re-render per ricreazione array inline.
-  // L'id riga è derivato dal testo della query (stabile fra refresh anche se l'ordine
-  // cambia). Duplicati rari di queryText ricevono un suffisso incrementale deterministico.
+  // Memoized: prevents DataGrid from doing a full re-render due to inline array recreation.
+  // The row id is derived from the query text (stable across refreshes even if the order
+  // changes). Rare queryText duplicates receive a deterministic incremental suffix.
   const topQueriesRows = useMemo(() => {
     const seen = new Map<string, number>()
     return topQueries.map((q) => {
@@ -774,9 +774,9 @@ export function MetricsPanel({ metrics, serverId, serverDbId, serverNotes, conne
             }
           }}
         >
-          <Tab label="Panoramica" />
+          <Tab label="Overview" />
           <Tab label={`Database (${databases.length})`} />
-          <Tab label={`Sessioni (${activeSessions.length})`} />
+          <Tab label={`Sessions (${activeSessions.length})`} />
           <Tab label="Backup" />
           <Tab label={`Dischi (${diskVolumes.length})`} />
           <Tab label={`Top Query (${topQueries.length})`} />
@@ -799,7 +799,7 @@ export function MetricsPanel({ metrics, serverId, serverDbId, serverNotes, conne
             disableRowSelectionOnClick
             pageSizeOptions={[25, 50]}
             initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
-            localeText={{ noRowsLabel: 'Nessuna sessione attiva' }}
+            localeText={{ noRowsLabel: 'No active sessions' }}
             getRowClassName={(p) => sessionRowClass(p.row as SessionInfo)}
             sx={SESSION_SX}
           />
@@ -815,13 +815,13 @@ export function MetricsPanel({ metrics, serverId, serverDbId, serverNotes, conne
             disableRowSelectionOnClick
             pageSizeOptions={[25, 50]}
             initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
-            localeText={{ noRowsLabel: 'Nessun dato backup disponibile' }}
+            localeText={{ noRowsLabel: 'No backup data available' }}
             sx={{ border: 0, ...GRID_HEADER_SX }}
           />
         )}
 
         {tab === 4 && (
-          <Suspense fallback={<Box sx={{ p: 2, color: 'text.secondary' }}>Caricamento...</Box>}>
+          <Suspense fallback={<Box sx={{ p: 2, color: 'text.secondary' }}>Loading...</Box>}>
             <DisksTab diskVolumes={diskVolumes} databaseFiles={databaseFiles} connection={connection} />
           </Suspense>
         )}
@@ -836,7 +836,7 @@ export function MetricsPanel({ metrics, serverId, serverDbId, serverNotes, conne
             disableRowSelectionOnClick
             pageSizeOptions={[25, 50]}
             initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
-            localeText={{ noRowsLabel: 'Nessuna query disponibile' }}
+            localeText={{ noRowsLabel: 'No queries available' }}
             sx={{ border: 0, ...GRID_HEADER_SX }}
           />
         )}
@@ -851,7 +851,7 @@ export function MetricsPanel({ metrics, serverId, serverDbId, serverNotes, conne
             disableRowSelectionOnClick
             pageSizeOptions={[25, 50]}
             initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
-            localeText={{ noRowsLabel: 'Nessun dato wait stats disponibile' }}
+            localeText={{ noRowsLabel: 'No wait stats data available' }}
             sx={{ border: 0, ...GRID_HEADER_SX }}
           />
         )}

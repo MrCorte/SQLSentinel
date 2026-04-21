@@ -29,10 +29,10 @@ const INTERVAL_ACTIVE_MS  = 60_000
 const INTERVAL_IDLE_MS    = 300_000
 const INTERVAL_OFFLINE_MS = 600_000
 const BACKOFF_CAP_MS      = 3_600_000 // 1 hour max back-off
-const POLL_TIMEOUT_MS     = 90_000   // max 90s per singolo job
-const SAVE_EVERY_N        = 5        // salva su SQLite ogni N poll (≈5 min a 60s interval)
-const SAVE_FLUSH_MS       = 300_000  // flush batch ogni 5 min
-const AG_DETECT_EVERY_N   = 5        // detect AG roles ogni N poll — ruoli cambiano solo su failover
+const POLL_TIMEOUT_MS     = 90_000   // max 90s per single job
+const SAVE_EVERY_N        = 5        // save to SQLite every N polls (≈5 min at 60s interval)
+const SAVE_FLUSH_MS       = 300_000  // flush batch every 5 min
+const AG_DETECT_EVERY_N   = 5        // detect AG roles every N polls — roles change only on failover
 
 // ---------------------------------------------------------------------------
 // Types
@@ -75,9 +75,9 @@ const previousMetrics = new Map<string, ServerMetrics>()
 const dbOfflineTimestamps = new Map<string, Map<string, string>>()
 
 // Batch buffer: coalesce per-server metrics pushes.
-// La finestra debounce macroscopica (BATCH_FLUSH_MS) raggruppa tutti i job che
-// completano entro quella finestra in un'unica IPC — con 30 job async I/O che
-// completano a tempi diversi, passiamo da ~30 IPC a 1-2 per ciclo di poll.
+// The macroscopic debounce window (BATCH_FLUSH_MS) groups all jobs that
+// complete within that window into a single IPC call — with 30 async I/O jobs
+// completing at different times, we go from ~30 IPC calls to 1-2 per poll cycle.
 const BATCH_FLUSH_MS = 50
 const pendingBatch: Array<{ serverId: string; metrics: ServerMetrics }> = []
 let batchFlushTimer: ReturnType<typeof setTimeout> | null = null
@@ -142,8 +142,8 @@ function queueSave(srv: CollectMetricsRequest, metrics: ServerMetrics): void {
 }
 
 function loadHistoryFromDb(servers: CollectMetricsRequest[]): void {
-  // Cleanup differito al prossimo tick: con DB grandi (mesi di snapshot) il
-  // DELETE può bloccare 500ms-2s e ritardare il primo ciclo di polling.
+  // Deferred cleanup to next tick: with large DBs (months of snapshots) the
+  // DELETE can block for 500ms-2s and delay the first polling cycle.
   setImmediate(() => {
     try {
       const retentionMinutes = getSettings().retentionMinutes
@@ -240,7 +240,7 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
     )
   }
 
-  // Backup scaduto (escludi DB di sistema — distribution ha database_id > 4 quindi non filtrato dalla query SQL)
+  // Overdue backup (exclude system DBs — distribution has database_id > 4 so it is not filtered by the SQL query)
   const MS_24H = 86_400_000
   const overdueDBs = (metrics.backupStatus ?? [])
     .filter((b) => !SYSTEM_DBS.has(b.databaseName))
@@ -270,7 +270,7 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
     alerts.push(make('disk_space_low', 'WARNING', `Volume spazio in esaurimento: ${desc}`))
   }
 
-  // Autogrowth disabilitato con poco spazio
+  // Autogrowth disabled with low available space
   const databaseFiles = metrics.databaseFiles ?? []
   const noGrowthLowSpace = databaseFiles.filter((f) => f.growth === 0 && f.free_mb < 100)
   if (noGrowthLowSpace.length > 0) {
@@ -315,8 +315,8 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
   const allCustomFields = getAllCustomFields()
   const hasVisibleWindow = BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.isVisible())
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined
-  // AbortController propagato al collector: al timeout chiudiamo il pool subito
-  // invece di lasciare la connessione TDS pendere fino alla GC.
+  // AbortController propagated to the collector: on timeout we close the pool immediately
+  // instead of letting the TDS connection dangle until GC.
   const controller = new AbortController()
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutHandle = setTimeout(() => {
@@ -328,7 +328,7 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     const collectFn = intervalOverrides?.lightCollectors ? collectMetricsCritical : collectMetrics
     const metrics = await Promise.race([collectFn(job.server, controller.signal), timeoutPromise])
 
-    // Merge campi custom (alias, referente) nei DatabaseInfo prima di pushare al renderer
+    // Merge custom fields (alias, referente) into DatabaseInfo before pushing to the renderer
     let enrichedMetrics: ServerMetrics = {
       ...metrics,
       databases: metrics.databases.map((db) => ({
@@ -354,8 +354,8 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     }
     dbOfflineTimestamps.set(sid, offlineMap)
 
-    // Rolling history — garantiamo cap >= 1 così un override a 0 non
-    // lascia la history crescere indefinitamente.
+    // Rolling history — we guarantee cap >= 1 so an override of 0 does not
+    // let the history grow indefinitely.
     const cap = Math.max(intervalOverrides?.historyCapOverride ?? MAX_HISTORY, 1)
     const hist = metricsHistory.get(sid) ?? []
     hist.push(enrichedMetrics)
@@ -382,10 +382,10 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
       }
     }
 
-    // AG detection — throttled a ogni AG_DETECT_EVERY_N poll. I ruoli di
-    // replica cambiano solo su failover/restart, quindi una rilevazione ogni
-    // ~5 minuti è abbondante; sui cicli intermedi risparmiamo una connessione
-    // SQL dedicata per ogni server in AG.
+    // AG detection — throttled to every AG_DETECT_EVERY_N polls. Replica
+    // roles change only on failover/restart, so detection every ~5 minutes is
+    // sufficient; on intermediate cycles we save a dedicated SQL connection
+    // per server in the AG.
     if (job.pollCount % AG_DETECT_EVERY_N === 0) {
       detectAndSyncReplicaRoles(job.server)
         .then((updated) => {
@@ -419,10 +419,10 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     // Exponential back-off: 600s, 1200s, 2400s … capped at 1h
     const backoff = INTERVAL_OFFLINE_MS * Math.pow(2, job.failCount - 1)
     job.nextRun = Date.now() + Math.min(backoff, BACKOFF_CAP_MS)
-    // Dopo 50 fallimenti consecutivi, libera TUTTE le map legate al server per
-    // evitare crescita unbounded su server offline a lungo. Prima solo
-    // previousMetrics veniva pulito, ma metricsHistory e dbOfflineTimestamps
-    // restavano e accumulavano centinaia di KB per server morto.
+    // After 50 consecutive failures, release ALL maps tied to the server to
+    // prevent unbounded growth for long-offline servers. Previously only
+    // previousMetrics was cleared, but metricsHistory and dbOfflineTimestamps
+    // remained and accumulated hundreds of KB per dead server.
     if (job.failCount >= 50) {
       previousMetrics.delete(sid)
       metricsHistory.delete(sid)
@@ -592,8 +592,8 @@ export function getHistory(ip: string, port: number): ServerMetrics[] {
 }
 
 /**
- * Restituisce l'intera mappa di history (sid → ServerMetrics[]) come plain object.
- * Usato dall'IPC METRICS_HISTORY_BULK al boot per pre-popolare il renderer.
+ * Returns the entire history map (sid → ServerMetrics[]) as a plain object.
+ * Used by the IPC METRICS_HISTORY_BULK at boot to pre-populate the renderer.
  */
 export function getHistoryAll(): Record<string, ServerMetrics[]> {
   const result: Record<string, ServerMetrics[]> = {}

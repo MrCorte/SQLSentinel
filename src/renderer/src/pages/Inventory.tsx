@@ -139,19 +139,19 @@ interface ColDef {
 }
 
 const COLUMNS: ColDef[] = [
-  { key: 'serverLabel',  label: 'SERVER',   width: '17%' },
-  { key: 'envName',      label: 'AMBIENTE', width: '8%'  },
-  { key: 'type',         label: 'TIPO',     width: '8%'  },
-  { key: 'machineName',  label: 'MACCHINA', width: '8%'  },
-  { key: 'hostingType',  label: 'HOSTING',  width: '6%'  },
-  { key: 'dbCount',      label: 'DB',       width: '4%'  },
-  { key: 'onlineCount',  label: 'ONLINE',   width: '5%'  },
-  { key: 'offlineCount', label: 'OFFLINE',  width: '5%'  },
-  { key: 'totalDataMb',  label: 'DATI',     width: '7%'  },
-  { key: 'version',      label: 'VERSIONE', width: '9%'  },
-  { key: 'logicalCpus',  label: 'CPU',      width: '5%'  },
-  { key: 'unreachable',  label: 'STATO',    width: '6%'  },
-  { key: 'notes',        label: 'NOTE',     width: '12%' },
+  { key: 'serverLabel',  label: 'SERVER',      width: '17%' },
+  { key: 'envName',      label: 'ENVIRONMENT', width: '8%'  },
+  { key: 'type',         label: 'TYPE',        width: '8%'  },
+  { key: 'machineName',  label: 'MACHINE',     width: '8%'  },
+  { key: 'hostingType',  label: 'HOSTING',     width: '6%'  },
+  { key: 'dbCount',      label: 'DB',          width: '4%'  },
+  { key: 'onlineCount',  label: 'ONLINE',      width: '5%'  },
+  { key: 'offlineCount', label: 'OFFLINE',     width: '5%'  },
+  { key: 'totalDataMb',  label: 'DATA',        width: '7%'  },
+  { key: 'version',      label: 'VERSION',     width: '9%'  },
+  { key: 'logicalCpus',  label: 'CPU',         width: '5%'  },
+  { key: 'unreachable',  label: 'STATUS',      width: '6%'  },
+  { key: 'notes',        label: 'NOTES',       width: '12%' },
 ]
 
 const GRID_TEMPLATE = COLUMNS.map((c) => c.width).join(' ')
@@ -194,19 +194,19 @@ interface DbViewRow {
 }
 
 const DB_COLUMNS = [
-  { label: 'DATABASE',    width: '13%' },
-  { label: 'SERVER',      width: '10%' },
-  { label: 'ALIAS',       width: '8%'  },
-  { label: 'STATO',       width: '6%'  },
-  { label: 'RECOVERY',    width: '6%'  },
-  { label: 'COMPAT',      width: '7%'  },
-  { label: 'TDE',         width: '5%'  },
-  { label: 'DATI',        width: '6%'  },
-  { label: 'LOG',         width: '5%'  },
-  { label: 'ULTIMO FULL', width: '9%'  },
-  { label: 'ULTIMO LOG',  width: '9%'  },
-  { label: 'OWNER',       width: '8%'  },
-  { label: 'CREATO',      width: '8%'  },
+  { label: 'DATABASE',   width: '13%' },
+  { label: 'SERVER',     width: '10%' },
+  { label: 'ALIAS',      width: '8%'  },
+  { label: 'STATUS',     width: '6%'  },
+  { label: 'RECOVERY',   width: '6%'  },
+  { label: 'COMPAT',     width: '7%'  },
+  { label: 'TDE',        width: '5%'  },
+  { label: 'DATA',       width: '6%'  },
+  { label: 'LOG',        width: '5%'  },
+  { label: 'LAST FULL',  width: '9%'  },
+  { label: 'LAST LOG',   width: '9%'  },
+  { label: 'OWNER',      width: '8%'  },
+  { label: 'CREATED',    width: '8%'  },
 ]
 
 const DB_GRID_TEMPLATE = DB_COLUMNS.map((c) => c.width).join(' ')
@@ -507,8 +507,8 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
   const envGroups     = useGroupsStore((s) => s.groups)
   const serverAliases = useGroupsStore((s) => s.serverAliases)
 
-  // Throttle: se Dashboard e Inventory fossero mounted contemporaneamente, senza throttle
-  // ogni metrics push (200 server/ciclo) riscatena filteredRows e referenteOptions.
+  // Throttle: if Dashboard and Inventory were mounted simultaneously, without throttling
+  // every metrics push (200 servers/cycle) would re-trigger filteredRows and referenteOptions.
   const [metricsMap, setMetricsMap] = useState(() => useMetricsStore.getState().metricsMap)
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null
@@ -948,11 +948,11 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
     }
 
     const headers = [
-      'Ambiente', 'Tipo', 'AG Nome', 'Server', 'Alias', 'Referente', 'Ruolo AG',
-      'Database', 'Stato DB', 'Dati (MB)', 'Log (MB)',
-      'Ultimo Backup Full', 'Ultimo Backup Log',
-      'Versione SQL', 'Uptime Server (giorni)', 'Stato Server', 'Tipo Infrastruttura',
-      'CPU Logici', 'CPU Fisici', 'Note'
+      'Environment', 'Type', 'AG Name', 'Server', 'Alias', 'Owner', 'AG Role',
+      'Database', 'DB Status', 'Data (MB)', 'Log (MB)',
+      'Last Full Backup', 'Last Log Backup',
+      'SQL Version', 'Server Uptime (days)', 'Server Status', 'Infrastructure Type',
+      'Logical CPUs', 'Physical CPUs', 'Notes'
     ]
     const exportRows = buildInventoryCsvRows(inventory, serverAliases, metricsMap, dbCustomFields, allowedServerIds)
     await window.sqlSentinel.exportInventoryCsv({ headers, rows: exportRows })
@@ -1012,25 +1012,25 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
         {/* ── Top bar ── */}
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
           <Typography sx={{ fontSize: 18, fontWeight: 700, color: 'text.primary', flex: 1 }}>
-            Inventario SQL Server
+            SQL Server Inventory
           </Typography>
           {lastRefresh && (
             <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>
-              Aggiornato: {lastRefresh.toLocaleTimeString('it-IT')}
+              Updated: {lastRefresh.toLocaleTimeString('en-US')}
             </Typography>
           )}
-          <Tooltip title="Esporta CSV">
+          <Tooltip title="Export CSV">
             <span>
               <Button
                 size="small" variant="outlined" startIcon={<DownloadIcon />}
                 onClick={handleExportCsv} disabled={inventory.groups.length === 0}
                 sx={{ fontSize: 12 }}
               >
-                Esporta CSV
+                Export CSV
               </Button>
             </span>
           </Tooltip>
-          <Tooltip title="Aggiorna metriche da tutti i server">
+          <Tooltip title="Refresh metrics from all servers">
             <span>
               <Button
                 size="small" variant="contained"
@@ -1038,7 +1038,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                 onClick={handleRefresh} disabled={refreshing}
                 sx={{ fontSize: 12, bgcolor: tokens.color.primary }}
               >
-                {refreshing ? 'Aggiornamento…' : 'Aggiorna'}
+                {refreshing ? 'Refreshing…' : 'Refresh'}
               </Button>
             </span>
           </Tooltip>
@@ -1085,9 +1085,9 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
             <KpiCard label="Online"        value={String(dbViewStats.online)}       accentColor="#107c10" />
             <KpiCard label="Offline"       value={String(dbViewStats.offline)}      accentColor={dbViewStats.offline > 0 ? '#a4262c' : '#107c10'} />
             <KpiCard label="Full Recovery" value={String(dbViewStats.fullRecovery)} accentColor="#0078d4" />
-            <KpiCard label="TDE Attivo"    value={String(dbViewStats.tdeActive)}    accentColor="#038387" />
+            <KpiCard label="TDE Active"    value={String(dbViewStats.tdeActive)}    accentColor="#038387" />
             <KpiCard
-              label="Senza Backup"
+              label="No Backup"
               value={String(dbViewStats.noBackup)}
               accentColor={dbViewStats.noBackup > 0 ? '#d83b01' : '#107c10'}
             />
@@ -1102,12 +1102,12 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
         {/* ── Filter indicator ── */}
         {!dbView && hasActiveFilters && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-            Risultati filtrati: {filteredStats.servers} di {totals.servers} server
+            Filtered results: {filteredStats.servers} of {totals.servers} servers
           </Typography>
         )}
         {dbView && hasActiveDbFilters && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-            Risultati filtrati: {filteredDbRows.length} di {allDbRows.length} database
+            Filtered results: {filteredDbRows.length} of {allDbRows.length} databases
           </Typography>
         )}
 
@@ -1115,7 +1115,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
         {inventory.groups.length === 0 && (
           <Box sx={{ textAlign: 'center', py: 8, color: 'text.secondary' }}>
             <Typography sx={{ fontSize: 14 }}>
-              Nessun server monitorato. Aggiungi server dalla sezione Discovery.
+              No monitored servers. Add servers from the Discovery section.
             </Typography>
           </Box>
         )}
@@ -1127,7 +1127,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
             <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
               <TextField
                 size="small"
-                placeholder="Cerca database o server..."
+                placeholder="Search database or server..."
                 value={dbSearch}
                 onChange={(e) => setDbSearch(e.target.value)}
                 InputProps={{
@@ -1142,7 +1142,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
 
               <Select size="small" value={filterDbRecovery}
                 onChange={(e) => setFilterDbRecovery(e.target.value as typeof filterDbRecovery)} sx={{ minWidth: 150 }}>
-                <MenuItem value="all">Tutti i recovery</MenuItem>
+                <MenuItem value="all">All recovery models</MenuItem>
                 <MenuItem value="FULL">FULL</MenuItem>
                 <MenuItem value="SIMPLE">SIMPLE</MenuItem>
                 <MenuItem value="BULK_LOGGED">BULK_LOGGED</MenuItem>
@@ -1150,15 +1150,15 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
 
               <Select size="small" value={filterDbTde}
                 onChange={(e) => setFilterDbTde(e.target.value as typeof filterDbTde)} sx={{ minWidth: 150 }}>
-                <MenuItem value="all">TDE: Tutti</MenuItem>
-                <MenuItem value="encrypted">Solo crittografati</MenuItem>
-                <MenuItem value="not-encrypted">Solo non crittografati</MenuItem>
+                <MenuItem value="all">TDE: All</MenuItem>
+                <MenuItem value="encrypted">Encrypted only</MenuItem>
+                <MenuItem value="not-encrypted">Not encrypted only</MenuItem>
               </Select>
 
               {compatLevelOptions.length > 0 && (
                 <Select size="small" value={filterDbCompat}
                   onChange={(e) => setFilterDbCompat(e.target.value)} sx={{ minWidth: 150 }}>
-                  <MenuItem value="all">Tutti i compat</MenuItem>
+                  <MenuItem value="all">All compat levels</MenuItem>
                   {compatLevelOptions.map((l) => (
                     <MenuItem key={l} value={String(l)}>{compatLevelToSqlVersion(l)} ({l})</MenuItem>
                   ))}
@@ -1170,7 +1170,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                 onClick={() => setFilterDbOffline((v) => !v)}
                 sx={{ fontSize: 12, height: 36 }}
               >
-                Solo Offline
+                Offline only
               </Button>
 
               <Button
@@ -1178,7 +1178,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                 onClick={() => setFilterDbNoBackup((v) => !v)}
                 sx={{ fontSize: 12, height: 36 }}
               >
-                Senza Backup &gt;24h
+                No Backup &gt;24h
               </Button>
 
               <Button
@@ -1190,7 +1190,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
               </Button>
 
               <Button size="small" variant="text" color="inherit" onClick={handleDbToggleAll} sx={{ ml: 0 }}>
-                {expandedDbServers.size > 0 ? 'Comprimi tutti' : 'Espandi tutti'}
+                {expandedDbServers.size > 0 ? 'Collapse all' : 'Expand all'}
               </Button>
 
               <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
@@ -1226,7 +1226,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
               >
                 {displayDbViewRows.length === 0 ? (
                   <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-                    Nessun database corrisponde ai filtri selezionati
+                    No databases match the selected filters
                   </Box>
                 ) : (
                   <Box sx={{ height: dbRowVirtualizer.getTotalSize(), position: 'relative' }}>
@@ -1315,7 +1315,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, pl: 2, minWidth: 0 }}>
                                 <Typography variant="body2" noWrap fontWeight={500}>{row.dbName}</Typography>
                                 {row.isReadOnly && (
-                                  <Tooltip title="Sola lettura">
+                                  <Tooltip title="Read only">
                                     <Typography sx={{ fontSize: 10, color: 'text.disabled', flexShrink: 0 }}>R/O</Typography>
                                   </Tooltip>
                                 )}
@@ -1385,7 +1385,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                                 const stale = !noBackup && (Date.now() - new Date(row.lastFullBackup!).getTime() > 86_400_000)
                                 return (
                                   <Typography variant="caption" sx={{ color: noBackup || stale ? '#a4262c' : 'text.secondary' }}>
-                                    {noBackup ? 'Mai' : new Date(row.lastFullBackup!).toLocaleDateString('it-IT')}
+                                    {noBackup ? 'Never' : new Date(row.lastFullBackup!).toLocaleDateString('en-US')}
                                   </Typography>
                                 )
                               })()}
@@ -1398,7 +1398,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                                 const noLog = !row.lastLogBackup
                                 return (
                                   <Typography variant="caption" sx={{ color: noLog ? '#d83b01' : 'text.secondary' }}>
-                                    {noLog ? 'Mai' : new Date(row.lastLogBackup!).toLocaleDateString('it-IT')}
+                                    {noLog ? 'Never' : new Date(row.lastLogBackup!).toLocaleDateString('en-US')}
                                   </Typography>
                                 )
                               })()}
@@ -1408,7 +1408,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
 
                               {/* CREATO */}
                               <Typography variant="caption" color="text.secondary">
-                                {row.createDate ? new Date(row.createDate).toLocaleDateString('it-IT') : '—'}
+                                {row.createDate ? new Date(row.createDate).toLocaleDateString('en-US') : '—'}
                               </Typography>
                             </>
                           )}
@@ -1429,7 +1429,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
             <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
               <TextField
                 size="small"
-                placeholder="Cerca server o alias..."
+                placeholder="Search server or alias..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 InputProps={{
@@ -1444,7 +1444,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
 
               <Select size="small" value={filterEnv}
                 onChange={(e) => setFilterEnv(e.target.value)} sx={{ minWidth: 160 }}>
-                <MenuItem value="all">Tutti gli ambienti</MenuItem>
+                <MenuItem value="all">All environments</MenuItem>
                 {envGroups.map((g) => (
                   <MenuItem key={g.id} value={g.id}>{g.name}</MenuItem>
                 ))}
@@ -1452,7 +1452,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
 
               <Select size="small" value={filterType}
                 onChange={(e) => setFilterType(e.target.value as typeof filterType)} sx={{ minWidth: 150 }}>
-                <MenuItem value="all">Tutti i tipi</MenuItem>
+                <MenuItem value="all">All types</MenuItem>
                 <MenuItem value="standalone">Standalone</MenuItem>
                 <MenuItem value="ag-primary">AG Primary</MenuItem>
                 <MenuItem value="ag-secondary">AG Secondary</MenuItem>
@@ -1460,14 +1460,14 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
 
               <Select size="small" value={filterState}
                 onChange={(e) => setFilterState(e.target.value as typeof filterState)} sx={{ minWidth: 130 }}>
-                <MenuItem value="all">Tutti gli stati</MenuItem>
+                <MenuItem value="all">All statuses</MenuItem>
                 <MenuItem value="online">Online</MenuItem>
                 <MenuItem value="offline">Offline</MenuItem>
               </Select>
 
               <Select size="small" value={filterHost}
                 onChange={(e) => setFilterHost(e.target.value as typeof filterHost)} sx={{ minWidth: 130 }}>
-                <MenuItem value="all">Tutti</MenuItem>
+                <MenuItem value="all">All</MenuItem>
                 <MenuItem value="on-premise">On-Premise</MenuItem>
                 <MenuItem value="cloud">Cloud</MenuItem>
               </Select>
@@ -1475,7 +1475,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
               {aliasOptions.length > 0 && (
                 <Select size="small" value={filterAlias}
                   onChange={(e) => setFilterAlias(e.target.value)} sx={{ minWidth: 150 }}>
-                  <MenuItem value="all">Tutti gli alias</MenuItem>
+                  <MenuItem value="all">All aliases</MenuItem>
                   {aliasOptions.map((a) => (
                     <MenuItem key={a} value={a}>{a}</MenuItem>
                   ))}
@@ -1485,7 +1485,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
               {referenteOptions.length > 0 && (
                 <Select size="small" value={filterReferente}
                   onChange={(e) => setFilterReferente(e.target.value)} sx={{ minWidth: 160 }}>
-                  <MenuItem value="all">Tutti i referenti</MenuItem>
+                  <MenuItem value="all">All owners</MenuItem>
                   {referenteOptions.map((r) => (
                     <MenuItem key={r} value={r}>{r}</MenuItem>
                   ))}
@@ -1495,7 +1495,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
               {versionOptions.length > 0 && (
                 <Select size="small" value={filterVersion}
                   onChange={(e) => setFilterVersion(e.target.value)} sx={{ minWidth: 165 }}>
-                  <MenuItem value="all">Tutte le versioni</MenuItem>
+                  <MenuItem value="all">All versions</MenuItem>
                   {versionOptions.map((v) => (
                     <MenuItem key={v} value={v}>{v}</MenuItem>
                   ))}
@@ -1516,7 +1516,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
                   onClick={handleToggleAll}
                   sx={{ ml: 0 }}
                 >
-                  {expandedClusters.size > 0 || expandedMachines.size > 0 ? 'Comprimi tutti' : 'Espandi tutti'}
+                  {expandedClusters.size > 0 || expandedMachines.size > 0 ? 'Collapse all' : 'Expand all'}
                 </Button>
               )}
 
@@ -1571,7 +1571,7 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
               >
                 {sortedRows.length === 0 ? (
                   <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-                    Nessun server corrisponde ai filtri selezionati
+                    No servers match the selected filters
                   </Box>
                 ) : (
                   <Box sx={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}>

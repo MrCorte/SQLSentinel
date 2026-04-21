@@ -1,11 +1,11 @@
 /**
- * AREA 3 — Memory leak e bounds
+ * AREA 3 — Memory leaks and bounds
  *
- * Verifica:
- *  - metricsHistory cappata a MAX_HISTORY (20 entry)
- *  - il record più vecchio viene espulso con shift() al superamento del cap
- *  - dopo stopWorker() nessun nuovo job viene schedulato
- *  - syncServers([]) svuota la jobMap
+ * Verifies:
+ *  - metricsHistory capped at MAX_HISTORY (20 entries)
+ *  - the oldest record is evicted via shift() when the cap is exceeded
+ *  - after stopWorker() no new jobs are scheduled
+ *  - syncServers([]) empties the jobMap
  */
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
 // ── Renderer store imports (work in Node env — no DOM required) ───────────────
@@ -20,7 +20,7 @@ vi.mock('electron', () => ({
 }))
 vi.mock('../collectors/sqlCollector', () => ({ collectMetrics: vi.fn() }))
 vi.mock('../store/dbCustomFields', () => ({ getAllCustomFields: vi.fn(() => ({})) }))
-// startWorker ora chiama loadHistoryFromDb → isola il test dal DB per le suite AREA 3
+// startWorker now calls loadHistoryFromDb → isolate the test from the DB for AREA 3 suites
 vi.mock('../store/serverStore')
 vi.mock('../store/settings', () => ({
   getSettings: vi.fn(() => ({ retentionMinutes: 60 }))
@@ -51,7 +51,7 @@ function makeMetrics(tag: number): ServerMetrics {
   return {
     collectedAt: new Date(),
     instanceInfo: {
-      version: String(tag),  // usiamo version come "tag" identificativo
+      version: String(tag),  // use version as an identifying "tag"
       edition: 'Dev',
       memoryUsedMb: tag,
       memoryTargetMb: 200,
@@ -79,12 +79,12 @@ async function drainJobCycle(): Promise<void> {
 }
 
 /**
- * Avanza di N cicli completi di polling.
- * Cycle 1 è già stato avviato da startWorker (nextRun = Date.now()).
- * Per i cicli successivi si avanza il timer di INTERVAL_IDLE_MS (300 s).
+ * Advances N full polling cycles.
+ * Cycle 1 has already been started by startWorker (nextRun = Date.now()).
+ * For subsequent cycles the timer is advanced by INTERVAL_IDLE_MS (300 s).
  */
 async function runNCycles(n: number): Promise<void> {
-  // Il primo ciclo è già partito con scheduleTick() dentro startWorker
+  // The first cycle has already started via scheduleTick() inside startWorker
   await drainJobCycle()
   for (let i = 1; i < n; i++) {
     vi.advanceTimersByTime(300_001)  // INTERVAL_IDLE_MS = 300_000
@@ -96,7 +96,7 @@ async function runNCycles(n: number): Promise<void> {
 
 beforeEach(() => {
   vi.useFakeTimers()
-  _initDb(':memory:')   // garantisce getDb() valido per loadHistoryFromDb → cleanup()
+  _initDb(':memory:')   // ensures getDb() is valid for loadHistoryFromDb → cleanup()
   __resetForTests()
   vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([])
   vi.mocked(collectMetrics).mockReset()
@@ -112,7 +112,7 @@ afterEach(() => {
 
 describe(`AREA 3 — metricsHistory cap (MAX_HISTORY=${MAX_HISTORY})`, () => {
 
-  it(`non supera ${MAX_HISTORY} entry dopo ${MAX_HISTORY + 10} poll consecutivi`, async () => {
+  it(`does not exceed ${MAX_HISTORY} entries after ${MAX_HISTORY + 10} consecutive polls`, async () => {
     let callN = 0
     vi.mocked(collectMetrics).mockImplementation(async () => makeMetrics(++callN))
     startWorker({ intervalSeconds: 60, servers: [makeServer()] })
@@ -123,31 +123,31 @@ describe(`AREA 3 — metricsHistory cap (MAX_HISTORY=${MAX_HISTORY})`, () => {
     expect(history.length).toBeLessThanOrEqual(MAX_HISTORY)
   })
 
-  it('il record più vecchio viene rimosso con shift() quando si supera il cap', async () => {
+  it('the oldest record is removed with shift() when the cap is exceeded', async () => {
     let callN = 0
     vi.mocked(collectMetrics).mockImplementation(async () => makeMetrics(++callN))
     startWorker({ intervalSeconds: 60, servers: [makeServer()] })
 
-    // Riempi fino al limite
+    // Fill up to the cap
     await runNCycles(MAX_HISTORY)
 
     const histAtCap = getHistory('10.0.0.1', 1433)
     expect(histAtCap.length).toBe(MAX_HISTORY)
     const oldestVersion = parseInt(histAtCap[0].instanceInfo.version)
 
-    // Un altro ciclo → il più vecchio viene espulso
-    // (runNCycles non può essere riusato qui: il primo ciclo non è già pendente)
+    // One more cycle → the oldest entry is evicted
+    // (runNCycles cannot be reused here: the first cycle is not pending again)
     vi.advanceTimersByTime(300_001)
     await drainJobCycle()
 
     const histAfter = getHistory('10.0.0.1', 1433)
-    expect(histAfter.length).toBe(MAX_HISTORY)  // lunghezza invariata al cap
+    expect(histAfter.length).toBe(MAX_HISTORY)  // length unchanged at the cap
     const newOldestVersion = parseInt(histAfter[0].instanceInfo.version)
-    // Il più vecchio ora ha version > oldestVersion
+    // The oldest entry now has version > oldestVersion
     expect(newOldestVersion).toBeGreaterThan(oldestVersion)
   })
 
-  it('l\'entry più recente è sempre l\'ultima in array', async () => {
+  it('the most recent entry is always the last in the array', async () => {
     let callN = 0
     vi.mocked(collectMetrics).mockImplementation(async () => makeMetrics(++callN))
     startWorker({ intervalSeconds: 60, servers: [makeServer()] })
@@ -160,9 +160,9 @@ describe(`AREA 3 — metricsHistory cap (MAX_HISTORY=${MAX_HISTORY})`, () => {
   })
 })
 
-describe('AREA 3 — Comportamento dopo stopWorker', () => {
+describe('AREA 3 — Behaviour after stopWorker', () => {
 
-  it('dopo stopWorker nessun nuovo job viene schedulato', async () => {
+  it('after stopWorker no new job is scheduled', async () => {
     let callN = 0
     vi.mocked(collectMetrics).mockImplementation(async () => makeMetrics(++callN))
     startWorker({ intervalSeconds: 60, servers: [makeServer()] })
@@ -178,7 +178,7 @@ describe('AREA 3 — Comportamento dopo stopWorker', () => {
     expect(vi.mocked(collectMetrics).mock.calls.length).toBe(callsBeforeStop)
   })
 
-  it('getHistory ritorna [] dopo __resetForTests (metricsHistory svuotata)', async () => {
+  it('getHistory returns [] after __resetForTests (metricsHistory cleared)', async () => {
     let callN = 0
     vi.mocked(collectMetrics).mockImplementation(async () => makeMetrics(++callN))
     startWorker({ intervalSeconds: 60, servers: [makeServer()] })
@@ -191,9 +191,9 @@ describe('AREA 3 — Comportamento dopo stopWorker', () => {
   })
 })
 
-describe('AREA 3 — syncServers con lista vuota', () => {
+describe('AREA 3 — syncServers with empty list', () => {
 
-  it('svuota la jobMap quando syncServers([]) viene chiamato', () => {
+  it('empties the jobMap when syncServers([]) is called', () => {
     startWorker({
       intervalSeconds: 60,
       servers: [makeServer('10.0.0.1'), makeServer('10.0.0.2')]
@@ -207,9 +207,9 @@ describe('AREA 3 — syncServers con lista vuota', () => {
     expect(__getJobForTest('10.0.0.2:1433')).toBeUndefined()
   })
 
-  it('dopo syncServers([]) nessun nuovo poll parte avanzando il tempo', async () => {
+  it('after syncServers([]) no new poll starts when advancing time', async () => {
     vi.mocked(collectMetrics).mockResolvedValueOnce(makeMetrics(1))
-    vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))  // hang per le chiamate successive
+    vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))  // hang for subsequent calls
     startWorker({ intervalSeconds: 60, servers: [makeServer()] })
     await drainJobCycle()
 
@@ -244,23 +244,23 @@ describe('AREA 5 — alertsStore: purge MAX_ALERTS cap', () => {
     useAlertsStore.setState({ alerts: [] })
   })
 
-  it('non supera MAX_ALERTS=500 alert dopo 501 addAlert', () => {
+  it('does not exceed MAX_ALERTS=500 alerts after 501 addAlert calls', () => {
     for (let i = 0; i < 501; i++) {
       useAlertsStore.getState().addAlert(makeAlert(String(i), 0))
     }
     expect(useAlertsStore.getState().alerts.length).toBe(500)
   })
 
-  it('conserva gli alert più recenti scartando i più vecchi quando si supera il cap', () => {
+  it('keeps the most recent alerts and discards the oldest when the cap is exceeded', () => {
     for (let i = 0; i < 501; i++) {
       useAlertsStore.getState().addAlert(makeAlert(String(i), 0))
     }
     const ids = useAlertsStore.getState().alerts.map((a) => a.id)
-    expect(ids[0]).toBe('1')      // il più vecchio (id=0) è stato scartato
-    expect(ids[499]).toBe('500')  // l'ultimo aggiunto è presente
+    expect(ids[0]).toBe('1')      // the oldest (id=0) was discarded
+    expect(ids[499]).toBe('500')  // the last added entry is present
   })
 
-  it('scarta gli alert più vecchi di 7 giorni', () => {
+  it('discards alerts older than 7 days', () => {
     useAlertsStore.getState().addAlert(makeAlert('old', 8))   // 8 giorni fa → scartato
     useAlertsStore.getState().addAlert(makeAlert('new', 1))   // 1 giorno fa → tenuto
     const ids = useAlertsStore.getState().alerts.map((a) => a.id)
@@ -268,8 +268,8 @@ describe('AREA 5 — alertsStore: purge MAX_ALERTS cap', () => {
     expect(ids).toContain('new')
   })
 
-  it('gli alert esattamente a 7 giorni di distanza vengono conservati (boundary)', () => {
-    // Boundary: 7 giorni esatti meno 1 secondo → tenuto
+  it('alerts exactly 7 days old are kept (boundary)', () => {
+    // Boundary: exactly 7 days minus 1 second → kept
     useAlertsStore.getState().addAlert(
       makeAlert('boundary', 0)  // now (well within limit)
     )
@@ -318,7 +318,7 @@ describe('AREA 5 — metricsStore: historyMap ring buffer', () => {
     })
   })
 
-  it('accumula punti in historyMap dopo ogni setMetrics', () => {
+  it('accumulates points in historyMap after each setMetrics', () => {
     useMetricsStore.getState().setMetrics(SID, makeServerMetrics(10, 1000))
     useMetricsStore.getState().setMetrics(SID, makeServerMetrics(20, 2000))
     const hist = useMetricsStore.getState().historyMap[SID]
@@ -327,27 +327,27 @@ describe('AREA 5 — metricsStore: historyMap ring buffer', () => {
     expect(hist.cpu[1].value).toBe(20)
   })
 
-  it('cappato a 60 punti per il server attivo', () => {
+  it('capped at 60 points for the active server', () => {
     useMetricsStore.setState({ activeServerId: SID })
     for (let i = 0; i < 70; i++) {
       useMetricsStore.getState().setMetrics(SID, makeServerMetrics(i, i * 10))
     }
     const hist = useMetricsStore.getState().historyMap[SID]
     expect(hist.cpu.length).toBe(60)
-    expect(hist.cpu[59].value).toBe(69)  // più recente
+    expect(hist.cpu[59].value).toBe(69)  // most recent
   })
 
-  it('cappato a 10 punti per server idle (non attivo)', () => {
+  it('capped at 10 points for idle (non-active) server', () => {
     useMetricsStore.setState({ activeServerId: 'other:1433' })
     for (let i = 0; i < 15; i++) {
       useMetricsStore.getState().setMetrics(SID, makeServerMetrics(i, i * 10))
     }
     const hist = useMetricsStore.getState().historyMap[SID]
     expect(hist.cpu.length).toBe(10)
-    expect(hist.cpu[9].value).toBe(14)  // più recente
+    expect(hist.cpu[9].value).toBe(14)  // most recent
   })
 
-  it('popola summaries con i dati corretti', () => {
+  it('populates summaries with correct data', () => {
     useMetricsStore.getState().setMetrics(SID, makeServerMetrics(42, 3500))
     const summary = useMetricsStore.getState().summaries[SID]
     expect(summary).toBeDefined()
@@ -355,7 +355,7 @@ describe('AREA 5 — metricsStore: historyMap ring buffer', () => {
     expect(summary.memoryUsedMb).toBe(3500)
   })
 
-  it('evictFullMetrics rimuove i dati completi ma non il summary', () => {
+  it('evictFullMetrics removes full metrics data but not the summary', () => {
     useMetricsStore.getState().setMetrics(SID, makeServerMetrics(10, 1000))
     expect(useMetricsStore.getState().metricsMap[SID]).toBeDefined()
 
@@ -381,7 +381,7 @@ describe('AREA 5 — metricsStore: seedFromHistory', () => {
     })
   })
 
-  it('popola metricsMap e summaries con lo snapshot più recente', () => {
+  it('populates metricsMap and summaries with the most recent snapshot', () => {
     const history = [makeServerMetrics(10, 1000), makeServerMetrics(20, 2000)]
     useMetricsStore.getState().seedFromHistory({ [SID]: history })
     const latest = useMetricsStore.getState().metricsMap[SID]
@@ -392,7 +392,7 @@ describe('AREA 5 — metricsStore: seedFromHistory', () => {
     expect(summary.memoryUsedMb).toBe(2000)
   })
 
-  it('costruisce historyMap con tutti i punti forniti (idle cap)', () => {
+  it('builds historyMap with all provided points (idle cap)', () => {
     const history = Array.from({ length: 5 }, (_, i) => makeServerMetrics(i * 10, i * 100))
     useMetricsStore.getState().seedFromHistory({ [SID]: history })
     const hist = useMetricsStore.getState().historyMap[SID]
@@ -401,7 +401,7 @@ describe('AREA 5 — metricsStore: seedFromHistory', () => {
     expect(hist.cpu[4].value).toBe(40)
   })
 
-  it('usa MAX_HISTORY_ACTIVE (60) per il server attivo', () => {
+  it('uses MAX_HISTORY_ACTIVE (60) for the active server', () => {
     useMetricsStore.setState({ activeServerId: SID })
     const history = Array.from({ length: 65 }, (_, i) => makeServerMetrics(i, i * 10))
     useMetricsStore.getState().seedFromHistory({ [SID]: history })
@@ -409,7 +409,7 @@ describe('AREA 5 — metricsStore: seedFromHistory', () => {
     expect(hist.cpu.length).toBe(60)
   })
 
-  it('usa MAX_HISTORY_IDLE (10) per server non attivi', () => {
+  it('uses MAX_HISTORY_IDLE (10) for non-active servers', () => {
     useMetricsStore.setState({ activeServerId: 'other:1433' })
     const history = Array.from({ length: 15 }, (_, i) => makeServerMetrics(i, i * 10))
     useMetricsStore.getState().seedFromHistory({ [SID]: history })
@@ -417,7 +417,7 @@ describe('AREA 5 — metricsStore: seedFromHistory', () => {
     expect(hist.cpu.length).toBe(10)
   })
 
-  it('gestisce più server in una sola chiamata', () => {
+  it('handles multiple servers in a single call', () => {
     useMetricsStore.getState().seedFromHistory({
       [SID]:  [makeServerMetrics(10, 1000)],
       [SID2]: [makeServerMetrics(50, 5000)],
@@ -426,13 +426,13 @@ describe('AREA 5 — metricsStore: seedFromHistory', () => {
     expect(useMetricsStore.getState().summaries[SID2].cpuUsagePercent).toBe(50)
   })
 
-  it('ignora i server con history vuota senza sovrascrivere dati esistenti', () => {
+  it('ignores servers with empty history without overwriting existing data', () => {
     useMetricsStore.getState().setMetrics(SID, makeServerMetrics(99, 9999))
     useMetricsStore.getState().seedFromHistory({ [SID]: [] })
     expect(useMetricsStore.getState().summaries[SID].cpuUsagePercent).toBe(99)
   })
 
-  it('seedFromHistory non sovrascrive poll live successivi', () => {
+  it('seedFromHistory does not overwrite subsequent live polls', () => {
     useMetricsStore.getState().seedFromHistory({ [SID]: [makeServerMetrics(10, 1000)] })
     useMetricsStore.getState().setMetrics(SID, makeServerMetrics(75, 7500))
     expect(useMetricsStore.getState().summaries[SID].cpuUsagePercent).toBe(75)
@@ -461,22 +461,22 @@ describe('AREA 5 — metricsRepository.cleanup (SQLite purge)', () => {
     closeDb()
   })
 
-  it('rimuove snapshot più vecchi di retentionDays', () => {
+  it('removes snapshots older than retentionDays', () => {
     const old: ServerMetrics = { ...makeServerMetrics(5, 100), collectedAt: new Date(Date.now() - 40 * 86_400_000) }
     const recent: ServerMetrics = { ...makeServerMetrics(5, 100), collectedAt: new Date() }
 
     saveSnapshot(SRV, old)
     saveSnapshot(SRV, recent)
 
-    purgeOldSnapshots(30)  // elimina snapshot > 30 giorni
+    purgeOldSnapshots(30)  // delete snapshots > 30 days old
 
     const history = findHistory(SRV, 9999)
     expect(history).toHaveLength(1)
-    // Lo snapshot rimasto è quello recente
+    // The remaining snapshot is the recent one
     expect(new Date(history[0].collectedAt).getTime()).toBeGreaterThan(Date.now() - 86_400_000)
   })
 
-  it('non elimina snapshot entro il periodo di retention', () => {
+  it('does not delete snapshots within the retention period', () => {
     const recent: ServerMetrics = { ...makeServerMetrics(5, 100), collectedAt: new Date() }
     saveSnapshot(SRV, recent)
 
@@ -485,7 +485,7 @@ describe('AREA 5 — metricsRepository.cleanup (SQLite purge)', () => {
     expect(findHistory(SRV, 9999)).toHaveLength(1)
   })
 
-  it('cleanup è idempotente su tabella vuota', () => {
+  it('cleanup is idempotent on an empty table', () => {
     expect(() => purgeOldSnapshots(30)).not.toThrow()
   })
 })

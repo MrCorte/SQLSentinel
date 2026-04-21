@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import Database from 'better-sqlite3'
 
-// Singleton — inizializzato da initDb() prima di qualsiasi accesso
+// Singleton — initialized by initDb() before any access
 let _db: Database.Database | null = null
 
 const DDL = `
@@ -86,27 +86,27 @@ const DDL = `
 `
 
 /**
- * Inizializza il database SQLite.
- * Chiamare con il path reale da src/main/index.ts, con ':memory:' nei test.
- * Il path viene costruito fuori dal modulo per non dipendere da Electron app qui.
+ * Initializes the SQLite database.
+ * Call with the real path from src/main/index.ts, or ':memory:' in tests.
+ * The path is constructed outside this module to avoid a dependency on Electron app here.
  */
 export function initDb(dbPath: string): Database.Database {
-  // Crea la directory se necessario (saltiamo per :memory:)
+  // Create the directory if needed (skipped for :memory:)
   if (dbPath !== ':memory:') {
     mkdirSync(dirname(dbPath), { recursive: true })
   }
 
   _db = new Database(dbPath)
 
-  // WAL mode: scritture non bloccano le letture
+  // WAL mode: writes do not block reads
   _db.pragma('journal_mode = WAL')
   _db.pragma('foreign_keys = ON')
-  // Performance tuning — sicuri con WAL
-  _db.pragma('synchronous  = NORMAL') // 2 fsync → 1 per transazione; nessun rischio di corruzione con WAL
+  // Performance tuning — safe with WAL
+  _db.pragma('synchronous  = NORMAL') // 2 fsync → 1 per transaction; no corruption risk with WAL
   _db.pragma('cache_size   = -8192')  // 8 MB (default: 2 MB)
-  _db.pragma('temp_store   = MEMORY') // tabelle temporanee in RAM
+  _db.pragma('temp_store   = MEMORY') // temporary tables in RAM
 
-  // Schema migration: drop tabelle RAG con schema vecchio (size_bytes → file_size)
+  // Schema migration: drop RAG tables with old schema (size_bytes → file_size)
   const schemaVersion = (_db.pragma('user_version', { simple: true }) as number) ?? 0
   if (schemaVersion < 1) {
     _db.exec('DROP TABLE IF EXISTS rag_chunks; DROP TABLE IF EXISTS rag_documents;')
@@ -136,8 +136,8 @@ export function closeDb(): void {
 }
 
 /**
- * Path di default per la produzione.
- * Da chiamare dopo app.whenReady() nel main process.
+ * Default path for production.
+ * Call after app.whenReady() in the main process.
  */
 export function defaultDbPath(appDataPath: string): string {
   return join(appDataPath, 'sqlsentinel', 'data.db')

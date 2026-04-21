@@ -16,7 +16,7 @@ import type { AiMessage } from '../../store/aiChatStore'
 const PANEL_WIDTH = 420
 
 const WELCOME_MESSAGE =
-  "Sono l'assistente AI di SQL Sentinel.\n\nChiedimi:\n• \"Perché la CPU è alta?\"\n• \"Quali server hanno problemi?\"\n• \"Alert critici nelle ultime 24h?\"\n• \"Analizza le sessioni bloccanti\""
+  "I'm the SQL Sentinel AI assistant.\n\nAsk me:\n• \"Why is CPU usage high?\"\n• \"Which servers have issues?\"\n• \"Critical alerts in the last 24h?\"\n• \"Analyze blocking sessions\""
 
 interface AIPanelProps {
   open: boolean
@@ -64,7 +64,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
       } else {
         addMessage({
           role: 'assistant',
-          content: `Errore: ${result.error}\n\nVerifica che Ollama sia in esecuzione:\n  ollama serve\n  ollama pull llama3.2:3b`,
+          content: `Error: ${result.error}\n\nMake sure Ollama is running:\n  ollama serve\n  ollama pull llama3.2:3b`,
           ts: Date.now()
         })
       }
@@ -73,7 +73,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
       addMessage({
         role: 'assistant',
         content:
-          'Connessione ad Ollama fallita.\n\nAssicurati che sia in esecuzione:\n  ollama serve\n  ollama pull llama3.2:3b',
+          'Connection to Ollama failed.\n\nMake sure it is running:\n  ollama serve\n  ollama pull llama3.2:3b',
         ts: Date.now()
       })
     } finally {
@@ -116,18 +116,18 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
           <SmartToyIcon sx={{ fontSize: 20 }} />
           <Box sx={{ flex: 1 }}>
             <Typography sx={{ fontSize: tokens.font.sizeMd, fontWeight: tokens.font.weightBold, lineHeight: 1.2 }}>
-              Assistente AI DBA
+              AI DBA Assistant
             </Typography>
             <Typography sx={{ fontSize: tokens.font.sizeXs, opacity: 0.85 }}>
-              llama3.2:3b · LangGraph agent · tutto locale
+              llama3.2:3b · LangGraph agent · fully local
             </Typography>
           </Box>
-          <Tooltip title="Cancella cronologia">
+          <Tooltip title="Clear history">
             <IconButton size="small" onClick={clear} sx={{ color: 'rgba(255,255,255,0.8)' }}>
               <DeleteOutlineIcon fontSize="small" />
             </IconButton>
           </Tooltip>
-          <Tooltip title="Chiudi">
+          <Tooltip title="Close">
             <IconButton size="small" onClick={onClose} sx={{ color: 'rgba(255,255,255,0.8)' }}>
               <CloseIcon fontSize="small" />
             </IconButton>
@@ -160,7 +160,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 1 }}>
                 <CircularProgress size={14} />
                 <Typography sx={{ fontSize: tokens.font.sizeSm, color: 'text.secondary', fontStyle: 'italic' }}>
-                  L&apos;agente sta analizzando…
+                  Agent is analyzing…
                 </Typography>
               </Box>
             )}
@@ -186,7 +186,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Chiedi: 'server con CPU alta?' — Invio per inviare, Shift+Invio per andare a capo"
+              placeholder="Ask: 'servers with high CPU?' — Enter to send, Shift+Enter for new line"
               disabled={loading}
               size="small"
               sx={{ '& .MuiInputBase-input': { fontSize: tokens.font.sizeBase } }}
@@ -200,7 +200,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
                       size="small"
                       sx={{ ml: 1, flexShrink: 0, alignSelf: 'flex-end', mb: 0.25 }}
                     >
-                      Invia
+                      Send
                     </Button>
                   )
                 }

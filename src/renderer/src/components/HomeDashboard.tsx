@@ -33,10 +33,10 @@ import { useNow } from '../hooks/useNow'
 function dataAge(collectedAt: Date | string | undefined, now: number): { label: string; color: string } {
   if (!collectedAt) return { label: '—', color: 'rgba(128,128,128,0.4)' }
   const minAgo = Math.floor((now - new Date(collectedAt).getTime()) / 60_000)
-  if (minAgo < 2)  return { label: 'adesso',           color: '#107c10' }
-  if (minAgo < 10) return { label: `${minAgo} min fa`, color: 'rgba(128,128,128,0.7)' }
-  if (minAgo < 30) return { label: `${minAgo} min fa`, color: '#d83b01' }
-  return                  { label: `${minAgo} min fa`, color: '#a4262c' }
+  if (minAgo < 2)  return { label: 'just now',            color: '#107c10' }
+  if (minAgo < 10) return { label: `${minAgo} min ago`, color: 'rgba(128,128,128,0.7)' }
+  if (minAgo < 30) return { label: `${minAgo} min ago`, color: '#d83b01' }
+  return                  { label: `${minAgo} min ago`, color: '#a4262c' }
 }
 
 // ---------------------------------------------------------------------------
@@ -285,7 +285,7 @@ const ServerRow = memo(function ServerRow({
           <span
             style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.4, fontSize: tokens.font.sizeXs }}
           >
-            ● SCONOSCIUTO
+            ● UNKNOWN
           </span>
         )}
       </td>
@@ -297,7 +297,7 @@ const ServerRow = memo(function ServerRow({
           whiteSpace: 'nowrap'
         }}
       >
-        {uptime !== undefined ? `${uptime}g` : '—'}
+        {uptime !== undefined ? `${uptime}d` : '—'}
       </td>
     </tr>
   )
@@ -322,11 +322,11 @@ function serverKey(s: StoredServer): string {
 }
 
 function formatTime(d: Date): string {
-  return d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 function formatTimeShort(d: Date): string {
-  return d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
 }
 
 // ---------------------------------------------------------------------------
@@ -398,8 +398,8 @@ export function HomeDashboard({
   const servers = useServersStore((s) => s.servers)
   const lastUpdate = useMetricsStore((s) => s.lastUpdate)
 
-  // Throttle: con 200+ server ogni singolo update ricevuto riscatena useMemo del dashboard.
-  // Limitiamo a max 1 re-render/s — i dati nel ref sono sempre aggiornati da applyDelta.
+  // Throttle: with 200+ servers every single received update re-triggers dashboard useMemo.
+  // We cap at max 1 re-render/s — data in the ref is always kept current by applyDelta.
   const [metricsMap, setMetricsMap] = useState(() => useMetricsStore.getState().metricsMap)
   const [summaries, setSummaries] = useState(() => useMetricsStore.getState().summaries)
   useEffect(() => {
@@ -476,10 +476,10 @@ export function HomeDashboard({
     const donutData = [
       { name: 'Online', value: onlineCount, fill: '#107c10' },
       { name: 'Offline', value: offlineCount, fill: '#a4262c' },
-      { name: 'Non raggiungibili', value: unreachableCount, fill: '#d83b01' }
+      { name: 'Unreachable', value: unreachableCount, fill: '#d83b01' }
     ].filter((d) => d.value > 0)
     const donutFinal =
-      donutData.length > 0 ? donutData : [{ name: 'Nessuno', value: 1, fill: '#e0e0e0' }]
+      donutData.length > 0 ? donutData : [{ name: 'None', value: 1, fill: '#e0e0e0' }]
 
     const cpuData = servers.map((s) => {
       const m = metricsMap[serverKey(s)]
@@ -542,13 +542,13 @@ export function HomeDashboard({
         }}
       >
         <Typography variant="h6" sx={{ color: 'text.secondary' }}>
-          Nessun server monitorato
+          No monitored servers
         </Typography>
         <Typography sx={{ color: 'text.secondary', fontSize: tokens.font.sizeMd }}>
-          Vai alla Discovery per aggiungere i tuoi SQL Server
+          Go to Discovery to add your SQL Servers
         </Typography>
         <Button variant="outlined" onClick={onNavigateToDiscovery}>
-          → Vai alla Discovery
+          → Go to Discovery
         </Button>
       </Box>
     )
@@ -579,9 +579,9 @@ export function HomeDashboard({
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Typography sx={{ fontSize: tokens.font.sizeSm, color: 'text.secondary' }}>
-            Aggiornato: {lastUpdate ? formatTime(lastUpdate) : '—'}
+            Updated: {lastUpdate ? formatTime(lastUpdate) : '—'}
           </Typography>
-          <MuiTooltip title="Aggiorna metriche da tutti i server">
+          <MuiTooltip title="Refresh metrics from all servers">
             <span>
               <Button
                 size="small"
@@ -591,7 +591,7 @@ export function HomeDashboard({
                 disabled={refreshing}
                 sx={{ fontSize: tokens.font.sizeSm, bgcolor: tokens.color.primary }}
               >
-                {refreshing ? 'Aggiornamento…' : 'Aggiorna metriche'}
+                {refreshing ? 'Refreshing…' : 'Refresh metrics'}
               </Button>
             </span>
           </MuiTooltip>
@@ -600,7 +600,7 @@ export function HomeDashboard({
 
       {/* ---- Row 2: KPI Cards ---- */}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
-        <KpiCard label="SERVER TOTALI" value={servers.length} borderColor="#0078d4" />
+        <KpiCard label="TOTAL SERVERS" value={servers.length} borderColor="#0078d4" />
         <KpiCard label="ONLINE" value={onlineCount} borderColor="#107c10" />
         <KpiCard
           label="OFFLINE"
@@ -614,7 +614,7 @@ export function HomeDashboard({
         />
         <KpiCard label="DATABASE" value={totalDbs} borderColor="#0078d4" />
         <KpiCard
-          label="ALLARMI"
+          label="ALERTS"
           value={activeAlerts.length}
           borderColor={
             criticalCount > 0 ? '#a4262c' : warningCount > 0 ? '#d83b01' : '#107c10'
@@ -653,7 +653,7 @@ export function HomeDashboard({
               mb: 1
             }}
           >
-            Stato server
+            Server status
           </Typography>
           <Box sx={{ position: 'relative', height: 200 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -718,7 +718,7 @@ export function HomeDashboard({
             {[
               { label: 'Online', color: '#107c10', value: onlineCount },
               { label: 'Offline', color: '#a4262c', value: offlineCount },
-              { label: 'Non raggiungibili', color: '#d83b01', value: unreachableCount }
+              { label: 'Unreachable', color: '#d83b01', value: unreachableCount }
             ].map((item) => (
               <Box key={item.label} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Box
@@ -730,7 +730,7 @@ export function HomeDashboard({
                     flexShrink: 0,
                     boxShadow: item.label === 'Online'
                       ? tokens.shadow.dotGlowSuccess
-                      : item.label === 'Non raggiungibili'
+                      : item.label === 'Unreachable'
                         ? tokens.shadow.dotGlowWarning
                         : tokens.shadow.dotGlowError,
                   }}
@@ -785,7 +785,7 @@ export function HomeDashboard({
               }}
             >
               <Typography sx={{ fontSize: tokens.font.sizeBase, color: 'text.secondary' }}>
-                Nessuna metrica disponibile
+                No metrics available
               </Typography>
             </Box>
           ) : (
@@ -873,14 +873,14 @@ export function HomeDashboard({
               >
                 {[
                   'SERVER',
-                  'AMBIENTE',
-                  'INFRASTRUTTURA',
-                  'TIPO',
+                  'ENVIRONMENT',
+                  'INFRASTRUCTURE',
+                  'TYPE',
                   'CPU%',
                   'MEM%',
                   'DB',
-                  'ALLARMI',
-                  'STATO',
+                  'ALERTS',
+                  'STATUS',
                   'UPTIME'
                 ].map((col) => (
                   <th
@@ -967,7 +967,7 @@ export function HomeDashboard({
                 letterSpacing: '0.04em'
               }}
             >
-              Allarmi recenti
+              Recent alerts
             </Typography>
             <Box
               onClick={onOpenAlerts}
@@ -978,7 +978,7 @@ export function HomeDashboard({
                 '&:hover': { textDecoration: 'underline' }
               }}
             >
-              Tutti →
+              All →
             </Box>
           </Box>
 
@@ -995,7 +995,7 @@ export function HomeDashboard({
                 }}
               >
                 <Typography sx={{ fontSize: tokens.font.sizeBase, color: 'text.secondary' }}>
-                  Nessun allarme attivo
+                  No active alerts
                 </Typography>
               </Box>
             ) : (
@@ -1119,7 +1119,7 @@ export function HomeDashboard({
                 letterSpacing: '0.04em'
               }}
             >
-              Database non online
+              Databases not online
             </Typography>
             <Box
               sx={{
@@ -1149,7 +1149,7 @@ export function HomeDashboard({
           >
             <thead>
               <tr>
-                {['DATABASE', 'SERVER', 'STATO', 'NON ONLINE DAL'].map((col) => (
+                {['DATABASE', 'SERVER', 'STATUS', 'OFFLINE SINCE'].map((col) => (
                   <th
                     key={col}
                     style={{
@@ -1231,14 +1231,14 @@ export function HomeDashboard({
                     }}
                   >
                     {db.offlineSince
-                      ? new Date(db.offlineSince).toLocaleString('it-IT', {
+                      ? new Date(db.offlineSince).toLocaleString('en-US', {
                           day: '2-digit',
                           month: '2-digit',
                           year: 'numeric',
                           hour: '2-digit',
                           minute: '2-digit'
                         })
-                      : 'prima del riavvio'}
+                      : 'before last restart'}
                   </td>
                 </tr>
               ))}

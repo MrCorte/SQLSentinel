@@ -150,9 +150,9 @@ export function Dashboard(): React.JSX.Element {
   const stablePushSnapshotBatch = useCallback(pushSnapshotBatch, [pushSnapshotBatch])
   const stableReceiveMetrics = useCallback(receiveMetrics, [receiveMetrics])
 
-  // Ref sempre aggiornato al server corrente: evitiamo di re-sottoscriverci al canale
-  // IPC ad ogni cambio di selectedServerId (il che avrebbe potuto perdere/duplicare
-  // batch in volo). La callback legge l'id corrente dal ref.
+  // Ref always updated to the current server: we avoid re-subscribing to the IPC channel
+  // on every selectedServerId change (which could have dropped/duplicated
+  // in-flight batches). The callback reads the current id from the ref.
   const selectedServerIdRef = useRef(selectedServerId)
   useEffect(() => {
     selectedServerIdRef.current = selectedServerId
@@ -227,7 +227,7 @@ export function Dashboard(): React.JSX.Element {
         onRemoveServer={handleRemoveServer}
       />
 
-      {/* ---- Area metriche ---- */}
+      {/* ---- Metrics area ---- */}
       <Box
         sx={{
           flex: 1,
@@ -240,7 +240,7 @@ export function Dashboard(): React.JSX.Element {
         }}
       >
         {!selectedServer && !selectedAgName && (
-          <Alert severity="info">Seleziona un server o un Availability Group dalla lista.</Alert>
+          <Alert severity="info">Select a server or an Availability Group from the list.</Alert>
         )}
 
         {/* AG Dashboard */}
@@ -250,7 +250,7 @@ export function Dashboard(): React.JSX.Element {
             const anyConn = servers.length > 0 ? toCollectRequest(servers[0]) : null
             if (!anyConn) return (
               <Alert severity="warning">
-                Nessun server disponibile per interrogare l&apos;AG. Aggiungere prima almeno un server.
+                No server available to query the AG. Add at least one server first.
               </Alert>
             )
             return (
@@ -322,7 +322,7 @@ export function Dashboard(): React.JSX.Element {
                     )}
                   </>
                 )}
-                <Tooltip title="Rinomina">
+                <Tooltip title="Rename">
                   <IconButton
                     size="small"
                     onClick={startEditAlias}
@@ -340,11 +340,11 @@ export function Dashboard(): React.JSX.Element {
                   value={intervalSeconds}
                   onChange={(e) => setIntervalSeconds(e.target.value as number)}
                 >
-                  <MenuItem value={0}>Disabilitato</MenuItem>
-                  <MenuItem value={30}>Ogni 30 s</MenuItem>
-                  <MenuItem value={60}>Ogni 60 s</MenuItem>
-                  <MenuItem value={120}>Ogni 2 min</MenuItem>
-                  <MenuItem value={300}>Ogni 5 min</MenuItem>
+                  <MenuItem value={0}>Disabled</MenuItem>
+                  <MenuItem value={30}>Every 30 s</MenuItem>
+                  <MenuItem value={60}>Every 60 s</MenuItem>
+                  <MenuItem value={120}>Every 2 min</MenuItem>
+                  <MenuItem value={300}>Every 5 min</MenuItem>
                 </Select>
               </FormControl>
 
@@ -354,7 +354,7 @@ export function Dashboard(): React.JSX.Element {
                 disabled={isLoading}
                 startIcon={isLoading ? <CircularProgress size={14} color="inherit" /> : undefined}
               >
-                {isLoading ? 'Raccolta...' : 'Aggiorna metriche'}
+                {isLoading ? 'Collecting...' : 'Refresh metrics'}
               </Button>
             </Stack>
 
@@ -374,9 +374,9 @@ export function Dashboard(): React.JSX.Element {
               >
                 <WarningAmberIcon sx={{ color: tokens.color.error, fontSize: 18, flexShrink: 0 }} />
                 <Typography sx={{ fontSize: 13, color: tokens.color.error, flex: 1 }}>
-                  Server non raggiungibile
+                  Server unreachable
                   {selectedServer.unreachableSince
-                    ? ` — ultimo contatto: ${new Date(selectedServer.unreachableSince).toLocaleString('it-IT')}`
+                    ? ` — last contact: ${new Date(selectedServer.unreachableSince).toLocaleString('en-US')}`
                     : ''}
                 </Typography>
                 <Button
@@ -394,7 +394,7 @@ export function Dashboard(): React.JSX.Element {
                   disabled={retriggering}
                   sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}
                 >
-                  Riprova ora
+                  Retry now
                 </Button>
               </Box>
             )}
@@ -402,8 +402,8 @@ export function Dashboard(): React.JSX.Element {
             {error && <Alert severity="error">{error}</Alert>}
 
             {(() => {
-              // Stale-while-revalidate: usa metriche fresche se disponibili,
-              // altrimenti mostra la cache dello store (seedFromHistory / worker push)
+              // Stale-while-revalidate: use fresh metrics if available,
+              // otherwise show the store cache (seedFromHistory / worker push)
               const displayMetrics = metrics ?? cachedMetrics
               const isFirstLoad = isLoading && !displayMetrics
 
@@ -418,14 +418,14 @@ export function Dashboard(): React.JSX.Element {
               if (!displayMetrics && !isLoading && !error) {
                 return (
                   <Alert severity="info">
-                    Premi &quot;Aggiorna metriche&quot; per raccogliere i dati dal server.
+                    Press &quot;Refresh metrics&quot; to collect data from the server.
                   </Alert>
                 )
               }
 
               return displayMetrics ? (
                 <Box sx={{ flex: 1, overflow: 'auto', position: 'relative' }}>
-                  {/* Barra di refresh silenzioso — non blocca la UI */}
+                  {/* Silent refresh bar — does not block the UI */}
                   {isLoading && (
                     <LinearProgress
                       sx={{ position: 'sticky', top: 0, left: 0, right: 0, zIndex: 10 }}

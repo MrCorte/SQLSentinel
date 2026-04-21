@@ -94,19 +94,19 @@ export function AddServerDialog({
 
   const validate = (): boolean => {
     const newErrors: FormErrors = {}
-    if (!form.ip.trim()) newErrors.ip = 'IP o hostname obbligatorio'
+    if (!form.ip.trim()) newErrors.ip = 'IP or hostname required'
     const portNum = Number(form.port)
     if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535)
-      newErrors.port = 'Porta deve essere un numero tra 1 e 65535'
+      newErrors.port = 'Port must be a number between 1 and 65535'
     if (!form.useWindowsAuth && !form.username.trim())
-      newErrors.username = 'Username obbligatorio per autenticazione SQL Server'
+      newErrors.username = 'Username required for SQL Server authentication'
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
 
   const handleTestConnection = async (): Promise<void> => {
     if (!form.ip.trim()) {
-      setErrors((e) => ({ ...e, ip: 'IP o hostname obbligatorio' }))
+      setErrors((e) => ({ ...e, ip: 'IP or hostname required' }))
       return
     }
     setTestState('loading')
@@ -152,7 +152,7 @@ export function AddServerDialog({
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle>Aggiungi Server SQL</DialogTitle>
+      <DialogTitle>Add SQL Server</DialogTitle>
 
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
@@ -165,7 +165,7 @@ export function AddServerDialog({
               helperText={errors.ip}
               fullWidth
               autoFocus
-              placeholder="es. 192.168.1.10 oppure SQLSERVER01"
+              placeholder="e.g. 192.168.1.10 or SQLSERVER01"
             />
             <TextField
               label="Porta"
@@ -175,7 +175,7 @@ export function AddServerDialog({
               error={!!errors.port}
               helperText={
                 errors.port ||
-                'Per named instance con SQL Browser disabilitato, specifica la porta statica (SQL Server Configuration Manager → TCP/IP → IPAll → TCP Port)'
+                'For named instances with SQL Browser disabled, specify the static port (SQL Server Configuration Manager → TCP/IP → IPAll → TCP Port)'
               }
               sx={{ width: 140, flexShrink: 0 }}
               inputProps={{ min: 1, max: 65535 }}
@@ -183,10 +183,10 @@ export function AddServerDialog({
           </Stack>
 
           <TextField
-            label="Nome Istanza (opzionale)"
+            label="Instance Name (optional)"
             value={form.instanceName}
             onChange={(e) => set('instanceName', e.target.value)}
-            placeholder="es. SQLEXPRESS"
+            placeholder="e.g. SQLEXPRESS"
             fullWidth
           />
 
@@ -196,13 +196,13 @@ export function AddServerDialog({
               {testState === 'loading' && (
                 <>
                   <CircularProgress size={16} />
-                  <Typography variant="caption" color="text.secondary">Connessione in corso…</Typography>
+                  <Typography variant="caption" color="text.secondary">Connecting…</Typography>
                 </>
               )}
               {testState === 'success' && (
                 <Chip
                   icon={<CheckCircleIcon />}
-                  label={`Connesso — ${testLabel}`}
+                  label={`Connected — ${testLabel}`}
                   size="small"
                   color="success"
                   variant="outlined"
@@ -218,22 +218,22 @@ export function AddServerDialog({
           )}
 
           <TextField
-            label="Nome (opzionale)"
+            label="Name (optional)"
             value={form.alias ?? ''}
             onChange={(e) => set('alias', e.target.value || undefined)}
-            placeholder="es. SQL-PROD-01"
-            helperText={testState === 'success' ? 'Auto-compilato da MachineName — modificabile' : 'Se vuoto, verrà mostrato IP:Porta'}
+            placeholder="e.g. SQL-PROD-01"
+            helperText={testState === 'success' ? 'Auto-filled from MachineName — editable' : 'If empty, IP:Port will be shown'}
             fullWidth
           />
 
           <FormControl size="small" fullWidth>
-            <InputLabel>Gruppo</InputLabel>
+            <InputLabel>Group</InputLabel>
             <Select
-              label="Gruppo"
+              label="Group"
               value={form.groupId ?? ''}
               onChange={(e) => set('groupId', e.target.value || undefined)}
             >
-              <MenuItem value="">Nessun gruppo</MenuItem>
+              <MenuItem value="">No group</MenuItem>
               {sortedGroups.map((g) => (
                 <MenuItem key={g.id} value={g.id}>
                   <Box
@@ -258,9 +258,9 @@ export function AddServerDialog({
           </FormControl>
 
           <FormControl size="small" fullWidth>
-            <InputLabel>Tipo infrastruttura</InputLabel>
+            <InputLabel>Infrastructure type</InputLabel>
             <Select
-              label="Tipo infrastruttura"
+              label="Infrastructure type"
               value={form.hostingType}
               onChange={(e) => set('hostingType', e.target.value as ServerHostingType)}
             >
@@ -284,15 +284,15 @@ export function AddServerDialog({
             }
             label={
               form.useWindowsAuth
-                ? 'Autenticazione Windows (NTLM)'
-                : 'Autenticazione SQL Server'
+                ? 'Windows Authentication (NTLM)'
+                : 'SQL Server Authentication'
             }
           />
 
           {!form.useWindowsAuth && (
             <>
               <Typography variant="caption" color="text.secondary">
-                Le credenziali sono salvate localmente in forma cifrata.
+                Credentials are stored locally in encrypted form.
               </Typography>
               <TextField
                 label="Username"
@@ -315,16 +315,16 @@ export function AddServerDialog({
       </DialogContent>
 
       <DialogActions>
-        <Button onClick={onClose}>Annulla</Button>
+        <Button onClick={onClose}>Cancel</Button>
         <Button
           onClick={handleTestConnection}
           disabled={testState === 'loading'}
           startIcon={testState === 'loading' ? <CircularProgress size={14} color="inherit" /> : undefined}
         >
-          Testa connessione
+          Test connection
         </Button>
         <Button variant="contained" onClick={handleSave}>
-          Salva
+          Save
         </Button>
       </DialogActions>
     </Dialog>

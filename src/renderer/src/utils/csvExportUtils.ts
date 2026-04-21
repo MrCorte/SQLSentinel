@@ -12,7 +12,7 @@ import { compatLevelToSqlVersion } from './sqlVersionUtils'
 // ---------------------------------------------------------------------------
 
 function formatDate(d: Date | string | null | undefined): string {
-  return d ? new Date(d).toLocaleDateString('it-IT') : 'Mai'
+  return d ? new Date(d).toLocaleDateString('en-US') : 'Never'
 }
 
 // ---------------------------------------------------------------------------
@@ -41,10 +41,10 @@ export interface DbAssetCsvInput {
 }
 
 export const DB_VIEW_CSV_HEADERS = [
-  'Ambiente', 'Server', 'Versione SQL', 'Database', 'Alias', 'Referente',
-  'Stato DB', 'Recovery Model', 'Compat. Level', 'TDE', 'Sola Lettura',
-  'Dati (MB)', 'Log (MB)', 'Ultimo Backup Full', 'Ultimo Backup Log',
-  'Owner', 'Data Creazione'
+  'Environment', 'Server', 'SQL Version', 'Database', 'Alias', 'Owner',
+  'DB Status', 'Recovery Model', 'Compat. Level', 'TDE', 'Read Only',
+  'Data (MB)', 'Log (MB)', 'Last Full Backup', 'Last Log Backup',
+  'Owner', 'Creation Date'
 ]
 
 export function buildDbViewCsvRows(rows: DbAssetCsvInput[]): string[][] {
@@ -58,16 +58,16 @@ export function buildDbViewCsvRows(rows: DbAssetCsvInput[]): string[][] {
     row.stateDesc ?? '',
     row.recoveryModel ?? '',
     row.compatibilityLevel ? compatLevelToSqlVersion(row.compatibilityLevel) : '',
-    row.isEncrypted ? 'Sì' : 'No',
-    row.isReadOnly ? 'Sì' : 'No',
+    row.isEncrypted ? 'Yes' : 'No',
+    row.isReadOnly ? 'Yes' : 'No',
     row.sizeMb?.toFixed(1) ?? '',
     row.logSizeMb?.toFixed(1) ?? '',
-    row.lastFullBackup ? formatDate(row.lastFullBackup) : 'Mai',
+    row.lastFullBackup ? formatDate(row.lastFullBackup) : 'Never',
     row.lastLogBackup
       ? formatDate(row.lastLogBackup)
-      : row.recoveryModel === 'SIMPLE' ? 'N/A' : 'Mai',
+      : row.recoveryModel === 'SIMPLE' ? 'N/A' : 'Never',
     row.owner ?? '',
-    row.createDate ? new Date(row.createDate).toLocaleDateString('it-IT') : ''
+    row.createDate ? new Date(row.createDate).toLocaleDateString('en-US') : ''
   ])
 }
 
@@ -108,7 +108,7 @@ export function buildInventoryCsvRows(
 
       const hosting = srv.hostingType ?? 'on-premise'
 
-      // Server con 0 DB → 1 riga placeholder
+      // Server with 0 DBs → 1 placeholder row
       if (databases.length === 0) {
         return [
           [
@@ -137,10 +137,10 @@ export function buildInventoryCsvRows(
           db.stateDesc ?? '',
           db.sizeMb?.toFixed(1) ?? '',
           db.logSizeMb?.toFixed(1) ?? '',
-          backup?.lastFullBackup ? formatDate(backup.lastFullBackup) : 'Mai',
+          backup?.lastFullBackup ? formatDate(backup.lastFullBackup) : 'Never',
           backup?.lastLogBackup
             ? formatDate(backup.lastLogBackup)
-            : db.recoveryModel === 'SIMPLE' ? 'N/A' : 'Mai',
+            : db.recoveryModel === 'SIMPLE' ? 'N/A' : 'Never',
           srv.version ?? '',
           srv.uptimeDays?.toFixed(0) ?? '',
           srv.unreachable ? 'UNREACHABLE' : 'ONLINE',

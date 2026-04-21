@@ -57,7 +57,7 @@ export type { InstanceInfo, DatabaseInfo, SessionInfo, QueryInfo, BackupInfo, Wa
 export type { StoredServer } from '../main/store/serverStore'
 
 // ---------------------------------------------------------------------------
-// Mock data — usato solo quando VITE_MOCK_MODE === 'true'
+// Mock data — used only when VITE_MOCK_MODE === 'true'
 // ---------------------------------------------------------------------------
 
 const MOCK_SERVERS: DiscoveredServer[] = [
@@ -305,7 +305,7 @@ function mockMetrics(cpu = 18, memUsed = 4096): ServerMetrics {
 }
 
 // ---------------------------------------------------------------------------
-// Mock worker — simula raccolta periodica con valori variabili
+// Mock worker — simulates periodic collection with variable values
 // ---------------------------------------------------------------------------
 
 let mockWorkerTimer: ReturnType<typeof setInterval> | null = null
@@ -577,7 +577,7 @@ const mockApi = {
     if (mockWorkerTimer) clearInterval(mockWorkerTimer)
     mockWorkerTimer = setInterval(() => {
       console.log('[MockWorker] tick', new Date().toISOString(), `listeners: ${mockMetricsListeners.length}`)
-      // Valori variabili: CPU ±5%, Memoria ±2% del target
+      // Variable values: CPU ±5%, Memory ±2% of target
       mockWorkerCpu = vary(mockWorkerCpu, 5, 0, 100)
       mockWorkerMem = vary(mockWorkerMem, MOCK_MEM_TARGET * 0.02, 0, MOCK_MEM_TARGET)
       const metrics = mockMetrics(mockWorkerCpu, mockWorkerMem)
@@ -830,7 +830,7 @@ const mockApi = {
     _history: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<IpcResult<string>> => ({
     ok: true,
-    data: `**OSSERVAZIONE**: (mock) Ricevuta domanda: "${question}"\n\n**CAUSA PROBABILE**: Modalità mock attiva — nessun server reale monitorato.\n\n**AZIONE IMMEDIATA**: Avvia l'app senza mock mode (\`VITE_USE_MOCK=false\`) per ottenere risposte reali dall'agente AI.\n\n**PROSSIMI CHECK**: Verifica che Ollama sia in esecuzione con \`ollama serve\`.`
+    data: `**OBSERVATION**: (mock) Received question: "${question}"\n\n**PROBABLE CAUSE**: Mock mode active — no real servers monitored.\n\n**IMMEDIATE ACTION**: Start the app without mock mode (\`VITE_USE_MOCK=false\`) to get real responses from the AI agent.\n\n**NEXT CHECKS**: Verify that Ollama is running with \`ollama serve\`.`
   }),
 }
 
@@ -877,8 +877,8 @@ const bridgeApi = {
   getDbCustomFields:   (r: DbCustomFieldsGetRequest) => api.getDbCustomFields(r),
   setDbCustomFields:   (r: DbCustomFieldsSetRequest) => api.setDbCustomFields(r),
   getAllDbCustomFields: () => api.getAllDbCustomFields(),
-  // File/CSV exports: sempre IPC reale — le operazioni dialog+writeFile
-  // non funzionano nel mock layer (mockApi restituisce null senza aprire il dialog)
+  // File/CSV exports: always real IPC — dialog+writeFile operations
+  // do not work in the mock layer (mockApi returns null without opening the dialog)
   exportCustomFields:  () => realApi.exportCustomFields(),
   exportInventory:     () => realApi.exportInventory(),
   exportAlerts:        () => realApi.exportAlerts(),
@@ -900,11 +900,11 @@ const bridgeApi = {
     getDatabases: (r: AgParams): Promise<IpcResult<AvailabilityDatabase[]>> =>
       isMock ? api.ag.getDatabases(r) : ipcRenderer.invoke(IpcChannel.AG_GET_DATABASES, r),
   },
-  // servers: in mock mode usa mockApi (in-memory, nessun IPC → nessun auth check);
-  // in real mode usa realApi (IPC → electron-store).
-  // La preoccupazione precedente ("record mock-* inquinano electron-store") era per
-  // il vecchio schema dove mockApi chiamava IPC sotto. Ora mockApi.servers è puro
-  // in-memory, quindi è sicuro usarlo in mock mode.
+  // servers: in mock mode uses mockApi (in-memory, no IPC → no auth check);
+  // in real mode uses realApi (IPC → electron-store).
+  // The previous concern ("mock-* records polluting electron-store") applied to
+  // the old scheme where mockApi called IPC underneath. Now mockApi.servers is pure
+  // in-memory, so it is safe to use in mock mode.
   servers: {
     getAll:     () => api.servers.getAll(),
     add:        (p: Omit<StoredServer, 'id' | 'addedAt'>) => api.servers.add(p),

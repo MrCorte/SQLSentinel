@@ -51,7 +51,7 @@ describe('findLastNBulk', () => {
     closeDb()
   })
 
-  it('restituisce gli stessi dati di N chiamate findLastN separate', () => {
+  it('returns the same data as N separate findLastN calls', () => {
     const bulk = findLastNBulk([idA, idB], 10)
     const singleA = findLastN(idA, 10)
     const singleB = findLastN(idB, 10)
@@ -59,21 +59,21 @@ describe('findLastNBulk', () => {
     expect(bulk[idA]).toHaveLength(singleA.length)
     expect(bulk[idB]).toHaveLength(singleB.length)
 
-    // Ordine: dal più vecchio al più recente (stesso di findLastN)
+    // Order: from oldest to most recent (same as findLastN)
     expect(bulk[idA]?.[0].instanceInfo.version).toBe('SQL 2019 v1')
     expect(bulk[idA]?.[2].instanceInfo.version).toBe('SQL 2019 v3')
     expect(bulk[idB]?.[1].instanceInfo.version).toBe('SQL 2022 v2')
   })
 
-  it('rispetta il limite N', () => {
+  it('respects the N limit', () => {
     const bulk = findLastNBulk([idA], 2)
-    // Con N=2 restituisce solo i 2 più recenti
+    // With N=2 returns only the 2 most recent
     expect(bulk[idA]).toHaveLength(2)
     expect(bulk[idA]?.[0].instanceInfo.version).toBe('SQL 2019 v2')
     expect(bulk[idA]?.[1].instanceInfo.version).toBe('SQL 2019 v3')
   })
 
-  it('restituisce oggetto vuoto per lista serverIds vuota', () => {
+  it('returns empty object for empty serverIds list', () => {
     expect(findLastNBulk([], 10)).toEqual({})
   })
 

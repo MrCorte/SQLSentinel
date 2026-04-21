@@ -7,7 +7,7 @@ import { OllamaEmbeddings } from '@langchain/ollama'
 import { isDocumentIndexed, saveDocument } from '../store/ragRepository'
 
 const _require = createRequire(import.meta.url)
-// pdf-parse 1.x è un modulo CJS puro — createRequire garantisce la funzione diretta
+// pdf-parse 1.x is a pure CJS module — createRequire guarantees the direct function
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const pdfParse = (_require('pdf-parse') as any) as (buf: Buffer) => Promise<{ text: string; numpages: number }>
 
@@ -20,8 +20,8 @@ const CHUNK_SIZE = 500
 const CHUNK_OVERLAP = 50
 const EMBED_BATCH = 20
 
-// Whitelist filename: solo caratteri safe + estensione .pdf.
-// Previene path traversal (../) e null-byte injection.
+// Filename whitelist: safe characters only + .pdf extension.
+// Prevents path traversal (../) and null-byte injection.
 const SAFE_PDF_NAME = /^[A-Za-z0-9._-]+\.pdf$/
 
 export async function autoIndexRagBooks(): Promise<void> {
@@ -30,7 +30,7 @@ export async function autoIndexRagBooks(): Promise<void> {
     const entries = await readdir(DATA_DIR)
     files = entries.filter((f) => f.endsWith('.pdf') && SAFE_PDF_NAME.test(f))
   } catch {
-    // data/ non presente — non è un errore bloccante
+    // data/ directory not found — not a blocking error
     return
   }
 
@@ -62,7 +62,7 @@ export async function autoIndexRagBooks(): Promise<void> {
       const docs = await splitter.createDocuments([text])
       const texts = docs.map((d) => d.pageContent)
 
-      // Embed in batch per non saturare Ollama
+      // Embed in batches to avoid saturating Ollama
       const allEmbeddings: number[][] = []
       for (let i = 0; i < texts.length; i += EMBED_BATCH) {
         const batch = texts.slice(i, i + EMBED_BATCH)

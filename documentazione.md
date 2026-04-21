@@ -1,448 +1,448 @@
-# SQLSentinel — Documentazione Modifiche
+# SQLSentinel — Change Documentation
 
-## FASE 1 — Modulo Discovery (2026-03-16)
+## PHASE 1 — Discovery Module (2026-03-16)
 
-### File creati
+### Files created
 
 #### `src/main/discovery/types.ts`
-Definizioni TypeScript per il modulo discovery:
-- `DiscoveredServer` — risultato di una singola probe TCP (ip, port, reachable, responseTimeMs, discoveredAt)
-- `ScanOptions` — parametri di input per `scanSubnet` (cidr, ports, timeoutMs, concurrency)
-- `ScanProgress` — stato avanzamento scan per la UI (total, completed, found)
+TypeScript definitions for the discovery module:
+- `DiscoveredServer` — result of a single TCP probe (ip, port, reachable, responseTimeMs, discoveredAt)
+- `ScanOptions` — input parameters for `scanSubnet` (cidr, ports, timeoutMs, concurrency)
+- `ScanProgress` — scan progress state for the UI (total, completed, found)
 
 #### `src/main/discovery/cidrUtils.ts`
-Utility per espansione CIDR:
-- `expandCidr(cidr)` — converte notazione CIDR (es. `192.168.1.0/24`) in array di tutti gli IP del range, inclusi indirizzo di rete e broadcast. Usa operatori bitwise su interi unsigned a 32 bit. Lancia errore su CIDR malformato.
+CIDR expansion utility:
+- `expandCidr(cidr)` — converts CIDR notation (e.g. `192.168.1.0/24`) into an array of all IPs in the range, including network and broadcast addresses. Uses bitwise operators on 32-bit unsigned integers. Throws on malformed CIDR.
 
 #### `src/main/discovery/tcpScanner.ts`
-Scanner TCP asincrono:
-- `scanHost(ip, port, timeoutMs)` — singola probe TCP via `net.Socket`. Non lancia mai eccezioni: restituisce sempre un `DiscoveredServer`. Il flag `settled` garantisce che `cleanup()` venga eseguita una sola volta anche se più eventi (error + timeout) si sovrappongono.
-- `scanSubnet(options, onProgress?)` — scansiona tutte le combinazioni ip×porta del CIDR fornito. Usa un worker pool (pattern indice condiviso) per limitare la concorrenza a `options.concurrency` probe simultanee (default consigliato: 50). Restituisce solo i server raggiungibili. Chiama `onProgress` dopo ogni probe per aggiornare la UI.
+Asynchronous TCP scanner:
+- `scanHost(ip, port, timeoutMs)` — single TCP probe via `net.Socket`. Never throws exceptions: always returns a `DiscoveredServer`. The `settled` flag ensures `cleanup()` is called exactly once even if multiple events (error + timeout) overlap.
+- `scanSubnet(options, onProgress?)` — scans all ip×port combinations in the provided CIDR. Uses a worker pool (shared-index pattern) to cap concurrency at `options.concurrency` simultaneous probes (recommended default: 50). Returns only reachable servers. Calls `onProgress` after each probe to update the UI.
 
-Vincoli rispettati:
-- Solo `net.Socket` TCP — no PowerShell, no UDP, no SQL Server Browser
-- Timeout esplicito su ogni socket via `socket.setTimeout()`
-- Cleanup socket esplicita via `socket.destroy()` al termine
+Constraints respected:
+- TCP `net.Socket` only — no PowerShell, no UDP, no SQL Server Browser
+- Explicit timeout on each socket via `socket.setTimeout()`
+- Explicit socket cleanup via `socket.destroy()` on completion
 
 #### `src/main/discovery/tcpScanner.test.ts`
-Test Vitest con mock di `net.Socket` (nessuna connessione reale):
-- Host raggiungibile → evento `connect` → `reachable: true`
-- Host non raggiungibile → evento `error` → `reachable: false`
-- Timeout → evento `timeout` → `reachable: false`
-- Double-fire (error + timeout) → `destroy` chiamata una sola volta
-- Verifica che `setTimeout` riceva il valore `timeoutMs` corretto
+Vitest tests with `net.Socket` mocked (no real connections):
+- Reachable host → `connect` event → `reachable: true`
+- Unreachable host → `error` event → `reachable: false`
+- Timeout → `timeout` event → `reachable: false`
+- Double-fire (error + timeout) → `destroy` called exactly once
+- Verifies `setTimeout` receives the correct `timeoutMs` value
 
 #### `vitest.config.ts`
-Configurazione Vitest per i test del main process:
-- `environment: 'node'` (richiesto per moduli Node.js come `net`)
+Vitest configuration for main process tests:
+- `environment: 'node'` (required for Node.js modules such as `net`)
 - `include: ['src/main/**/*.test.ts']`
 
-### Modifiche a file esistenti
+### Changes to existing files
 
 #### `package.json`
-Aggiunti script:
-- `"test": "vitest run"` — esecuzione singola (CI)
-- `"test:watch": "vitest"` — modalità watch per sviluppo
+Added scripts:
+- `"test": "vitest run"` — single run (CI)
+- `"test:watch": "vitest"` — watch mode for development
 
-### Comandi test
+### Test commands
 ```bash
-npm run test          # esecuzione singola
+npm run test          # single run
 npm run test:watch    # watch mode
 ```
 
 ---
 
-## FASE 2 — Modulo IPC (2026-03-16)
+## PHASE 2 — IPC Module (2026-03-16)
 
-### File creati
+### Files created
 
 #### `src/main/ipc/types.ts`
-Definizioni dei canali IPC e tipi request/response:
-- `IpcChannel` (enum) — nomi canali come stringhe tipizzate. Usato `enum` invece di `const enum` per evitare problemi di inlining cross-file con esbuild/electron-vite.
-- `IpcResult<T>` — envelope unificato `{ ok: true; data: T } | { ok: false; error: string }`. Garantisce che il renderer non riceva mai stack trace raw.
-- Tipi request: `ManualServerRequest`, `RemoveServerRequest`
-- Tipi response: alias `ScanSubnetResponse`, `AddServerManualResponse`, `GetServersResponse`, `RemoveServerResponse`
+IPC channel definitions and request/response types:
+- `IpcChannel` (enum) — channel names as typed strings. `enum` used instead of `const enum` to avoid cross-file inlining issues with esbuild/electron-vite.
+- `IpcResult<T>` — unified envelope `{ ok: true; data: T } | { ok: false; error: string }`. Guarantees the renderer never receives raw stack traces.
+- Request types: `ManualServerRequest`, `RemoveServerRequest`
+- Response types: aliases `ScanSubnetResponse`, `AddServerManualResponse`, `GetServersResponse`, `RemoveServerResponse`
 
 #### `src/main/ipc/handlers.ts`
-Registrazione handler `ipcMain.handle()` per tutti i canali:
-- `SCAN_SUBNET` — chiama `scanSubnet()`, invia progress via `event.sender.send(SCAN_PROGRESS, ...)`, restituisce solo i server reachable.
-- `ADD_SERVER_MANUAL` — esegue `scanHost()` (timeout 2s) per popolare `reachable`/`responseTimeMs`, poi persiste il server.
-- `GET_SERVERS` — restituisce copia dello store in-memory.
-- `REMOVE_SERVER` — filtra lo store per chiave `ip:port`.
-- Store in-memory temporaneo (array `knownServers`) — verrà sostituito da SQLite in FASE 4.
-- Errori loggati via `console.error` con solo `err.message`, mai stack trace al renderer.
+`ipcMain.handle()` handler registration for all channels:
+- `SCAN_SUBNET` — calls `scanSubnet()`, sends progress via `event.sender.send(SCAN_PROGRESS, ...)`, returns only reachable servers.
+- `ADD_SERVER_MANUAL` — runs `scanHost()` (2s timeout) to populate `reachable`/`responseTimeMs`, then persists the server.
+- `GET_SERVERS` — returns a copy of the in-memory store.
+- `REMOVE_SERVER` — filters the store by `ip:port` key.
+- Temporary in-memory store (`knownServers` array) — will be replaced by SQLite in PHASE 4.
+- Errors logged via `console.error` with only `err.message`, never a stack trace to the renderer.
 
-### File modificati
+### Modified files
 
 #### `src/preload/index.ts`
-Espone oggetto `sqlSentinel` tipizzato via `contextBridge.exposeInMainWorld('sqlSentinel', ...)`:
+Exposes a typed `sqlSentinel` object via `contextBridge.exposeInMainWorld('sqlSentinel', ...)`:
 - `scanSubnet(options)` → `ipcRenderer.invoke(SCAN_SUBNET)`
-- `onScanProgress(callback)` → `ipcRenderer.on(SCAN_PROGRESS, ...)`, ritorna cleanup `() => void`
+- `onScanProgress(callback)` → `ipcRenderer.on(SCAN_PROGRESS, ...)`, returns cleanup `() => void`
 - `addServerManual(req)` → `ipcRenderer.invoke(ADD_SERVER_MANUAL)`
 - `getServers()` → `ipcRenderer.invoke(GET_SERVERS)`
 - `removeServer(req)` → `ipcRenderer.invoke(REMOVE_SERVER)`
 
 #### `src/preload/index.d.ts`
-Aggiunta dichiarazione `window.sqlSentinel: SqlSentinelAPI`. Tipi ridichiarati inline (non importati da `src/main/`) perché questo file è compilato con `tsconfig.web.json` che non include il main process. I tipi exportati (`DiscoveredServer`, `ScanOptions`, `ScanProgress`, ecc.) sono importabili dal renderer via path relativo.
+Added `window.sqlSentinel: SqlSentinelAPI` declaration. Types re-declared inline (not imported from `src/main/`) because this file is compiled with `tsconfig.web.json` which does not include the main process. Exported types (`DiscoveredServer`, `ScanOptions`, `ScanProgress`, etc.) are importable from the renderer via relative path.
 
 #### `src/main/index.ts`
-Aggiunto import e chiamata `registerIpcHandlers()` nella callback `app.whenReady()`.
+Added import and call to `registerIpcHandlers()` inside the `app.whenReady()` callback.
 
-### File creati (renderer)
+### Files created (renderer)
 
 #### `src/renderer/src/hooks/useDiscovery.ts`
-Hook React per la pagina Discovery:
-- Stato: `servers: DiscoveredServer[]`, `isScanning: boolean`, `progress: ScanProgress | null`, `error: string | null`
-- `scan(options)` — chiama `window.sqlSentinel.scanSubnet()`, sottoscrive progress events, gestisce cleanup del listener nel `finally`.
-- Importa i tipi da `src/preload/index.d.ts` (path relativo `../../../preload/index`) — funziona perché `tsconfig.web.json` include `src/preload/*.d.ts`.
+React hook for the Discovery page:
+- State: `servers: DiscoveredServer[]`, `isScanning: boolean`, `progress: ScanProgress | null`, `error: string | null`
+- `scan(options)` — calls `window.sqlSentinel.scanSubnet()`, subscribes to progress events, handles listener cleanup in the `finally` block.
+- Imports types from `src/preload/index.d.ts` (relative path `../../../preload/index`) — works because `tsconfig.web.json` includes `src/preload/*.d.ts`.
 
 ---
 
-## FASE 3 — Modulo Collectors (2026-03-16)
+## PHASE 3 — Collectors Module (2026-03-16)
 
-### File creati
+### Files created
 
 #### `src/main/collectors/types.ts`
-Tipi per le metriche SQL Server:
-- `ServerConnection` — credenziali e coordinate di connessione. `instanceName` è solo per display: non viene passato al driver perché SQL Browser è disabilitato e la porta è sempre esplicita.
-- `InstanceInfo` — versione, edizione, RAM usata, CPU%, uptime
-- `DatabaseInfo` — nome, stato, recovery model, dimensioni data/log
-- `SessionInfo` — sessioni attive con blocking, wait type, CPU, logical reads
-- `QueryInfo` — top query per elapsed time (testo, execution count, medie CPU/IO)
-- `BackupInfo` — ultimo backup Full/Diff/Log per database
-- `ServerMetrics` — aggregato di tutti i tipi sopra con timestamp
+Types for SQL Server metrics:
+- `ServerConnection` — credentials and connection coordinates. `instanceName` is display-only: not passed to the driver because SQL Browser is disabled and the port is always explicit.
+- `InstanceInfo` — version, edition, used RAM, CPU%, uptime
+- `DatabaseInfo` — name, status, recovery model, data/log sizes
+- `SessionInfo` — active sessions with blocking, wait type, CPU, logical reads
+- `QueryInfo` — top queries by elapsed time (text, execution count, CPU/IO averages)
+- `BackupInfo` — last Full/Diff/Log backup per database
+- `ServerMetrics` — aggregate of all the above types with a timestamp
 
 #### `src/main/collectors/sqlCollector.ts`
-Collector principale:
-- `buildConfig(conn)` — costruisce `mssql.config`. `connectTimeout` in `options` (via IOptions), `requestTimeout` direttamente su config. `instanceName` NON passato al driver.
-- Auth: `type: 'ntlm'` (Windows Auth) oppure `type: 'default'` (SQL Auth), come richiede l'interfaccia `tds.ConnectionAuthentication`.
-- `collectMetrics(connection)` — apre un pool, esegue 5 query in `Promise.all()`, ogni query con `.catch()` indipendente → una query fallita non blocca le altre. Pool sempre chiuso nel `finally`.
-- Errori loggati con solo `err.message`, mai stack trace o credenziali.
+Main collector:
+- `buildConfig(conn)` — builds `mssql.config`. `connectTimeout` in `options` (via IOptions), `requestTimeout` directly on config. `instanceName` is NOT passed to the driver.
+- Auth: `type: 'ntlm'` (Windows Auth) or `type: 'default'` (SQL Auth), as required by the `tds.ConnectionAuthentication` interface.
+- `collectMetrics(connection)` — opens a pool, runs 5 queries in `Promise.all()`, each query with an independent `.catch()` → a failing query does not block the others. Pool is always closed in the `finally` block.
+- Errors logged with only `err.message`, never stack traces or credentials.
 
-**Query T-SQL implementate (alias snake_case, commenti in italiano):**
-- `queryInstanceInfo` — `sys.dm_os_process_memory` CROSS JOIN `sys.dm_os_sys_info` + subquery su `sys.dm_os_ring_buffers` per CPU%
-- `queryDatabases` — `sys.databases` INNER JOIN `sys.master_files` GROUP BY, DECIMAL(18,2) per le dimensioni
+**T-SQL queries implemented (snake_case aliases):**
+- `queryInstanceInfo` — `sys.dm_os_process_memory` CROSS JOIN `sys.dm_os_sys_info` + subquery on `sys.dm_os_ring_buffers` for CPU%
+- `queryDatabases` — `sys.databases` INNER JOIN `sys.master_files` GROUP BY, DECIMAL(18,2) for sizes
 - `querySessions` — `sys.dm_exec_requests WHERE session_id > 50`
-- `queryTopQueries` — `sys.dm_exec_query_stats` CROSS APPLY `sys.dm_exec_sql_text`, TOP 20 per elapsed time totale
-- `queryBackupStatus` — `msdb.dbo.backupset` GROUP BY database_name, type='D'/'I'/'L', ultimi 7 giorni
+- `queryTopQueries` — `sys.dm_exec_query_stats` CROSS APPLY `sys.dm_exec_sql_text`, TOP 20 by total elapsed time
+- `queryBackupStatus` — `msdb.dbo.backupset` GROUP BY database_name, type='D'/'I'/'L', last 7 days
 
 #### `src/main/collectors/sqlCollector.test.ts`
-4 test con mock di `mssql` via factory `vi.mock('mssql', () => ({ connect: vi.fn() }))`:
-- Connessione riuscita → verifica mapping completo di tutti i campi
-- Connessione fallita → `rejects.toThrow('Login failed')`
+4 tests with `mssql` mocked via factory `vi.mock('mssql', () => ({ connect: vi.fn() }))`:
+- Successful connection → verifies full mapping of all fields
+- Failed connection → `rejects.toThrow('Login failed')`
 - Timeout → `rejects.toThrow('Connection timeout')`
-- Query parziale fallita (backup negato su msdb) → `backupStatus: []`, le altre query OK, `close()` sempre chiamato
+- Partial query failure (backup denied on msdb) → `backupStatus: []`, other queries OK, `close()` always called
 
 ---
 
-## FASE 4 — Modulo Store (2026-03-16)
+## PHASE 4 — Store Module (2026-03-16)
 
-### File creati
+### Files created
 
 #### `src/main/store/types.ts`
-- `StoredServer` — record persistito su SQLite. `encryptedPassword` marcato con commento "mai loggare".
-- `MetricsSnapshot` — snapshot grezzo con `metricsJson: string` (ServerMetrics serializzato).
+- `StoredServer` — record persisted in SQLite. `encryptedPassword` marked with a "never log" comment.
+- `MetricsSnapshot` — raw snapshot with `metricsJson: string` (serialized ServerMetrics).
 
 #### `src/main/store/database.ts`
-- Pattern `initDb(path) / getDb() / closeDb()` — il path viene passato dall'esterno (main process usa `app.getPath('appData')`, test usa `':memory:'`). Nessuna dipendenza da Electron in questo modulo.
-- `defaultDbPath(appDataPath)` — helper per costruire il path in produzione (`%APPDATA%/sqlsentinel/data.db`).
-- Schema DDL: tabella `servers` con UNIQUE su `(ip, port)`, tabella `metrics_snapshots` con FK CASCADE, indici su `server_id` e `collected_at`.
-- WAL mode e `foreign_keys = ON` impostati via `PRAGMA`.
+- `initDb(path) / getDb() / closeDb()` pattern — the path is passed from outside (main process uses `app.getPath('appData')`, tests use `':memory:'`). No Electron dependency in this module.
+- `defaultDbPath(appDataPath)` — helper to build the production path (`%APPDATA%/sqlsentinel/data.db`).
+- Schema DDL: `servers` table with UNIQUE on `(ip, port)`, `metrics_snapshots` table with FK CASCADE, indexes on `server_id` and `collected_at`.
+- WAL mode and `foreign_keys = ON` set via `PRAGMA`.
 
 #### `src/main/store/serverRepository.ts`
-- `upsert(server)` — `INSERT ... ON CONFLICT(ip, port) DO UPDATE SET ...`. Non aggiorna `id` né `added_at` su conflitto. Restituisce il record effettivo (risolve l'id pre-esistente).
+- `upsert(server)` — `INSERT ... ON CONFLICT(ip, port) DO UPDATE SET ...`. Does not update `id` or `added_at` on conflict. Returns the actual record (resolves the pre-existing id).
 - `findAll()`, `findById(id)`, `remove(id)`, `updateLastSeen(id, date)`, `updateLastMetrics(id, date)`.
-- Mapping `ServerRow` → `StoredServer`: INTEGER → boolean per `use_windows_auth`, TEXT ISO 8601 → Date per i campi data.
+- `ServerRow` → `StoredServer` mapping: INTEGER → boolean for `use_windows_auth`, ISO 8601 TEXT → Date for date fields.
 
 #### `src/main/store/metricsRepository.ts`
-- `save(serverId, metrics)` — `JSON.stringify(metrics)` + UUID generato con `randomUUID()`.
-- `findLatest(serverId)` — `ORDER BY collected_at DESC LIMIT 1`, deserializza con reviver per ripristinare le `Date` da stringhe ISO 8601.
-- `findHistory(serverId, limitDays)` — usa `datetime('now', '-N days')` di SQLite.
+- `save(serverId, metrics)` — `JSON.stringify(metrics)` + UUID generated with `randomUUID()`.
+- `findLatest(serverId)` — `ORDER BY collected_at DESC LIMIT 1`, deserializes with a reviver to restore `Date` objects from ISO 8601 strings.
+- `findHistory(serverId, limitDays)` — uses SQLite's `datetime('now', '-N days')`.
 - `cleanup(retentionDays)` — `DELETE WHERE collected_at < datetime('now', '-N days')`.
 
 #### `src/main/store/store.test.ts`
-- `initDb(':memory:')` in `beforeEach`, `closeDb()` in `afterEach` — ogni test parte da schema vuoto.
-- **serverRepository**: insert, upsert (no duplicati per ip:port), findById, remove, updateLastSeen, conversione boolean/Date.
-- **metricsRepository**: save+findLatest, deserializzazione Date, snapshot più recente su più record, findHistory, cleanup (verifica eliminazione vecchi + conservazione recenti).
+- `initDb(':memory:')` in `beforeEach`, `closeDb()` in `afterEach` — each test starts from an empty schema.
+- **serverRepository**: insert, upsert (no duplicates per ip:port), findById, remove, updateLastSeen, boolean/Date conversion.
+- **metricsRepository**: save+findLatest, Date deserialization, most recent snapshot across multiple records, findHistory, cleanup (verifies deletion of old records and retention of recent ones).
 
 ---
 
-## FASE 5 — Pagina Discovery UI (2026-03-16)
+## PHASE 5 — Discovery UI Page (2026-03-16)
 
-### File creati
+### Files created
 
 #### `src/renderer/src/components/ServerStatusChip.tsx`
-Chip MUI riutilizzabile. Props: `reachable: boolean | null`, `responseTimeMs?: number`. Tre stati: verde "Raggiungibile Xms" / rosso "Non raggiungibile" / grigio "Sconosciuto" (null).
+Reusable MUI Chip. Props: `reachable: boolean | null`, `responseTimeMs?: number`. Three states: green "Reachable Xms" / red "Unreachable" / grey "Unknown" (null).
 
 #### `src/renderer/src/components/AddServerDialog.tsx`
-Dialog MUI con form completo: IP/Hostname (obbligatorio), Porta (1-65535, default 1433), Nome Istanza (opzionale), toggle Windows Auth / SQL Auth, campi Username+Password se SQL Auth. Validazione inline con `helperText`. `useEffect` per pre-compilare ip/porta quando aperto da una riga della tabella.
+MUI Dialog with a complete form: IP/Hostname (required), Port (1-65535, default 1433), Instance Name (optional), Windows Auth / SQL Auth toggle, Username+Password fields when SQL Auth. Inline validation with `helperText`. `useEffect` to pre-populate ip/port when opened from a table row.
 
 #### `src/renderer/src/pages/Discovery.tsx`
-Pagina principale con:
-- Alert warning per named instances dinamiche
-- Form scan: CIDR, porte (comma-separated, parse + validazione formato CIDR), concorrenza (1-200)
-- LinearProgress `determinate` durante scan con label "X/Y host scansionati, Z trovati"
-- DataGrid con 6 colonne: IP, Porta, Stato (ServerStatusChip), Risposta ms, Tipo discovery (chip), Azioni ("+ Monitora")
-- `getRowId={(row) => \`${row.ip}:${row.port}\`` — nessun campo `id` necessario sui dati
-- AddServerDialog aperto sia da "Aggiungi Manualmente" (form vuoto) sia da riga (pre-compilato)
+Main page with:
+- Warning alert for dynamic named instances
+- Scan form: CIDR, ports (comma-separated, parsed + CIDR format validation), concurrency (1-200)
+- `determinate` LinearProgress during scan with label "X/Y hosts scanned, Z found"
+- DataGrid with 6 columns: IP, Port, Status (ServerStatusChip), Response ms, Discovery type (chip), Actions ("+ Monitor")
+- `getRowId={(row) => \`${row.ip}:${row.port}\`` — no `id` field required on the data
+- AddServerDialog opened both from "Add Manually" (empty form) and from a row (pre-populated)
 
-### File modificati
+### Modified files
 
 #### `src/renderer/src/hooks/useDiscovery.ts`
-- Aggiunto tipo `DiscoveryRow` (estende `DiscoveredServer` con `discoveryType: 'auto-tcp' | 'manual'`)
-- Aggiunto tipo `AddServerParams` (include credenziali per uso futuro in FASE 6)
-- `scan` ora produce `DiscoveryRow[]` preservando i server manuali pre-esistenti su conflitto ip:porta
-- Aggiunta funzione `addServer(params)` che chiama `window.sqlSentinel.addServerManual` e aggiorna la lista
+- Added `DiscoveryRow` type (extends `DiscoveredServer` with `discoveryType: 'auto-tcp' | 'manual'`)
+- Added `AddServerParams` type (includes credentials for future use in PHASE 6)
+- `scan` now produces `DiscoveryRow[]`, preserving pre-existing manual servers on ip:port conflict
+- Added `addServer(params)` function that calls `window.sqlSentinel.addServerManual` and updates the list
 
 #### `src/renderer/src/App.tsx`
-Sostituito il template demo Electron con `<Discovery />`. Nessun router — pagina singola per FASE 5/6.
+Replaced the Electron demo template with `<Discovery />`. No router — single page for PHASE 5/6.
 
 ---
 
-## FASE 6 — Dashboard Monitoraggio (2026-03-16)
+## PHASE 6 — Monitoring Dashboard (2026-03-16)
 
-### File creati
+### Files created
 
 #### `src/renderer/src/hooks/useMetrics.ts`
-Hook per raccolta e history metriche:
-- `useMetrics(connection)` — prende `CollectMetricsRequest | null` come input.
-- Stato: `metrics: ServerMetrics | null`, `isLoading`, `error`, `history: MetricsHistoryPoint[]`, `autoRefreshSeconds`, `setAutoRefreshSeconds`.
-- `refresh()` — chiama `window.sqlSentinel.collectMetrics()`, appende un punto alla history (max 60 punti).
-- Auto-refresh tramite `setInterval` con cleanup `useEffect`; si resetta quando cambia il server selezionato (`ip:port`).
-- `MetricsHistoryPoint`: `{ timestamp, memoryUsedMb, cpuUsagePercent }` per i grafici.
+Hook for metrics collection and history:
+- `useMetrics(connection)` — takes `CollectMetricsRequest | null` as input.
+- State: `metrics: ServerMetrics | null`, `isLoading`, `error`, `history: MetricsHistoryPoint[]`, `autoRefreshSeconds`, `setAutoRefreshSeconds`.
+- `refresh()` — calls `window.sqlSentinel.collectMetrics()`, appends a point to the history (max 60 points).
+- Auto-refresh via `setInterval` with `useEffect` cleanup; resets when the selected server (`ip:port`) changes.
+- `MetricsHistoryPoint`: `{ timestamp, memoryUsedMb, cpuUsagePercent }` for charts.
 
 #### `src/renderer/src/components/MemoryChart.tsx`
-Grafico recharts con doppio asse Y: Memoria (MB) a sinistra, CPU (%) a destra. `isAnimationActive: false` per performance con aggiornamenti frequenti.
+recharts chart with dual Y-axis: Memory (MB) on the left, CPU (%) on the right. `isAnimationActive: false` for performance with frequent updates.
 
 #### `src/renderer/src/components/MetricsPanel.tsx`
-5 tab MUI per visualizzare tutte le metriche:
-- **Panoramica**: InfoCard per versione, edizione, memoria, CPU, uptime + `MemoryChart` (visibile con ≥2 campioni).
-- **Database**: DataGrid con nome, stato, recovery model, dimensioni data/log.
-- **Sessioni**: DataGrid con `blockingSessionId` evidenziato in rosso (MUI Chip error) se > 0.
-- **Backup**: DataGrid con celle colorate in rosso se backup > 24h fa o `null`.
-- **Top Query**: DataGrid con testo query in monospace, `_idx` come row ID sintetico (QueryInfo non ha chiave naturale).
+5 MUI tabs to display all metrics:
+- **Overview**: InfoCard for version, edition, memory, CPU, uptime + `MemoryChart` (visible with ≥2 samples).
+- **Databases**: DataGrid with name, status, recovery model, data/log sizes.
+- **Sessions**: DataGrid with `blockingSessionId` highlighted in red (MUI Chip error) if > 0.
+- **Backups**: DataGrid with cells colored red if backup is > 24h old or `null`.
+- **Top Queries**: DataGrid with query text in monospace, `_idx` as synthetic row ID (QueryInfo has no natural key).
 
 #### `src/renderer/src/pages/Dashboard.tsx`
-Pagina principale con layout sidebar + area destra:
-- Sidebar sinistra (220px): lista server da `getServers()`, selezione attiva, `ServerStatusChip` per ogni entry.
-- Area destra: toolbar con label server, Select auto-refresh (30s/60s/2min/5min/disabilitato), pulsante "Aggiorna metriche" con CircularProgress.
-- Windows Auth di default per la raccolta metriche (credenziali estese previste in FASE futura).
-- Messaggi informativi per stato vuoto / nessun server selezionato.
+Main page with sidebar + right-area layout:
+- Left sidebar (220px): server list from `getServers()`, active selection, `ServerStatusChip` for each entry.
+- Right area: toolbar with server label, auto-refresh Select (30s/60s/2min/5min/disabled), "Refresh metrics" button with CircularProgress.
+- Windows Auth by default for metrics collection (extended credentials planned for a future phase).
+- Informational messages for empty state / no server selected.
 
-### File modificati
+### Modified files
 
 #### `src/main/ipc/types.ts`
-- Aggiunto `COLLECT_METRICS = 'metrics:collect'` a `IpcChannel`.
-- Aggiunto `CollectMetricsRequest` (credenziali complete per la connessione).
-- Aggiunto `CollectMetricsResponse = IpcResult<ServerMetrics>`.
-- Re-export `ServerMetrics` da `../collectors/types`.
+- Added `COLLECT_METRICS = 'metrics:collect'` to `IpcChannel`.
+- Added `CollectMetricsRequest` (full connection credentials).
+- Added `CollectMetricsResponse = IpcResult<ServerMetrics>`.
+- Re-exported `ServerMetrics` from `../collectors/types`.
 
 #### `src/main/ipc/handlers.ts`
-- Import `collectMetrics` da `../collectors/sqlCollector`.
-- Aggiunto handler `COLLECT_METRICS`: chiama `collectMetrics()` con i parametri della richiesta, restituisce `IpcResult<ServerMetrics>`. Errore loggato solo con `err.message`.
+- Import `collectMetrics` from `../collectors/sqlCollector`.
+- Added `COLLECT_METRICS` handler: calls `collectMetrics()` with the request parameters, returns `IpcResult<ServerMetrics>`. Error logged with `err.message` only.
 
 #### `src/preload/index.ts`
-- Aggiunto `collectMetrics` all'oggetto `sqlSentinel` esposto via contextBridge.
-- Re-export `CollectMetricsRequest`, `ServerMetrics`, `InstanceInfo`, `DatabaseInfo`, `SessionInfo`, `QueryInfo`, `BackupInfo`.
+- Added `collectMetrics` to the `sqlSentinel` object exposed via contextBridge.
+- Re-exported `CollectMetricsRequest`, `ServerMetrics`, `InstanceInfo`, `DatabaseInfo`, `SessionInfo`, `QueryInfo`, `BackupInfo`.
 
 #### `src/preload/index.d.ts`
-- Dichiarazioni inline per `CollectMetricsRequest`, `InstanceInfo`, `DatabaseInfo`, `SessionInfo`, `QueryInfo`, `BackupInfo`, `ServerMetrics`.
-- Aggiunto `collectMetrics(req: CollectMetricsRequest): Promise<IpcResult<ServerMetrics>>` a `SqlSentinelAPI`.
+- Inline declarations for `CollectMetricsRequest`, `InstanceInfo`, `DatabaseInfo`, `SessionInfo`, `QueryInfo`, `BackupInfo`, `ServerMetrics`.
+- Added `collectMetrics(req: CollectMetricsRequest): Promise<IpcResult<ServerMetrics>>` to `SqlSentinelAPI`.
 
 #### `src/renderer/src/App.tsx`
-Sostituito `<Discovery />` diretto con navigazione a 2 tab MUI: "Discovery" e "Dashboard". La Discovery usa `overflow: auto`, la Dashboard usa `overflow: hidden` (layout interno gestisce lo scroll).
+Replaced direct `<Discovery />` with 2-tab MUI navigation: "Discovery" and "Dashboard". Discovery uses `overflow: auto`, Dashboard uses `overflow: hidden` (scroll managed by the internal layout).
 
 ---
 
-## 2026-03-17 — MetricsWorker, Sistema di Alert, Badge notifiche
+## 2026-03-17 — MetricsWorker, Alert System, Notification Badge
 
-### Nuovi file
+### New files
 
 #### `src/main/metricsWorker.ts`
-Worker che gira nel main process (Electron) con `setInterval`. Responsabilità:
-- Raccolta periodica metriche per tutti i server configurati (via `collectMetrics`).
-- History per server con rolling buffer di 20 snapshot (`Map<serverId, ServerMetrics[]>`).
-- Push al renderer via `BrowserWindow.getAllWindows()[0].webContents.send()`:
-  - `IpcChannel.METRICS_UPDATED` — `{ serverId, metrics }` ad ogni raccolta riuscita.
-  - `IpcChannel.ALERT_NEW` — `Alert` quando un nuovo alert viene generato.
-- Motore di alerting con soglie:
-  - **CPU > 90%** → CRITICAL | **> 70%** → WARNING (categoria `cpu_high`)
-  - **Sessioni bloccate ≥ 5** → CRITICAL | **≥ 1** → WARNING (categoria `blocking_sessions`)
-  - **Database OFFLINE** → CRITICAL (categoria `database_offline`)
-  - **Backup full assente o > 24h** → WARNING (categoria `backup_overdue`)
-- Deduplicazione alert: non genera un nuovo alert se esiste già uno aperto (non riconosciuto) con lo stesso `serverId:category:severity`.
-- API pubblica: `startWorker(req)`, `stopWorker()`, `getAlerts()`, `acknowledgeAlert(id)`, `getHistory(ip, port)`.
-- Intervallo min 30s, max 300s.
+Worker running in the main process (Electron) via `setInterval`. Responsibilities:
+- Periodic metrics collection for all configured servers (via `collectMetrics`).
+- Per-server history with a rolling buffer of 20 snapshots (`Map<serverId, ServerMetrics[]>`).
+- Push to the renderer via `BrowserWindow.getAllWindows()[0].webContents.send()`:
+  - `IpcChannel.METRICS_UPDATED` — `{ serverId, metrics }` on each successful collection.
+  - `IpcChannel.ALERT_NEW` — `Alert` when a new alert is generated.
+- Alerting engine with thresholds:
+  - **CPU > 90%** → CRITICAL | **> 70%** → WARNING (category `cpu_high`)
+  - **Blocked sessions ≥ 5** → CRITICAL | **≥ 1** → WARNING (category `blocking_sessions`)
+  - **Database OFFLINE** → CRITICAL (category `database_offline`)
+  - **Full backup missing or > 24h old** → WARNING (category `backup_overdue`)
+- Alert deduplication: does not generate a new alert if an open (unacknowledged) alert already exists with the same `serverId:category:severity`.
+- Public API: `startWorker(req)`, `stopWorker()`, `getAlerts()`, `acknowledgeAlert(id)`, `getHistory(ip, port)`.
+- Interval: min 30s, max 300s.
 
 #### `src/renderer/src/components/AlertsDrawer.tsx`
-Drawer MUI ancorato a destra (larghezza 400px) con lista alert. Features:
-- Alert aperti mostrati prima (CRITICAL sopra WARNING, via sort).
-- Alert riconosciuti in sezione separata con opacità ridotta.
-- Pulsante "Ack" per ciascun alert aperto → chiama `acknowledgeAlert`.
-- Icona colored per severità (ErrorOutlineIcon / WarningAmberIcon).
-- Chip categoria + serverId + messaggio + timestamp.
+MUI Drawer anchored to the right (width 400px) with an alert list. Features:
+- Open alerts shown first (CRITICAL above WARNING, via sort).
+- Acknowledged alerts in a separate section with reduced opacity.
+- "Ack" button for each open alert → calls `acknowledgeAlert`.
+- Colored icon by severity (ErrorOutlineIcon / WarningAmberIcon).
+- Category chip + serverId + message + timestamp.
 
-### File modificati
+### Modified files
 
 #### `src/main/ipc/types.ts`
-Aggiunti canali IPC:
+Added IPC channels:
 - `METRICS_UPDATED`, `ALERT_NEW` (push-only main → renderer)
 - `WORKER_START`, `WORKER_STOP`, `ALERTS_GET_ALL`, `ALERTS_ACKNOWLEDGE`
 
-Aggiunti tipi: `AlertCategory`, `AlertSeverity`, `Alert`, `WorkerStartRequest`, `AcknowledgeAlertRequest`.
+Added types: `AlertCategory`, `AlertSeverity`, `Alert`, `WorkerStartRequest`, `AcknowledgeAlertRequest`.
 
 #### `src/main/ipc/handlers.ts`
-Registrati 4 nuovi handler: `WORKER_START`, `WORKER_STOP`, `ALERTS_GET_ALL`, `ALERTS_ACKNOWLEDGE`.
+Registered 4 new handlers: `WORKER_START`, `WORKER_STOP`, `ALERTS_GET_ALL`, `ALERTS_ACKNOWLEDGE`.
 
 #### `src/preload/index.d.ts`
-Aggiunti: `Alert`, `WorkerStartRequest`, `AcknowledgeAlertRequest`.
-`SqlSentinelAPI` estesa con: `workerStart`, `workerStop`, `getAlerts`, `acknowledgeAlert`, `onMetricsUpdated`, `onAlertNew`.
+Added: `Alert`, `WorkerStartRequest`, `AcknowledgeAlertRequest`.
+`SqlSentinelAPI` extended with: `workerStart`, `workerStop`, `getAlerts`, `acknowledgeAlert`, `onMetricsUpdated`, `onAlertNew`.
 
 #### `src/preload/index.ts`
-Implementazioni reali (IPC) e mock per i 6 nuovi metodi API. Mock `getAlerts()` restituisce 3 alert pre-impostati (CRITICAL + 2 WARNING). Mock `onMetricsUpdated` e `onAlertNew` restituiscono no-op unsubscribe.
+Real (IPC) implementations and mocks for the 6 new API methods. Mock `getAlerts()` returns 3 preset alerts (CRITICAL + 2 WARNING). Mock `onMetricsUpdated` and `onAlertNew` return no-op unsubscribe functions.
 
 #### `src/renderer/src/hooks/useMetrics.ts`
-- Rimosso `autoRefreshSeconds`/`setAutoRefreshSeconds` e relativo `setInterval` interno (ora gestito dal worker nel main process).
-- Aggiunto `pushMetrics(m: ServerMetrics)` per iniettare metriche arrivate via push dal worker.
-- Refactored history update in `addHistoryPoint` helper condiviso da `refresh` e `pushMetrics`.
+- Removed `autoRefreshSeconds`/`setAutoRefreshSeconds` and the associated internal `setInterval` (now managed by the worker in the main process).
+- Added `pushMetrics(m: ServerMetrics)` to inject metrics received via push from the worker.
+- Refactored history update into an `addHistoryPoint` helper shared by `refresh` and `pushMetrics`.
 
 #### `src/renderer/src/pages/Dashboard.tsx`
-- `autoRefreshSeconds` ora è stato locale del componente.
-- `useEffect` che chiama `workerStart`/`workerStop` al variare di `autoRefreshSeconds` o server selezionato.
-- `useEffect` che si sottoscrive a `onMetricsUpdated` e filtra per `serverId` corrente → chiama `pushMetrics`.
-- Rimosso import `autoRefreshSeconds` e `setAutoRefreshSeconds` da `useMetrics`.
+- `autoRefreshSeconds` is now local component state.
+- `useEffect` that calls `workerStart`/`workerStop` when `autoRefreshSeconds` or the selected server changes.
+- `useEffect` that subscribes to `onMetricsUpdated` and filters by current `serverId` → calls `pushMetrics`.
+- Removed `autoRefreshSeconds` and `setAutoRefreshSeconds` imports from `useMetrics`.
 
 #### `src/renderer/src/App.tsx`
-- Stato `alerts: Alert[]` caricato all'avvio da `getAlerts()`.
-- Sottoscrizione a `onAlertNew` per aggiungere alert in tempo reale.
-- `handleAcknowledge(alertId)` chiama `acknowledgeAlert` e aggiorna stato locale.
-- `IconButton` con `Badge` MUI nella tab bar: mostra conteggio alert CRITICAL non riconosciuti, colore `error`.
-- Click sul badge apre `AlertsDrawer`.
+- `alerts: Alert[]` state loaded at startup from `getAlerts()`.
+- Subscription to `onAlertNew` to add alerts in real time.
+- `handleAcknowledge(alertId)` calls `acknowledgeAlert` and updates local state.
+- MUI `IconButton` with `Badge` in the tab bar: shows the count of unacknowledged CRITICAL alerts, color `error`.
+- Clicking the badge opens `AlertsDrawer`.
 
 ---
 
-## FASE 5 — Persistenza server + alert irraggiungibilità (2026-03-17)
+## PHASE 5 — Server Persistence + Unreachability Alerts (2026-03-17)
 
-### File creati
+### Files created
 
 #### `src/main/store/serverStore.ts`
-Store persistente per i server monitorati tramite `electron-store@8` (JSON su disco).
-- `StoredServer` — tipo principale con: `id` (UUID), `ip`, `port`, `instanceName?`, `useWindowsAuth`, `username?`, `password?`, `addedAt` (ISO 8601), `lastSeen?`, `unreachable?`, `unreachableSince?`.
-- API pubblica: `getAll()`, `getById(id)`, `getByIpPort(ip, port)`, `add(params)`, `update(id, patch)`, `remove(id)`, `upsertByIpPort(params)`.
-- Il file JSON viene salvato come `sql-sentinel-data.json` nella directory dati dell'app Electron.
-- `add()` impedisce duplicati per ip:porta.
-- `upsertByIpPort()` usato dal flusso `ADD_SERVER_MANUAL`: inserisce o aggiorna senza duplicati.
+Persistent store for monitored servers via `electron-store@8` (JSON on disk).
+- `StoredServer` — main type with: `id` (UUID), `ip`, `port`, `instanceName?`, `useWindowsAuth`, `username?`, `password?`, `addedAt` (ISO 8601), `lastSeen?`, `unreachable?`, `unreachableSince?`.
+- Public API: `getAll()`, `getById(id)`, `getByIpPort(ip, port)`, `add(params)`, `update(id, patch)`, `remove(id)`, `upsertByIpPort(params)`.
+- The JSON file is saved as `sql-sentinel-data.json` in the Electron app data directory.
+- `add()` prevents duplicates by ip:port.
+- `upsertByIpPort()` used by the `ADD_SERVER_MANUAL` flow: inserts or updates without duplicates.
 
 #### `src/renderer/src/store/serversStore.ts`
-Zustand store lato renderer (no persist middleware — electron-store è source of truth).
-- `servers: StoredServer[]` — lista in memoria, inizializzata da `loadServers()`.
-- `addServer`, `removeServer`, `updateServer` — chiamano IPC e aggiornano lo stato locale.
-- `initialized: boolean` — indica se `loadServers()` ha completato.
+Zustand store on the renderer side (no persist middleware — electron-store is the source of truth).
+- `servers: StoredServer[]` — in-memory list, initialized by `loadServers()`.
+- `addServer`, `removeServer`, `updateServer` — call IPC and update local state.
+- `initialized: boolean` — indicates whether `loadServers()` has completed.
 
-### File modificati
+### Modified files
 
 #### `src/main/ipc/types.ts`
-Aggiunti canali IPC al enum `IpcChannel`:
+Added IPC channels to the `IpcChannel` enum:
 - `SERVERS_GET_ALL`, `SERVERS_ADD`, `SERVERS_UPDATE`, `SERVERS_REMOVE_BY_ID`
 - `SERVER_UNREACHABLE`, `SERVER_RECOVERED` (push main → renderer)
 
-Aggiunti tipi/interfacce: `ServerAddResult`, `UpdateServerRequest`, `ServerUnreachableEvent`.
-Re-export di `StoredServer` da `serverStore`.
+Added types/interfaces: `ServerAddResult`, `UpdateServerRequest`, `ServerUnreachableEvent`.
+Re-export of `StoredServer` from `serverStore`.
 
 #### `src/main/ipc/handlers.ts`
-- Rimosso `let knownServers: DiscoveredServer[]` (stato in-memory).
-- Import `* as serverStore` dal nuovo store.
-- `toDiscovered(s: StoredServer): DiscoveredServer` — adapter backward-compat per canali legacy.
-- `ADD_SERVER_MANUAL` ora chiama `serverStore.upsertByIpPort()` per persistere.
-- `GET_SERVERS` ora serve da `serverStore.getAll().map(toDiscovered)`.
-- `REMOVE_SERVER` lookup per ip:porta via `serverStore.getByIpPort()`, poi rimozione per ID.
-- Nuovi handler: `SERVERS_GET_ALL`, `SERVERS_ADD`, `SERVERS_UPDATE`, `SERVERS_REMOVE_BY_ID`.
-- `EXPORT_INVENTORY` aggiornato per usare `serverStore.getAll()`.
+- Removed `let knownServers: DiscoveredServer[]` (in-memory state).
+- Import `* as serverStore` from the new store.
+- `toDiscovered(s: StoredServer): DiscoveredServer` — backward-compatible adapter for legacy channels.
+- `ADD_SERVER_MANUAL` now calls `serverStore.upsertByIpPort()` to persist.
+- `GET_SERVERS` now serves from `serverStore.getAll().map(toDiscovered)`.
+- `REMOVE_SERVER` looks up by ip:port via `serverStore.getByIpPort()`, then removes by ID.
+- New handlers: `SERVERS_GET_ALL`, `SERVERS_ADD`, `SERVERS_UPDATE`, `SERVERS_REMOVE_BY_ID`.
+- `EXPORT_INVENTORY` updated to use `serverStore.getAll()`.
 
 #### `src/main/index.ts`
-- Ref `mainWindow` spostata a livello di modulo (necessaria per push eventi dall'health check).
-- `healthCheckAll()` — loop TCP probe (via `scanHost`) su tutti i server salvati ogni 60s:
-  - Se server recuperato: aggiorna `unreachable: false`, `lastSeen`, push `server:recovered`.
-  - Se server irraggiungibile: aggiorna `unreachable: true`, `unreachableSince`, push `server:unreachable`.
-  - Prima esecuzione dopo 5s dall'avvio app.
+- `mainWindow` ref moved to module scope (required for pushing events from the health check).
+- `healthCheckAll()` — TCP probe loop (via `scanHost`) over all saved servers every 60s:
+  - If server recovered: updates `unreachable: false`, `lastSeen`, pushes `server:recovered`.
+  - If server unreachable: updates `unreachable: true`, `unreachableSince`, pushes `server:unreachable`.
+  - First run 5s after app startup.
 
 #### `src/preload/index.ts`
-- Re-export di `ServerAddResult`, `UpdateServerRequest`, `ServerUnreachableEvent` da `../main/ipc/types`.
-- Mock `mockStoredServers[]` con 2 server pre-impostati.
-- `servers.*` API (reale + mock): `getAll`, `add`, `update`, `remove`.
-- `onServerUnreachable` / `onServerRecovered` (reale + mock).
+- Re-export of `ServerAddResult`, `UpdateServerRequest`, `ServerUnreachableEvent` from `../main/ipc/types`.
+- Mock `mockStoredServers[]` with 2 preset servers.
+- `servers.*` API (real + mock): `getAll`, `add`, `update`, `remove`.
+- `onServerUnreachable` / `onServerRecovered` (real + mock).
 
 #### `src/preload/index.d.ts`
-Aggiunte interfacce: `StoredServer`, `ServerAddResult`, `UpdateServerRequest`, `ServerUnreachableEvent`.
-`SqlSentinelAPI` estesa con `servers.*` e `onServerUnreachable`/`onServerRecovered`.
+Added interfaces: `StoredServer`, `ServerAddResult`, `UpdateServerRequest`, `ServerUnreachableEvent`.
+`SqlSentinelAPI` extended with `servers.*` and `onServerUnreachable`/`onServerRecovered`.
 
 #### `src/renderer/src/components/Sidebar.tsx`
-- Tipo `servers` e `selectedServer` cambiati da `DiscoveredServer` a `StoredServer`.
-- `StatusDot` usa prop `unreachable?: boolean` (in precedenza `reachable: boolean | null`):
-  - Pulsazione CSS (keyframes `@mui/system`) quando `unreachable === true` (1.5s ease-in-out, opacity 1→0.25→1).
-- Tooltip mostra "Non raggiungibile dal {data}" quando unreachable.
-- React key usa `s.id` (UUID) invece di `serverLabel(s)`.
-- Comparazione selezione usa `selectedServer.id === s.id`.
+- `servers` and `selectedServer` types changed from `DiscoveredServer` to `StoredServer`.
+- `StatusDot` uses prop `unreachable?: boolean` (previously `reachable: boolean | null`):
+  - CSS pulse animation (keyframes `@mui/system`) when `unreachable === true` (1.5s ease-in-out, opacity 1→0.25→1).
+- Tooltip shows "Unreachable since {date}" when unreachable.
+- React key uses `s.id` (UUID) instead of `serverLabel(s)`.
+- Selection comparison uses `selectedServer.id === s.id`.
 
 #### `src/renderer/src/App.tsx`
-- `loadServers()` chiamato al mount dal `useServersStore`.
-- Sottoscrizione a `onServerUnreachable` → `updateServer(serverId, { unreachable: true, unreachableSince })`.
-- Sottoscrizione a `onServerRecovered` → `updateServer(serverId, { unreachable: false, lastSeen })`.
+- `loadServers()` called on mount from `useServersStore`.
+- Subscription to `onServerUnreachable` → `updateServer(serverId, { unreachable: true, unreachableSince })`.
+- Subscription to `onServerRecovered` → `updateServer(serverId, { unreachable: false, lastSeen })`.
 
 #### `src/renderer/src/pages/Dashboard.tsx`
-- Rimosso stato locale `servers: DiscoveredServer[]` → usa `useServersStore`.
-- `selectedServer` tipizzato come `StoredServer | null`.
-- `toCollectRequest()` aggiornato per usare `useWindowsAuth`, `username`, `password` da `StoredServer`.
-- `handleRemoveServer` chiama `removeServer(server.id)` dallo store.
-- Auto-selezione primo server quando store è inizializzato.
-- Sync `selectedServer` se aggiornato nello store (es. `unreachable` cambia).
-- **Banner irraggiungibilità**: pannello rosso sotto toolbar se server selezionato è `unreachable`:
-  - Mostra "Server non raggiungibile — ultimo contatto: {data localizzata}".
-  - Pulsante "Riprova ora": chiama `collectMetrics` direttamente; se ok → aggiorna store (`unreachable: false`, `lastSeen`) e inietta le metriche nel pannello.
+- Removed local `servers: DiscoveredServer[]` state → uses `useServersStore`.
+- `selectedServer` typed as `StoredServer | null`.
+- `toCollectRequest()` updated to use `useWindowsAuth`, `username`, `password` from `StoredServer`.
+- `handleRemoveServer` calls `removeServer(server.id)` from the store.
+- Auto-selects first server when the store is initialized.
+- Syncs `selectedServer` if updated in the store (e.g. `unreachable` changes).
+- **Unreachability banner**: red panel below the toolbar when the selected server is `unreachable`:
+  - Shows "Server unreachable — last contact: {localized date}".
+  - "Retry now" button: calls `collectMetrics` directly; if successful → updates store (`unreachable: false`, `lastSeen`) and injects the metrics into the panel.
 
-## Campo hostingType (on-premise | cloud) — 2026-03-19
+## hostingType field (on-premise | cloud) — 2026-03-19
 
-### Scopo
-Permette di classificare ogni server SQL come on-premise o cloud, con badge visivo e modifica inline.
+### Purpose
+Allows classifying each SQL server as on-premise or cloud, with a visual badge and inline editing.
 
-### File modificati
+### Modified files
 
 #### `src/main/store/serverStore.ts`
-- Aggiunto `export type ServerHostingType = 'on-premise' | 'cloud'`
-- Aggiunto campo opzionale `hostingType?: ServerHostingType` a `StoredServer`
-- Retrocompatibile: i server esistenti senza il campo usano il default `'on-premise'`
+- Added `export type ServerHostingType = 'on-premise' | 'cloud'`
+- Added optional field `hostingType?: ServerHostingType` to `StoredServer`
+- Backward-compatible: existing servers without the field default to `'on-premise'`
 
 #### `src/renderer/src/types/index.ts`
-- Aggiunto `hostingType?: 'on-premise' | 'cloud'` a `ServerSummary`
+- Added `hostingType?: 'on-premise' | 'cloud'` to `ServerSummary`
 
-#### `src/renderer/src/constants/hosting.tsx` — NUOVO
-- `ServerHostingType` — tipo re-esportato
-- `HOSTING_OPTIONS` — array `[{ value, label, icon }]` per i Select MUI
-- `HOSTING_BADGE` — mappa `Record<ServerHostingType, { label, color }>` per i badge
+#### `src/renderer/src/constants/hosting.tsx` — NEW
+- `ServerHostingType` — re-exported type
+- `HOSTING_OPTIONS` — `[{ value, label, icon }]` array for MUI Select
+- `HOSTING_BADGE` — `Record<ServerHostingType, { label, color }>` map for badges
 
 #### `src/renderer/src/components/AddServerDialog.tsx`
-- Aggiunto `hostingType: ServerHostingType` a `AddServerFormData` e `EMPTY_FORM`
-- Aggiunto `<Select>` "Tipo infrastruttura" dopo il campo Gruppo
+- Added `hostingType: ServerHostingType` to `AddServerFormData` and `EMPTY_FORM`
+- Added `<Select>` "Infrastructure type" after the Group field
 
 #### `src/renderer/src/components/Sidebar.tsx`
-- Import `Chip` da MUI, import `HOSTING_BADGE`
-- `ServerItem`: badge `<Chip>` ON-PREM / CLOUD accanto all'alias (flexShrink: 0)
+- Import `Chip` from MUI, import `HOSTING_BADGE`
+- `ServerItem`: `<Chip>` badge ON-PREM / CLOUD next to the alias (flexShrink: 0)
 
 #### `src/renderer/src/components/ServerDashboard.tsx`
 - Import `useState`, `Select`, `MenuItem`, `Chip`, `Tooltip`, `Box`
 - Import `useServersStore`, `HOSTING_OPTIONS`, `HOSTING_BADGE`
-- Aggiunto header con badge cliccabile: click apre `<Select>` per modifica inline; onBlur chiude senza salvare
+- Added header with clickable badge: click opens a `<Select>` for inline editing; onBlur closes without saving
 
 #### `src/renderer/src/components/HomeDashboard.tsx`
 - Import `HOSTING_BADGE`
-- Aggiunta colonna `INFRASTRUTTURA` nella tabella server (tra AMBIENTE e TIPO)
-- Badge `<span>` con colore e label per ogni riga
+- Added `INFRASTRUCTURE` column to the server table (between ENVIRONMENT and TYPE)
+- `<span>` badge with color and label for each row
 
 #### `src/renderer/src/utils/inventoryUtils.ts`
-- `buildServerSummary`: aggiunto `hostingType: srv.hostingType` nel return
+- `buildServerSummary`: added `hostingType: srv.hostingType` to the return value
 
 #### `src/renderer/src/utils/csvExportUtils.ts`
-- Aggiunto colonna `Tipo Infrastruttura` (indice 16) in tutte e 4 le varianti di riga (standalone placeholder, standalone per-DB, AG placeholder, AG per-DB)
+- Added `Infrastructure Type` column (index 16) in all 4 row variants (standalone placeholder, standalone per-DB, AG placeholder, AG per-DB)
 
 #### `src/renderer/src/pages/Inventory.tsx`
-- Aggiunto `'Tipo Infrastruttura'` all'array `headers` del CSV export
+- Added `'Infrastructure Type'` to the `headers` array for CSV export

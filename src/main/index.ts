@@ -23,8 +23,8 @@ import { safeError as redactError } from './utils/safeLog'
 
 const isDev = !app.isPackaged
 
-// Cattura errori asincroni non gestiti nel main process prima che crashino silenziosamente.
-// Stack trace passano da redactError → rimuove path assoluti utente (info disclosure).
+// Catches unhandled async errors in the main process before they silently crash.
+// Stack traces go through redactError → removes absolute user paths (info disclosure).
 process.on('unhandledRejection', (reason) => {
   console.error('[main] unhandledRejection:', redactError(reason))
 })
@@ -148,15 +148,15 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  // Inizializza SQLite — prima di qualsiasi IPC handler
+  // Initialize SQLite — before any IPC handler
   initDb(defaultDbPath(app.getPath('appData')))
 
-  // Crea utente admin di default se non esistono utenti
+  // Create default admin user if no users exist
   initDefaultAdmin().catch((err) => console.error('[AUTH] initDefaultAdmin fallito:', err))
 
-  // Purge snapshots più vecchi della retention configurata: una volta al boot, poi ogni 24 h.
-  // Il DELETE sincrono su DB grandi può bloccare 1-3s: defer a setImmediate così da non
-  // rallentare lo startup né congelare il main loop una volta ogni 24h.
+  // Purge snapshots older than the configured retention: once at boot, then every 24 h.
+  // Synchronous DELETE on large DBs can block for 1-3s: defer with setImmediate to avoid
+  // slowing startup or freezing the main loop once every 24 h.
   const retentionDays = (): number => getSettings().retentionMinutes / (60 * 24)
   const deferredPurge = (): void => {
     setImmediate(() => {
@@ -185,7 +185,7 @@ app.whenReady().then(() => {
     )
   }
 
-  // App User Model ID per Windows (notifiche, taskbar)
+  // App User Model ID for Windows (notifications, taskbar)
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.sqlsentinel')
   }
@@ -198,7 +198,7 @@ app.whenReady().then(() => {
 
   registerIpcHandlers()
 
-  // Indicizza i PDF in data/ in background — non bloccante, graceful se Ollama non disponibile
+  // Index PDFs in data/ in the background — non-blocking, graceful if Ollama is unavailable
   autoIndexRagBooks().catch((err) =>
     console.error('[RAG] Auto-index failed:', err instanceof Error ? err.message : String(err))
   )
@@ -261,10 +261,10 @@ app.on('window-all-closed', () => {
   }
 })
 
-// Cleanup anche quando il processo riceve segnali di terminazione (taskkill,
-// Docker stop, ecc.) — senza questi handler l'healthCheck continuerebbe a girare
-// finché il kernel non termina il processo, e il DB SQLite potrebbe chiudersi
-// senza flush.
+// Cleanup also when the process receives termination signals (taskkill,
+// Docker stop, etc.) — without these handlers the healthCheck would keep running
+// until the kernel kills the process, and the SQLite DB could close
+// without flushing.
 app.on('before-quit', cleanupResources)
 process.on('SIGTERM', () => {
   cleanupResources()

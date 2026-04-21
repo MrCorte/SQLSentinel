@@ -13,10 +13,10 @@ export function scanHost(ip: string, port: number, timeoutMs: number): Promise<D
     const socket = new net.Socket()
     let settled = false
 
-    // Timer esplicito per l'handshake TCP: socket.setTimeout() di Node misura
-    // l'inattività e non vincola deterministicamente la durata del SYN→SYN-ACK.
-    // Con questo timer il vincolo 500ms del progetto è effettivo anche su reti
-    // lente o firewall che dropano i pacchetti.
+    // Explicit timer for TCP handshake: Node's socket.setTimeout() measures
+    // inactivity and does not deterministically bound the SYN→SYN-ACK duration.
+    // With this timer the project's 500ms constraint is enforced even on slow
+    // networks or firewalls that drop packets.
     const handshakeTimer = setTimeout(() => cleanup(false), timeoutMs)
 
     const cleanup = (reachable: boolean): void => {

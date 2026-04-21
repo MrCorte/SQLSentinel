@@ -87,28 +87,28 @@ export function registerServerHandlers(): void {
     }
   )
 
-  // SERVERS_GET_ALL — returns StoredServer[] with credentials removed (C2).
-  handle(IpcChannel.SERVERS_GET_ALL, (): StoredServer[] => {
+  // SERVERS_GET_ALL — returns IpcResult<StoredServer[]> with credentials removed (C2).
+  handle(IpcChannel.SERVERS_GET_ALL, (): IpcResult<StoredServer[]> => {
     try {
-      return listServers()
+      return { ok: true, data: listServers() }
     } catch (err) {
       log.error('[IPC] SERVERS_GET_ALL:', safeError(err))
-      return []
+      return { ok: false, error: safeError(err) }
     }
   })
 
-  // SERVERS_ADD — returns { success, reason?, server? } (flat, no IpcResult wrapper).
+  // SERVERS_ADD — returns IpcResult<ServerAddResult>
   handle(
     IpcChannel.SERVERS_ADD,
     (
       _event: IpcMainInvokeEvent,
       params: Omit<StoredServer, 'id' | 'addedAt'>
-    ): ServerAddResult => {
+    ): IpcResult<ServerAddResult> => {
       try {
-        return addServer(params)
+        return { ok: true, data: addServer(params) }
       } catch (err) {
         log.error('[IPC] SERVERS_ADD:', safeError(err))
-        return { success: false, reason: safeError(err) }
+        return { ok: false, error: safeError(err) }
       }
     }
   )
@@ -120,12 +120,12 @@ export function registerServerHandlers(): void {
       _event: IpcMainInvokeEvent,
       id: string,
       patch: Partial<StoredServer>
-    ): { success: boolean } => {
+    ): IpcResult<{ success: boolean }> => {
       try {
-        return updateServer(id, patch)
+        return { ok: true, data: updateServer(id, patch) }
       } catch (err) {
         log.error('[IPC] SERVERS_UPDATE:', safeError(err))
-        return { success: false }
+        return { ok: false, error: safeError(err) }
       }
     }
   )
@@ -133,13 +133,13 @@ export function registerServerHandlers(): void {
   // SERVERS_REMOVE_BY_ID — removes a server from electron-store by UUID
   handle(
     IpcChannel.SERVERS_REMOVE_BY_ID,
-    (_event: IpcMainInvokeEvent, id: string): { success: boolean } => {
+    (_event: IpcMainInvokeEvent, id: string): IpcResult<{ success: boolean }> => {
       try {
         removeServerById(id)
-        return { success: true }
+        return { ok: true, data: { success: true } }
       } catch (err) {
         log.error('[IPC] SERVERS_REMOVE_BY_ID:', safeError(err))
-        return { success: false }
+        return { ok: false, error: safeError(err) }
       }
     }
   )
@@ -147,13 +147,13 @@ export function registerServerHandlers(): void {
   // SERVERS_CLEAR_MOCKS — removes servers with id starting with 'mock-'
   handle(
     IpcChannel.SERVERS_CLEAR_MOCKS,
-    (): { success: boolean; removed: number; remaining: number } => {
+    (): IpcResult<{ success: boolean; removed: number; remaining: number }> => {
       try {
         const { removed, remaining } = clearMockServers()
-        return { success: true, removed, remaining }
+        return { ok: true, data: { success: true, removed, remaining } }
       } catch (err) {
         log.error('[IPC] servers:clearMocks:', safeError(err))
-        return { success: false, removed: 0, remaining: -1 }
+        return { ok: false, error: safeError(err) }
       }
     }
   )

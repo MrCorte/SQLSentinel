@@ -1,6 +1,8 @@
 // Typed IPC wrapper — all invoke methods are guarded by a 5-second timeout.
 // Push-subscription helpers are passed through directly (no timeout needed).
 
+import type { IpcResult, StoredServer, ServerAddResult } from '../../../preload/index'
+
 const DEFAULT_TIMEOUT_MS = 5_000
 
 function withTimeout<T>(promise: Promise<T>, ms = DEFAULT_TIMEOUT_MS): Promise<T> {
@@ -131,16 +133,25 @@ export const ag = {
 
 // ---------------------------------------------------------------------------
 // Invoke methods — servers namespace
+// Unwrap IpcResult envelope so callers receive flat values (no API change).
 // ---------------------------------------------------------------------------
 
+async function unwrapServers<T>(promise: Promise<IpcResult<T>>): Promise<T> {
+  const result = await promise
+  if (!result.ok) throw new Error(result.error)
+  return result.data
+}
+
 export const servers = {
-  getAll: () => withTimeout(api.servers.getAll()),
-  add: (...args: Parameters<typeof api.servers.add>) => withTimeout(api.servers.add(...args)),
-  update: (...args: Parameters<typeof api.servers.update>) =>
-    withTimeout(api.servers.update(...args)),
-  remove: (...args: Parameters<typeof api.servers.remove>) =>
-    withTimeout(api.servers.remove(...args)),
-  clearMocks: () => withTimeout(api.servers.clearMocks()),
+  getAll: (): Promise<StoredServer[]> => unwrapServers(withTimeout(api.servers.getAll())),
+  add: (...args: Parameters<typeof api.servers.add>): Promise<ServerAddResult> =>
+    unwrapServers(withTimeout(api.servers.add(...args))),
+  update: (...args: Parameters<typeof api.servers.update>): Promise<{ success: boolean }> =>
+    unwrapServers(withTimeout(api.servers.update(...args))),
+  remove: (...args: Parameters<typeof api.servers.remove>): Promise<{ success: boolean }> =>
+    unwrapServers(withTimeout(api.servers.remove(...args))),
+  clearMocks: (): Promise<{ success: boolean; removed: number; remaining: number }> =>
+    unwrapServers(withTimeout(api.servers.clearMocks())),
 }
 
 // ---------------------------------------------------------------------------

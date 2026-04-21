@@ -23,7 +23,7 @@ export const useServersStore = create<ServersStore>((set) => ({
     try {
       log.info('loadServers START')
       const result = await ipc.servers.getAll()
-      log.info('getAll result:', JSON.stringify(result))
+      log.debug('getAll result:', JSON.stringify(result))
 
       const list: StoredServer[] = Array.isArray(result) ? result : []
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -44,9 +44,9 @@ export const useServersStore = create<ServersStore>((set) => ({
 
   addServer: async (params) => {
     try {
-      log.info('addServer — params:', JSON.stringify(params))
+      log.debug('addServer — params:', JSON.stringify(params))
       const result = await ipc.servers.add(params)
-      log.info('add IPC result:', JSON.stringify(result))
+      log.debug('add IPC result:', JSON.stringify(result))
       // result is flat { success, reason?, server? }
       if (result?.success !== false) {
         const raw = result?.server ?? (params as StoredServer)

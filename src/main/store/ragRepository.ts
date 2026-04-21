@@ -1,4 +1,5 @@
 import { getDb } from './database'
+import type Database from 'better-sqlite3'
 import type { Statement } from 'better-sqlite3'
 
 export interface RagDocument {
@@ -49,6 +50,7 @@ interface RagChunkRow {
 // Cached prepared statements
 // ---------------------------------------------------------------------------
 
+let _db: Database.Database | null = null
 let _stmts: {
   isDocumentIndexed: Statement<[string, number], RagDocumentIdRow>
   upsertDocument: Statement<[string, string, number, string, number]>
@@ -59,8 +61,9 @@ let _stmts: {
 } | null = null
 
 function stmts() {
-  if (_stmts) return _stmts
   const db = getDb()
+  if (_stmts && _db === db) return _stmts
+  _db = db
   _stmts = {
     isDocumentIndexed: db.prepare<[string, number], RagDocumentIdRow>(
       'SELECT id FROM rag_documents WHERE filename = ? AND file_size = ?'

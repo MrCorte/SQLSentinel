@@ -1,4 +1,5 @@
 import { getDb } from './database'
+import type Database from 'better-sqlite3'
 import type { Statement } from 'better-sqlite3'
 
 // In-memory cache for getAllCustomFields().
@@ -25,6 +26,7 @@ function rowToFields(row: DbCustomFieldsRow): DbCustomFields {
 
 // --- Cached prepared statements ---
 
+let _db: Database.Database | null = null
 let _stmts: {
   getCustomFields: Statement<[string], DbCustomFieldsRow>
   setCustomFields: Statement<[string, string | null, string | null]>
@@ -32,8 +34,9 @@ let _stmts: {
 } | null = null
 
 function stmts() {
-  if (_stmts) return _stmts
   const db = getDb()
+  if (_stmts && _db === db) return _stmts
+  _db = db
   _stmts = {
     getCustomFields: db.prepare<[string], DbCustomFieldsRow>(
       'SELECT * FROM db_custom_fields WHERE id = ?'

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { getDb } from './database'
 import type { StoredServer } from './types'
+import type Database from 'better-sqlite3'
 import type { Statement } from 'better-sqlite3'
 
 // --- Mapping riga SQLite ↔ StoredServer ---
@@ -35,6 +36,7 @@ function rowToServer(row: ServerRow): StoredServer {
 
 // --- Cached prepared statements ---
 
+let _db: Database.Database | null = null
 let _stmts: {
   findAll: Statement<[], ServerRow>
   findById: Statement<[string], ServerRow>
@@ -46,8 +48,9 @@ let _stmts: {
 } | null = null
 
 function stmts() {
-  if (_stmts) return _stmts
   const db = getDb()
+  if (_stmts && _db === db) return _stmts
+  _db = db
   _stmts = {
     findAll: db.prepare<[], ServerRow>('SELECT * FROM servers ORDER BY ip, port'),
     findById: db.prepare<[string], ServerRow>('SELECT * FROM servers WHERE id = ?'),

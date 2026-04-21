@@ -1,4 +1,5 @@
 import { getDb } from './database'
+import type Database from 'better-sqlite3'
 import type { Statement } from 'better-sqlite3'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
@@ -25,14 +26,16 @@ function safeInt(raw: string | undefined, fallback: number, min = 0): number {
 
 // --- Cached prepared statements ---
 
+let _db: Database.Database | null = null
 let _stmts: {
   selectAll: Statement<[], SettingsRow>
   upsert: Statement<[string, string]>
 } | null = null
 
 function stmts() {
-  if (_stmts) return _stmts
   const db = getDb()
+  if (_stmts && _db === db) return _stmts
+  _db = db
   _stmts = {
     selectAll: db.prepare<[], SettingsRow>('SELECT key, value FROM settings'),
     upsert: db.prepare<[string, string]>('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)'),

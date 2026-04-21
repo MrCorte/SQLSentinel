@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { getDb } from './database'
 import type { MetricsSnapshot } from './types'
 import type { ServerMetrics } from '../collectors/types'
+import type Database from 'better-sqlite3'
 import type { Statement } from 'better-sqlite3'
 
 // --- Batch save item ---
@@ -42,6 +43,7 @@ function rowToSnapshot(row: SnapshotRow): MetricsSnapshot {
 
 // --- Cached prepared statements ---
 
+let _db: Database.Database | null = null
 let _stmts: {
   insert: Statement<[string, string, string, string]>
   findLatest: Statement<[string], SnapshotRow>
@@ -53,8 +55,9 @@ let _stmts: {
 } | null = null
 
 function stmts() {
-  if (_stmts) return _stmts
   const db = getDb()
+  if (_stmts && _db === db) return _stmts
+  _db = db
   _stmts = {
     insert: db.prepare<[string, string, string, string]>(`
       INSERT INTO metrics_snapshots (id, server_id, collected_at, metrics_json)

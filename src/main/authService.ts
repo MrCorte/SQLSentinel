@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
 import { randomUUID, createHash } from 'node:crypto'
 import { getDb } from './store/database'
+import type Database from 'better-sqlite3'
 import type { Statement } from 'better-sqlite3'
 import { createLogger } from './utils/logger'
 
@@ -44,6 +45,7 @@ interface UserRow {
 // Cached prepared statements
 // ---------------------------------------------------------------------------
 
+let _db: Database.Database | null = null
 let _stmts: {
   getUserByUsername: Statement
   updateLastLogin: Statement
@@ -57,8 +59,9 @@ let _stmts: {
 } | null = null
 
 function stmts() {
-  if (_stmts) return _stmts
   const db = getDb()
+  if (_stmts && _db === db) return _stmts
+  _db = db
   _stmts = {
     getUserByUsername: db.prepare('SELECT * FROM users WHERE username = ?'),
     updateLastLogin: db.prepare('UPDATE users SET last_login = ? WHERE id = ?'),

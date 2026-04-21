@@ -1,7 +1,9 @@
 import { getDb } from './database'
 import { encrypt, decrypt, isAvailable, isEncrypted } from './safeStorageUtil'
+import type Database from 'better-sqlite3'
 import type { Statement } from 'better-sqlite3'
 import { createLogger } from '../utils/logger'
+
 const log = createLogger('email-settings')
 
 export interface EmailSettings {
@@ -25,6 +27,7 @@ interface SmtpPasswordRow {
 
 // --- Cached prepared statements ---
 
+let _db: Database.Database | null = null
 let _stmts: {
   selectAll: Statement<[], SettingsRow>
   upsert: Statement<[string, string]>
@@ -33,8 +36,9 @@ let _stmts: {
 } | null = null
 
 function stmts() {
-  if (_stmts) return _stmts
   const db = getDb()
+  if (_stmts && _db === db) return _stmts
+  _db = db
   _stmts = {
     selectAll: db.prepare<[], SettingsRow>('SELECT key, value FROM settings'),
     upsert: db.prepare<[string, string]>('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)'),
@@ -89,6 +93,6 @@ export function migrateEncryptEmailPassword(): void {
     stmts().updateSmtpPassword.run(encrypt(row.value))
     log.info('[emailSettings] migrated smtp_password to encrypted storage')
   } catch (err) {
-    log.error('[emailSettings] migrateEncryptEmailPassword:', err instanceof Error ? err.message : String(err))
+    console.error('[emailSettings] migrateEncryptEmailPassword:', err)
   }
 }

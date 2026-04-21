@@ -338,10 +338,10 @@ export function registerSystemHandlers(): void {
           BrowserWindow.getFocusedWindow() ??
           BrowserWindow.getAllWindows()[0]
         const result = await dialog.showSaveDialog(win, {
-          title: 'Salva inventario CSV',
+          title: 'Save inventory CSV',
           defaultPath: path.join(
             app.getPath('downloads'),
-            `inventario-sql-${new Date().toISOString().slice(0, 10)}.csv`
+            `inventory-sql-${new Date().toISOString().slice(0, 10)}.csv`
           ),
           filters: [{ name: 'CSV', extensions: ['csv'] }],
         })

@@ -30,14 +30,14 @@ export const InventoryTopBar = memo(function InventoryTopBar({
       {/* ── Top bar ── */}
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
         <Typography sx={{ fontSize: 18, fontWeight: 700, color: 'text.primary', flex: 1 }}>
-          Inventario SQL Server
+          SQL Server Inventory
         </Typography>
         {lastRefresh && (
           <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>
-            Aggiornato: {lastRefresh.toLocaleTimeString('it-IT')}
+            Updated: {lastRefresh.toLocaleTimeString('en-US')}
           </Typography>
         )}
-        <Tooltip title="Esporta CSV">
+        <Tooltip title="Export CSV">
           <span>
             <Button
               size="small"
@@ -47,11 +47,11 @@ export const InventoryTopBar = memo(function InventoryTopBar({
               disabled={inventoryEmpty}
               sx={{ fontSize: 12 }}
             >
-              Esporta CSV
+              Export CSV
             </Button>
           </span>
         </Tooltip>
-        <Tooltip title="Aggiorna metriche da tutti i server">
+        <Tooltip title="Refresh metrics from all servers">
           <span>
             <Button
               size="small"
@@ -63,7 +63,7 @@ export const InventoryTopBar = memo(function InventoryTopBar({
               disabled={refreshing}
               sx={{ fontSize: 12, bgcolor: tokens.color.primary }}
             >
-              {refreshing ? 'Aggiornamento…' : 'Aggiorna'}
+              {refreshing ? 'Refreshing…' : 'Refresh'}
             </Button>
           </span>
         </Tooltip>

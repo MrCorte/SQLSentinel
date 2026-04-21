@@ -281,7 +281,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
           />
           <Tab
             value={2}
-            label="Inventario"
+            label="Inventory"
             sx={{
               color: 'text.secondary',
               '&.Mui-selected': { color: 'primary.main' }

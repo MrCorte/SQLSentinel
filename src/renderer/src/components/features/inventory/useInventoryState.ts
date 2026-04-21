@@ -20,6 +20,26 @@ export type FilterHost = 'all' | 'on-premise' | 'cloud'
 export type FilterDbRecovery = 'all' | 'FULL' | 'SIMPLE' | 'BULK_LOGGED'
 export type FilterDbTde = 'all' | 'encrypted' | 'not-encrypted'
 
+export interface FilteredStats {
+  servers: number
+  standalone: number
+  agClusters: number
+  agServers: number
+  databases: number
+  onlineDbs: number
+  offlineDbs: number
+}
+
+export interface DbViewStats {
+  total: number
+  online: number
+  offline: number
+  fullRecovery: number
+  tdeActive: number
+  noBackup: number
+  oldCompat: number
+}
+
 export function useInventoryState(onNavigateToDashboard: () => void) {
   const { refreshing, lastRefresh, handleRefresh } = useRefreshAllServers()
 

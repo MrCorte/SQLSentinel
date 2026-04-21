@@ -5,7 +5,7 @@ import { join } from 'path'
 const icon = app.isPackaged
   ? join(process.resourcesPath, 'icon.png')
   : join(__dirname, '../../resources/icon.png')
-import { registerIpcHandlers } from './ipc/handlers'
+import { registerIpcHandlers } from './ipc'
 import { initDefaultAdmin } from './authService'
 import { BackgroundService } from './backgroundService'
 import type { WorkerApi } from './backgroundService'

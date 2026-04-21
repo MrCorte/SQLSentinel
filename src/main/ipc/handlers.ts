@@ -60,16 +60,15 @@ import { getCustomFields, setCustomFields, getAllCustomFields } from '../store/d
 import type { DiscoveredServer, ScanOptions } from '../discovery/types'
 import { checkOllamaHealth } from '../ai/ollama'
 import { langGraphAsk, resetAgent, type AgentHistory } from '../ai/langGraphAgent'
-
-import { createLogger } from '../utils/logger'
-const log = createLogger('ipc')
 import { scanSubnet, scanHost } from '../discovery/tcpScanner'
 import { collectMetrics, detectServerInfo } from '../collectors/sqlCollector'
 import { getShrinkEstimate, shrinkDatabase, shrinkFile } from '../collectors/dbAdmin'
 import { getAvailabilityGroups, getAvailabilityReplicas, getAvailabilityDatabases } from '../collectors/agCollector'
 import * as serverStore from '../store/serverStore'
 import type { StoredServer } from '../store/serverStore'
+import { createLogger } from '../utils/logger'
 
+const log = createLogger('ipc')
 const stripCredentials = serverStore.stripCredentials
 
 function serverKey(ip: string, port: number): string {
@@ -617,7 +616,7 @@ export function registerIpcHandlers(): void {
         const data = await getAvailabilityReplicas(resolveConnection(req.connection))
         return { ok: true, data }
       } catch (err) {
-        log.info('[IPC] AG_GET_REPLICAS:', safeError(err))
+        log.warn('[IPC] AG_GET_REPLICAS:', safeError(err))
         return { ok: true, data: [] }
       }
     }
@@ -631,7 +630,7 @@ export function registerIpcHandlers(): void {
         const data = await getAvailabilityDatabases(resolveConnection(req.connection))
         return { ok: true, data }
       } catch (err) {
-        log.info('[IPC] AG_GET_DATABASES:', safeError(err))
+        log.warn('[IPC] AG_GET_DATABASES:', safeError(err))
         return { ok: true, data: [] }
       }
     }

@@ -92,18 +92,18 @@ export interface ColDef {
 
 export const COLUMNS: ColDef[] = [
   { key: 'serverLabel', label: 'SERVER', width: '17%' },
-  { key: 'envName', label: 'AMBIENTE', width: '8%' },
-  { key: 'type', label: 'TIPO', width: '8%' },
-  { key: 'machineName', label: 'MACCHINA', width: '8%' },
+  { key: 'envName', label: 'ENVIRONMENT', width: '8%' },
+  { key: 'type', label: 'TYPE', width: '8%' },
+  { key: 'machineName', label: 'MACHINE', width: '8%' },
   { key: 'hostingType', label: 'HOSTING', width: '6%' },
   { key: 'dbCount', label: 'DB', width: '4%' },
   { key: 'onlineCount', label: 'ONLINE', width: '5%' },
   { key: 'offlineCount', label: 'OFFLINE', width: '5%' },
-  { key: 'totalDataMb', label: 'DATI', width: '7%' },
-  { key: 'version', label: 'VERSIONE', width: '9%' },
+  { key: 'totalDataMb', label: 'DATA', width: '7%' },
+  { key: 'version', label: 'VERSION', width: '9%' },
   { key: 'logicalCpus', label: 'CPU', width: '5%' },
-  { key: 'unreachable', label: 'STATO', width: '6%' },
-  { key: 'notes', label: 'NOTE', width: '12%' },
+  { key: 'unreachable', label: 'STATUS', width: '6%' },
+  { key: 'notes', label: 'NOTES', width: '12%' },
 ]
 
 export const GRID_TEMPLATE = COLUMNS.map((c) => c.width).join(' ')
@@ -112,16 +112,16 @@ export const DB_COLUMNS = [
   { label: 'DATABASE', width: '13%' },
   { label: 'SERVER', width: '10%' },
   { label: 'ALIAS', width: '8%' },
-  { label: 'STATO', width: '6%' },
+  { label: 'STATUS', width: '6%' },
   { label: 'RECOVERY', width: '6%' },
   { label: 'COMPAT', width: '7%' },
   { label: 'TDE', width: '5%' },
-  { label: 'DATI', width: '6%' },
+  { label: 'DATA', width: '6%' },
   { label: 'LOG', width: '5%' },
-  { label: 'ULTIMO FULL', width: '9%' },
-  { label: 'ULTIMO LOG', width: '9%' },
+  { label: 'LAST FULL', width: '9%' },
+  { label: 'LAST LOG', width: '9%' },
   { label: 'OWNER', width: '8%' },
-  { label: 'CREATO', width: '8%' },
+  { label: 'CREATED', width: '8%' },
 ]
 
 export const DB_GRID_TEMPLATE = DB_COLUMNS.map((c) => c.width).join(' ')

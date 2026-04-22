@@ -1,6 +1,7 @@
 import { createReactAgent } from '@langchain/langgraph/prebuilt'
+import type { AiStreamEvent } from '../ipc/types'
 import { ChatOllama, OllamaEmbeddings } from '@langchain/ollama'
-import { HumanMessage, AIMessage } from '@langchain/core/messages'
+import { HumanMessage, AIMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages'
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { z } from 'zod'
 import * as serverStore from '../store/serverStore'
@@ -259,6 +260,12 @@ export function resetAgent(): void {
   _agent = null
 }
 
+let _activeAbortController: AbortController | null = null
+
+export function abortActiveStream(): void {
+  _activeAbortController?.abort()
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -291,4 +298,80 @@ export async function langGraphAsk(
       .join('')
   }
   return JSON.stringify(last.content)
+}
+
+export async function langGraphStream(
+  question: string,
+  history: AgentHistory[],
+  onEvent: (event: AiStreamEvent) => void
+): Promise<void> {
+  const controller = new AbortController()
+  _activeAbortController = controller
+
+  const agent = getAgent()
+  const messages = [
+    ...history.slice(-6).map((h) =>
+      h.role === 'user' ? new HumanMessage(h.content) : new AIMessage(h.content)
+    ),
+    new HumanMessage(question)
+  ]
+
+  const pendingTools = new Map<string, string>()
+
+  try {
+    const stream = await agent.stream(
+      { messages },
+      { streamMode: ['messages', 'updates'], signal: controller.signal, recursionLimit: 10 }
+    )
+
+    for await (const chunk of stream as AsyncIterable<[string, unknown]>) {
+      if (controller.signal.aborted) break
+
+      const [mode, data] = chunk
+
+      if (mode === 'updates') {
+        const update = data as Record<string, { messages?: BaseMessage[] }>
+
+        if (update.agent?.messages) {
+          for (const msg of update.agent.messages) {
+            const toolCalls = (msg as AIMessage).tool_calls
+            if (toolCalls?.length) {
+              for (const tc of toolCalls) {
+                pendingTools.set(tc.id ?? tc.name, tc.name)
+                onEvent({ type: 'tool_start', name: tc.name })
+              }
+            }
+          }
+        }
+
+        if (update.tools?.messages) {
+          for (const msg of update.tools.messages) {
+            if (msg._getType() === 'tool') {
+              const tm = msg as ToolMessage
+              const name = pendingTools.get(tm.tool_call_id) ?? 'tool'
+              pendingTools.delete(tm.tool_call_id)
+              onEvent({ type: 'tool_end', name, output: String(tm.content).slice(0, 2000) })
+            }
+          }
+        }
+      }
+
+      if (mode === 'messages') {
+        const [msg] = data as [{ _getType: () => string; content: unknown }]
+        if (msg._getType() === 'ai') {
+          const text = typeof msg.content === 'string' ? msg.content : ''
+          if (text.length > 0) onEvent({ type: 'token', text })
+        }
+      }
+    }
+
+    onEvent(controller.signal.aborted ? { type: 'error', message: 'Cancelled' } : { type: 'done' })
+  } catch (err) {
+    onEvent({
+      type: 'error',
+      message: controller.signal.aborted ? 'Cancelled' : err instanceof Error ? err.message : String(err)
+    })
+  } finally {
+    if (_activeAbortController === controller) _activeAbortController = null
+  }
 }

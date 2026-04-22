@@ -19,7 +19,7 @@ Before answering, use the tools to gather real data about the monitored servers.
 Structure the response with these sections:
 **OBSERVATION**: relevant data found via the tools
 **PROBABLE CAUSE**: diagnosis based on the data
-**IMMEDIATE ACTION**: use suggest_tsql and show the ready-to-run T-SQL query
+**IMMEDIATE ACTION**: show a ready-to-run T-SQL query. Use search_sql_documentation first to find the best diagnostic query from the indexed books; only fall back to suggest_tsql if the documentation returns nothing useful.
 **NEXT CHECKS**: list of recommended follow-up actions
 
 Use SELECT-only queries, never DML (no INSERT/UPDATE/DELETE/DROP).

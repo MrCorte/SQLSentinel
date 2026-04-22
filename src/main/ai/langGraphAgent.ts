@@ -173,7 +173,31 @@ FROM sys.dm_os_volume_stats(1, 1)`,
 FROM sys.dm_exec_sessions
 WHERE is_user_process = 1
 GROUP BY database_id, login_name
-ORDER BY COUNT(*) DESC`
+ORDER BY COUNT(*) DESC`,
+
+  always_on: `SELECT
+  ag.name                                         AS ag_name,
+  ar.replica_server_name                          AS replica,
+  ar.availability_mode_desc,
+  ar.failover_mode_desc,
+  ars.role_desc                                   AS role,
+  ars.operational_state_desc,
+  ars.connected_state_desc,
+  ars.synchronization_health_desc                 AS sync_health,
+  drs.database_name,
+  drs.synchronization_state_desc                  AS db_sync_state,
+  drs.synchronization_health_desc                 AS db_sync_health,
+  drs.log_send_queue_size                         AS log_send_queue_kb,
+  drs.redo_queue_size                             AS redo_queue_kb,
+  drs.last_commit_time
+FROM sys.availability_groups ag
+JOIN sys.availability_replicas ar
+  ON ag.group_id = ar.group_id
+JOIN sys.dm_hadr_availability_replica_states ars
+  ON ar.replica_id = ars.replica_id
+LEFT JOIN sys.dm_hadr_database_replica_states drs
+  ON ars.replica_id = drs.replica_id
+ORDER BY ag.name, ars.role_desc, ar.replica_server_name`
 }
 
 const suggestTSQLTool = new DynamicStructuredTool({
@@ -182,13 +206,22 @@ const suggestTSQLTool = new DynamicStructuredTool({
   schema: z.object({
     problema: z
       .any()
-      .describe('Problem type: cpu_high | slow_queries | blocking | backup | disk | connections')
+      .describe('Problem type: cpu_high | slow_queries | blocking | backup | disk | connections | always_on')
   }),
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   func: async ({ problema }: { problema: any }) => {
     const lower = (typeof problema === 'string' ? problema : JSON.stringify(problema)).toLowerCase()
+    const ALIASES: Record<string, string> = {
+      'always on': 'always_on',
+      'availability group': 'always_on',
+      hadr: 'always_on',
+      ag_health: 'always_on',
+      replica: 'always_on'
+    }
+    const aliasKey = Object.keys(ALIASES).find((a) => lower.includes(a))
+    if (aliasKey) return TSQL_MAP[ALIASES[aliasKey]]
     const key = Object.keys(TSQL_MAP).find(
-      (k) => lower.includes(k) || lower.includes(k.replace('_', ' '))
+      (k) => lower.includes(k) || lower.includes(k.replace(/_/g, ' '))
     )
     return key ? TSQL_MAP[key] : TSQL_MAP.cpu_high
   }

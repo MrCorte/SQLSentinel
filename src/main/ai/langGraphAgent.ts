@@ -1,7 +1,7 @@
 import { createReactAgent } from '@langchain/langgraph/prebuilt'
 import type { AiStreamEvent } from '../ipc/types'
 import { ChatOllama, OllamaEmbeddings } from '@langchain/ollama'
-import { HumanMessage, AIMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages'
+import { HumanMessage, AIMessage, AIMessageChunk, ToolMessage, type BaseMessage } from '@langchain/core/messages'
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { z } from 'zod'
 import * as serverStore from '../store/serverStore'
@@ -223,7 +223,9 @@ const suggestTSQLTool = new DynamicStructuredTool({
     const key = Object.keys(TSQL_MAP).find(
       (k) => lower.includes(k) || lower.includes(k.replace(/_/g, ' '))
     )
-    return key ? TSQL_MAP[key] : TSQL_MAP.cpu_high
+    return key
+      ? TSQL_MAP[key]
+      : 'No predefined query for this topic. Use search_sql_documentation to find a relevant query from the indexed books.'
   }
 })
 
@@ -388,42 +390,55 @@ export async function langGraphStream(
   const pendingTools = new Map<string, string>()
 
   try {
-    // streamMode: 'updates' yields one chunk per node completion (agent or tools),
-    // so tool_start/tool_end events appear incrementally rather than buffered.
+    // Dual stream mode:
+    //   'messages' → AIMessageChunk tokens arrive word-by-word as the LLM generates them
+    //   'updates'  → node-completion events used for tool_start / tool_end detection
     const stream = await agent.stream(
       { messages },
-      { streamMode: 'updates', signal: controller.signal, recursionLimit: 10 }
+      { streamMode: ['updates', 'messages'], signal: controller.signal, recursionLimit: 10 }
     )
 
-    for await (const chunk of stream as AsyncIterable<Record<string, { messages?: BaseMessage[] }>>) {
+    for await (const raw of stream as AsyncIterable<unknown>) {
       if (controller.signal.aborted) break
 
-      const update = chunk
+      // LangGraph emits [mode, data] tuples when streamMode is an array
+      const [mode, data] = raw as [string, unknown]
 
-      if (update.agent?.messages) {
-        for (const msg of update.agent.messages) {
-          const aiMsg = msg as AIMessage
-          const toolCalls = aiMsg.tool_calls
-          if (toolCalls?.length) {
-            for (const tc of toolCalls) {
-              pendingTools.set(tc.id ?? tc.name, tc.name)
-              onEvent({ type: 'tool_start', name: tc.name })
-            }
-          } else {
-            // Agent responded with text — final answer
-            const content = typeof aiMsg.content === 'string' ? aiMsg.content : ''
-            if (content) onEvent({ type: 'token', text: content })
+      if (mode === 'messages') {
+        // data = [AIMessageChunk | ToolMessage, metadata]
+        const [msgChunk] = data as [BaseMessage, unknown]
+        if (msgChunk instanceof AIMessageChunk) {
+          const text = typeof msgChunk.content === 'string' ? msgChunk.content : ''
+          // Skip chunks that are part of a tool-call decision (no readable text)
+          const hasToolCalls = (msgChunk.tool_calls?.length ?? 0) > 0
+          if (text && !hasToolCalls) {
+            onEvent({ type: 'token', text })
           }
         }
-      }
+      } else if (mode === 'updates') {
+        const update = data as Record<string, { messages?: BaseMessage[] }>
 
-      if (update.tools?.messages) {
-        for (const msg of update.tools.messages) {
-          if (msg._getType() === 'tool') {
-            const tm = msg as ToolMessage
-            const name = pendingTools.get(tm.tool_call_id) ?? 'tool'
-            pendingTools.delete(tm.tool_call_id)
-            onEvent({ type: 'tool_end', name, output: String(tm.content).slice(0, 2000) })
+        if (update.agent?.messages) {
+          for (const msg of update.agent.messages) {
+            const aiMsg = msg as AIMessage
+            if (aiMsg.tool_calls?.length) {
+              for (const tc of aiMsg.tool_calls) {
+                pendingTools.set(tc.id ?? tc.name, tc.name)
+                onEvent({ type: 'tool_start', name: tc.name })
+              }
+            }
+            // Final answer text is already streamed token-by-token from 'messages' mode — skip here
+          }
+        }
+
+        if (update.tools?.messages) {
+          for (const msg of update.tools.messages) {
+            if (msg._getType() === 'tool') {
+              const tm = msg as ToolMessage
+              const name = pendingTools.get(tm.tool_call_id) ?? 'tool'
+              pendingTools.delete(tm.tool_call_id)
+              onEvent({ type: 'tool_end', name, output: String(tm.content).slice(0, 2000) })
+            }
           }
         }
       }

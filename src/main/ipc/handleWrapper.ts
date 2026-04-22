@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, app } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { isAuthenticated, isMustChangePassword } from '../authService'
 import { IpcChannel } from './types'
@@ -6,6 +6,11 @@ import { createLogger } from '../utils/logger'
 
 const log = createLogger('ipc')
 export { log }
+
+// In dev mode the renderer typically runs with VITE_MOCK_MODE=true, which means
+// the UI bypasses the login flow — no real session is ever created in the main
+// process. Skip auth checks so real IPC calls (e.g., AI) still work locally.
+const DEV_BYPASS_AUTH = !app.isPackaged
 
 // Canali esenti dal check auth: usati prima del login o che implementano il login stesso.
 // SETTINGS_GET esente per permettere il caricamento del tema prima del login.
@@ -44,9 +49,11 @@ export function handle<R>(
     return
   }
   ipcMain.handle(channel, async (event: IpcMainInvokeEvent, ...args: unknown[]) => {
-    if (!isAuthenticated()) throw new Error('UNAUTHORIZED')
-    if (isMustChangePassword() && !MUST_CHANGE_PW_ALLOWED.has(channel)) {
-      throw new Error('MUST_CHANGE_PASSWORD')
+    if (!DEV_BYPASS_AUTH) {
+      if (!isAuthenticated()) throw new Error('UNAUTHORIZED')
+      if (isMustChangePassword() && !MUST_CHANGE_PW_ALLOWED.has(channel)) {
+        throw new Error('MUST_CHANGE_PASSWORD')
+      }
     }
     return listener(event, ...args)
   })

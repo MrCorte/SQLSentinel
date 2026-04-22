@@ -60,6 +60,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
     }
   }, [])
 
+
   // Scroll to bottom when new messages arrive
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -102,10 +103,17 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
       }
     })
 
-    const result = await window.sqlSentinel.aiAgentStream(text, history)
-    if (!result.ok) {
+    try {
+      const result = await window.sqlSentinel.aiAgentStream(text, history)
+      if (!result.ok) {
+        unsubscribe()
+        resetStreaming(result.error)
+        if (mountedRef.current) setLoading(false)
+      }
+    } catch (err) {
+      console.error('[AIPanel] aiAgentStream threw:', err)
       unsubscribe()
-      resetStreaming(result.error)
+      resetStreaming(err instanceof Error ? err.message : String(err))
       if (mountedRef.current) setLoading(false)
     }
   }, [input, loading, addMessage, setLoading, startStreaming, appendToken, addToolStep, completeToolStep, finalizeStreaming, resetStreaming])
@@ -199,12 +207,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
 
           {/* Fallback spinner when loading but no content yet */}
           {loading && !streamingText && toolSteps.length === 0 && (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 1 }}>
-              <CircularProgress size={14} />
-              <Typography sx={{ fontSize: tokens.font.sizeSm, color: 'text.secondary', fontStyle: 'italic' }}>
-                Agent is starting…
-              </Typography>
-            </Box>
+            <WaitingSpinner />
           )}
 
           <div ref={bottomRef} />
@@ -409,6 +412,35 @@ function ToolOutput({ output }: ToolOutputProps): React.JSX.Element {
 interface StreamingBubbleProps {
   text: string
   loading: boolean
+}
+
+// ---------------------------------------------------------------------------
+// Waiting spinner — shown before first tool/token arrives (model cold-start)
+// ---------------------------------------------------------------------------
+
+function WaitingSpinner(): React.JSX.Element {
+  const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    const id = setInterval(() => setElapsed((s) => s + 1), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const label =
+    elapsed < 10
+      ? 'Agent is starting…'
+      : elapsed < 30
+        ? 'Loading model, please wait…'
+        : `Still loading (${elapsed}s) — Ollama may be cold-starting the model`
+
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 1 }}>
+      <CircularProgress size={14} />
+      <Typography sx={{ fontSize: tokens.font.sizeSm, color: 'text.secondary', fontStyle: 'italic' }}>
+        {label}
+      </Typography>
+    </Box>
+  )
 }
 
 function StreamingBubble({ text, loading }: StreamingBubbleProps): React.JSX.Element {

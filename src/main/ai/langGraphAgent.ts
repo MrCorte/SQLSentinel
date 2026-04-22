@@ -181,11 +181,12 @@ const suggestTSQLTool = new DynamicStructuredTool({
   description: 'Returns a ready-to-run diagnostic T-SQL query for a specific SQL Server problem.',
   schema: z.object({
     problema: z
-      .string()
+      .any()
       .describe('Problem type: cpu_high | slow_queries | blocking | backup | disk | connections')
   }),
-  func: async ({ problema }: { problema: string }) => {
-    const lower = problema.toLowerCase()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  func: async ({ problema }: { problema: any }) => {
+    const lower = (typeof problema === 'string' ? problema : JSON.stringify(problema)).toLowerCase()
     const key = Object.keys(TSQL_MAP).find(
       (k) => lower.includes(k) || lower.includes(k.replace('_', ' '))
     )
@@ -264,6 +265,31 @@ export function resetAgent(): void {
   _agent = null
 }
 
+// ---------------------------------------------------------------------------
+// Model warm-up — loads llama3.2:3b into Ollama memory before first query
+// ---------------------------------------------------------------------------
+
+let _warmedUp = false
+
+export async function warmupModel(): Promise<void> {
+  if (_warmedUp) return
+  try {
+    console.log('[AI] warming up llama3.2:3b...')
+    const res = await fetch('http://localhost:11434/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'llama3.2:3b', prompt: '', stream: false }),
+      signal: AbortSignal.timeout(30_000)
+    })
+    if (res.ok) {
+      _warmedUp = true
+      console.log('[AI] model warm-up complete')
+    }
+  } catch {
+    // best-effort — ignore if Ollama isn't running yet
+  }
+}
+
 let _activeAbortController: AbortController | null = null
 
 export function abortActiveStream(): void {
@@ -315,6 +341,9 @@ export async function langGraphStream(
   const controller = new AbortController()
   _activeAbortController = controller
 
+  // 120-second hard timeout — if Ollama is loading the model it can take a while
+  const timeoutId = setTimeout(() => controller.abort(), 120_000)
+
   const agent = getAgent()
   const messages = [
     ...history
@@ -326,48 +355,43 @@ export async function langGraphStream(
   const pendingTools = new Map<string, string>()
 
   try {
+    // streamMode: 'updates' yields one chunk per node completion (agent or tools),
+    // so tool_start/tool_end events appear incrementally rather than buffered.
     const stream = await agent.stream(
       { messages },
-      { streamMode: ['messages', 'updates'], signal: controller.signal, recursionLimit: 10 }
+      { streamMode: 'updates', signal: controller.signal, recursionLimit: 10 }
     )
 
-    for await (const chunk of stream as AsyncIterable<[string, unknown]>) {
+    for await (const chunk of stream as AsyncIterable<Record<string, { messages?: BaseMessage[] }>>) {
       if (controller.signal.aborted) break
 
-      const [mode, data] = chunk
+      const update = chunk
 
-      if (mode === 'updates') {
-        const update = data as Record<string, { messages?: BaseMessage[] }>
-
-        if (update.agent?.messages) {
-          for (const msg of update.agent.messages) {
-            const toolCalls = (msg as AIMessage).tool_calls
-            if (toolCalls?.length) {
-              for (const tc of toolCalls) {
-                pendingTools.set(tc.id ?? tc.name, tc.name)
-                onEvent({ type: 'tool_start', name: tc.name })
-              }
+      if (update.agent?.messages) {
+        for (const msg of update.agent.messages) {
+          const aiMsg = msg as AIMessage
+          const toolCalls = aiMsg.tool_calls
+          if (toolCalls?.length) {
+            for (const tc of toolCalls) {
+              pendingTools.set(tc.id ?? tc.name, tc.name)
+              onEvent({ type: 'tool_start', name: tc.name })
             }
-          }
-        }
-
-        if (update.tools?.messages) {
-          for (const msg of update.tools.messages) {
-            if (msg._getType() === 'tool') {
-              const tm = msg as ToolMessage
-              const name = pendingTools.get(tm.tool_call_id) ?? 'tool'
-              pendingTools.delete(tm.tool_call_id)
-              onEvent({ type: 'tool_end', name, output: String(tm.content).slice(0, 2000) })
-            }
+          } else {
+            // Agent responded with text — final answer
+            const content = typeof aiMsg.content === 'string' ? aiMsg.content : ''
+            if (content) onEvent({ type: 'token', text: content })
           }
         }
       }
 
-      if (mode === 'messages') {
-        const [msg] = data as [{ _getType: () => string; content: unknown }]
-        if (msg._getType() === 'ai') {
-          const text = typeof msg.content === 'string' ? msg.content : ''
-          if (text.length > 0) onEvent({ type: 'token', text })
+      if (update.tools?.messages) {
+        for (const msg of update.tools.messages) {
+          if (msg._getType() === 'tool') {
+            const tm = msg as ToolMessage
+            const name = pendingTools.get(tm.tool_call_id) ?? 'tool'
+            pendingTools.delete(tm.tool_call_id)
+            onEvent({ type: 'tool_end', name, output: String(tm.content).slice(0, 2000) })
+          }
         }
       }
     }
@@ -383,6 +407,7 @@ export async function langGraphStream(
           : String(err)
     })
   } finally {
+    clearTimeout(timeoutId)
     if (_activeAbortController === controller) _activeAbortController = null
   }
 }

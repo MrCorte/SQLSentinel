@@ -1146,13 +1146,14 @@ const bridgeApi = {
   checkAuth: () => api.checkAuth(),
   changePassword: (userId: string, oldPwd: string, newPwd: string) =>
     api.changePassword(userId, oldPwd, newPwd),
-  aiCheck: () => api.aiCheck(),
+  // AI functions: always use real IPC — mock mode can't simulate Ollama responses
+  aiCheck: () => realApi.aiCheck(),
   aiAgentAsk: (q: string, h: Array<{ role: 'user' | 'assistant'; content: string }>) =>
-    api.aiAgentAsk(q, h),
+    realApi.aiAgentAsk(q, h),
   aiAgentStream: (q: string, h: Array<{ role: 'user' | 'assistant'; content: string }>) =>
-    api.aiAgentStream(q, h),
-  aiAgentCancel: () => api.aiAgentCancel(),
-  onAiStreamEvent: (cb: (e: AiStreamEvent) => void) => api.onAiStreamEvent(cb)
+    realApi.aiAgentStream(q, h),
+  aiAgentCancel: () => realApi.aiAgentCancel(),
+  onAiStreamEvent: (cb: (e: AiStreamEvent) => void) => realApi.onAiStreamEvent(cb)
 }
 
 if (process.contextIsolated) {

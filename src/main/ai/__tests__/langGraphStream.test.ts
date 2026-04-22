@@ -38,10 +38,12 @@ beforeEach(() => {
 
 describe('langGraphStream', () => {
   it('emits token events for AI message content', async () => {
-    mockStream.mockReturnValue(makeStream([
-      ['messages', [{ _getType: () => 'ai', content: 'Hello' }]],
-      ['messages', [{ _getType: () => 'ai', content: ' world' }]],
-    ]))
+    mockStream.mockReturnValue(
+      makeStream([
+        ['messages', [{ _getType: () => 'ai', content: 'Hello' }]],
+        ['messages', [{ _getType: () => 'ai', content: ' world' }]]
+      ])
+    )
 
     const events: AiStreamEvent[] = []
     await langGraphStream('test', [], (e) => events.push(e))
@@ -52,10 +54,18 @@ describe('langGraphStream', () => {
   })
 
   it('emits tool_start on agent tool_calls', async () => {
-    mockStream.mockReturnValue(makeStream([
-      ['updates', { agent: { messages: [{ tool_calls: [{ id: 'tc1', name: 'get_server_metrics' }] }] } }],
-      ['updates', { tools: { messages: [{ _getType: () => 'tool', tool_call_id: 'tc1', content: '{}' }] } }],
-    ]))
+    mockStream.mockReturnValue(
+      makeStream([
+        [
+          'updates',
+          { agent: { messages: [{ tool_calls: [{ id: 'tc1', name: 'get_server_metrics' }] }] } }
+        ],
+        [
+          'updates',
+          { tools: { messages: [{ _getType: () => 'tool', tool_call_id: 'tc1', content: '{}' }] } }
+        ]
+      ])
+    )
 
     const events: AiStreamEvent[] = []
     await langGraphStream('test', [], (e) => events.push(e))
@@ -67,7 +77,11 @@ describe('langGraphStream', () => {
   it('emits error event when stream throws', async () => {
     mockStream.mockReturnValue({
       [Symbol.asyncIterator]() {
-        return { next: async () => { throw new Error('Ollama down') } }
+        return {
+          next: async () => {
+            throw new Error('Ollama down')
+          }
+        }
       }
     })
 

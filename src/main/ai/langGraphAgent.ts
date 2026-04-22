@@ -40,7 +40,8 @@ export interface AgentHistory {
 
 const getServerMetricsTool = new DynamicStructuredTool({
   name: 'get_server_metrics',
-  description: 'Current metrics for all monitored servers: CPU %, RAM, blocking sessions, offline databases.',
+  description:
+    'Current metrics for all monitored servers: CPU %, RAM, blocking sessions, offline databases.',
   schema: z.object({}),
   func: async () => {
     const servers = serverStore.getAll()
@@ -109,7 +110,8 @@ const getSlowQueriesTool = new DynamicStructuredTool({
 
 const getServerNotesTool = new DynamicStructuredTool({
   name: 'get_server_notes',
-  description: 'DBA notes associated with servers: environment, application, criticality, contacts.',
+  description:
+    'DBA notes associated with servers: environment, application, criticality, contacts.',
   schema: z.object({}),
   func: async () => {
     return JSON.stringify(
@@ -178,7 +180,9 @@ const suggestTSQLTool = new DynamicStructuredTool({
   name: 'suggest_tsql',
   description: 'Returns a ready-to-run diagnostic T-SQL query for a specific SQL Server problem.',
   schema: z.object({
-    problema: z.string().describe('Problem type: cpu_high | slow_queries | blocking | backup | disk | connections')
+    problema: z
+      .string()
+      .describe('Problem type: cpu_high | slow_queries | blocking | backup | disk | connections')
   }),
   func: async ({ problema }: { problema: string }) => {
     const lower = problema.toLowerCase()
@@ -277,9 +281,9 @@ export async function langGraphAsk(
   const agent = getAgent()
 
   const messages = [
-    ...history.slice(-6).map((h) =>
-      h.role === 'user' ? new HumanMessage(h.content) : new AIMessage(h.content)
-    ),
+    ...history
+      .slice(-6)
+      .map((h) => (h.role === 'user' ? new HumanMessage(h.content) : new AIMessage(h.content))),
     new HumanMessage(question)
   ]
 
@@ -293,7 +297,10 @@ export async function langGraphAsk(
   if (typeof last.content === 'string') return last.content
   if (Array.isArray(last.content)) {
     return (last.content as unknown[])
-      .filter((b): b is { type: 'text'; text: string } => typeof b === 'object' && b !== null && 'text' in b)
+      .filter(
+        (b): b is { type: 'text'; text: string } =>
+          typeof b === 'object' && b !== null && 'text' in b
+      )
       .map((b) => b.text)
       .join('')
   }
@@ -310,9 +317,9 @@ export async function langGraphStream(
 
   const agent = getAgent()
   const messages = [
-    ...history.slice(-6).map((h) =>
-      h.role === 'user' ? new HumanMessage(h.content) : new AIMessage(h.content)
-    ),
+    ...history
+      .slice(-6)
+      .map((h) => (h.role === 'user' ? new HumanMessage(h.content) : new AIMessage(h.content))),
     new HumanMessage(question)
   ]
 
@@ -369,7 +376,11 @@ export async function langGraphStream(
   } catch (err) {
     onEvent({
       type: 'error',
-      message: controller.signal.aborted ? 'Cancelled' : err instanceof Error ? err.message : String(err)
+      message: controller.signal.aborted
+        ? 'Cancelled'
+        : err instanceof Error
+          ? err.message
+          : String(err)
     })
   } finally {
     if (_activeAbortController === controller) _activeAbortController = null

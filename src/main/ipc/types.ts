@@ -72,10 +72,20 @@ export enum IpcChannel {
   AI_CHECK = 'ai:check',
   // AI LangGraph agent (tool calling, local Ollama)
   AI_AGENT_ASK = 'ai:agentAsk',
+  AI_AGENT_STREAM = 'ai:agentStream',   // invoke: starts stream, returns IpcResult<void> immediately
+  AI_AGENT_CANCEL = 'ai:agentCancel',   // invoke: aborts active stream
+  AI_STREAM_EVENT = 'ai:streamEvent',   // push-only: main → renderer
 }
 
 /** Unified result envelope — never throw raw errors to the renderer. */
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string }
+
+export type AiStreamEvent =
+  | { type: 'tool_start'; name: string }
+  | { type: 'tool_end'; name: string; output: string }
+  | { type: 'token'; text: string }
+  | { type: 'done' }
+  | { type: 'error'; message: string }
 
 // --- Per-channel request types ---
 

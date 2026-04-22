@@ -409,6 +409,12 @@ export interface AgGroup {
   serverIds: string[]   // ids of StoredServer that are part of this AG
 }
 
+export type AiStreamEvent =
+  | { type: 'tool_start'; name: string }
+  | { type: 'tool_end'; name: string; output: string }
+  | { type: 'token'; text: string }
+  | { type: 'done' }
+  | { type: 'error'; message: string }
 
 export interface SqlSentinelAPI {
   scanSubnet(options: ScanOptions): Promise<IpcResult<DiscoveredServer[]>>
@@ -472,6 +478,9 @@ export interface SqlSentinelAPI {
   changePassword(userId: string, oldPassword: string, newPassword: string): Promise<ChangePasswordResult>
   aiCheck(): Promise<IpcResult<boolean>>
   aiAgentAsk(question: string, history: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<IpcResult<string>>
+  aiAgentStream(question: string, history: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<IpcResult<void>>
+  aiAgentCancel(): Promise<void>
+  onAiStreamEvent(callback: (event: AiStreamEvent) => void): () => void
 }
 
 declare global {

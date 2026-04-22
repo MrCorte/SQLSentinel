@@ -1,11 +1,10 @@
 import type { IpcMainInvokeEvent } from 'electron'
 import { handle, safeError, log } from '../handleWrapper'
 import { checkOllamaHealth } from '../../ai/ollama'
-import { langGraphAsk, type AgentHistory } from '../../ai/langGraphAgent'
-import { IpcChannel, type IpcResult } from '../types'
+import { langGraphAsk, langGraphStream, abortActiveStream, type AgentHistory } from '../../ai/langGraphAgent'
+import { IpcChannel, type IpcResult, type AiStreamEvent } from '../types'
 
 export function registerKnowledgeHandlers(): void {
-  // AI_CHECK — verifica se Ollama è raggiungibile localmente
   handle(IpcChannel.AI_CHECK, async (): Promise<IpcResult<boolean>> => {
     try {
       return { ok: true, data: await checkOllamaHealth() }
@@ -14,7 +13,6 @@ export function registerKnowledgeHandlers(): void {
     }
   })
 
-  // AI_AGENT_ASK — agente DBA multi-step con tool calling (LangGraph + Ollama)
   handle(
     IpcChannel.AI_AGENT_ASK,
     async (
@@ -30,4 +28,23 @@ export function registerKnowledgeHandlers(): void {
       }
     }
   )
+
+  // Starts a streaming session. Returns immediately; events arrive via AI_STREAM_EVENT push.
+  handle(
+    IpcChannel.AI_AGENT_STREAM,
+    (event: IpcMainInvokeEvent, question: string, history: AgentHistory[]): IpcResult<void> => {
+      const sender = event.sender
+      const send = (ev: AiStreamEvent): void => {
+        if (!sender.isDestroyed()) sender.send(IpcChannel.AI_STREAM_EVENT, ev)
+      }
+      langGraphStream(question, history, send).catch((err) => {
+        send({ type: 'error', message: safeError(err) })
+      })
+      return { ok: true, data: undefined }
+    }
+  )
+
+  handle(IpcChannel.AI_AGENT_CANCEL, (): void => {
+    abortActiveStream()
+  })
 }

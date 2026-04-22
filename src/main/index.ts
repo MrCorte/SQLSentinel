@@ -19,6 +19,7 @@ import { IpcChannel } from './ipc/types'
 import * as serverStore from './store/serverStore'
 import { scanHost } from './discovery/tcpScanner'
 import { autoIndexRagBooks } from './ai/ragIndexer'
+import { abortActiveStream } from './ai/langGraphAgent'
 import { safeError as redactError } from './utils/safeLog'
 import { createLogger } from './utils/logger'
 const log = createLogger('main')
@@ -102,11 +103,11 @@ async function healthCheckAll(): Promise<void> {
             const since = new Date().toISOString()
             serverStore.update(server.id, { unreachable: true, unreachableSince: since })
             mainWindow?.webContents.send(IpcChannel.SERVER_UNREACHABLE, {
-                serverId: server.id,
-                ip: addr,
-                port: server.port,
-                since
-              })
+              serverId: server.id,
+              ip: addr,
+              port: server.port,
+              since
+            })
             log.warn('[HealthCheck] UNREACHABLE:', `${addr}:${server.port}`)
           }
         }
@@ -203,9 +204,7 @@ app.whenReady().then(() => {
   registerIpcHandlers()
 
   // Index PDFs in data/ in the background — non-blocking, graceful if Ollama is unavailable
-  autoIndexRagBooks().catch((err) =>
-    log.error('[RAG] Auto-index failed:', err)
-  )
+  autoIndexRagBooks().catch((err) => log.error('[RAG] Auto-index failed:', err))
 
   createWindow()
 
@@ -241,8 +240,8 @@ app.whenReady().then(() => {
       const after = process.memoryUsage()
       log.info(
         `[Main] heap: ${(after.heapUsed / 1024 / 1024).toFixed(1)}MB` +
-        ` / ${(after.heapTotal / 1024 / 1024).toFixed(1)}MB` +
-        ` | rss: ${(mem.rss / 1024 / 1024).toFixed(1)}MB`
+          ` / ${(after.heapTotal / 1024 / 1024).toFixed(1)}MB` +
+          ` | rss: ${(mem.rss / 1024 / 1024).toFixed(1)}MB`
       )
     }, 60_000)
   }
@@ -277,7 +276,10 @@ app.on('window-all-closed', () => {
 // Docker stop, etc.) — without these handlers the healthCheck would keep running
 // until the kernel kills the process, and the SQLite DB could close
 // without flushing.
-app.on('before-quit', cleanupResources)
+app.on('before-quit', () => {
+  abortActiveStream()
+  cleanupResources()
+})
 process.on('SIGTERM', () => {
   cleanupResources()
   app.quit()

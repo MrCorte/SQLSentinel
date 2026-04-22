@@ -25,7 +25,7 @@ function KpiCard({ label, value, accentColor }: KpiCardProps): React.JSX.Element
         borderTop: `3px solid ${accentColor}`,
         borderRadius: '4px',
         px: 2,
-        py: 1.5,
+        py: 1.5
       }}
     >
       <Typography
@@ -34,7 +34,7 @@ function KpiCard({ label, value, accentColor }: KpiCardProps): React.JSX.Element
           color: 'text.secondary',
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
-          mb: 0.5,
+          mb: 0.5
         }}
       >
         {label}
@@ -71,7 +71,7 @@ export const InventoryKpiRow = memo(function InventoryKpiRow({
   hasActiveDbFilters,
   filteredDbRows,
   allDbRows,
-  inventoryEmpty,
+  inventoryEmpty
 }: InventoryKpiRowProps): React.JSX.Element {
   return (
     <>
@@ -93,11 +93,7 @@ export const InventoryKpiRow = memo(function InventoryKpiRow({
             }
             accentColor="#8764b8"
           />
-          <KpiCard
-            label="Database"
-            value={String(filteredStats.databases)}
-            accentColor="#0078d4"
-          />
+          <KpiCard label="Database" value={String(filteredStats.databases)} accentColor="#0078d4" />
           <KpiCard label="Online" value={String(filteredStats.onlineDbs)} accentColor="#107c10" />
           <KpiCard
             label="Offline"
@@ -120,11 +116,7 @@ export const InventoryKpiRow = memo(function InventoryKpiRow({
             value={String(dbViewStats.fullRecovery)}
             accentColor="#0078d4"
           />
-          <KpiCard
-            label="TDE Attivo"
-            value={String(dbViewStats.tdeActive)}
-            accentColor="#038387"
-          />
+          <KpiCard label="TDE Attivo" value={String(dbViewStats.tdeActive)} accentColor="#038387" />
           <KpiCard
             label="No Backup"
             value={String(dbViewStats.noBackup)}

@@ -15,7 +15,7 @@ function makeMetrics(version: string, collectedAt?: Date): ServerMetrics {
       cpuUsagePercent: 10,
       uptimeDays: 1,
       logicalCpus: 4,
-      physicalCpus: 2,
+      physicalCpus: 2
     },
     databases: [],
     activeSessions: [],
@@ -23,12 +23,24 @@ function makeMetrics(version: string, collectedAt?: Date): ServerMetrics {
     backupStatus: [],
     waitStats: [],
     diskVolumes: [],
-    databaseFiles: [],
+    databaseFiles: []
   }
 }
 
-const SERVER_A = { ip: '10.0.0.1', port: 1433, useWindowsAuth: false, lastSeenAt: null, lastMetricsAt: null }
-const SERVER_B = { ip: '10.0.0.2', port: 1433, useWindowsAuth: false, lastSeenAt: null, lastMetricsAt: null }
+const SERVER_A = {
+  ip: '10.0.0.1',
+  port: 1433,
+  useWindowsAuth: false,
+  lastSeenAt: null,
+  lastMetricsAt: null
+}
+const SERVER_B = {
+  ip: '10.0.0.2',
+  port: 1433,
+  useWindowsAuth: false,
+  lastSeenAt: null,
+  lastMetricsAt: null
+}
 
 describe('findLastNBulk', () => {
   let idA: string
@@ -43,7 +55,7 @@ describe('findLastNBulk', () => {
       { serverId: idA, metrics: makeMetrics('SQL 2019 v2', new Date('2026-01-02T10:00:00Z')) },
       { serverId: idA, metrics: makeMetrics('SQL 2019 v3', new Date('2026-01-03T10:00:00Z')) },
       { serverId: idB, metrics: makeMetrics('SQL 2022 v1', new Date('2026-01-01T10:00:00Z')) },
-      { serverId: idB, metrics: makeMetrics('SQL 2022 v2', new Date('2026-01-02T10:00:00Z')) },
+      { serverId: idB, metrics: makeMetrics('SQL 2022 v2', new Date('2026-01-02T10:00:00Z')) }
     ])
   })
 

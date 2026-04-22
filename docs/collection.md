@@ -77,6 +77,7 @@ L'utente può inserire `host:port:instanceName` manualmente. Il formato `instanc
 ### 2.3 Persistenza
 
 Dopo la conferma, `serverStore.add()`:
+
 - Genera un UUID come `id`
 - Cifra la password con `safeStorage` (DPAPI su Windows, Keychain su macOS)
 - Persiste in `electron-store` (JSON cifrato sul disco)
@@ -84,15 +85,15 @@ Dopo la conferma, `serverStore.add()`:
 
 **Struttura `StoredServer` (campi rilevanti):**
 
-| Campo | Tipo | Note |
-|-------|------|------|
-| `id` | `string` | UUID v4 |
-| `host` | `string` | Indirizzo canonico |
-| `port` | `number` | Sempre esplicito |
-| `useWindowsAuth` | `boolean` | Windows Auth vs SQL Auth |
-| `unreachable` | `boolean` | Aggiornato dall'health check |
-| `unreachableSince` | `string` | ISO 8601 prima irraggiungibilità |
-| `agGroupId` / `agRole` | `string` | Rilevati da `agCollector` dopo il primo poll |
+| Campo                  | Tipo      | Note                                         |
+| ---------------------- | --------- | -------------------------------------------- |
+| `id`                   | `string`  | UUID v4                                      |
+| `host`                 | `string`  | Indirizzo canonico                           |
+| `port`                 | `number`  | Sempre esplicito                             |
+| `useWindowsAuth`       | `boolean` | Windows Auth vs SQL Auth                     |
+| `unreachable`          | `boolean` | Aggiornato dall'health check                 |
+| `unreachableSince`     | `string`  | ISO 8601 prima irraggiungibilità             |
+| `agGroupId` / `agRole` | `string`  | Rilevati da `agCollector` dopo il primo poll |
 
 ---
 
@@ -102,9 +103,9 @@ Dopo la conferma, `serverStore.add()`:
 
 ### 3.1 Due modalità di raccolta
 
-| Funzione | Query eseguite | Uso |
-|----------|---------------|-----|
-| `collectMetrics()` | 8 query complete | Polling standard e background "full" |
+| Funzione                   | Query eseguite   | Uso                                                                  |
+| -------------------------- | ---------------- | -------------------------------------------------------------------- |
+| `collectMetrics()`         | 8 query complete | Polling standard e background "full"                                 |
 | `collectMetricsCritical()` | 5 query (subset) | Background mode "light" — salta topQueries, waitStats, databaseFiles |
 
 La selezione avviene in `runJob` tramite `intervalOverrides?.lightCollectors`:
@@ -117,6 +118,7 @@ const metrics = await Promise.race([collectFn(job.server), timeoutPromise])
 ### 3.2 Dati raccolti per istanza
 
 **Instance info** (`sys.dm_os_sys_info`, `@@VERSION`, `sys.dm_os_process_memory`):
+
 - Versione e edition SQL Server
 - Memoria usata / target (MB)
 - CPU% istantaneo
@@ -124,28 +126,35 @@ const metrics = await Promise.race([collectFn(job.server), timeoutPromise])
 - Conteggio CPU logici e fisici
 
 **Databases** (`sys.databases`):
+
 - Nome, stato (`stateDesc`), recovery model
 - Dimensioni MDF + LDF (MB)
 - Compatibility level, TDE, read-only, owner, data di creazione
 
 **Active sessions** (`sys.dm_exec_sessions` + `sys.dm_exec_requests`):
+
 - Solo sessioni con `status != 'sleeping'` o `blockingSessionId > 0`
 - Tipo di wait, tempo attesa, CPU time, logical reads
 
 **Top queries** (`sys.dm_exec_query_stats` + `sys.dm_exec_sql_text`):
+
 - Top 20 per elapsed time totale
 - Execution count, avg CPU, avg logical reads
 
 **Backup status** (`msdb.dbo.backupset`):
+
 - Ultimo backup full/diff/log per ogni database
 
 **Wait stats** (`sys.dm_os_wait_stats`):
+
 - Top 20, filtrate per wait types idle non significativi
 
 **Disk volumes** (`sys.dm_os_volume_stats`):
+
 - Per ogni volume: totale GB, libero GB, percentuale libera
 
 **Database files** (`sys.master_files` + `sys.dm_db_file_space_usage`):
+
 - Dimensione, spazio usato, crescita automatica configurata
 
 ### 3.3 Gestione connessione
@@ -169,24 +178,25 @@ Per ogni server viene mantenuto un `PollJob`:
 ```typescript
 interface PollJob {
   server: CollectMetricsRequest
-  nextRun: number       // timestamp (ms) prossima esecuzione
-  priority: number      // 0=active, 1=idle, 2=offline/failing
+  nextRun: number // timestamp (ms) prossima esecuzione
+  priority: number // 0=active, 1=idle, 2=offline/failing
   lastFailed: boolean
-  failCount: number     // fallimenti consecutivi — guida il backoff esponenziale
+  failCount: number // fallimenti consecutivi — guida il backoff esponenziale
   lastSuccess: number | null
-  pollCount: number     // poll riusciti — guida la scrittura su SQLite
+  pollCount: number // poll riusciti — guida la scrittura su SQLite
 }
 ```
 
 ### 4.2 Intervalli di polling
 
-| Priorità | Condizione | Intervallo default |
-|----------|-----------|-------------------|
-| `0` — active | Server attivo nell'UI (`setActiveServer`) | `activeIntervalMs` (default 60s) |
-| `1` — idle | Tutti gli altri server | 300s (`INTERVAL_IDLE_MS`) |
-| `2` — offline | Dopo almeno 1 fallimento | 600s + backoff esponenziale (`INTERVAL_OFFLINE_MS`) |
+| Priorità      | Condizione                                | Intervallo default                                  |
+| ------------- | ----------------------------------------- | --------------------------------------------------- |
+| `0` — active  | Server attivo nell'UI (`setActiveServer`) | `activeIntervalMs` (default 60s)                    |
+| `1` — idle    | Tutti gli altri server                    | 300s (`INTERVAL_IDLE_MS`)                           |
+| `2` — offline | Dopo almeno 1 fallimento                  | 600s + backoff esponenziale (`INTERVAL_OFFLINE_MS`) |
 
 **Clamping `intervalSeconds`:** il valore passato a `startWorker` viene forzato nell'intervallo [30s, 300s]:
+
 ```typescript
 activeIntervalMs = Math.max(30_000, Math.min(300_000, req.intervalSeconds * 1000))
 ```
@@ -281,9 +291,10 @@ Per ogni database nel poll:
     return db
 ```
 
-**Proprietà `offlineSince`:** ISO 8601 del momento del *primo rilevamento* dell'anomalia, non del momento effettivo di caduta (SQL Server non espone questa informazione).
+**Proprietà `offlineSince`:** ISO 8601 del momento del _primo rilevamento_ dell'anomalia, non del momento effettivo di caduta (SQL Server non espone questa informazione).
 
 La mappa viene pulita in:
+
 - `syncServers()` — quando un server viene rimosso dalla lista
 - `stopWorker()` → `__resetForTests()` — nei test
 
@@ -300,9 +311,9 @@ Dopo ogni poll, `computeDelta()` confronta i database precedenti con quelli nuov
 Un database viene incluso nel payload delta se è **nuovo** (non presente nel poll precedente) oppure se è cambiato in almeno uno di questi **tre campi**:
 
 ```typescript
-prevDb.sizeMb    !== db.sizeMb    ||
-prevDb.logSizeMb !== db.logSizeMb ||
-prevDb.stateDesc !== db.stateDesc
+prevDb.sizeMb !== db.sizeMb ||
+  prevDb.logSizeMb !== db.logSizeMb ||
+  prevDb.stateDesc !== db.stateDesc
 ```
 
 Campi come `compatibilityLevel`, `owner`, `isEncrypted`, `offlineSince` non scatenano un delta da soli — vengono inclusi solo se il DB è già nel payload per altri motivi.
@@ -368,7 +379,7 @@ Le scritture seguono un meccanismo a due stadi per minimizzare l'I/O:
 
 ```typescript
 if (!saveFlushTimer) {
-  saveFlushTimer = setTimeout(flushSaveQueue, SAVE_FLUSH_MS)  // 300_000ms = 5min
+  saveFlushTimer = setTimeout(flushSaveQueue, SAVE_FLUSH_MS) // 300_000ms = 5min
 }
 ```
 
@@ -381,10 +392,10 @@ Pulizia automatica: `cleanup(retentionMinutes)` cancella i record più vecchi de
 ### 7.3 Lettura al boot
 
 ```typescript
-findLastNBulk(serverIds, n = 20)
-  // Usa ROW_NUMBER() OVER (PARTITION BY server_id ORDER BY collected_at DESC)
-  // Restituisce gli ultimi N snapshot per ogni server in una sola roundtrip SQLite
-  // Risultato ordinato ASC per server_id e collected_at
+findLastNBulk(serverIds, (n = 20))
+// Usa ROW_NUMBER() OVER (PARTITION BY server_id ORDER BY collected_at DESC)
+// Restituisce gli ultimi N snapshot per ogni server in una sola roundtrip SQLite
+// Risultato ordinato ASC per server_id e collected_at
 ```
 
 Il risultato popola `metricsHistory` (Map in-memory nel worker) prima che il renderer faccia la prima richiesta.
@@ -399,30 +410,30 @@ Le date nel JSON vengono deserializzate tramite un `dateReviver` che riconosce l
 
 ### 8.1 Push events (main → renderer, subscribe)
 
-| Canale | Payload | Quando |
-|--------|---------|--------|
-| `METRICS_BATCH_UPDATED` | `Array<{ serverId, metrics }>` | Dopo ogni ciclo di polling |
-| `SERVER_HEALTH_UPDATE` | `ServerHealthPayload` | Ogni poll (successo o fallimento) |
-| `ALERT_NEW` | `Alert` | Primo rilevamento di un alert (post-dedup) |
-| `SERVER_CONFIG_UPDATED` | `StoredServer[]` | AG role detection o cambio logicalCpus |
-| `SERVER_UNREACHABLE` | `ServerUnreachableEvent` | Health check fallito |
-| `SERVER_RECOVERED` | `serverId` | Health check tornato positivo |
-| `APP_BACKGROUND` / `APP_FOREGROUND` | — | Finestra minimizzata/ripristinata |
+| Canale                              | Payload                        | Quando                                     |
+| ----------------------------------- | ------------------------------ | ------------------------------------------ |
+| `METRICS_BATCH_UPDATED`             | `Array<{ serverId, metrics }>` | Dopo ogni ciclo di polling                 |
+| `SERVER_HEALTH_UPDATE`              | `ServerHealthPayload`          | Ogni poll (successo o fallimento)          |
+| `ALERT_NEW`                         | `Alert`                        | Primo rilevamento di un alert (post-dedup) |
+| `SERVER_CONFIG_UPDATED`             | `StoredServer[]`               | AG role detection o cambio logicalCpus     |
+| `SERVER_UNREACHABLE`                | `ServerUnreachableEvent`       | Health check fallito                       |
+| `SERVER_RECOVERED`                  | `serverId`                     | Health check tornato positivo              |
+| `APP_BACKGROUND` / `APP_FOREGROUND` | —                              | Finestra minimizzata/ripristinata          |
 
 **Nota:** `METRICS_BATCH_UPDATED` e `SERVER_HEALTH_UPDATE` vengono soppressi se nessuna finestra è visibile (`BrowserWindow.getAllWindows().some(w => w.isVisible())`). `ALERT_NEW` viene sempre inviato poiché alimenta anche il `BackgroundService`.
 
 ### 8.2 Invoke channels (renderer → main, request/response)
 
-| Canale | Descrizione |
-|--------|-------------|
-| `WORKER_START` | Avvia il worker con lista server e intervallo |
-| `WORKER_STOP` | Ferma tutti i job |
-| `WORKER_SET_ACTIVE` | Imposta il server attivo (priorità 0, fetch immediata debounced) |
-| `WORKER_SYNC_SERVERS` | UPSERT server list senza riavvio, preserva failCount/lastSuccess |
-| `METRICS_HISTORY_BULK` | Restituisce tutto lo storico SQLite al boot |
-| `COLLECT_METRICS` | Raccolta one-shot manuale |
-| `GET_ALERTS` / `ACKNOWLEDGE_ALERT` | Gestione alert |
-| `GET_SETTINGS` / `SAVE_SETTINGS` | Impostazioni app |
+| Canale                             | Descrizione                                                      |
+| ---------------------------------- | ---------------------------------------------------------------- |
+| `WORKER_START`                     | Avvia il worker con lista server e intervallo                    |
+| `WORKER_STOP`                      | Ferma tutti i job                                                |
+| `WORKER_SET_ACTIVE`                | Imposta il server attivo (priorità 0, fetch immediata debounced) |
+| `WORKER_SYNC_SERVERS`              | UPSERT server list senza riavvio, preserva failCount/lastSuccess |
+| `METRICS_HISTORY_BULK`             | Restituisce tutto lo storico SQLite al boot                      |
+| `COLLECT_METRICS`                  | Raccolta one-shot manuale                                        |
+| `GET_ALERTS` / `ACKNOWLEDGE_ALERT` | Gestione alert                                                   |
+| `GET_SETTINGS` / `SAVE_SETTINGS`   | Impostazioni app                                                 |
 
 ---
 
@@ -473,11 +484,11 @@ Le date nel JSON vengono deserializzate tramite un `dateReviver` che riconosce l
 
 ### 10.1 Due livelli di dati
 
-| Store | Contenuto | Dimensione | Quando popolato |
-|-------|-----------|------------|-----------------|
-| **`summaries`** | KPI leggeri per server | ~200 byte/server | Boot se ha storico, altrimenti al primo poll |
-| **`metricsMap`** | `ServerMetrics` completo | ~50–100 KB/server | Boot (tutti i server con storico) + aggiornato ad ogni poll |
-| **`historyMap`** | Ring buffer `{ cpu, memory }` | ~1 KB/server | Boot da storico + ogni poll |
+| Store            | Contenuto                     | Dimensione        | Quando popolato                                             |
+| ---------------- | ----------------------------- | ----------------- | ----------------------------------------------------------- |
+| **`summaries`**  | KPI leggeri per server        | ~200 byte/server  | Boot se ha storico, altrimenti al primo poll                |
+| **`metricsMap`** | `ServerMetrics` completo      | ~50–100 KB/server | Boot (tutti i server con storico) + aggiornato ad ogni poll |
+| **`historyMap`** | Ring buffer `{ cpu, memory }` | ~1 KB/server      | Boot da storico + ogni poll                                 |
 
 `metricsMap` viene evicto con `evictFullMetrics(serverId)` quando l'utente naviga via dal dettaglio server, per liberare memoria nel renderer.
 
@@ -490,8 +501,8 @@ interface ServerSummary {
   memoryTargetMb: number
   uptimeDays: number
   collectedAt: Date
-  dbCount: number          // numero totale di database (tutti gli stati)
-  offlineDbCount: number   // database con stateDesc !== 'ONLINE'
+  dbCount: number // numero totale di database (tutti gli stati)
+  offlineDbCount: number // database con stateDesc !== 'ONLINE'
 }
 ```
 
@@ -501,8 +512,8 @@ Ogni server ha due ring buffer separati, aggiornati ad ogni poll:
 
 ```typescript
 interface ServerHistory {
-  cpu:    HistoryPoint[]   // { ts: number, value: cpuUsagePercent }
-  memory: HistoryPoint[]   // { ts: number, value: memPercent }
+  cpu: HistoryPoint[] // { ts: number, value: cpuUsagePercent }
+  memory: HistoryPoint[] // { ts: number, value: memPercent }
 }
 ```
 
@@ -558,20 +569,21 @@ applyDelta(serverId, delta):
 
 Alert generati automaticamente dopo ogni poll su dati **non arricchiti** (metriche raw, prima dell'enrichment offline timestamp):
 
-| Categoria | Soglia WARNING | Soglia CRITICAL |
-|-----------|---------------|-----------------|
-| `cpu_high` | >70% | >90% |
-| `blocking_sessions` | ≥1 sessione bloccante | ≥5 sessioni |
-| `database_offline` | — | `stateDesc === 'OFFLINE'` (solo questo stato, non altri non-ONLINE) |
-| `backup_overdue` | Full backup assente o >24h (DB utente) | — |
-| `disk_space_low` | Volume <30% libero | Volume <10% libero |
-| `disk_space_low` | Autogrowth=0 con <100 MB liberi nel file | — |
+| Categoria           | Soglia WARNING                           | Soglia CRITICAL                                                     |
+| ------------------- | ---------------------------------------- | ------------------------------------------------------------------- |
+| `cpu_high`          | >70%                                     | >90%                                                                |
+| `blocking_sessions` | ≥1 sessione bloccante                    | ≥5 sessioni                                                         |
+| `database_offline`  | —                                        | `stateDesc === 'OFFLINE'` (solo questo stato, non altri non-ONLINE) |
+| `backup_overdue`    | Full backup assente o >24h (DB utente)   | —                                                                   |
+| `disk_space_low`    | Volume <30% libero                       | Volume <10% libero                                                  |
+| `disk_space_low`    | Autogrowth=0 con <100 MB liberi nel file | —                                                                   |
 
 **DB di sistema esclusi dal backup check:** `master`, `tempdb`, `model`, `msdb`, `distribution`.
 
 **Deduplicazione:** chiave `${serverId}:${category}:${severity}`. Un alert già aperto (non acknowledged) non genera un secondo push. Gli alert acknowledged da più di 24h vengono rimossi automaticamente da `storedAlerts`.
 
 **Notifiche:**
+
 - Email: per tutti i nuovi alert (dedup 15 minuti per indirizzo, se email configurata)
 - Toast / tray icon: solo CRITICAL, solo quando la finestra è in background
 
@@ -579,24 +591,24 @@ Alert generati automaticamente dopo ogni poll su dati **non arricchiti** (metric
 
 ## 12. Mappa dei file chiave
 
-| File | Responsabilità |
-|------|----------------|
-| `src/main/metricsWorker.ts` | Scheduler, PollJob, backoff, enrichment, delta, alert, batch IPC |
-| `src/main/collectors/sqlCollector.ts` | Query T-SQL, parsing risultati, timeout connessione |
-| `src/main/collectors/agCollector.ts` | Rilevamento e sync ruoli Availability Group |
-| `src/main/deltaUtils.ts` | `shouldSendDelta()` — soglie DELTA_THRESHOLD_ABS/PERC |
-| `src/main/ipc/handlers.ts` | Handler IPC, validazione parametri, routing verso worker/store |
-| `src/main/ipc/types.ts` | Nomi canali, interfacce request/response, tipi Alert |
-| `src/main/store/metricsRepository.ts` | CRUD SQLite snapshot, `findLastNBulk`, `batchSave`, `dateReviver` |
-| `src/main/store/serverStore.ts` | electron-store con password cifrate via `safeStorage` |
-| `src/main/store/database.ts` | Inizializzazione SQLite, DDL, WAL mode |
-| `src/main/store/dbCustomFields.ts` | Alias e referente per database (SQLite) |
-| `src/main/backgroundService.ts` | Polling background, tray icon, notifiche, `setIntervalOverrides` |
-| `src/main/discovery/tcpScanner.ts` | TCP scan CIDR, singola probe 500ms, progress streaming |
-| `src/renderer/src/store/metricsStore.ts` | Zustand — due livelli dati, ring buffer, `applyDelta`, `seedFromHistory` |
-| `src/renderer/src/store/serversStore.ts` | Zustand — CRUD server lato renderer |
-| `src/renderer/src/context/WorkerContext.tsx` | Boot seeding, wiring IPC listeners |
-| `src/renderer/src/App.tsx` | Inizializzazione app, sequenza boot, setup listeners |
-| `src/renderer/src/hooks/useNow.ts` | Ticker 30s per label "X min fa" nei component |
-| `src/preload/index.ts` | Bridge IPC, esposizione `window.sqlSentinel` via contextBridge |
-| `src/preload/index.d.ts` | Dichiarazioni TypeScript condivise renderer/preload |
+| File                                         | Responsabilità                                                           |
+| -------------------------------------------- | ------------------------------------------------------------------------ |
+| `src/main/metricsWorker.ts`                  | Scheduler, PollJob, backoff, enrichment, delta, alert, batch IPC         |
+| `src/main/collectors/sqlCollector.ts`        | Query T-SQL, parsing risultati, timeout connessione                      |
+| `src/main/collectors/agCollector.ts`         | Rilevamento e sync ruoli Availability Group                              |
+| `src/main/deltaUtils.ts`                     | `shouldSendDelta()` — soglie DELTA_THRESHOLD_ABS/PERC                    |
+| `src/main/ipc/handlers.ts`                   | Handler IPC, validazione parametri, routing verso worker/store           |
+| `src/main/ipc/types.ts`                      | Nomi canali, interfacce request/response, tipi Alert                     |
+| `src/main/store/metricsRepository.ts`        | CRUD SQLite snapshot, `findLastNBulk`, `batchSave`, `dateReviver`        |
+| `src/main/store/serverStore.ts`              | electron-store con password cifrate via `safeStorage`                    |
+| `src/main/store/database.ts`                 | Inizializzazione SQLite, DDL, WAL mode                                   |
+| `src/main/store/dbCustomFields.ts`           | Alias e referente per database (SQLite)                                  |
+| `src/main/backgroundService.ts`              | Polling background, tray icon, notifiche, `setIntervalOverrides`         |
+| `src/main/discovery/tcpScanner.ts`           | TCP scan CIDR, singola probe 500ms, progress streaming                   |
+| `src/renderer/src/store/metricsStore.ts`     | Zustand — due livelli dati, ring buffer, `applyDelta`, `seedFromHistory` |
+| `src/renderer/src/store/serversStore.ts`     | Zustand — CRUD server lato renderer                                      |
+| `src/renderer/src/context/WorkerContext.tsx` | Boot seeding, wiring IPC listeners                                       |
+| `src/renderer/src/App.tsx`                   | Inizializzazione app, sequenza boot, setup listeners                     |
+| `src/renderer/src/hooks/useNow.ts`           | Ticker 30s per label "X min fa" nei component                            |
+| `src/preload/index.ts`                       | Bridge IPC, esposizione `window.sqlSentinel` via contextBridge           |
+| `src/preload/index.d.ts`                     | Dichiarazioni TypeScript condivise renderer/preload                      |

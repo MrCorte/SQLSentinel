@@ -37,7 +37,7 @@ export const InventoryServerTable = memo(function InventoryServerTable({
   sortDir,
   serverAliases,
   onRowClick,
-  onSort,
+  onSort
 }: InventoryServerTableProps) {
   const parentRef = useRef<HTMLDivElement>(null)
 
@@ -45,7 +45,7 @@ export const InventoryServerTable = memo(function InventoryServerTable({
     count: sortedRows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 48,
-    overscan: 10,
+    overscan: 10
   })
 
   return (
@@ -61,7 +61,7 @@ export const InventoryServerTable = memo(function InventoryServerTable({
           borderBottom: (theme) => `2px solid ${theme.palette.divider}`,
           position: 'sticky',
           top: 0,
-          zIndex: 1,
+          zIndex: 1
         }}
       >
         {COLUMNS.map((col) => {
@@ -70,7 +70,13 @@ export const InventoryServerTable = memo(function InventoryServerTable({
             <Box
               key={col.key}
               onClick={() => onSort(col.key)}
-              sx={{ display: 'flex', alignItems: 'center', gap: 0.25, cursor: 'pointer', userSelect: 'none' }}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.25,
+                cursor: 'pointer',
+                userSelect: 'none'
+              }}
             >
               <Typography
                 variant="caption"
@@ -161,23 +167,32 @@ export const InventoryServerTable = memo(function InventoryServerTable({
                               ? '#ede8f5'
                               : row.unreachable
                                 ? '#fad4d4'
-                                : theme.palette.action.hover,
-                    },
+                                : theme.palette.action.hover
+                    }
                   }}
                 >
                   {/* ── SERVER ── */}
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
                     {row.type === 'ag-cluster' &&
                       (expandedClusters.has(row.clusterKey!) ? (
-                        <ExpandMoreIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
+                        <ExpandMoreIcon
+                          fontSize="small"
+                          sx={{ color: 'text.secondary', flexShrink: 0 }}
+                        />
                       ) : (
-                        <ChevronRightIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
+                        <ChevronRightIcon
+                          fontSize="small"
+                          sx={{ color: 'text.secondary', flexShrink: 0 }}
+                        />
                       ))}
                     {row.type === 'machine-header' &&
                       (expandedMachines.has(row.clusterKey!) ? (
                         <ExpandMoreIcon fontSize="small" sx={{ color: '#4a6fa5', flexShrink: 0 }} />
                       ) : (
-                        <ChevronRightIcon fontSize="small" sx={{ color: '#4a6fa5', flexShrink: 0 }} />
+                        <ChevronRightIcon
+                          fontSize="small"
+                          sx={{ color: '#4a6fa5', flexShrink: 0 }}
+                        />
                       ))}
                     {row.type === 'ag-cluster' && (
                       <AccountTreeIcon fontSize="small" sx={{ color: '#8764b8', flexShrink: 0 }} />
@@ -190,7 +205,7 @@ export const InventoryServerTable = memo(function InventoryServerTable({
                         sx={{
                           flexShrink: 0,
                           color: row.agRole === 'PRIMARY' ? '#107c10' : 'text.secondary',
-                          fontSize: 12,
+                          fontSize: 12
                         }}
                       >
                         {row.agRole === 'PRIMARY' ? '★' : '○'}
@@ -207,7 +222,7 @@ export const InventoryServerTable = memo(function InventoryServerTable({
                         sx={row.type === 'machine-header' ? { color: '#2d5a8a' } : undefined}
                       >
                         {(row.type === 'standalone' || row.type === 'ag-replica') && row.serverId
-                          ? (serverAliases[row.serverId] || row.serverLabel)
+                          ? serverAliases[row.serverId] || row.serverLabel
                           : row.serverLabel}
                       </Typography>
                       {row.type === 'ag-cluster' ? (
@@ -229,7 +244,13 @@ export const InventoryServerTable = memo(function InventoryServerTable({
                   {/* ── AMBIENTE ── */}
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
                     <Box
-                      sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: row.envColor, flexShrink: 0 }}
+                      sx={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: '50%',
+                        bgcolor: row.envColor,
+                        flexShrink: 0
+                      }}
                     />
                     <Typography variant="caption" noWrap>
                       {row.envName}
@@ -269,7 +290,7 @@ export const InventoryServerTable = memo(function InventoryServerTable({
                       borderRadius: '3px',
                       bgcolor: HOSTING_BADGE[row.hostingType].color,
                       color: '#fff',
-                      width: 'fit-content',
+                      width: 'fit-content'
                     }}
                   />
 
@@ -293,7 +314,7 @@ export const InventoryServerTable = memo(function InventoryServerTable({
                         bgcolor: '#a4262c',
                         color: '#fff',
                         borderRadius: '3px',
-                        width: 'fit-content',
+                        width: 'fit-content'
                       }}
                     />
                   ) : (
@@ -343,7 +364,7 @@ export const InventoryServerTable = memo(function InventoryServerTable({
                         borderRadius: '3px',
                         bgcolor: row.agHealthy ? '#107c10' : '#a4262c',
                         color: '#fff',
-                        width: 'fit-content',
+                        width: 'fit-content'
                       }}
                     />
                   ) : row.type === 'machine-header' ? (
@@ -357,7 +378,7 @@ export const InventoryServerTable = memo(function InventoryServerTable({
                         borderRadius: '3px',
                         bgcolor: row.unreachable ? '#a4262c' : '#4a6fa5',
                         color: '#fff',
-                        width: 'fit-content',
+                        width: 'fit-content'
                       }}
                     />
                   ) : (
@@ -371,7 +392,7 @@ export const InventoryServerTable = memo(function InventoryServerTable({
                         borderRadius: '3px',
                         bgcolor: row.unreachable ? '#a4262c' : '#107c10',
                         color: '#fff',
-                        width: 'fit-content',
+                        width: 'fit-content'
                       }}
                     />
                   )}
@@ -386,7 +407,7 @@ export const InventoryServerTable = memo(function InventoryServerTable({
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
-                          cursor: 'help',
+                          cursor: 'help'
                         }}
                       >
                         {row.notes}

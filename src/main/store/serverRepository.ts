@@ -77,7 +77,7 @@ function stmts() {
     ),
     updateLastMetrics: db.prepare<[string, string]>(
       'UPDATE servers SET last_metrics_at = ? WHERE id = ?'
-    ),
+    )
   }
   return _stmts
 }
@@ -99,7 +99,9 @@ export function findById(id: string): StoredServer | null {
  * If a record with the same ip:port already exists, all fields are updated
  * except id and added_at. Returns the final record.
  */
-export function upsert(server: Omit<StoredServer, 'id' | 'addedAt'> & Partial<Pick<StoredServer, 'id' | 'addedAt'>>): StoredServer {
+export function upsert(
+  server: Omit<StoredServer, 'id' | 'addedAt'> & Partial<Pick<StoredServer, 'id' | 'addedAt'>>
+): StoredServer {
   const id = server.id ?? randomUUID()
   const addedAt = server.addedAt?.toISOString() ?? new Date().toISOString()
 

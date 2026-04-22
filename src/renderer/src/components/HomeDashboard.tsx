@@ -84,10 +84,26 @@ export function HomeDashboard({
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', p: 2, height: '100%', overflow: 'auto', gap: 2, boxSizing: 'border-box' }}>
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        p: 2,
+        height: '100%',
+        overflow: 'auto',
+        gap: 2,
+        boxSizing: 'border-box'
+      }}
+    >
       {/* ---- Row 1: Header ---- */}
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Typography sx={{ fontSize: tokens.font.sizeLg, fontWeight: tokens.font.weightBold, color: 'text.primary' }}>
+        <Typography
+          sx={{
+            fontSize: tokens.font.sizeLg,
+            fontWeight: tokens.font.weightBold,
+            color: 'text.primary'
+          }}
+        >
           Home Dashboard
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -99,7 +115,9 @@ export function HomeDashboard({
               <Button
                 size="small"
                 variant="contained"
-                startIcon={refreshing ? <CircularProgress size={14} color="inherit" /> : <RefreshIcon />}
+                startIcon={
+                  refreshing ? <CircularProgress size={14} color="inherit" /> : <RefreshIcon />
+                }
                 onClick={handleRefresh}
                 disabled={refreshing}
                 sx={{ fontSize: tokens.font.sizeSm, bgcolor: tokens.color.primary }}

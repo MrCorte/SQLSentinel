@@ -29,9 +29,7 @@ export const useAlertsStore = create<AlertsStore>((set) => ({
     }),
   acknowledgeAlert: (alertId) =>
     set((state) => ({
-      alerts: state.alerts.map((a) =>
-        a.id === alertId ? { ...a, acknowledgedAt: new Date() } : a
-      )
+      alerts: state.alerts.map((a) => (a.id === alertId ? { ...a, acknowledgedAt: new Date() } : a))
     })),
   deleteServerAlerts: (serverId) =>
     set((state) => ({ alerts: state.alerts.filter((a) => a.serverId !== serverId) }))

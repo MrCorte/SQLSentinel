@@ -1,5 +1,10 @@
 import { useState, useCallback } from 'react'
-import type { DiscoveredServer, ScanOptions, ScanProgress, ManualServerRequest } from '../../../preload/index'
+import type {
+  DiscoveredServer,
+  ScanOptions,
+  ScanProgress,
+  ManualServerRequest
+} from '../../../preload/index'
 
 export interface DiscoveryRow extends DiscoveredServer {
   discoveryType: 'auto-tcp' | 'manual'

@@ -23,10 +23,7 @@ interface UseMetricsOptions {
   onReceived?: (serverId: string, m: ServerMetrics) => void
 }
 
-export function useMetrics(
-  connection: CollectMetricsRequest | null,
-  options?: UseMetricsOptions
-) {
+export function useMetrics(connection: CollectMetricsRequest | null, options?: UseMetricsOptions) {
   const [metrics, setMetrics] = useState<ServerMetrics | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

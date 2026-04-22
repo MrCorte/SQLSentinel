@@ -60,13 +60,13 @@ export const tokens = {
     errorGradient: 'linear-gradient(90deg, #a4262c, #f87171)',
 
     // Dark card border
-    borderDark: 'rgba(255,255,255,0.08)',
+    borderDark: 'rgba(255,255,255,0.08)'
   },
 
   size: {
     navbarHeight: 48,
     sidebarWidth: 220,
-    alertsDrawerWidth: 380,
+    alertsDrawerWidth: 380
   },
 
   font: {
@@ -79,7 +79,7 @@ export const tokens = {
     sizeXl: 20,
     weightRegular: 400,
     weightSemibold: 600,
-    weightBold: 700,
+    weightBold: 700
   },
 
   radius: {
@@ -87,7 +87,7 @@ export const tokens = {
     sm: 6,
     md: 10,
     lg: 16,
-    pill: 9999,
+    pill: 9999
   },
 
   shadow: {
@@ -98,6 +98,6 @@ export const tokens = {
     drawer: '0 8px 32px rgba(0,0,0,0.2)',
     dotGlowSuccess: '0 0 6px rgba(78,255,145,0.7)',
     dotGlowError: '0 0 6px rgba(239,68,68,0.6)',
-    dotGlowWarning: '0 0 6px rgba(216,59,1,0.6)',
-  },
+    dotGlowWarning: '0 0 6px rgba(216,59,1,0.6)'
+  }
 }

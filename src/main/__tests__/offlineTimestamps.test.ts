@@ -9,7 +9,10 @@ vi.mock('electron', () => ({
   app: { isPackaged: false, getPath: () => '/tmp' },
   BrowserWindow: { getAllWindows: vi.fn(() => []) }
 }))
-vi.mock('../collectors/sqlCollector', () => ({ collectMetrics: vi.fn(), collectMetricsCritical: vi.fn() }))
+vi.mock('../collectors/sqlCollector', () => ({
+  collectMetrics: vi.fn(),
+  collectMetricsCritical: vi.fn()
+}))
 vi.mock('../store/dbCustomFields', () => ({ getAllCustomFields: vi.fn(() => ({})) }))
 vi.mock('../store/metricsRepository', () => ({
   cleanup: vi.fn(),
@@ -20,7 +23,9 @@ vi.mock('../store/settings', () => ({
   getSettings: vi.fn(() => ({ retentionMinutes: 60 }))
 }))
 vi.mock('../store/serverStore')
-vi.mock('../collectors/agCollector', () => ({ detectAndSyncReplicaRoles: vi.fn(() => Promise.resolve([])) }))
+vi.mock('../collectors/agCollector', () => ({
+  detectAndSyncReplicaRoles: vi.fn(() => Promise.resolve([]))
+}))
 
 import { BrowserWindow } from 'electron'
 import { collectMetrics } from '../collectors/sqlCollector'
@@ -43,12 +48,22 @@ function makeMetrics(overrides: Partial<ServerMetrics> = {}): ServerMetrics {
   return {
     collectedAt: new Date(),
     instanceInfo: {
-      version: '2019', edition: 'Dev', memoryUsedMb: 100,
-      memoryTargetMb: 200, cpuUsagePercent: 10, uptimeDays: 1,
-      logicalCpus: 8, physicalCpus: 4
+      version: '2019',
+      edition: 'Dev',
+      memoryUsedMb: 100,
+      memoryTargetMb: 200,
+      cpuUsagePercent: 10,
+      uptimeDays: 1,
+      logicalCpus: 8,
+      physicalCpus: 4
     },
-    databases: [], activeSessions: [], topQueries: [],
-    backupStatus: [], waitStats: [], diskVolumes: [], databaseFiles: [],
+    databases: [],
+    activeSessions: [],
+    topQueries: [],
+    backupStatus: [],
+    waitStats: [],
+    diskVolumes: [],
+    databaseFiles: [],
     ...overrides
   }
 }
@@ -86,16 +101,25 @@ afterEach(() => {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('dbOfflineTimestamps — enrichment', () => {
-
   it('imposta offlineSince al primo poll che rileva un DB non-ONLINE', async () => {
     captureRendererMessages()
     const t0 = new Date('2025-01-01T10:00:00.000Z')
     vi.setSystemTime(t0)
 
-    vi.mocked(collectMetrics).mockResolvedValue(makeMetrics({
-      collectedAt: t0,
-      databases: [{ name: 'TestDB', stateDesc: 'OFFLINE', recoveryModel: 'FULL', sizeMb: 100, logSizeMb: 10 }]
-    }))
+    vi.mocked(collectMetrics).mockResolvedValue(
+      makeMetrics({
+        collectedAt: t0,
+        databases: [
+          {
+            name: 'TestDB',
+            stateDesc: 'OFFLINE',
+            recoveryModel: 'FULL',
+            sizeMb: 100,
+            logSizeMb: 10
+          }
+        ]
+      })
+    )
 
     startWorker({ intervalSeconds: 60, servers: [makeServer()] })
     await drainJobCycle()
@@ -111,14 +135,34 @@ describe('dbOfflineTimestamps — enrichment', () => {
     vi.setSystemTime(t0)
 
     vi.mocked(collectMetrics)
-      .mockResolvedValueOnce(makeMetrics({
-        collectedAt: t0,
-        databases: [{ name: 'TestDB', stateDesc: 'OFFLINE', recoveryModel: 'FULL', sizeMb: 100, logSizeMb: 10 }]
-      }))
-      .mockResolvedValue(makeMetrics({
-        collectedAt: t1,
-        databases: [{ name: 'TestDB', stateDesc: 'OFFLINE', recoveryModel: 'FULL', sizeMb: 100, logSizeMb: 10 }]
-      }))
+      .mockResolvedValueOnce(
+        makeMetrics({
+          collectedAt: t0,
+          databases: [
+            {
+              name: 'TestDB',
+              stateDesc: 'OFFLINE',
+              recoveryModel: 'FULL',
+              sizeMb: 100,
+              logSizeMb: 10
+            }
+          ]
+        })
+      )
+      .mockResolvedValue(
+        makeMetrics({
+          collectedAt: t1,
+          databases: [
+            {
+              name: 'TestDB',
+              stateDesc: 'OFFLINE',
+              recoveryModel: 'FULL',
+              sizeMb: 100,
+              logSizeMb: 10
+            }
+          ]
+        })
+      )
 
     // activeServerId → priority 0 → interval 60s (not 300s)
     startWorker({ intervalSeconds: 60, servers: [makeServer()], activeServerId: SID })
@@ -140,14 +184,34 @@ describe('dbOfflineTimestamps — enrichment', () => {
     vi.setSystemTime(t0)
 
     vi.mocked(collectMetrics)
-      .mockResolvedValueOnce(makeMetrics({
-        collectedAt: t0,
-        databases: [{ name: 'TestDB', stateDesc: 'OFFLINE', recoveryModel: 'FULL', sizeMb: 100, logSizeMb: 10 }]
-      }))
-      .mockResolvedValue(makeMetrics({
-        collectedAt: t1,
-        databases: [{ name: 'TestDB', stateDesc: 'ONLINE', recoveryModel: 'FULL', sizeMb: 100, logSizeMb: 10 }]
-      }))
+      .mockResolvedValueOnce(
+        makeMetrics({
+          collectedAt: t0,
+          databases: [
+            {
+              name: 'TestDB',
+              stateDesc: 'OFFLINE',
+              recoveryModel: 'FULL',
+              sizeMb: 100,
+              logSizeMb: 10
+            }
+          ]
+        })
+      )
+      .mockResolvedValue(
+        makeMetrics({
+          collectedAt: t1,
+          databases: [
+            {
+              name: 'TestDB',
+              stateDesc: 'ONLINE',
+              recoveryModel: 'FULL',
+              sizeMb: 100,
+              logSizeMb: 10
+            }
+          ]
+        })
+      )
 
     // activeServerId → priority 0 → interval 60s (not 300s)
     startWorker({ intervalSeconds: 60, servers: [makeServer()], activeServerId: SID })
@@ -168,10 +232,20 @@ describe('dbOfflineTimestamps — enrichment', () => {
     const t0 = new Date('2025-01-01T10:00:00.000Z')
     vi.setSystemTime(t0)
 
-    vi.mocked(collectMetrics).mockResolvedValue(makeMetrics({
-      collectedAt: t0,
-      databases: [{ name: 'TestDB', stateDesc: 'OFFLINE', recoveryModel: 'FULL', sizeMb: 100, logSizeMb: 10 }]
-    }))
+    vi.mocked(collectMetrics).mockResolvedValue(
+      makeMetrics({
+        collectedAt: t0,
+        databases: [
+          {
+            name: 'TestDB',
+            stateDesc: 'OFFLINE',
+            recoveryModel: 'FULL',
+            sizeMb: 100,
+            logSizeMb: 10
+          }
+        ]
+      })
+    )
 
     startWorker({ intervalSeconds: 60, servers: [makeServer()] })
     await drainJobCycle()
@@ -188,10 +262,20 @@ describe('dbOfflineTimestamps — enrichment', () => {
     const t0 = new Date('2025-01-01T10:00:00.000Z')
     vi.setSystemTime(t0)
 
-    vi.mocked(collectMetrics).mockResolvedValue(makeMetrics({
-      collectedAt: t0,
-      databases: [{ name: 'TestDB', stateDesc: 'OFFLINE', recoveryModel: 'FULL', sizeMb: 100, logSizeMb: 10 }]
-    }))
+    vi.mocked(collectMetrics).mockResolvedValue(
+      makeMetrics({
+        collectedAt: t0,
+        databases: [
+          {
+            name: 'TestDB',
+            stateDesc: 'OFFLINE',
+            recoveryModel: 'FULL',
+            sizeMb: 100,
+            logSizeMb: 10
+          }
+        ]
+      })
+    )
 
     startWorker({ intervalSeconds: 60, servers: [makeServer()] })
     await drainJobCycle()
@@ -203,5 +287,4 @@ describe('dbOfflineTimestamps — enrichment', () => {
 
     expect(__getDbOfflineTimestampsForTest(SID)).toBeUndefined()
   })
-
 })

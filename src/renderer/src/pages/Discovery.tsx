@@ -97,9 +97,11 @@ export function Discovery(): React.JSX.Element {
       hostingType: data.hostingType
     })
     // Use server UUID for group/alias keys; fall back to ip:port key for group (still keyed that way)
-    const newServer = result?.server ?? useServersStore.getState().servers.find(
-      (s) => (s.host === data.ip || s.ip === data.ip) && s.port === data.port
-    )
+    const newServer =
+      result?.server ??
+      useServersStore
+        .getState()
+        .servers.find((s) => (s.host === data.ip || s.ip === data.ip) && s.port === data.port)
     const sid = `${data.ip}:${data.port}`
     if (data.groupId) setServerGroup(sid, data.groupId)
     if (data.alias?.trim() && newServer) setServerAlias(newServer.id, data.alias.trim())
@@ -131,7 +133,10 @@ export function Discovery(): React.JSX.Element {
       width: 190,
       sortable: false,
       renderCell: (params) => (
-        <ServerStatusChip reachable={params.row.reachable} responseTimeMs={params.row.responseTimeMs} />
+        <ServerStatusChip
+          reachable={params.row.reachable}
+          responseTimeMs={params.row.responseTimeMs}
+        />
       )
     },
     {
@@ -189,13 +194,18 @@ export function Discovery(): React.JSX.Element {
     <Box sx={{ p: 3, height: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
       {/* Banner warning named instances */}
       <Alert severity="warning">
-        <strong>Named instances on dynamic ports are not auto-discoverable.</strong> If you know
-        the IP and static port, add them manually using the button below.
+        <strong>Named instances on dynamic ports are not auto-discoverable.</strong> If you know the
+        IP and static port, add them manually using the button below.
       </Alert>
 
       {/* Form di scan */}
       <Paper variant="outlined" sx={{ p: 2 }}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="flex-start" flexWrap="wrap">
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={2}
+          alignItems="flex-start"
+          flexWrap="wrap"
+        >
           <TextField
             label="Subnet CIDR"
             value={cidr}
@@ -224,11 +234,7 @@ export function Discovery(): React.JSX.Element {
             sx={{ width: 130 }}
           />
           <Stack direction="row" spacing={1} sx={{ pt: 0.5 }}>
-            <Button
-              variant="contained"
-              onClick={handleScan}
-              disabled={isScanning}
-            >
+            <Button variant="contained" onClick={handleScan} disabled={isScanning}>
               {isScanning ? 'Scanning...' : 'Start Scan'}
             </Button>
             <Button variant="outlined" onClick={openDialogManual} disabled={isScanning}>
@@ -244,7 +250,10 @@ export function Discovery(): React.JSX.Element {
           <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
             {progressLabel}
           </Typography>
-          <LinearProgress variant={progress ? 'determinate' : 'indeterminate'} value={progressPercent} />
+          <LinearProgress
+            variant={progress ? 'determinate' : 'indeterminate'}
+            value={progressPercent}
+          />
         </Box>
       )}
 
@@ -267,7 +276,9 @@ export function Discovery(): React.JSX.Element {
           pageSizeOptions={[25, 50, 100]}
           initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
           localeText={{
-            noRowsLabel: isScanning ? 'Scan in progress...' : 'No servers found. Start a scan or add manually.'
+            noRowsLabel: isScanning
+              ? 'Scan in progress...'
+              : 'No servers found. Start a scan or add manually.'
           }}
           sx={{ border: 0, '& .row-already-saved': { opacity: 0.45 } }}
         />

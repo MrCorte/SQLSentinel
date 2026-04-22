@@ -10,12 +10,14 @@ description: Comprehensive cost tracking and optimization for production Claude 
 Cost optimization is critical for production Claude deployments. A single inefficiently-designed agent can cost hundreds or thousands of dollars monthly, while optimized implementations cost 10-90% less for identical functionality. This skill provides a comprehensive workflow for measuring, analyzing, and optimizing token costs.
 
 **Why This Matters**:
+
 - Token costs are your largest Claude expense
 - Small improvements compound over millions of API calls
 - Context optimization alone saves 60-90% on long conversations
 - Model + effort selection can reduce costs 5-10x for specific tasks
 
 **Key Savings Available**:
+
 - Effort parameter: 20-70% token reduction (same model, different reasoning depth)
 - Context editing: 60-90% reduction on long conversations
 - Tool optimization: 37-85% reduction with advanced tool patterns
@@ -42,6 +44,7 @@ Use claude-cost-optimization when you need to:
 Establish your current cost baseline before optimization.
 
 **What to Measure**:
+
 ```
 - Total monthly tokens (input + output)
 - Cost breakdown by model
@@ -51,6 +54,7 @@ Establish your current cost baseline before optimization.
 ```
 
 **How to Measure** (using Admin API):
+
 ```python
 from anthropic import Anthropic
 
@@ -75,6 +79,7 @@ print(f"Monthly cost: ${total_cost:.2f}")
 Understand where your costs actually come from.
 
 **Identify Expensive Patterns**:
+
 1. Which operations use the most tokens?
 2. Which models cost the most?
 3. Are you using caching effectively?
@@ -82,6 +87,7 @@ Understand where your costs actually come from.
 5. Are you making redundant API calls?
 
 **Create Cost Breakdown** (example):
+
 ```
 Agent reasoning loops: 45% of costs
 File analysis: 25% of costs
@@ -91,6 +97,7 @@ Other: 5% of costs
 ```
 
 **Key Metrics to Calculate**:
+
 - Cost per transaction
 - Tokens per transaction
 - Cost per business outcome
@@ -101,26 +108,31 @@ Other: 5% of costs
 Apply targeted optimizations to your biggest cost drivers.
 
 **Effort Parameter** (if using Opus 4.5):
+
 - Complex reasoning: high effort (default)
 - Balanced tasks: medium effort (20-40% savings)
 - Simple classification: low effort (50-70% savings)
 
 **Context Editing** (for long conversations):
+
 - Automatic tool result clearing (saves 60-90%)
 - Client-side compaction (saves automatic summarization)
 - Memory tool integration (enables infinite conversations)
 
 **Tool Optimization** (for large tool sets):
+
 - Tool search with deferred loading (supports 10K+ tools)
 - Programmatic calling (37% token reduction on data processing)
 - Tool examples (improve accuracy 72% → 90%)
 
 **Prompt Caching** (for repeated content):
+
 - Cache system prompts (90% cost reduction on cached portion)
 - Cache repeated files/documents
 - Cache tool definitions
 
 **Model Selection**:
+
 - Opus 4.5: $5/M input, $25/M output (complex tasks)
 - Sonnet 4.5: (see references for pricing)
 - Haiku 4.5: (see references for pricing)
@@ -130,6 +142,7 @@ Apply targeted optimizations to your biggest cost drivers.
 Monitor cost reductions and efficiency gains after optimizations.
 
 **Metrics to Track**:
+
 - Cost per transaction (before vs after)
 - Total token reduction percentage
 - Quality impact (did results improve or worsen?)
@@ -138,6 +151,7 @@ Monitor cost reductions and efficiency gains after optimizations.
 **Measurement Period**: Track for 1-2 weeks per optimization to see impact
 
 **Example Impact**:
+
 ```
 Optimization: Client-side compaction on long research tasks
 Before: 450K tokens/request, $11.25 cost
@@ -150,6 +164,7 @@ Savings: 60% cost reduction
 Calculate business value of your optimizations.
 
 **ROI Calculation**:
+
 ```
 Monthly Savings = (Daily Cost × 30) - (Optimized Cost × 30)
 Implementation Hours = Time to implement optimizations
@@ -158,6 +173,7 @@ Payback Period = (Implementation Hours × Cost per Hour) / Monthly Savings
 ```
 
 **ROI Example**:
+
 ```
 Monthly savings: $500/month
 Implementation: 8 hours
@@ -268,22 +284,22 @@ print(f"ROI: {result['roi_percentage']:.0f}%")
 
 **Current Claude Model Pricing** (as of November 2025):
 
-| Model | Input | Output | Best For |
-|-------|-------|--------|----------|
-| Opus 4.5 | $5/M | $25/M | Complex reasoning, agents, coding |
-| Sonnet 4.5 | $3/M | $15/M | Balanced performance/cost |
-| Haiku 4.5 | $0.80/M | $4/M | Simple tasks, high volume |
+| Model      | Input   | Output | Best For                          |
+| ---------- | ------- | ------ | --------------------------------- |
+| Opus 4.5   | $5/M    | $25/M  | Complex reasoning, agents, coding |
+| Sonnet 4.5 | $3/M    | $15/M  | Balanced performance/cost         |
+| Haiku 4.5  | $0.80/M | $4/M   | Simple tasks, high volume         |
 
 **Cost Impact of Optimization Techniques**:
 
-| Technique | Savings | Implementation Difficulty |
-|-----------|---------|--------------------------|
-| Effort parameter (medium) | 20-40% | Easy (add 2 lines) |
-| Effort parameter (low) | 50-70% | Easy (add 2 lines) |
-| Context editing | 60-90% | Medium (requires setup) |
-| Tool optimization | 37-85% | Medium (architecture change) |
-| Prompt caching | 90% | Hard (infrastructure) |
-| Model selection | 50-75% | Hard (architecture change) |
+| Technique                 | Savings | Implementation Difficulty    |
+| ------------------------- | ------- | ---------------------------- |
+| Effort parameter (medium) | 20-40%  | Easy (add 2 lines)           |
+| Effort parameter (low)    | 50-70%  | Easy (add 2 lines)           |
+| Context editing           | 60-90%  | Medium (requires setup)      |
+| Tool optimization         | 37-85%  | Medium (architecture change) |
+| Prompt caching            | 90%     | Hard (infrastructure)        |
+| Model selection           | 50-75%  | Hard (architecture change)   |
 
 **Example Cost Comparison** (1M transactions/month):
 
@@ -334,12 +350,14 @@ START: Have high costs?
 ### Scenario 1: Reducing Agent Costs 50%
 
 **Before**:
+
 - Opus 4.5 with high effort
 - Long reasoning loops
 - All 20+ tools always loaded
 - Monthly cost: $2,000
 
 **Optimizations** (in order of impact):
+
 1. **Effort Parameter**: Switch to medium effort → 30% savings ($600)
 2. **Tool Optimization**: Use tool search + deferred loading → 20% savings ($400)
 3. **Context Editing**: Clear old tool results → 10% savings ($200)
@@ -350,11 +368,13 @@ START: Have high costs?
 ### Scenario 2: Reducing Classification Costs 80%
 
 **Before**:
+
 - Opus 4.5 high effort (overkill for classification)
 - Simple yes/no decisions
 - Monthly cost: $1,000
 
 **Optimizations**:
+
 1. **Model Selection**: Switch to Haiku 4.5 → 80% savings ($800)
 2. **Effort Parameter**: Use low effort → Additional 20% on Haiku
 3. **Prompt Caching**: Cache classification rules → 90% savings on cache

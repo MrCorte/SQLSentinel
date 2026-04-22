@@ -86,7 +86,7 @@ function stmts() {
       WHERE server_id = ?
       ORDER BY collected_at DESC
       LIMIT ?
-    `),
+    `)
   }
   return _stmts
 }
@@ -97,7 +97,12 @@ function stmts() {
  * Saves a new metrics snapshot for the specified server.
  */
 export function save(serverId: string, metrics: ServerMetrics): void {
-  stmts().insert.run(randomUUID(), serverId, metrics.collectedAt.toISOString(), JSON.stringify(metrics))
+  stmts().insert.run(
+    randomUUID(),
+    serverId,
+    metrics.collectedAt.toISOString(),
+    JSON.stringify(metrics)
+  )
 }
 
 /**
@@ -151,7 +156,8 @@ export function findLastNBulk(serverIds: string[], n: number): Record<string, Se
   if (serverIds.length === 0) return {}
   const placeholders = serverIds.map(() => '?').join(',')
   const rows = getDb()
-    .prepare<unknown[], SnapshotRow>(`
+    .prepare<unknown[], SnapshotRow>(
+      `
       SELECT id, server_id, collected_at, metrics_json
       FROM (
         SELECT *,
@@ -161,7 +167,8 @@ export function findLastNBulk(serverIds: string[], n: number): Record<string, Se
       ) AS ranked
       WHERE ranked.rn <= ?
       ORDER BY server_id, collected_at ASC
-    `)
+    `
+    )
     .all(...serverIds, n)
 
   const result: Record<string, ServerMetrics[]> = {}

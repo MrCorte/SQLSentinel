@@ -14,7 +14,7 @@ const AUTH_EXEMPT_CHANNELS = new Set<string>([
   IpcChannel.AUTH_LOGIN,
   IpcChannel.AUTH_LOGOUT,
   IpcChannel.AUTH_CHECK,
-  IpcChannel.SETTINGS_GET,
+  IpcChannel.SETTINGS_GET
 ])
 
 // Canali permessi anche quando must_change_password=1 (utente autenticato ma
@@ -25,7 +25,7 @@ const MUST_CHANGE_PW_ALLOWED = new Set<string>([
   IpcChannel.AUTH_LOGOUT,
   IpcChannel.AUTH_CHECK,
   IpcChannel.AUTH_CHANGE_PASSWORD,
-  IpcChannel.SETTINGS_GET,
+  IpcChannel.SETTINGS_GET
 ])
 
 /**

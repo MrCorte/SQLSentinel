@@ -8,12 +8,12 @@
 
 ## Legend
 
-| Symbol | Severity | Definition |
-|--------|----------|------------|
-| 🔴 | CRITICAL | Release blocker — ships broken UX or data loss |
-| 🟠 | MEDIUM | Fix before release — visible to users or silent failures |
-| 🟡 | LOW | Fix next release — minor UX or code quality |
-| 🔵 | INFO | Future backlog — architectural improvement |
+| Symbol | Severity | Definition                                               |
+| ------ | -------- | -------------------------------------------------------- |
+| 🔴     | CRITICAL | Release blocker — ships broken UX or data loss           |
+| 🟠     | MEDIUM   | Fix before release — visible to users or silent failures |
+| 🟡     | LOW      | Fix next release — minor UX or code quality              |
+| 🔵     | INFO     | Future backlog — architectural improvement               |
 
 ---
 
@@ -23,17 +23,17 @@
 
 All alert body strings sent to AlertsFeed are in Italian. These are user-visible.
 
-| Line | Current (Italian) | Should be |
-|------|-------------------|-----------|
-| 225 | `'CPU al ${cpu}% (soglia: 90%)'` | `'CPU at ${cpu}% (threshold: 90%)'` |
-| 227 | `'CPU al ${cpu}% (soglia: 70%)'` | `'CPU at ${cpu}% (threshold: 70%)'` |
-| 234 | `'${n} sessione/i bloccata/e'` | `'${n} blocking session(s)'` |
-| 241 | (blocking session detail) | Translate |
-| 253 | `'Backup full scaduto/assente: ${dbs}'` | `'Full backup overdue/missing: ${dbs}'` |
-| 264 | (log backup variant) | Translate |
-| 266 | `'Volume spazio critico: ${desc}'` | `'Volume space critical: ${desc}'` |
-| 272 | `'Volume spazio in esaurimento: ${desc}'` | `'Volume space running low: ${desc}'` |
-| 282 | `'Autogrowth disabilitato: ${desc}'` | `'Autogrowth disabled: ${desc}'` |
+| Line | Current (Italian)                         | Should be                               |
+| ---- | ----------------------------------------- | --------------------------------------- |
+| 225  | `'CPU al ${cpu}% (soglia: 90%)'`          | `'CPU at ${cpu}% (threshold: 90%)'`     |
+| 227  | `'CPU al ${cpu}% (soglia: 70%)'`          | `'CPU at ${cpu}% (threshold: 70%)'`     |
+| 234  | `'${n} sessione/i bloccata/e'`            | `'${n} blocking session(s)'`            |
+| 241  | (blocking session detail)                 | Translate                               |
+| 253  | `'Backup full scaduto/assente: ${dbs}'`   | `'Full backup overdue/missing: ${dbs}'` |
+| 264  | (log backup variant)                      | Translate                               |
+| 266  | `'Volume spazio critico: ${desc}'`        | `'Volume space critical: ${desc}'`      |
+| 272  | `'Volume spazio in esaurimento: ${desc}'` | `'Volume space running low: ${desc}'`   |
+| 282  | `'Autogrowth disabilitato: ${desc}'`      | `'Autogrowth disabled: ${desc}'`        |
 
 **File:** `src/main/metricsWorker.ts`
 
@@ -43,13 +43,13 @@ All alert body strings sent to AlertsFeed are in Italian. These are user-visible
 
 These strings are returned to the renderer and displayed to the user during password change.
 
-| Line | Current (Italian) | Should be |
-|------|-------------------|-----------|
-| 177 | `'Utente non trovato'` | `'User not found'` |
-| 180 | `'Password attuale non corretta'` | `'Current password incorrect'` |
-| 182 | `'Minimo 8 caratteri'` | `'Minimum 8 characters'` |
-| 183 | `'Almeno una lettera maiuscola'` | `'At least one uppercase letter'` |
-| 184 | `'Almeno un numero'` | `'At least one number'` |
+| Line | Current (Italian)                 | Should be                         |
+| ---- | --------------------------------- | --------------------------------- |
+| 177  | `'Utente non trovato'`            | `'User not found'`                |
+| 180  | `'Password attuale non corretta'` | `'Current password incorrect'`    |
+| 182  | `'Minimo 8 caratteri'`            | `'Minimum 8 characters'`          |
+| 183  | `'Almeno una lettera maiuscola'`  | `'At least one uppercase letter'` |
+| 184  | `'Almeno un numero'`              | `'At least one number'`           |
 
 **File:** `src/main/authService.ts`
 
@@ -75,7 +75,7 @@ When a server is removed, neither `metricsStore` nor `alertsStore` cleans up its
 **File:** `src/main/ai/langGraphAgent.ts` line ~283
 
 ```typescript
-const last = result.messages[result.messages.length - 1]  // crashes if length === 0
+const last = result.messages[result.messages.length - 1] // crashes if length === 0
 ```
 
 If `agent.invoke()` returns an empty `messages` array (network error, Ollama timeout, model refusal), this throws `TypeError: Cannot read properties of undefined`. The outer catch in `langGraphAsk()` may or may not be present.
@@ -91,22 +91,22 @@ If `agent.invoke()` returns an empty `messages` array (network error, Ollama tim
 Several handlers propagate unhandled exceptions. In Electron, an uncaught throw inside `ipcMain.handle()` surfaces as a rejection on the renderer side — but since these handlers use the `handle()` wrapper, the behavior depends on whether `handleWrapper` catches.  
 The handlers below have **no local try/catch** and throw synchronously or call functions that can throw:
 
-| File | Channel | Line | Risk |
-|------|---------|------|------|
-| `servers.ipc.ts` | `GET_SERVERS` | ~75 | `listServersLegacy()` could throw |
-| `servers.ipc.ts` | `REMOVE_SERVER` | ~85 | `removeServer()` could throw, no error return |
-| `alarms.ipc.ts` | `ALERTS_GET_ALL` | ~13 | `getAlerts()` could throw |
-| `alarms.ipc.ts` | `ALERTS_ACKNOWLEDGE` | ~24 | `acknowledgeAlert()` could throw |
+| File             | Channel              | Line | Risk                                          |
+| ---------------- | -------------------- | ---- | --------------------------------------------- |
+| `servers.ipc.ts` | `GET_SERVERS`        | ~75  | `listServersLegacy()` could throw             |
+| `servers.ipc.ts` | `REMOVE_SERVER`      | ~85  | `removeServer()` could throw, no error return |
+| `alarms.ipc.ts`  | `ALERTS_GET_ALL`     | ~13  | `getAlerts()` could throw                     |
+| `alarms.ipc.ts`  | `ALERTS_ACKNOWLEDGE` | ~24  | `acknowledgeAlert()` could throw              |
 
 ---
 
 ### M2 · Italian strings in InventoryDbTable tooltips
 
-| Line | Current (Italian) | Should be |
-|------|-------------------|-----------|
-| ~176 | `"Sola lettura"` (tooltip) | `"Read-only"` |
+| Line | Current (Italian)                   | Should be                          |
+| ---- | ----------------------------------- | ---------------------------------- |
+| ~176 | `"Sola lettura"` (tooltip)          | `"Read-only"`                      |
 | ~245 | `'TDE attivo'` / `'TDE non attivo'` | `'TDE enabled'` / `'TDE disabled'` |
-| 313 | `toLocaleDateString('it-IT')` | `toLocaleDateString('en-US')` |
+| 313  | `toLocaleDateString('it-IT')`       | `toLocaleDateString('en-US')`      |
 
 **File:** `src/renderer/src/components/features/inventory/InventoryDbTable.tsx`
 
@@ -114,12 +114,12 @@ The handlers below have **no local try/catch** and throw synchronously or call f
 
 ### M3 · Italian strings in SidebarTree
 
-| Line | Current (Italian) | Should be |
-|------|-------------------|-----------|
-| ~339 | `"istanze"` (instances label) | `"instances"` (also needs singular/plural) |
-| ~448 | `'tentativo fallito'` / `'tentativi falliti'` | `'failed attempt'` / `'failed attempts'` |
-| ~448 | `'prossimo retry'` | `'next retry'` |
-| ~448 | `toLocaleTimeString('it-IT')` | `toLocaleTimeString('en-US')` |
+| Line | Current (Italian)                             | Should be                                  |
+| ---- | --------------------------------------------- | ------------------------------------------ |
+| ~339 | `"istanze"` (instances label)                 | `"instances"` (also needs singular/plural) |
+| ~448 | `'tentativo fallito'` / `'tentativi falliti'` | `'failed attempt'` / `'failed attempts'`   |
+| ~448 | `'prossimo retry'`                            | `'next retry'`                             |
+| ~448 | `toLocaleTimeString('it-IT')`                 | `toLocaleTimeString('en-US')`              |
 
 **File:** `src/renderer/src/components/features/sidebar/SidebarTree.tsx`
 
@@ -130,7 +130,7 @@ The handlers below have **no local try/catch** and throw synchronously or call f
 **File:** `src/main/ipc/handlers/alarms.ipc.ts` line ~25
 
 ```typescript
-error: `Alert ${req.alertId} non trovato`   // Italian: "not found"
+error: `Alert ${req.alertId} non trovato` // Italian: "not found"
 ```
 
 This error can reach the renderer and be displayed to users.
@@ -141,12 +141,12 @@ This error can reach the renderer and be displayed to users.
 
 The tool descriptions are sent to the LLM as part of the system prompt. They should be in English both for consistency and because the LLM may use them when generating responses visible to users.
 
-| Line | Issue |
-|------|-------|
-| ~42 | Tool description `'Metriche correnti di tutti i server monitorati...'` |
-| ~68 | Tool description `'Alert attivi (CRITICAL e WARNING)...'` |
-| ~178 | Tool description `'Restituisce una query T-SQL diagnostica...'` |
-| ~180 | Schema description with Italian problem-type keywords |
+| Line | Issue                                                                  |
+| ---- | ---------------------------------------------------------------------- |
+| ~42  | Tool description `'Metriche correnti di tutti i server monitorati...'` |
+| ~68  | Tool description `'Alert attivi (CRITICAL e WARNING)...'`              |
+| ~178 | Tool description `'Restituisce una query T-SQL diagnostica...'`        |
+| ~180 | Schema description with Italian problem-type keywords                  |
 
 **Related:** The `TSQL_MAP` keys (`cpu_alta`, `query_lente`, `connessioni`, etc.) are Italian. If the LLM selects these keys based on English input, matching may fail depending on the model used.
 
@@ -262,30 +262,30 @@ Internal developer-facing error message. Tracked here for completeness.
 
 All remaining Italian strings not yet fixed, ordered by file:
 
-| File | Lines | Strings |
-|------|-------|---------|
-| `src/main/metricsWorker.ts` | 225,227,234,241,253,264,266,272,282 | 9 alert messages (user-facing) |
-| `src/main/authService.ts` | 177,180,182,183,184 | 5 validation messages (user-facing) |
-| `src/main/ai/langGraphAgent.ts` | ~42,~68,~178,~180 | 4 tool descriptions + TSQL_MAP keys |
-| `src/main/ipc/handlers/alarms.ipc.ts` | ~25 | 1 error message (user-facing) |
-| `src/main/store/database.ts` | ~125 | 1 error message (dev-facing) |
-| `src/main/services/ServerService.ts` | ~123 | 1 log message (dev-facing) |
-| `src/renderer/src/components/features/inventory/InventoryDbTable.tsx` | ~176,~245 | 2 tooltips (user-facing) + `it-IT` locale at line 313 |
-| `src/renderer/src/components/features/sidebar/SidebarTree.tsx` | ~339,~448 | 3 strings (user-facing) + `it-IT` locale at line ~448 |
+| File                                                                  | Lines                               | Strings                                               |
+| --------------------------------------------------------------------- | ----------------------------------- | ----------------------------------------------------- |
+| `src/main/metricsWorker.ts`                                           | 225,227,234,241,253,264,266,272,282 | 9 alert messages (user-facing)                        |
+| `src/main/authService.ts`                                             | 177,180,182,183,184                 | 5 validation messages (user-facing)                   |
+| `src/main/ai/langGraphAgent.ts`                                       | ~42,~68,~178,~180                   | 4 tool descriptions + TSQL_MAP keys                   |
+| `src/main/ipc/handlers/alarms.ipc.ts`                                 | ~25                                 | 1 error message (user-facing)                         |
+| `src/main/store/database.ts`                                          | ~125                                | 1 error message (dev-facing)                          |
+| `src/main/services/ServerService.ts`                                  | ~123                                | 1 log message (dev-facing)                            |
+| `src/renderer/src/components/features/inventory/InventoryDbTable.tsx` | ~176,~245                           | 2 tooltips (user-facing) + `it-IT` locale at line 313 |
+| `src/renderer/src/components/features/sidebar/SidebarTree.tsx`        | ~339,~448                           | 3 strings (user-facing) + `it-IT` locale at line ~448 |
 
 ---
 
 ## Security Summary
 
-| Item | Status |
-|------|--------|
-| All SQL queries parameterized | ✅ |
-| `contextIsolation: true`, `nodeIntegration: false` | ✅ |
-| `sandbox: false` | ⚠️ Required (main process needs Node — documented in CLAUDE.md) |
-| Credentials encrypted via safeStorage (DPAPI/Keychain) | ✅ |
-| `stripCredentials()` before IPC to renderer | ✅ |
-| IPC auth enforcement via `handleWrapper` | ✅ |
-| Session timeout enforced (8h) | ✅ |
+| Item                                                   | Status                                                          |
+| ------------------------------------------------------ | --------------------------------------------------------------- |
+| All SQL queries parameterized                          | ✅                                                              |
+| `contextIsolation: true`, `nodeIntegration: false`     | ✅                                                              |
+| `sandbox: false`                                       | ⚠️ Required (main process needs Node — documented in CLAUDE.md) |
+| Credentials encrypted via safeStorage (DPAPI/Keychain) | ✅                                                              |
+| `stripCredentials()` before IPC to renderer            | ✅                                                              |
+| IPC auth enforcement via `handleWrapper`               | ✅                                                              |
+| Session timeout enforced (8h)                          | ✅                                                              |
 
 No SQL injection, XSS, or credential-leak vulnerabilities found.
 
@@ -300,11 +300,11 @@ No SQL injection, XSS, or credential-leak vulnerabilities found.
 
 ## Summary by Severity
 
-| Severity | Count |
-|----------|-------|
-| 🔴 CRITICAL | 4 |
-| 🟠 MEDIUM | 7 |
-| 🟡 LOW | 9 |
-| 🔵 INFO | 6 |
+| Severity    | Count |
+| ----------- | ----- |
+| 🔴 CRITICAL | 4     |
+| 🟠 MEDIUM   | 7     |
+| 🟡 LOW      | 9     |
+| 🔵 INFO     | 6     |
 
 **Recommended action before release:** Fix all 🔴 CRITICAL and 🟠 MEDIUM items. The 🟡 LOW items are acceptable for this release with no user-blocking impact.

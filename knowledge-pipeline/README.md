@@ -27,11 +27,11 @@ pip install -r requirements.txt
 
 Open `config.py` and set the three paths for your environment:
 
-| Variable    | Default                        | Purpose                              |
-|-------------|--------------------------------|--------------------------------------|
-| `PDF_DIR`   | `C:\DBA\pdfs`                  | Folder containing source PDF files   |
-| `VAULT_DIR` | `C:\DBA\vault\wiki\sources`    | Obsidian vault subfolder for .md output |
-| `DB_PATH`   | `C:\DBA\knowledge_base.db`     | SQLite database read by SQL Sentinel |
+| Variable    | Default                     | Purpose                                 |
+| ----------- | --------------------------- | --------------------------------------- |
+| `PDF_DIR`   | `C:\DBA\pdfs`               | Folder containing source PDF files      |
+| `VAULT_DIR` | `C:\DBA\vault\wiki\sources` | Obsidian vault subfolder for .md output |
+| `DB_PATH`   | `C:\DBA\knowledge_base.db`  | SQLite database read by SQL Sentinel    |
 
 You can also set these via environment variables `KB_PDF_DIR`, `KB_VAULT_DIR`,
 and `KB_DB_PATH` without touching the file.
@@ -98,13 +98,13 @@ python query_test.py "availability group" --db "C:\custom\path\kb.db"
 
 ### `knowledge_fts` (FTS5 virtual table)
 
-| Column        | Description                              |
-|---------------|------------------------------------------|
-| `title`       | Document title                           |
-| `content`     | Full text (wiki-links stripped)          |
-| `tags`        | Comma-separated Obsidian tags            |
-| `type`        | Document type (`source`, `runbook`, …)  |
-| `source_file` | Original PDF path                        |
+| Column        | Description                            |
+| ------------- | -------------------------------------- |
+| `title`       | Document title                         |
+| `content`     | Full text (wiki-links stripped)        |
+| `tags`        | Comma-separated Obsidian tags          |
+| `type`        | Document type (`source`, `runbook`, …) |
+| `source_file` | Original PDF path                      |
 
 ### `knowledge_meta` (regular table)
 

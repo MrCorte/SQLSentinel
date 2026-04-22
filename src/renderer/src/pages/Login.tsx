@@ -12,7 +12,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions,
+  DialogActions
 } from '@mui/material'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
@@ -59,7 +59,12 @@ function ChangePasswordDialog({ userId, onDone }: ChangePasswordDialogProps): Re
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           For security reasons you must set a new password before logging in.
         </Typography>
-        <Box component="form" id="change-pwd-form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Box
+          component="form"
+          id="change-pwd-form"
+          onSubmit={handleSubmit}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
+        >
           <TextField
             label="Current password"
             type="password"
@@ -158,7 +163,7 @@ export function LoginPage({ onLogin }: LoginPageProps): React.JSX.Element {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        bgcolor: 'background.default',
+        bgcolor: 'background.default'
       }}
     >
       <Paper sx={{ p: 4, width: 380, borderRadius: 2 }} elevation={4}>
@@ -176,7 +181,11 @@ export function LoginPage({ onLogin }: LoginPageProps): React.JSX.Element {
           </Typography>
         </Box>
 
-        <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Box
+          component="form"
+          onSubmit={handleSubmit}
+          sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
+        >
           <TextField
             label="Username"
             value={username}
@@ -210,11 +219,15 @@ export function LoginPage({ onLogin }: LoginPageProps): React.JSX.Element {
                     )}
                   </IconButton>
                 </InputAdornment>
-              ),
+              )
             }}
           />
 
-          {error && <Alert severity="error" sx={{ py: 0 }}>{error}</Alert>}
+          {error && (
+            <Alert severity="error" sx={{ py: 0 }}>
+              {error}
+            </Alert>
+          )}
 
           <Button
             type="submit"

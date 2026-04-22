@@ -26,7 +26,13 @@ import { useIpcEvent } from './hooks/useIpcEvent'
 import { buildTheme } from './styles/theme'
 import { ThemeContext, type ThemeMode } from './context/ThemeContext'
 import { AuthContext } from './context/AuthContext'
-import type { AuthSession, ServerHealthPayload, StoredServer, ServerUnreachableEvent, Alert } from '../../preload/index'
+import type {
+  AuthSession,
+  ServerHealthPayload,
+  StoredServer,
+  ServerUnreachableEvent,
+  Alert
+} from '../../preload/index'
 import { createLogger } from './utils/logger'
 import { migrateAliasKeys } from './store/groupsStore'
 
@@ -45,7 +51,12 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
   useMockData()
 
   const { setRetentionMinutes, seedHistory } = useWorker()
-  const { alerts, setAlerts, addAlert, acknowledgeAlert: acknowledgeAlertInStore } = useAlertsStore()
+  const {
+    alerts,
+    setAlerts,
+    addAlert,
+    acknowledgeAlert: acknowledgeAlertInStore
+  } = useAlertsStore()
 
   // Load persisted servers on mount — runs in both real and mock mode so that
   // servers added manually while VITE_USE_MOCK=true are preserved across restarts
@@ -191,10 +202,13 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
       .catch((err) => log.error('getAlerts failed:', err))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleAlertNew = useCallback((...args: unknown[]) => {
-    const alert = args[0] as Alert
-    addAlert(alert)
-  }, [addAlert])
+  const handleAlertNew = useCallback(
+    (...args: unknown[]) => {
+      const alert = args[0] as Alert
+      addAlert(alert)
+    },
+    [addAlert]
+  )
 
   useIpcEvent(window.sqlSentinel.onAlertNew, handleAlertNew)
 
@@ -234,7 +248,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
           backgroundImage: (theme) =>
             theme.palette.mode === 'dark'
               ? 'linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #162032 100%)'
-              : 'linear-gradient(135deg, #ffffff 0%, #f0f6ff 100%)',
+              : 'linear-gradient(135deg, #ffffff 0%, #f0f6ff 100%)'
         }}
       >
         {/* Logo / product name */}
@@ -251,7 +265,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
             mr: 2,
             whiteSpace: 'nowrap',
             cursor: 'pointer',
-            userSelect: 'none',
+            userSelect: 'none'
           }}
         >
           SQL Sentinel
@@ -267,7 +281,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
             '& .MuiTabs-indicator': {
               backgroundColor: tokens.color.primary,
               height: 3,
-              borderRadius: '3px 3px 0 0',
+              borderRadius: '3px 3px 0 0'
             }
           }}
         >
@@ -407,8 +421,8 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
 
 function App(): React.JSX.Element {
   const [themeMode, setThemeModeState] = useState<ThemeMode>('system')
-  const [systemDark, setSystemDark] = useState(() =>
-    window.matchMedia('(prefers-color-scheme: dark)').matches
+  const [systemDark, setSystemDark] = useState(
+    () => window.matchMedia('(prefers-color-scheme: dark)').matches
   )
   const [session, setSession] = useState<AuthSession | null>(null)
   const [authChecking, setAuthChecking] = useState(true)

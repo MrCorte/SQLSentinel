@@ -10,7 +10,7 @@ vi.mock('nodemailer', () => ({
 // --- Mock emailSettings store ---
 const mockGetEmailSettings = vi.fn()
 vi.mock('../store/emailSettings', () => ({
-  getEmailSettings: mockGetEmailSettings,
+  getEmailSettings: mockGetEmailSettings
 }))
 
 // --- Default settings helper ---
@@ -23,7 +23,7 @@ function makeSettings(overrides: Record<string, unknown> = {}) {
     smtpPassword: 'pass',
     smtpTls: true,
     emailRecipients: ['dest@example.com'],
-    ...overrides,
+    ...overrides
   }
 }
 
@@ -35,7 +35,7 @@ const testAlert = {
   severity: 'CRITICAL' as const,
   message: 'CPU al 95%',
   detectedAt: new Date('2026-03-24T10:00:00Z'),
-  acknowledgedAt: null,
+  acknowledgedAt: null
 }
 
 describe('sendAlertEmail', () => {

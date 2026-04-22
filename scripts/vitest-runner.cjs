@@ -9,7 +9,9 @@ const fs = require('fs')
 const vitestMjs = path.join(path.dirname(require.resolve('vitest')), 'vitest.mjs')
 
 // Convert Windows path to POSIX path for git bash
-const vitestPosix = vitestMjs.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_, d) => '/' + d.toLowerCase())
+const vitestPosix = vitestMjs
+  .replace(/\\/g, '/')
+  .replace(/^([A-Za-z]):/, (_, d) => '/' + d.toLowerCase())
 const extraArgs = process.argv.slice(2).join(' ')
 const bashCmd = `node --experimental-vm-modules "${vitestPosix}" ${extraArgs}`
 
@@ -18,9 +20,9 @@ const bashCandidates = [
   process.env.BASH,
   'C:\\Program Files\\Git\\bin\\bash.exe',
   'C:\\Program Files\\Git\\usr\\bin\\bash.exe',
-  '/usr/bin/bash',
+  '/usr/bin/bash'
 ]
-const bashPath = bashCandidates.find(p => p && fs.existsSync(p)) || 'bash'
+const bashPath = bashCandidates.find((p) => p && fs.existsSync(p)) || 'bash'
 
 const proc = spawn(bashPath, ['-c', bashCmd], { stdio: 'inherit' })
 proc.on('close', (code) => process.exit(code ?? 0))

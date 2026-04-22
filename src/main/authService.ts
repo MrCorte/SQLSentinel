@@ -71,11 +71,13 @@ function stmts() {
     deleteSession: db.prepare('DELETE FROM sessions WHERE token = ?'),
     updateSessionExpiry: db.prepare('UPDATE sessions SET expires_at = ? WHERE token = ?'),
     getUserById: db.prepare('SELECT * FROM users WHERE id = ?'),
-    updatePassword: db.prepare('UPDATE users SET password = ?, must_change_password = 0 WHERE id = ?'),
+    updatePassword: db.prepare(
+      'UPDATE users SET password = ?, must_change_password = 0 WHERE id = ?'
+    ),
     countUsers: db.prepare('SELECT COUNT(*) as n FROM users'),
     insertUser: db.prepare(
       `INSERT INTO users (username, password, role, must_change_password) VALUES (?, ?, 'admin', 1)`
-    ),
+    )
   }
   return _stmts
 }
@@ -116,7 +118,7 @@ export async function login(
     username: user.username,
     role: user.role,
     expiresAt,
-    mustChangePassword: user.must_change_password === 1,
+    mustChangePassword: user.must_change_password === 1
   }
 
   stmts().updateLastLogin.run(Date.now(), user.id)

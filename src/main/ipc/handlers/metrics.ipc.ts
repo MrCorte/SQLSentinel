@@ -6,7 +6,7 @@ import {
   setActiveServer,
   syncServers,
   getHistory,
-  getHistoryAll,
+  getHistoryAll
 } from '../../metricsWorker'
 import {
   IpcChannel,
@@ -14,7 +14,7 @@ import {
   type WorkerSetActiveRequest,
   type WorkerSyncServersRequest,
   type HistoryRequest,
-  type IpcResult,
+  type IpcResult
 } from '../types'
 import type { ServerMetrics } from '../../collectors/types'
 import { resolveConnection } from './servers.ipc'
@@ -25,10 +25,7 @@ export function registerMetricsHandlers(): void {
   // dal serverStore lato main per ciascun server della lista.
   handle(
     IpcChannel.WORKER_START,
-    async (
-      _event: IpcMainInvokeEvent,
-      req: WorkerStartRequest
-    ): Promise<IpcResult<null>> => {
+    async (_event: IpcMainInvokeEvent, req: WorkerStartRequest): Promise<IpcResult<null>> => {
       try {
         startWorker({ ...req, servers: req.servers.map(resolveConnection) })
         return { ok: true, data: null }

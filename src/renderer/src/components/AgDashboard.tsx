@@ -13,7 +13,11 @@ import {
 import { DataGrid } from '@mui/x-data-grid'
 import type { GridColDef } from '@mui/x-data-grid'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import type { CollectMetricsRequest, AvailabilityReplica, AvailabilityDatabase } from '../../../preload/index'
+import type {
+  CollectMetricsRequest,
+  AvailabilityReplica,
+  AvailabilityDatabase
+} from '../../../preload/index'
 import { useAgStore } from '../store/agStore'
 import { useServersStore } from '../store/serversStore'
 import { useGroupsStore } from '../store/groupsStore'
@@ -73,8 +77,10 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
         onMouseLeave={() => setHovered(false)}
         sx={{
           bgcolor: 'background.paper',
-          border: (theme) => `1px solid ${isPrimary ? tokens.color.primary : theme.palette.divider}`,
-          borderTop: (theme) => `3px solid ${isPrimary ? tokens.color.primary : theme.palette.divider}`,
+          border: (theme) =>
+            `1px solid ${isPrimary ? tokens.color.primary : theme.palette.divider}`,
+          borderTop: (theme) =>
+            `3px solid ${isPrimary ? tokens.color.primary : theme.palette.divider}`,
           borderRadius: tokens.radius.sm,
           p: 1.5,
           minWidth: 220,
@@ -120,7 +126,9 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
 
         <Stack spacing={0.5}>
           <Stack direction="row" justifyContent="space-between">
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>Mode</Typography>
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Mode
+            </Typography>
             <Typography variant="caption" sx={{ color: 'text.primary', fontWeight: 600 }}>
               {replica.availability_mode_desc === 'SYNCHRONOUS_COMMIT' ? 'SYNC' : 'ASYNC'}
               {' — '}
@@ -129,29 +137,41 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
           </Stack>
 
           <Stack direction="row" justifyContent="space-between">
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>Connection</Typography>
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Connection
+            </Typography>
             <Typography
               variant="caption"
-              sx={{ color: isConnected ? tokens.color.success : tokens.color.error, fontWeight: 600 }}
+              sx={{
+                color: isConnected ? tokens.color.success : tokens.color.error,
+                fontWeight: 600
+              }}
             >
               {isConnected ? '✅' : '❌'} {replica.connected_state_desc}
             </Typography>
           </Stack>
 
           <Stack direction="row" justifyContent="space-between">
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>Sync health</Typography>
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Sync health
+            </Typography>
             <Typography
               variant="caption"
               sx={{ color: healthColor(replica.synchronization_health_desc), fontWeight: 600 }}
             >
-              {replica.synchronization_health_desc === 'HEALTHY' ? '✅ HEALTHY' :
-               replica.synchronization_health_desc === 'PARTIALLY_HEALTHY' ? '⚠ PARTIAL' : '❌ UNHEALTHY'}
+              {replica.synchronization_health_desc === 'HEALTHY'
+                ? '✅ HEALTHY'
+                : replica.synchronization_health_desc === 'PARTIALLY_HEALTHY'
+                  ? '⚠ PARTIAL'
+                  : '❌ UNHEALTHY'}
             </Typography>
           </Stack>
 
           {replica.operational_state_desc && (
             <Stack direction="row" justifyContent="space-between">
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>Op. state</Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                Op. state
+              </Typography>
               <Typography variant="caption" sx={{ color: 'text.primary' }}>
                 {replica.operational_state_desc}
               </Typography>
@@ -203,7 +223,10 @@ const DB_GRID_SX = {
   '& .MuiDataGrid-columnHeaders': {
     borderBottom: `2px solid ${tokens.color.primary}`
   },
-  '& .row-sync': { bgcolor: (theme: { palette: { mode: string; warning: { main: string } } }) => theme.palette.mode === 'dark' ? alpha(theme.palette.warning.main, 0.15) : '#fff4ce' },
+  '& .row-sync': {
+    bgcolor: (theme: { palette: { mode: string; warning: { main: string } } }) =>
+      theme.palette.mode === 'dark' ? alpha(theme.palette.warning.main, 0.15) : '#fff4ce'
+  },
   '& .row-nosync': { bgcolor: tokens.color.errorLight }
 }
 
@@ -228,38 +251,42 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
 
   useVisibilityPoll(handleUpdateDetails, 60_000)
 
-  const getDisplayName = useCallback((replicaServerName: string): string => {
-    const nameBase = replicaServerName.split('\\')[0].toLowerCase()
-    const match = servers.find((s) => {
-      const addr = (s.host ?? s.ip ?? '').toLowerCase()
-      return addr === nameBase || addr.includes(nameBase) || nameBase.includes(addr)
-    })
-    if (!match) return replicaServerName
-    return serverAliases[match.id] || match.host || replicaServerName
-  }, [servers, serverAliases])
+  const getDisplayName = useCallback(
+    (replicaServerName: string): string => {
+      const nameBase = replicaServerName.split('\\')[0].toLowerCase()
+      const match = servers.find((s) => {
+        const addr = (s.host ?? s.ip ?? '').toLowerCase()
+        return addr === nameBase || addr.includes(nameBase) || nameBase.includes(addr)
+      })
+      if (!match) return replicaServerName
+      return serverAliases[match.id] || match.host || replicaServerName
+    },
+    [servers, serverAliases]
+  )
 
-  const handleNavigateToServer = useCallback((replica: AvailabilityReplica): void => {
-    const nameBase = replica.replica_server_name.split('\\')[0].toLowerCase()
-    const match = servers.find((s) => {
-      const addr = (s.host ?? s.ip ?? '').toLowerCase()
-      return addr === nameBase || addr.includes(nameBase) || nameBase.includes(addr)
-    })
-    if (match) {
-      setPendingServerId(match.id)
-    } else {
-      setSnackbarMsg(
-        `Server "${replica.replica_server_name}" is not in the monitored servers list. Add it first from Discovery.`
-      )
-    }
-  }, [servers, setPendingServerId])
+  const handleNavigateToServer = useCallback(
+    (replica: AvailabilityReplica): void => {
+      const nameBase = replica.replica_server_name.split('\\')[0].toLowerCase()
+      const match = servers.find((s) => {
+        const addr = (s.host ?? s.ip ?? '').toLowerCase()
+        return addr === nameBase || addr.includes(nameBase) || nameBase.includes(addr)
+      })
+      if (match) {
+        setPendingServerId(match.id)
+      } else {
+        setSnackbarMsg(
+          `Server "${replica.replica_server_name}" is not in the monitored servers list. Add it first from Discovery.`
+        )
+      }
+    },
+    [servers, setPendingServerId]
+  )
 
   if (!detail) {
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 3 }}>
         <CircularProgress size={20} />
-        <Typography sx={{ color: 'text.secondary' }}>
-          Loading AG data...
-        </Typography>
+        <Typography sx={{ color: 'text.secondary' }}>Loading AG data...</Typography>
       </Box>
     )
   }
@@ -321,13 +348,25 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
       renderCell: (p) => {
         const v = p.value as number
         return (
-          <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="flex-end" sx={{ width: '100%' }}>
+          <Stack
+            direction="row"
+            spacing={0.5}
+            alignItems="center"
+            justifyContent="flex-end"
+            sx={{ width: '100%' }}
+          >
             {v > LOG_QUEUE_WARN_KB && (
               <Tooltip title={`High log queue: ${v.toLocaleString('en-US')} KB`}>
                 <WarningAmberIcon sx={{ fontSize: 14, color: '#d83b01' }} />
               </Tooltip>
             )}
-            <Typography variant="body2" sx={{ color: v > LOG_QUEUE_WARN_KB ? '#d83b01' : 'inherit', fontWeight: v > LOG_QUEUE_WARN_KB ? 700 : 400 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                color: v > LOG_QUEUE_WARN_KB ? '#d83b01' : 'inherit',
+                fontWeight: v > LOG_QUEUE_WARN_KB ? 700 : 400
+              }}
+            >
               {v.toLocaleString('en-US')}
             </Typography>
           </Stack>
@@ -390,7 +429,8 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
             Primary: <strong style={{ color: 'inherit' }}>{detail.primary_replica || '—'}</strong>
           </Typography>
           <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-            Updated: <strong style={{ color: 'inherit' }}>
+            Updated:{' '}
+            <strong style={{ color: 'inherit' }}>
               {detail.lastUpdated.toLocaleTimeString('en-US')}
             </strong>
           </Typography>
@@ -450,7 +490,8 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
         </Typography>
         {detail.databases.length === 0 ? (
           <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            No AG databases available (this replica may be SECONDARY — data is only visible from the PRIMARY).
+            No AG databases available (this replica may be SECONDARY — data is only visible from the
+            PRIMARY).
           </Typography>
         ) : (
           <DataGrid<AvailabilityDatabase>

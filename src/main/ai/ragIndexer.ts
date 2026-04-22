@@ -11,11 +11,11 @@ const log = createLogger('rag-indexer')
 const _require = createRequire(import.meta.url)
 // pdf-parse 1.x is a pure CJS module — createRequire guarantees the direct function
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const pdfParse = (_require('pdf-parse') as any) as (buf: Buffer) => Promise<{ text: string; numpages: number }>
+const pdfParse = _require('pdf-parse') as any as (
+  buf: Buffer
+) => Promise<{ text: string; numpages: number }>
 
-const DATA_DIR = app.isPackaged
-  ? join(process.resourcesPath, 'data')
-  : join(process.cwd(), 'data')
+const DATA_DIR = app.isPackaged ? join(process.resourcesPath, 'data') : join(process.cwd(), 'data')
 
 const EMBED_MODEL = 'nomic-embed-text'
 const CHUNK_SIZE = 500

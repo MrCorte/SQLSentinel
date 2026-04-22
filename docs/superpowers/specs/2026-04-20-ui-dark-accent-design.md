@@ -49,27 +49,35 @@ borderDark: 'rgba(255,255,255,0.08)',
 Modifiche agli `styleOverrides` esistenti. Nessun componente nuovo.
 
 ### MuiPaper (dark mode only)
+
 Aggiungere bordo sottile per dare profondità ai panel:
+
 ```ts
 // In MuiPaper.styleOverrides.root, condizionale su isDark:
 ...(isDark && { border: '1px solid rgba(255,255,255,0.08)' })
 ```
 
 ### MuiChip (dark mode only)
+
 Chip semantici (health, sync state) con bordo accent più pronunciato:
+
 ```ts
 // Aggiungere in MuiChip.styleOverrides.root:
 ...(isDark && { border: '1px solid rgba(255,255,255,0.12)' })
 ```
 
 ### MuiTableCell head (dark mode)
+
 Sfondo header tabella più contrastato:
+
 ```ts
 // Cambiare '#1a2744' → '#0f1f3d' per dark mode in MuiTableCell.head backgroundColor
 ```
 
 ### MuiListItemButton selected (sidebar)
+
 Aggiungere `borderLeft` accent sulla voce attiva:
+
 ```ts
 '&.Mui-selected': {
   // aggiungere a quelli esistenti:
@@ -135,14 +143,14 @@ boxShadow: isPrimary
 
 ## 4. File modificati
 
-| File | Tipo di modifica |
-|------|-----------------|
-| `src/renderer/src/styles/tokens.ts` | Aggiunta token gradient + glow + borderDark |
-| `src/renderer/src/styles/theme.ts` | Override MuiPaper, MuiChip, MuiTableCell, MuiListItemButton |
-| `src/renderer/src/components/Sidebar.tsx` | `StatusDot` glow |
-| `src/renderer/src/components/MetricsPanel.tsx` | `KpiCard` border dark mode |
-| `src/renderer/src/components/HomeDashboard.tsx` | Legend dots glow |
-| `src/renderer/src/components/AgDashboard.tsx` | `ReplicaCard` PRIMARY glow outline |
+| File                                            | Tipo di modifica                                            |
+| ----------------------------------------------- | ----------------------------------------------------------- |
+| `src/renderer/src/styles/tokens.ts`             | Aggiunta token gradient + glow + borderDark                 |
+| `src/renderer/src/styles/theme.ts`              | Override MuiPaper, MuiChip, MuiTableCell, MuiListItemButton |
+| `src/renderer/src/components/Sidebar.tsx`       | `StatusDot` glow                                            |
+| `src/renderer/src/components/MetricsPanel.tsx`  | `KpiCard` border dark mode                                  |
+| `src/renderer/src/components/HomeDashboard.tsx` | Legend dots glow                                            |
+| `src/renderer/src/components/AgDashboard.tsx`   | `ReplicaCard` PRIMARY glow outline                          |
 
 ---
 

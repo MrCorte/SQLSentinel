@@ -67,11 +67,7 @@ export function GroupManagerDialog({ open, onClose }: GroupManagerDialogProps): 
     overIdx.current = idx
   }
   const handleDrop = (): void => {
-    if (
-      dragIdx.current === null ||
-      overIdx.current === null ||
-      dragIdx.current === overIdx.current
-    )
+    if (dragIdx.current === null || overIdx.current === null || dragIdx.current === overIdx.current)
       return
     const updated = [...localGroups]
     const [moved] = updated.splice(dragIdx.current, 1)

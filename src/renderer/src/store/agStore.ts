@@ -17,7 +17,7 @@ const log = createLogger('ag-store')
 // ---------------------------------------------------------------------------
 
 export interface AgGroupState {
-  id: string          // group_id UUID
+  id: string // group_id UUID
   ag_name: string
   health: AgHealth
   primary_replica: string
@@ -128,11 +128,7 @@ export const useAgStore = create<AgStore>((set, get) => ({
         const myReplica = agReplicas.find((r) => {
           const nameBase = r.replica_server_name.split('\\')[0].toLowerCase()
           const connAddr = connection.ip.toLowerCase()
-          return (
-            nameBase === connAddr ||
-            connAddr.includes(nameBase) ||
-            nameBase.includes(connAddr)
-          )
+          return nameBase === connAddr || connAddr.includes(nameBase) || nameBase.includes(connAddr)
         })
 
         // Persist agGroupId + agName + agRole for the current server via injected callback

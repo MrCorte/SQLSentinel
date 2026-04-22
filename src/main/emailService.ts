@@ -33,7 +33,7 @@ function buildTransporter(s: EmailSettings) {
     requireTLS: s.smtpTls,
     auth: { user: s.smtpUser, pass: s.smtpPassword },
     connectionTimeout: 10_000,
-    greetingTimeout: 5_000,
+    greetingTimeout: 5_000
   })
 }
 
@@ -42,7 +42,7 @@ function buildContent(
   category: string,
   severity: 'WARNING' | 'CRITICAL',
   message: string,
-  timestamp: number,
+  timestamp: number
 ): { subject: string; html: string } {
   const emoji = severity === 'CRITICAL' ? '🔴' : '🟡'
   const color = severity === 'CRITICAL' ? '#dc2626' : '#d97706'
@@ -94,14 +94,14 @@ async function sendEmail(
   settings: EmailSettings,
   recipients: string[],
   subject: string,
-  html: string,
+  html: string
 ): Promise<void> {
   const transporter = buildTransporter(settings)
   await transporter.sendMail({
     from: `"SQL Sentinel" <${settings.smtpUser}>`,
     to: recipients.join(', '),
     subject,
-    html,
+    html
   })
 }
 
@@ -119,7 +119,7 @@ export async function sendAlertEmail(alert: Alert): Promise<void> {
     alert.category,
     alert.severity,
     alert.message,
-    alert.detectedAt.getTime(),
+    alert.detectedAt.getTime()
   )
   await sendEmail(settings, settings.emailRecipients, subject, html)
 }
@@ -135,7 +135,7 @@ export async function sendTestEmail(): Promise<IpcResult<null>> {
       'test',
       'WARNING',
       'This is a test email from SQL Sentinel. SMTP configuration is correct ✅',
-      Date.now(),
+      Date.now()
     )
     await sendEmail(settings, settings.emailRecipients, subject, html)
     return { ok: true, data: null }

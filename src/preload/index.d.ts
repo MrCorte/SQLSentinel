@@ -126,24 +126,24 @@ export interface WaitStatInfo {
 
 export interface StoredServer {
   id: string
-  host: string              // canonical address — required
-  ip?: string               // legacy alias; populated by normalization in serversStore.ts
+  host: string // canonical address — required
+  ip?: string // legacy alias; populated by normalization in serversStore.ts
   port: number
   instanceName?: string
-  machineName?: string      // SERVERPROPERTY('MachineName') — used to group multiple instances on the same physical machine
+  machineName?: string // SERVERPROPERTY('MachineName') — used to group multiple instances on the same physical machine
   useWindowsAuth: boolean
   username?: string
   password?: string
-  addedAt: string           // ISO 8601
-  lastSeen?: string         // ISO 8601
+  addedAt: string // ISO 8601
+  lastSeen?: string // ISO 8601
   unreachable?: boolean
   unreachableSince?: string // ISO 8601
-  agGroupId?: string        // group_id UUID if part of an AG
-  agName?: string           // AG human-readable name, e.g. "AG-PROD-01"
+  agGroupId?: string // group_id UUID if part of an AG
+  agName?: string // AG human-readable name, e.g. "AG-PROD-01"
   agRole?: AgRole
-  logicalCpus?: number      // cpu_count (with HT); persisted from polling
-  physicalCpus?: number     // cpu_count / hyperthread_ratio
-  notes?: string            // free-text notes; persisted in electron-store
+  logicalCpus?: number // cpu_count (with HT); persisted from polling
+  physicalCpus?: number // cpu_count / hyperthread_ratio
+  notes?: string // free-text notes; persisted in electron-store
 }
 
 export interface ServerAddResult {
@@ -402,11 +402,11 @@ export interface AgParams {
 }
 
 export interface AgGroup {
-  id: string            // = group_id UUID
+  id: string // = group_id UUID
   ag_name: string
   health: AgHealth
   primary_replica: string
-  serverIds: string[]   // ids of StoredServer that are part of this AG
+  serverIds: string[] // ids of StoredServer that are part of this AG
 }
 
 export type AiStreamEvent =
@@ -433,8 +433,12 @@ export interface SqlSentinelAPI {
   acknowledgeAlert(req: AcknowledgeAlertRequest): Promise<IpcResult<null>>
   getHistory(req: HistoryRequest): Promise<IpcResult<ServerMetrics[]>>
   getHistoryBulk(): Promise<IpcResult<Record<string, ServerMetrics[]>>>
-  onMetricsUpdated(callback: (data: { serverId: string; metrics: ServerMetrics }) => void): () => void
-  onMetricsBatchUpdated(callback: (batch: Array<{ serverId: string; metrics: ServerMetrics }>) => void): () => void
+  onMetricsUpdated(
+    callback: (data: { serverId: string; metrics: ServerMetrics }) => void
+  ): () => void
+  onMetricsBatchUpdated(
+    callback: (batch: Array<{ serverId: string; metrics: ServerMetrics }>) => void
+  ): () => void
   onAlertNew(callback: (alert: Alert) => void): () => void
   getSettings(): Promise<IpcResult<AppSettings>>
   saveSettings(req: SaveSettingsRequest): Promise<IpcResult<null>>
@@ -442,7 +446,11 @@ export interface SqlSentinelAPI {
   saveEmailSettings(req: SaveEmailSettingsRequest): Promise<IpcResult<null>>
   sendTestEmail(): Promise<IpcResult<null>>
   getDbCustomFields(req: { serverId: string; dbName: string }): Promise<IpcResult<DbCustomFields>>
-  setDbCustomFields(req: { serverId: string; dbName: string; fields: DbCustomFields }): Promise<IpcResult<null>>
+  setDbCustomFields(req: {
+    serverId: string
+    dbName: string
+    fields: DbCustomFields
+  }): Promise<IpcResult<null>>
   getAllDbCustomFields(): Promise<IpcResult<Record<string, DbCustomFields>>>
   exportCustomFields(): Promise<IpcResult<string>>
   exportInventory(): Promise<IpcResult<string>>
@@ -475,10 +483,20 @@ export interface SqlSentinelAPI {
   login(username: string, password: string): Promise<LoginResult>
   logout(): Promise<{ success: boolean }>
   checkAuth(): Promise<{ authenticated: boolean; session: AuthSession | null }>
-  changePassword(userId: string, oldPassword: string, newPassword: string): Promise<ChangePasswordResult>
+  changePassword(
+    userId: string,
+    oldPassword: string,
+    newPassword: string
+  ): Promise<ChangePasswordResult>
   aiCheck(): Promise<IpcResult<boolean>>
-  aiAgentAsk(question: string, history: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<IpcResult<string>>
-  aiAgentStream(question: string, history: Array<{ role: 'user' | 'assistant'; content: string }>): Promise<IpcResult<void>>
+  aiAgentAsk(
+    question: string,
+    history: Array<{ role: 'user' | 'assistant'; content: string }>
+  ): Promise<IpcResult<string>>
+  aiAgentStream(
+    question: string,
+    history: Array<{ role: 'user' | 'assistant'; content: string }>
+  ): Promise<IpcResult<void>>
   aiAgentCancel(): Promise<void>
   onAiStreamEvent(callback: (event: AiStreamEvent) => void): () => void
 }

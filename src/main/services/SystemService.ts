@@ -77,7 +77,7 @@ export function exportAlertsCsv(): string {
         ? a.acknowledgedAt instanceof Date
           ? a.acknowledgedAt.toISOString()
           : String(a.acknowledgedAt)
-        : '',
+        : ''
     ]
       .map(csvEscape)
       .join(',')

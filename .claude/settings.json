@@ -8,9 +8,7 @@
       "Edit(**)",
       "Write(**)"
     ],
-    "deny": [
-      "Bash(rm -rf *)"
-    ]
+    "deny": ["Bash(rm -rf *)"]
   },
   "hooks": {
     "PostToolUse": [

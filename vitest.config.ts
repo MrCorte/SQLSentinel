@@ -24,7 +24,7 @@ function assetQueryPlugin(): any {
         return `export default ${JSON.stringify(filePath)}`
       }
       return undefined
-    },
+    }
   }
 }
 

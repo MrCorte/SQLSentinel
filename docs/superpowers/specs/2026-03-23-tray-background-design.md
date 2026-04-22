@@ -1,4 +1,5 @@
 # Tray Background Service — Design Spec
+
 **Date:** 2026-03-23
 **Status:** Approved
 
@@ -38,7 +39,7 @@ A single class `BackgroundService` instantiated once in `src/main/index.ts` afte
 ```typescript
 class BackgroundService {
   constructor(win: BrowserWindow, workerApi: WorkerApi)
-  destroy(): void  // idempotent — see Shutdown section
+  destroy(): void // idempotent — see Shutdown section
 }
 
 interface WorkerApi {
@@ -52,8 +53,8 @@ interface IntervalOverrides {
   activeMs: number
   idleMs: number
   offlineMs: number
-  lightCollectors?: boolean  // true = only 4 critical queries (alert detection only)
-  historyCapOverride?: number  // reduce in-memory snapshot retention
+  lightCollectors?: boolean // true = only 4 critical queries (alert detection only)
+  historyCapOverride?: number // reduce in-memory snapshot retention
 }
 ```
 
@@ -73,19 +74,20 @@ Registers a callback in `let alertCallback: ((a: Alert) => void) | null = null`.
 
 Four new optional fields must be added to **all of the following** locations:
 
-| File | Type(s) to update |
-|---|---|
-| `src/main/store/settings.ts` | `AppSettings` interface + `getSettings()` defaults + `saveSettings()` |
-| `src/main/ipc/types.ts` | `AppSettings` interface + `SaveSettingsRequest` interface |
-| `src/preload/index.d.ts` | `AppSettings` interface + `SaveSettingsRequest` interface |
-| `src/renderer/src/pages/Settings.tsx` | UI + `saveSettings()` call |
+| File                                  | Type(s) to update                                                     |
+| ------------------------------------- | --------------------------------------------------------------------- |
+| `src/main/store/settings.ts`          | `AppSettings` interface + `getSettings()` defaults + `saveSettings()` |
+| `src/main/ipc/types.ts`               | `AppSettings` interface + `SaveSettingsRequest` interface             |
+| `src/preload/index.d.ts`              | `AppSettings` interface + `SaveSettingsRequest` interface             |
+| `src/renderer/src/pages/Settings.tsx` | UI + `saveSettings()` call                                            |
 
 New fields:
+
 ```typescript
-backgroundEnabled: boolean        // default true
+backgroundEnabled: boolean // default true
 backgroundMode: 'light' | 'full' // default 'light'
 backgroundIntervalMinutes: number // default 30 (only used when backgroundMode === 'light'; harmlessly ignored in 'full' mode)
-backgroundNotifications: boolean  // default true
+backgroundNotifications: boolean // default true
 ```
 
 `getSettings()` must return defaults for all four fields when keys are absent from SQLite (no migration needed — key/value store). `SaveSettingsRequest` extends `AppSettings` for these fields (all optional on the request side).
@@ -117,11 +119,13 @@ win.on('close', (e) => {
 ### 2. Tray Icon
 
 **Asset imports** in `backgroundService.ts` (electron-vite `?asset` pattern, same as existing `icon.png?asset` in `index.ts`):
+
 ```typescript
 import trayIconNormal from '../../../resources/tray-icon.png?asset'
 ```
 
 For the optional alert variant, derive its path from `trayIconNormal` at runtime (electron-vite resolves `?asset` to an absolute path string):
+
 ```typescript
 import { existsSync } from 'fs'
 import { join, dirname } from 'path'
@@ -132,6 +136,7 @@ const trayIconAlert = existsSync(alertAssetPath) ? alertAssetPath : trayIconNorm
 In packaged builds, electron-vite copies `?asset` imports to the output directory; `tray-icon.png` is **required** (build will fail if absent). `tray-icon-alert.png` is optional; if absent, both states use the normal icon.
 
 Required assets:
+
 - `resources/tray-icon.png` — 16×16 and 32×32 (**required**)
 - `resources/tray-icon-alert.png` — 16×16 and 32×32 (optional, falls back to normal icon)
 
@@ -142,6 +147,7 @@ Tray is created on `BackgroundService` construction, destroyed in `destroy()`.
 ### 3. Tray Context Menu
 
 Rebuilt on two triggers:
+
 - **30s timer** (health-check loop runs every 60s; status counts may lag up to 60s — acceptable)
 - **Each new CRITICAL alert** (via `onAlert` callback)
 
@@ -164,13 +170,14 @@ Esci
 
 **On `win.hide()` — read settings fresh via `getSettings()`:**
 
-| `backgroundEnabled` | `backgroundMode` | Action |
-|---|---|---|
-| `false` | — | `stopWorker()` |
-| `true` | `'light'` | `setIntervalOverrides({ activeMs: N, idleMs: N, offlineMs: N, lightCollectors: true, historyCapOverride: 3 })` where N = `backgroundIntervalMinutes * 60_000`; jobs staggered across `[now, now + N/2]` |
-| `true` | `'full'` | no-op (worker runs at normal intervals) |
+| `backgroundEnabled` | `backgroundMode` | Action                                                                                                                                                                                                  |
+| ------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `false`             | —                | `stopWorker()`                                                                                                                                                                                          |
+| `true`              | `'light'`        | `setIntervalOverrides({ activeMs: N, idleMs: N, offlineMs: N, lightCollectors: true, historyCapOverride: 3 })` where N = `backgroundIntervalMinutes * 60_000`; jobs staggered across `[now, now + N/2]` |
+| `true`              | `'full'`         | no-op (worker runs at normal intervals)                                                                                                                                                                 |
 
 **On `win.show()`:**
+
 1. `setIntervalOverrides(null)` — restores default intervals
 2. If worker was stopped (`backgroundEnabled` was `false` when hidden): call `syncServers(servers)` to restart. `BackgroundService` obtains the server list by calling `serverStore.getAll()` and mapping each `StoredServer` to `CollectMetricsRequest` — the same mapping already used in `index.ts` when `WORKER_START` is handled. `syncServers` adds jobs back and calls `scheduleTick()` internally; no `startWorker` needed. Note: `stopWorker()` clears `previousMetrics`, so the first poll after resume sends full metrics (not a delta) — this is intentional and desirable.
 
@@ -186,12 +193,15 @@ Subscribes via `workerApi.onAlert(cb)` during construction. Note: `onAlert` repl
 - **Dedup reset on acknowledgement:** on each menu rebuild, check `getAlerts()`; for any CRITICAL alert where `acknowledgedAt !== null`, remove its entry from the dedup map so re-occurrence triggers a new notification
 - **Electron `Notification`:**
   ```typescript
-  if (!Notification.isSupported()) return  // log and skip on unsupported systems
+  if (!Notification.isSupported()) return // log and skip on unsupported systems
   const n = new Notification({
     title: 'SQLSentinel — Alert Critico',
     body: `${alert.serverId} — ${alert.message}`
   })
-  n.on('click', () => { win.show(); win.focus() })
+  n.on('click', () => {
+    win.show()
+    win.focus()
+  })
   n.show()
   ```
   Entire block wrapped in try/catch — notification failure must not crash the app.
@@ -202,12 +212,12 @@ Subscribes via `workerApi.onAlert(cb)` during construction. Note: `onAlert` repl
 
 Four keys in the existing SQLite `settings` key/value table. SQLite key names and their `AppSettings` field mappings:
 
-| `AppSettings` field | SQLite key | Default |
-|---|---|---|
-| `backgroundEnabled` | `background_enabled` | `true` |
-| `backgroundMode` | `background_mode` | `'light'` |
-| `backgroundIntervalMinutes` | `background_interval_minutes` | `30` |
-| `backgroundNotifications` | `background_notifications` | `true` |
+| `AppSettings` field         | SQLite key                    | Default   |
+| --------------------------- | ----------------------------- | --------- |
+| `backgroundEnabled`         | `background_enabled`          | `true`    |
+| `backgroundMode`            | `background_mode`             | `'light'` |
+| `backgroundIntervalMinutes` | `background_interval_minutes` | `30`      |
+| `backgroundNotifications`   | `background_notifications`    | `true`    |
 
 `backgroundIntervalMinutes` is only applied when `backgroundMode === 'light'`.
 
@@ -269,6 +279,7 @@ User clicks tray → "Esci"
 ## Shutdown Sequence
 
 **Normal quit path (user clicks "Esci"):**
+
 1. `quitting = true`
 2. `this.destroy()` — clears timer, destroys tray (first call)
 3. `app.quit()` — Electron destroys the window
@@ -280,9 +291,10 @@ User clicks tray → "Esci"
 `destroy()` does **not** call `stopWorker()` — in-flight SQL jobs from `metricsWorker` may still be running when `closeDb()` is called. This is a pre-existing race condition unrelated to this feature; resolving it is out of scope.
 
 **`index.ts` `window-all-closed` handler change:**
+
 ```typescript
 app.on('window-all-closed', () => {
-  backgroundService?.destroy()  // ← add this line (idempotent)
+  backgroundService?.destroy() // ← add this line (idempotent)
   closeDb()
   if (process.platform !== 'darwin') app.quit()
 })
@@ -297,12 +309,14 @@ app.on('window-all-closed', () => {
 **Problem:** When `setIntervalOverrides` applies the same interval N to all 200 jobs, every job becomes due at the same wall-clock time (or within the same scheduler tick). The existing BATCH_SIZE=10 cap prevents more than 10 concurrent SQL connections, but 200 jobs still create 20 sequential batches that drain over ~50s — a burst of sustained load every N minutes.
 
 **Fix:** When applying overrides, stagger each job's `nextRun` uniformly across `[now, now + N/2]`:
+
 ```typescript
 // inside setIntervalOverrides(), after updating intervalOverrides:
 jobs.forEach((job) => {
   job.nextRun = Date.now() + Math.random() * (overrides.idleMs / 2)
 })
 ```
+
 This spreads 200 connections over ~15 minutes at 30-minute intervals instead of a single burst. Calling `setIntervalOverrides(null)` on `win.show()` must NOT re-stagger — just restore constants and leave existing `nextRun` values in place so normal interval tiers resume naturally.
 
 ### 2. Skip IPC Push When Window Is Hidden
@@ -310,10 +324,12 @@ This spreads 200 connections over ~15 minutes at 30-minute intervals instead of 
 **Problem:** `metricsWorker` calls `pushToRenderer(IpcChannel.METRICS_UPDATED, payload)` after every job regardless of window visibility. With 200 servers in background mode, this serializes large metrics payloads and sends them via IPC to a renderer that isn't displaying anything — pure overhead.
 
 **Fix:** Add a visibility check inside `pushToRenderer` or directly in `runJob`:
+
 ```typescript
 // in runJob(), before pushToRenderer(METRICS_UPDATED, ...):
-if (!mainWindow?.isVisible()) return  // skip metrics push when hidden
+if (!mainWindow?.isVisible()) return // skip metrics push when hidden
 ```
+
 `ALERT_NEW` push must **not** be skipped — it triggers the `alertCallback` used by `BackgroundService`. Only `METRICS_UPDATED` and `SERVER_HEALTH_UPDATE` pushes should be suppressed when hidden.
 
 ### 3. Reduced Collection Scope in Light Mode
@@ -321,15 +337,18 @@ if (!mainWindow?.isVisible()) return  // skip metrics push when hidden
 **Problem:** Each server poll runs all collectors (CPU, memory, databases, sessions, waits, disk, backups, AG status — ~8–12 T-SQL queries per server). In background mode the goal is alert detection only, not full metrics for the UI.
 
 **Fix:** `setIntervalOverrides` accepts an optional `collectorsFilter` field:
+
 ```typescript
 interface IntervalOverrides {
   activeMs: number
   idleMs: number
   offlineMs: number
-  lightCollectors?: boolean  // default false
+  lightCollectors?: boolean // default false
 }
 ```
+
 When `lightCollectors: true`, `runJob` calls a new `collectMetricsCritical()` that runs only:
+
 1. CPU + memory snapshot (single query)
 2. Blocking sessions (alert trigger)
 3. Database state check (offline alert)
@@ -342,15 +361,17 @@ Disk and AG queries are skipped. This reduces per-server query count from ~10 to
 **Problem:** `metricsHistory` keeps 20 snapshots per server in memory. With 200 servers in background mode, at 30-minute intervals over 10 hours: 200 × 20 = 4,000 snapshots. Each snapshot contains databases, sessions, and instance info — potentially 10–50 KB per snapshot → up to 200 MB retained in the main process.
 
 **Fix:** `setIntervalOverrides` also sets a `historyCapOverride` in the worker:
+
 ```typescript
 interface IntervalOverrides {
   activeMs: number
   idleMs: number
   offlineMs: number
   lightCollectors?: boolean
-  historyCapOverride?: number  // default: existing MAX_HISTORY (20)
+  historyCapOverride?: number // default: existing MAX_HISTORY (20)
 }
 ```
+
 In light mode, `historyCapOverride = 3`. When the cap is lowered, the worker trims existing history arrays immediately (`metricsHistory.forEach(h => { while (h.length > cap) h.shift() })`). When `setIntervalOverrides(null)` restores defaults, the cap reverts to 20 and new snapshots accumulate normally.
 
 ---
@@ -368,19 +389,19 @@ In light mode, `historyCapOverride = 3`. When the cap is lowered, the worker tri
 
 Unit tests for `BackgroundService` with mocked `BrowserWindow`, `Tray`, `Notification`, `serverStore`, `getSettings`, and `workerApi`:
 
-| Scenario | Expected |
-|---|---|
-| `win.hide()` + light mode | `setIntervalOverrides` called with correct ms |
-| `win.hide()` + full mode | `setIntervalOverrides` not called |
-| `win.hide()` + disabled | `stopWorker` called |
-| `win.show()` after disabled | `syncServers` called (restart) |
-| `win.show()` after light mode | `setIntervalOverrides(null)` called |
-| CRITICAL alert + `win.isVisible() = false` | notification fires |
-| WARNING alert | notification not fired |
-| CRITICAL alert within 15-min cooldown | notification not fired |
-| CRITICAL alert after acknowledgement | dedup cleared → notification fires |
-| `quitting = true` + close event | `preventDefault` not called |
-| `destroy()` called twice | second call is no-op, no throw |
-| `onAlert` called twice | second callback replaces first |
+| Scenario                                   | Expected                                      |
+| ------------------------------------------ | --------------------------------------------- |
+| `win.hide()` + light mode                  | `setIntervalOverrides` called with correct ms |
+| `win.hide()` + full mode                   | `setIntervalOverrides` not called             |
+| `win.hide()` + disabled                    | `stopWorker` called                           |
+| `win.show()` after disabled                | `syncServers` called (restart)                |
+| `win.show()` after light mode              | `setIntervalOverrides(null)` called           |
+| CRITICAL alert + `win.isVisible() = false` | notification fires                            |
+| WARNING alert                              | notification not fired                        |
+| CRITICAL alert within 15-min cooldown      | notification not fired                        |
+| CRITICAL alert after acknowledgement       | dedup cleared → notification fires            |
+| `quitting = true` + close event            | `preventDefault` not called                   |
+| `destroy()` called twice                   | second call is no-op, no throw                |
+| `onAlert` called twice                     | second callback replaces first                |
 
 Existing tests: no changes required.

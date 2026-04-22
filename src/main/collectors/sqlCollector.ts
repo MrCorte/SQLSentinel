@@ -230,7 +230,8 @@ async function queryDatabases(pool: mssql.ConnectionPool): Promise<DatabaseInfo[
     isEncrypted: Boolean(row.is_encrypted),
     isReadOnly: Boolean(row.is_read_only),
     owner: row.owner ?? '',
-    createDate: row.create_date instanceof Date ? row.create_date.toISOString() : String(row.create_date)
+    createDate:
+      row.create_date instanceof Date ? row.create_date.toISOString() : String(row.create_date)
   }))
 }
 
@@ -481,7 +482,16 @@ async function queryDatabaseFiles(pool: mssql.ConnectionPool): Promise<DatabaseF
 // --- Default values for failed queries ---
 
 function defaultInstanceInfo(): InstanceInfo {
-  return { version: 'unknown', edition: 'unknown', memoryUsedMb: 0, memoryTargetMb: 0, cpuUsagePercent: 0, uptimeDays: 0, logicalCpus: 0, physicalCpus: 0 }
+  return {
+    version: 'unknown',
+    edition: 'unknown',
+    memoryUsedMb: 0,
+    memoryTargetMb: 0,
+    cpuUsagePercent: 0,
+    uptimeDays: 0,
+    logicalCpus: 0,
+    physicalCpus: 0
+  }
 }
 
 // --- Entry points pubblici ---
@@ -496,14 +506,17 @@ export async function detectServerInfo(connection: ServerConnection): Promise<Se
   let pool: mssql.ConnectionPool | null = null
   try {
     pool = await mssql.connect(config)
-    const result = await pool.request().query<{ machine_name: string; instance_name: string | null }>(`
+    const result = await pool.request().query<{
+      machine_name: string
+      instance_name: string | null
+    }>(`
       SELECT
         CAST(SERVERPROPERTY('MachineName')  AS NVARCHAR(128)) AS machine_name,
         CAST(SERVERPROPERTY('InstanceName') AS NVARCHAR(128)) AS instance_name
     `)
     const row = result.recordset[0]
     return {
-      machineName:  row?.machine_name  ?? '',
+      machineName: row?.machine_name ?? '',
       instanceName: row?.instance_name ?? null
     }
   } finally {
@@ -593,9 +606,9 @@ export async function collectMetrics(
   } finally {
     signal?.removeEventListener('abort', onAbort)
     if (pool) {
-      await pool.close().catch((err: Error) =>
-        log.error('[collector] pool close:', sanitizeSqlError(err))
-      )
+      await pool
+        .close()
+        .catch((err: Error) => log.error('[collector] pool close:', sanitizeSqlError(err)))
     }
   }
 }
@@ -659,9 +672,9 @@ export async function collectMetricsCritical(
   } finally {
     signal?.removeEventListener('abort', onAbort)
     if (pool) {
-      await pool.close().catch((err: Error) =>
-        log.error('[collector] pool close:', sanitizeSqlError(err))
-      )
+      await pool
+        .close()
+        .catch((err: Error) => log.error('[collector] pool close:', sanitizeSqlError(err)))
     }
   }
 }

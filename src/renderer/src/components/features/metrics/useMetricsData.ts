@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import * as ipc from '../../../api/ipc'
-import type { ServerMetrics, DatabaseInfo, DbCustomFields, QueryInfo } from '../../../../../preload/index'
+import type {
+  ServerMetrics,
+  DatabaseInfo,
+  DbCustomFields,
+  QueryInfo
+} from '../../../../../preload/index'
 
 export type QueryRow = QueryInfo & { _rowId: string }
 import { createLogger } from '../../../utils/logger'
@@ -52,7 +57,7 @@ export function useMetricsData({ metrics, serverId }: UseMetricsDataParams): Met
         return {
           ...db,
           alias: cf?.alias ?? db.alias,
-          referente: cf?.referente ?? db.referente,
+          referente: cf?.referente ?? db.referente
         }
       }),
     [metrics.databases, customFields, serverId]
@@ -65,7 +70,7 @@ export function useMetricsData({ metrics, serverId }: UseMetricsDataParams): Met
       if (result.ok) {
         setCustomFields((prev) => ({
           ...prev,
-          [`${serverId}/${editingDb.name}`]: fields,
+          [`${serverId}/${editingDb.name}`]: fields
         }))
         setEditingDb(null)
       }
@@ -92,6 +97,6 @@ export function useMetricsData({ metrics, serverId }: UseMetricsDataParams): Met
     editingDb,
     setEditingDb,
     handleSaveDbFields,
-    topQueriesRows,
+    topQueriesRows
   }
 }

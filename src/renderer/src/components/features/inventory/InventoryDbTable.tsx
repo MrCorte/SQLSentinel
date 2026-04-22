@@ -19,7 +19,7 @@ interface InventoryDbTableProps {
 export const InventoryDbTable = memo(function InventoryDbTable({
   displayDbViewRows,
   expandedDbServers,
-  onToggleDbServer,
+  onToggleDbServer
 }: InventoryDbTableProps) {
   const dbParentRef = useRef<HTMLDivElement>(null)
 
@@ -27,7 +27,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
     count: displayDbViewRows.length,
     getScrollElement: () => dbParentRef.current,
     estimateSize: () => 40,
-    overscan: 10,
+    overscan: 10
   })
 
   return (
@@ -43,11 +43,16 @@ export const InventoryDbTable = memo(function InventoryDbTable({
           borderBottom: (theme) => `2px solid ${theme.palette.divider}`,
           position: 'sticky',
           top: 0,
-          zIndex: 1,
+          zIndex: 1
         }}
       >
         {DB_COLUMNS.map((col) => (
-          <Typography key={col.label} variant="caption" fontWeight={700} sx={{ color: 'text.secondary' }}>
+          <Typography
+            key={col.label}
+            variant="caption"
+            fontWeight={700}
+            sx={{ color: 'text.secondary' }}
+          >
             {col.label}
           </Typography>
         ))}
@@ -98,15 +103,25 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                           ? theme.palette.mode === 'dark'
                             ? alpha(theme.palette.primary.main, 0.22)
                             : '#dce9f5'
-                          : theme.palette.action.hover,
-                    },
+                          : theme.palette.action.hover
+                    }
                   }}
                 >
                   {isHeader ? (
                     // Server header — spans all columns
-                    <Box sx={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                    <Box
+                      sx={{
+                        gridColumn: '1 / -1',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 0.75
+                      }}
+                    >
                       {expandedDbServers.has(row.serverKey) ? (
-                        <ExpandMoreIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
+                        <ExpandMoreIcon
+                          fontSize="small"
+                          sx={{ color: 'text.secondary', flexShrink: 0 }}
+                        />
                       ) : (
                         <ChevronRightIcon
                           fontSize="small"
@@ -119,7 +134,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                           height: 8,
                           borderRadius: '50%',
                           bgcolor: row.envColor,
-                          flexShrink: 0,
+                          flexShrink: 0
                         }}
                       />
                       <Typography variant="body2" fontWeight={700} noWrap sx={{ flex: 1 }}>
@@ -134,7 +149,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                           fontWeight: 700,
                           borderRadius: '3px',
                           bgcolor: row.unreachable ? '#a4262c' : '#107c10',
-                          color: '#fff',
+                          color: '#fff'
                         }}
                       />
                       {row.agRole && (
@@ -149,7 +164,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                             bgcolor: row.agRole === 'PRIMARY' ? '#107c10' : 'transparent',
                             color: row.agRole === 'PRIMARY' ? '#fff' : 'text.secondary',
                             border: row.agRole === 'SECONDARY' ? '1px solid' : 'none',
-                            borderColor: 'divider',
+                            borderColor: 'divider'
                           }}
                         />
                       )}
@@ -168,13 +183,17 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                     // DB row — 13 cells
                     <>
                       {/* DATABASE */}
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, pl: 2, minWidth: 0 }}>
+                      <Box
+                        sx={{ display: 'flex', alignItems: 'center', gap: 0.5, pl: 2, minWidth: 0 }}
+                      >
                         <Typography variant="body2" noWrap fontWeight={500}>
                           {row.dbName}
                         </Typography>
                         {row.isReadOnly && (
                           <Tooltip title="Read-only">
-                            <Typography sx={{ fontSize: 10, color: 'text.disabled', flexShrink: 0 }}>
+                            <Typography
+                              sx={{ fontSize: 10, color: 'text.disabled', flexShrink: 0 }}
+                            >
                               R/O
                             </Typography>
                           </Tooltip>
@@ -202,7 +221,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                           borderRadius: '3px',
                           bgcolor: row.stateDesc === 'ONLINE' ? '#107c10' : '#a4262c',
                           color: '#fff',
-                          width: 'fit-content',
+                          width: 'fit-content'
                         }}
                       />
 
@@ -222,7 +241,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                                 ? '#038387'
                                 : '#737373',
                           color: '#fff',
-                          width: 'fit-content',
+                          width: 'fit-content'
                         }}
                       />
 
@@ -232,7 +251,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                           variant="caption"
                           sx={{
                             color:
-                              (row.compatibilityLevel ?? 999) < 130 ? '#ca5010' : 'text.secondary',
+                              (row.compatibilityLevel ?? 999) < 130 ? '#ca5010' : 'text.secondary'
                           }}
                         >
                           {row.compatibilityLevel

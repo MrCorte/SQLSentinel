@@ -10,9 +10,7 @@ import { sendAlertEmail } from './emailService'
 import { createLogger } from './utils/logger'
 const log = createLogger('background')
 
-const resourcesDir = app.isPackaged
-  ? process.resourcesPath
-  : join(__dirname, '../../resources')
+const resourcesDir = app.isPackaged ? process.resourcesPath : join(__dirname, '../../resources')
 
 const trayIconNormal = join(resourcesDir, 'tray-icon.png')
 const trayIconAlertCandidate = join(resourcesDir, 'tray-icon-alert.png')
@@ -44,7 +42,10 @@ export class BackgroundService {
   private createTray(): void {
     this.tray = new Tray(trayIconNormal)
     this.rebuildMenu()
-    this.tray.on('double-click', () => { this.win.show(); this.win.focus() })
+    this.tray.on('double-click', () => {
+      this.win.show()
+      this.win.focus()
+    })
   }
 
   private attachWindowListeners(): void {
@@ -67,7 +68,13 @@ export class BackgroundService {
     const hasAlert = getAlerts().some((a) => a.severity === 'CRITICAL' && !a.acknowledgedAt)
     this.tray.setImage(hasAlert ? trayIconAlert : trayIconNormal)
     const menu = Menu.buildFromTemplate([
-      { label: 'Apri SQLSentinel', click: () => { this.win.show(); this.win.focus() } },
+      {
+        label: 'Apri SQLSentinel',
+        click: () => {
+          this.win.show()
+          this.win.focus()
+        }
+      },
       { type: 'separator' },
       { label: `● ${online} server online`, enabled: false },
       { label: `✕  ${offline} server offline`, enabled: false },
@@ -83,7 +90,7 @@ export class BackgroundService {
             this.restoreWorker()
           }
           this.rebuildMenu()
-        },
+        }
       },
       { type: 'separator' },
       {
@@ -92,8 +99,8 @@ export class BackgroundService {
           this.quitting = true
           this.destroy()
           app.quit()
-        },
-      },
+        }
+      }
     ])
     this.tray.setContextMenu(menu)
   }
@@ -111,7 +118,7 @@ export class BackgroundService {
         idleMs: ms,
         offlineMs: ms,
         lightCollectors: true,
-        historyCapOverride: 3,
+        historyCapOverride: 3
       })
     }
     // 'full' mode: no change to worker
@@ -120,14 +127,17 @@ export class BackgroundService {
   private restoreWorker(): void {
     this.worker.setIntervalOverrides(null)
     if (this.wasStoppedWhenHidden) {
-      const servers = serverStore.getAll().map((s) => ({
-        ip: s.host,
-        port: s.port,
-        instanceName: s.instanceName,
-        useWindowsAuth: s.useWindowsAuth,
-        username: s.username,
-        password: s.password,
-      } as CollectMetricsRequest))
+      const servers = serverStore.getAll().map(
+        (s) =>
+          ({
+            ip: s.host,
+            port: s.port,
+            instanceName: s.instanceName,
+            useWindowsAuth: s.useWindowsAuth,
+            username: s.username,
+            password: s.password
+          }) as CollectMetricsRequest
+      )
       this.worker.syncServers(servers)
       this.wasStoppedWhenHidden = false
     }
@@ -137,7 +147,12 @@ export class BackgroundService {
 
   private maybeNotify(alert: Alert): void {
     // Email — fires for WARNING and CRITICAL, filtered by emailService settings + dedup
-    sendAlertEmail(alert).catch((err) => log.error('[BackgroundService] Email error:', err instanceof Error ? err.message : String(err)))
+    sendAlertEmail(alert).catch((err) =>
+      log.error(
+        '[BackgroundService] Email error:',
+        err instanceof Error ? err.message : String(err)
+      )
+    )
 
     // Toast — CRITICAL only, hidden window only
     if (alert.severity !== 'CRITICAL') return
@@ -155,17 +170,29 @@ export class BackgroundService {
       if (!Notification.isSupported()) return
       const n = new Notification({
         title: 'SQLSentinel — Alert Critico',
-        body: `${alert.serverId} — ${alert.message}`,
+        body: `${alert.serverId} — ${alert.message}`
       })
-      n.on('click', () => { this.win.show(); this.win.focus() })
+      n.on('click', () => {
+        this.win.show()
+        this.win.focus()
+      })
       n.show()
     } catch (err) {
-      log.error('[BackgroundService] Notification error:', err instanceof Error ? err.message : String(err))
+      log.error(
+        '[BackgroundService] Notification error:',
+        err instanceof Error ? err.message : String(err)
+      )
     }
   }
 
   destroy(): void {
-    if (this.menuTimer) { clearInterval(this.menuTimer); this.menuTimer = null }
-    if (this.tray && !this.tray.isDestroyed()) { this.tray.destroy(); this.tray = null }
+    if (this.menuTimer) {
+      clearInterval(this.menuTimer)
+      this.menuTimer = null
+    }
+    if (this.tray && !this.tray.isDestroyed()) {
+      this.tray.destroy()
+      this.tray = null
+    }
   }
 }

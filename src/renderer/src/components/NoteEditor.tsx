@@ -39,7 +39,12 @@ export function NoteEditor({ serverId, initialNote }: NoteEditorProps): React.JS
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
         <Typography
           variant="caption"
-          sx={{ color: 'text.secondary', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}
+          sx={{
+            color: 'text.secondary',
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em'
+          }}
         >
           Note
         </Typography>

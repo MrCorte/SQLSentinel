@@ -50,46 +50,40 @@ export function auditMemory(): void {
 
   console.group('[MemoryAudit] SQLSentinel renderer store sizes')
   console.table({
-    servers:      { count: serverCount,  size: fmt(roughBytes(servers.servers)) },
-    metricsMap:   { count: metricsCount, size: fmt(metricsBytes) },
-    summaries:    { count: summaryCount, size: fmt(summaryBytes) },
-    historyMap:   { count: historyCount, size: fmt(historyBytes) },
-    alerts:       { count: alertCount,   size: fmt(alertBytes) }
+    servers: { count: serverCount, size: fmt(roughBytes(servers.servers)) },
+    metricsMap: { count: metricsCount, size: fmt(metricsBytes) },
+    summaries: { count: summaryCount, size: fmt(summaryBytes) },
+    historyMap: { count: historyCount, size: fmt(historyBytes) },
+    alerts: { count: alertCount, size: fmt(alertBytes) }
   })
 
   // ── 200-server projection ─────────────────────────────────────────────────
   // Per-server averages (from current data, fallback to baseline estimates)
-  const perServerMetrics = metricsCount > 0
-    ? metricsBytes / metricsCount
-    : 8 * 1024           // ~8 KB baseline per server (no detailed DB list)
+  const perServerMetrics = metricsCount > 0 ? metricsBytes / metricsCount : 8 * 1024 // ~8 KB baseline per server (no detailed DB list)
 
-  const perServerSummary = summaryCount > 0
-    ? summaryBytes / summaryCount
-    : 128                // ~128 B per summary (7 numeric fields)
+  const perServerSummary = summaryCount > 0 ? summaryBytes / summaryCount : 128 // ~128 B per summary (7 numeric fields)
 
-  const perServerHistory = historyCount > 0
-    ? historyBytes / historyCount
-    : 60 * 2 * 16        // 60 points × 2 arrays × 16 B per HistoryPoint
+  const perServerHistory = historyCount > 0 ? historyBytes / historyCount : 60 * 2 * 16 // 60 points × 2 arrays × 16 B per HistoryPoint
 
   const TARGET_SERVERS = 200
   const TARGET_DBS = 1500
 
   // metricsMap projection: only active server kept full + rest as summaries
-  const projMetrics  = perServerMetrics  * 1  // 1 active server full
-  const projSummary  = perServerSummary  * TARGET_SERVERS
-  const projHistory  = perServerHistory  * TARGET_SERVERS
+  const projMetrics = perServerMetrics * 1 // 1 active server full
+  const projSummary = perServerSummary * TARGET_SERVERS
+  const projHistory = perServerHistory * TARGET_SERVERS
   // DB rows per server in full metrics (~1 KB per DB row)
-  const projDbRows   = (TARGET_DBS / TARGET_SERVERS) * 1024 // per-server avg
+  const projDbRows = (TARGET_DBS / TARGET_SERVERS) * 1024 // per-server avg
 
   const projTotal = projMetrics + projSummary + projHistory + projDbRows * TARGET_SERVERS
 
   console.group('[MemoryAudit] 200-server / 1500-DB projection')
   console.table({
-    'metricsMap (1 active)':  fmt(projMetrics),
+    'metricsMap (1 active)': fmt(projMetrics),
     'summaries (200 servers)': fmt(projSummary),
-    'historyMap (200×60pts)':  fmt(projHistory),
-    'DB rows in fullMetrics':  fmt(projDbRows * TARGET_SERVERS),
-    'TOTAL (estimated)':       fmt(projTotal)
+    'historyMap (200×60pts)': fmt(projHistory),
+    'DB rows in fullMetrics': fmt(projDbRows * TARGET_SERVERS),
+    'TOTAL (estimated)': fmt(projTotal)
   })
   console.groupEnd()
   console.groupEnd()

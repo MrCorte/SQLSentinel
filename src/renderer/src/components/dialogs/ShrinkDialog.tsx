@@ -22,7 +22,12 @@ import {
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline'
-import type { DatabaseFile, ShrinkEstimate, ShrinkResult, CollectMetricsRequest } from '../../../../preload/index'
+import type {
+  DatabaseFile,
+  ShrinkEstimate,
+  ShrinkResult,
+  CollectMetricsRequest
+} from '../../../../preload/index'
 import { tokens } from '../../styles/tokens'
 import { createLogger } from '../../utils/logger'
 
@@ -54,7 +59,13 @@ function formatDuration(ms: number): string {
 // ShrinkDialog
 // ---------------------------------------------------------------------------
 
-export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props): React.JSX.Element {
+export function ShrinkDialog({
+  open,
+  onClose,
+  dbName,
+  files,
+  connection
+}: Props): React.JSX.Element {
   const [mode, setMode] = useState<ShrinkMode>('database')
   const [targetPercent, setTargetPercent] = useState(10)
   const [selectedFile, setSelectedFile] = useState('')
@@ -143,9 +154,7 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
 
   return (
     <Dialog open={open} onClose={running ? undefined : onClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ fontSize: 15, fontWeight: 600, pb: 1 }}>
-        Shrink: {dbName}
-      </DialogTitle>
+      <DialogTitle sx={{ fontSize: 15, fontWeight: 600, pb: 1 }}>Shrink: {dbName}</DialogTitle>
 
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
         {/* Warning banner */}
@@ -163,8 +172,7 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
         >
           <WarningAmberIcon sx={{ fontSize: 16, color: '#7a4f00', mt: 0.25, flexShrink: 0 }} />
           <Typography sx={{ fontSize: 12, color: '#7a4f00', lineHeight: 1.5 }}>
-            Shrink fragments indexes. Plan an{' '}
-            <strong>index REBUILD</strong> after this operation.
+            Shrink fragments indexes. Plan an <strong>index REBUILD</strong> after this operation.
           </Typography>
         </Box>
 
@@ -178,26 +186,46 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
             py: 1.25
           }}
         >
-          <Typography sx={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: tokens.color.textSecondary, mb: 1 }}>
+          <Typography
+            sx={{
+              fontSize: 11,
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px',
+              color: tokens.color.textSecondary,
+              mb: 1
+            }}
+          >
             Reclaimable space estimate
           </Typography>
           {estimateLoading ? (
             <Stack direction="row" spacing={1} alignItems="center">
               <CircularProgress size={12} />
-              <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>Calculating...</Typography>
+              <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>
+                Calculating...
+              </Typography>
             </Stack>
           ) : estimates.length === 0 ? (
-            <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>No data available</Typography>
+            <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>
+              No data available
+            </Typography>
           ) : (
             <Stack spacing={0.5}>
               {estimates.map((e) => (
                 <Stack key={e.file_name} direction="row" justifyContent="space-between">
-                  <Typography sx={{ fontSize: 12, fontFamily: 'monospace', color: tokens.color.textPrimary }}>
+                  <Typography
+                    sx={{ fontSize: 12, fontFamily: 'monospace', color: tokens.color.textPrimary }}
+                  >
                     {e.file_name}
                   </Typography>
                   <Typography sx={{ fontSize: 12, color: tokens.color.textSecondary }}>
                     {e.used_mb}/{e.current_mb} MB{' '}
-                    <strong style={{ color: e.reclaimable_mb > 0 ? tokens.color.success : tokens.color.textSecondary }}>
+                    <strong
+                      style={{
+                        color:
+                          e.reclaimable_mb > 0 ? tokens.color.success : tokens.color.textSecondary
+                      }}
+                    >
                       → {e.reclaimable_mb} MB reclaimable
                     </strong>
                   </Typography>
@@ -206,7 +234,14 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
               {totalReclaimable > 0 && (
                 <>
                   <Divider sx={{ my: 0.5 }} />
-                  <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.color.textPrimary, textAlign: 'right' }}>
+                  <Typography
+                    sx={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: tokens.color.textPrimary,
+                      textAlign: 'right'
+                    }}
+                  >
                     Total: {totalReclaimable} MB
                   </Typography>
                 </>
@@ -217,7 +252,9 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
 
         {/* Mode selector */}
         <FormControl>
-          <Typography sx={{ fontSize: 12, fontWeight: 600, color: tokens.color.textPrimary, mb: 0.5 }}>
+          <Typography
+            sx={{ fontSize: 12, fontWeight: 600, color: tokens.color.textPrimary, mb: 0.5 }}
+          >
             Mode
           </Typography>
           <RadioGroup value={mode} onChange={(e) => setMode(e.target.value as ShrinkMode)}>
@@ -234,7 +271,9 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
                   type="number"
                   size="small"
                   value={targetPercent}
-                  onChange={(e) => setTargetPercent(Math.max(0, Math.min(99, Number(e.target.value))))}
+                  onChange={(e) =>
+                    setTargetPercent(Math.max(0, Math.min(99, Number(e.target.value))))
+                  }
                   inputProps={{ min: 0, max: 99 }}
                   sx={{ width: 200 }}
                 />
@@ -283,7 +322,10 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
               label={
                 <Typography sx={{ fontSize: 13 }}>
                   Log only{' '}
-                  <Typography component="span" sx={{ fontSize: 11, color: tokens.color.textSecondary }}>
+                  <Typography
+                    component="span"
+                    sx={{ fontSize: 11, color: tokens.color.textSecondary }}
+                  >
                     (includes BACKUP LOG TO NUL if recovery is FULL)
                   </Typography>
                 </Typography>
@@ -352,7 +394,9 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
                 Space reclaimed: <strong>{result.reclaimedMb} MB</strong>
               </Typography>
             )}
-            <Typography sx={{ fontSize: 11, color: '#107c10', ml: 3, mt: 0.5, fontStyle: 'italic' }}>
+            <Typography
+              sx={{ fontSize: 11, color: '#107c10', ml: 3, mt: 0.5, fontStyle: 'italic' }}
+            >
               Remember to run index REBUILD.
             </Typography>
           </Box>
@@ -371,7 +415,9 @@ export function ShrinkDialog({ open, onClose, dbName, files, connection }: Props
               alignItems: 'flex-start'
             }}
           >
-            <ErrorOutlineIcon sx={{ fontSize: 16, color: tokens.color.error, mt: 0.25, flexShrink: 0 }} />
+            <ErrorOutlineIcon
+              sx={{ fontSize: 16, color: tokens.color.error, mt: 0.25, flexShrink: 0 }}
+            />
             <Typography sx={{ fontSize: 12, color: tokens.color.error }}>{resultError}</Typography>
           </Box>
         )}

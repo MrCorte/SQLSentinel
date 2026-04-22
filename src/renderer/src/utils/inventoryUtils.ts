@@ -10,7 +10,7 @@ const SQL_VERSION_MAP: Record<number, string> = {
   13: 'SQL Server 2016',
   14: 'SQL Server 2017',
   15: 'SQL Server 2019',
-  16: 'SQL Server 2022',
+  16: 'SQL Server 2022'
 }
 
 /**
@@ -49,9 +49,7 @@ function buildServerSummary(
   const metricsMap = useMetricsStore.getState().metricsMap
   const m = metricsMap[serverLabel(srv)]
   const dbs = m?.databases ?? []
-  const ag = srv.agGroupId
-    ? Object.values(agGroups).find((a) => a.id === srv.agGroupId)
-    : undefined
+  const ag = srv.agGroupId ? Object.values(agGroups).find((a) => a.id === srv.agGroupId) : undefined
   const alias = serverAliases[srv.id]
   return {
     serverId: srv.id,

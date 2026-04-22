@@ -12,7 +12,7 @@ import {
   removeServerById,
   clearMockServers,
   detectServer,
-  collectMetricsWithCustomFields,
+  collectMetricsWithCustomFields
 } from '../../services/ServerService'
 import {
   IpcChannel,
@@ -26,7 +26,7 @@ import {
   type CollectMetricsResponse,
   type IpcResult,
   type ServerAddResult,
-  type ServerInfo,
+  type ServerInfo
 } from '../types'
 import type { StoredServer } from '../../store/serverStore'
 import type { ScanOptions } from '../../discovery/types'
@@ -82,10 +82,7 @@ export function registerServerHandlers(): void {
   // REMOVE_SERVER — removes by ip:port (legacy, used by Discovery context menu)
   handle(
     IpcChannel.REMOVE_SERVER,
-    async (
-      _event: IpcMainInvokeEvent,
-      req: RemoveServerRequest
-    ): Promise<RemoveServerResponse> => {
+    async (_event: IpcMainInvokeEvent, req: RemoveServerRequest): Promise<RemoveServerResponse> => {
       try {
         removeServer(req)
         return { ok: true, data: null }

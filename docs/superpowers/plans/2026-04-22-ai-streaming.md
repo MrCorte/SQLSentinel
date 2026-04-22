@@ -12,24 +12,25 @@
 
 ## File map
 
-| File | Change |
-|---|---|
-| `src/main/ipc/types.ts` | Add 3 IPC channels + `AiStreamEvent` type |
-| `src/preload/index.d.ts` | Add `AiStreamEvent`, 3 new methods to `SqlSentinelAPI` |
-| `src/main/ai/langGraphAgent.ts` | Add `langGraphStream()`, `abortActiveStream()`, module-level AbortController |
-| `src/main/ipc/handlers/knowledge.ipc.ts` | Add `AI_AGENT_STREAM` + `AI_AGENT_CANCEL` handlers |
-| `src/main/index.ts` | Add `app.on('before-quit')` abort guard |
-| `src/preload/index.ts` | Extend `realApi`, `mockApi`, `bridgeApi` with 3 new methods |
-| `src/renderer/src/store/aiChatStore.ts` | Add streaming state + 6 new actions |
-| `src/renderer/src/components/ai/AIPanel.tsx` | Add `ToolTimeline`, `StreamingBubble`, Cancel button, new `sendMessage` logic |
-| `src/main/ai/__tests__/langGraphStream.test.ts` | Unit tests for `langGraphStream` event mapping |
-| `src/renderer/src/__tests__/aiChatStore.test.ts` | Unit tests for store state transitions |
+| File                                             | Change                                                                        |
+| ------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `src/main/ipc/types.ts`                          | Add 3 IPC channels + `AiStreamEvent` type                                     |
+| `src/preload/index.d.ts`                         | Add `AiStreamEvent`, 3 new methods to `SqlSentinelAPI`                        |
+| `src/main/ai/langGraphAgent.ts`                  | Add `langGraphStream()`, `abortActiveStream()`, module-level AbortController  |
+| `src/main/ipc/handlers/knowledge.ipc.ts`         | Add `AI_AGENT_STREAM` + `AI_AGENT_CANCEL` handlers                            |
+| `src/main/index.ts`                              | Add `app.on('before-quit')` abort guard                                       |
+| `src/preload/index.ts`                           | Extend `realApi`, `mockApi`, `bridgeApi` with 3 new methods                   |
+| `src/renderer/src/store/aiChatStore.ts`          | Add streaming state + 6 new actions                                           |
+| `src/renderer/src/components/ai/AIPanel.tsx`     | Add `ToolTimeline`, `StreamingBubble`, Cancel button, new `sendMessage` logic |
+| `src/main/ai/__tests__/langGraphStream.test.ts`  | Unit tests for `langGraphStream` event mapping                                |
+| `src/renderer/src/__tests__/aiChatStore.test.ts` | Unit tests for store state transitions                                        |
 
 ---
 
 ## Task 1 — Add `AiStreamEvent` type and new IPC channels
 
 **Files:**
+
 - Modify: `src/main/ipc/types.ts`
 - Modify: `src/preload/index.d.ts`
 
@@ -96,6 +97,7 @@ git commit -m "feat(ai): add AiStreamEvent type and streaming IPC channels"
 ## Task 2 — Implement `langGraphStream` and `abortActiveStream`
 
 **Files:**
+
 - Modify: `src/main/ai/langGraphAgent.ts`
 - Create: `src/main/ai/__tests__/langGraphStream.test.ts`
 
@@ -144,10 +146,12 @@ beforeEach(() => {
 
 describe('langGraphStream', () => {
   it('emits token events for AI message content', async () => {
-    mockStream.mockReturnValue(makeStream([
-      ['messages', [{ _getType: () => 'ai', content: 'Hello' }]],
-      ['messages', [{ _getType: () => 'ai', content: ' world' }]],
-    ]))
+    mockStream.mockReturnValue(
+      makeStream([
+        ['messages', [{ _getType: () => 'ai', content: 'Hello' }]],
+        ['messages', [{ _getType: () => 'ai', content: ' world' }]]
+      ])
+    )
 
     const events: AiStreamEvent[] = []
     await langGraphStream('test', [], (e) => events.push(e))
@@ -158,10 +162,18 @@ describe('langGraphStream', () => {
   })
 
   it('emits tool_start on agent tool_calls', async () => {
-    mockStream.mockReturnValue(makeStream([
-      ['updates', { agent: { messages: [{ tool_calls: [{ id: 'tc1', name: 'get_server_metrics' }] }] } }],
-      ['updates', { tools: { messages: [{ _getType: () => 'tool', tool_call_id: 'tc1', content: '{}' }] } }],
-    ]))
+    mockStream.mockReturnValue(
+      makeStream([
+        [
+          'updates',
+          { agent: { messages: [{ tool_calls: [{ id: 'tc1', name: 'get_server_metrics' }] }] } }
+        ],
+        [
+          'updates',
+          { tools: { messages: [{ _getType: () => 'tool', tool_call_id: 'tc1', content: '{}' }] } }
+        ]
+      ])
+    )
 
     const events: AiStreamEvent[] = []
     await langGraphStream('test', [], (e) => events.push(e))
@@ -173,7 +185,11 @@ describe('langGraphStream', () => {
   it('emits error event when stream throws', async () => {
     mockStream.mockReturnValue({
       [Symbol.asyncIterator]() {
-        return { next: async () => { throw new Error('Ollama down') } }
+        return {
+          next: async () => {
+            throw new Error('Ollama down')
+          }
+        }
       }
     })
 
@@ -242,9 +258,9 @@ export async function langGraphStream(
 
   const agent = getAgent()
   const messages = [
-    ...history.slice(-6).map((h) =>
-      h.role === 'user' ? new HumanMessage(h.content) : new AIMessage(h.content)
-    ),
+    ...history
+      .slice(-6)
+      .map((h) => (h.role === 'user' ? new HumanMessage(h.content) : new AIMessage(h.content))),
     new HumanMessage(question)
   ]
 
@@ -304,7 +320,11 @@ export async function langGraphStream(
   } catch (err) {
     onEvent({
       type: 'error',
-      message: controller.signal.aborted ? 'Cancelled' : err instanceof Error ? err.message : String(err)
+      message: controller.signal.aborted
+        ? 'Cancelled'
+        : err instanceof Error
+          ? err.message
+          : String(err)
     })
   } finally {
     if (_activeAbortController === controller) _activeAbortController = null
@@ -352,6 +372,7 @@ git commit -m "feat(ai): add langGraphStream with tool tracking and abort suppor
 ## Task 3 — Wire IPC handlers for stream and cancel
 
 **Files:**
+
 - Modify: `src/main/ipc/handlers/knowledge.ipc.ts`
 
 - [ ] **Step 3.1: Add `AI_AGENT_STREAM` and `AI_AGENT_CANCEL` handlers**
@@ -362,7 +383,12 @@ Replace the entire content of `src/main/ipc/handlers/knowledge.ipc.ts`:
 import type { IpcMainInvokeEvent } from 'electron'
 import { handle, safeError, log } from '../handleWrapper'
 import { checkOllamaHealth } from '../../ai/ollama'
-import { langGraphAsk, langGraphStream, abortActiveStream, type AgentHistory } from '../../ai/langGraphAgent'
+import {
+  langGraphAsk,
+  langGraphStream,
+  abortActiveStream,
+  type AgentHistory
+} from '../../ai/langGraphAgent'
 import { IpcChannel, type IpcResult, type AiStreamEvent } from '../types'
 
 export function registerKnowledgeHandlers(): void {
@@ -431,6 +457,7 @@ git commit -m "feat(ai): register AI_AGENT_STREAM and AI_AGENT_CANCEL IPC handle
 ## Task 4 — Add `before-quit` abort guard in main process
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 
 - [ ] **Step 4.1: Import `abortActiveStream` and add quit guard**
@@ -472,6 +499,7 @@ git commit -m "feat(ai): abort active stream on app before-quit"
 ## Task 5 — Extend preload bridge
 
 **Files:**
+
 - Modify: `src/preload/index.ts`
 
 The preload has three layers: `realApi`, `mockApi`, and `bridgeApi`. All three need updating.
@@ -484,7 +512,7 @@ The file already has `import type { ..., IpcResult, ... } from '../main/ipc/type
 import type {
   // ... existing types ...
   IpcResult,
-  AiStreamEvent,         // ← add this
+  AiStreamEvent // ← add this
   // ... rest ...
 } from '../main/ipc/types'
 ```
@@ -559,6 +587,7 @@ git commit -m "feat(ai): expose aiAgentStream, aiAgentCancel, onAiStreamEvent in
 ## Task 6 — Extend `aiChatStore` with streaming state
 
 **Files:**
+
 - Modify: `src/renderer/src/store/aiChatStore.ts`
 - Create: `src/renderer/src/__tests__/aiChatStore.test.ts`
 
@@ -700,8 +729,7 @@ export const useAiChatStore = create<AiChatStore>((set, get) => ({
 
   appendToken: (text) => set((s) => ({ streamingText: s.streamingText + text })),
 
-  addToolStep: (name) =>
-    set((s) => ({ toolSteps: [...s.toolSteps, { name, status: 'running' }] })),
+  addToolStep: (name) => set((s) => ({ toolSteps: [...s.toolSteps, { name, status: 'running' }] })),
 
   completeToolStep: (name, output) =>
     set((s) => ({
@@ -764,6 +792,7 @@ git commit -m "feat(ai): extend aiChatStore with streaming state and actions"
 ## Task 7 — Update `AIPanel` with ToolTimeline, StreamingBubble, and Cancel
 
 **Files:**
+
 - Modify: `src/renderer/src/components/ai/AIPanel.tsx`
 
 - [ ] **Step 7.1: Add new imports**
@@ -837,7 +866,18 @@ const sendMessage = useCallback(async () => {
     resetStreaming(result.error)
     if (mountedRef.current) setLoading(false)
   }
-}, [input, loading, addMessage, setLoading, startStreaming, appendToken, addToolStep, completeToolStep, finalizeStreaming, resetStreaming])
+}, [
+  input,
+  loading,
+  addMessage,
+  setLoading,
+  startStreaming,
+  appendToken,
+  addToolStep,
+  completeToolStep,
+  finalizeStreaming,
+  resetStreaming
+])
 ```
 
 - [ ] **Step 7.3: Update store destructuring in `AIPanel`**

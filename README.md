@@ -13,6 +13,7 @@ having to open SSMS on every individual server.
 ## Key Features
 
 ### Monitoring
+
 - **Global dashboard** — overview of all servers with aggregated KPIs, CPU/memory status,
   active alarm count, online/offline donut chart, and top-server CPU chart
 - **Single server dashboard** — detailed metrics, CPU/memory history (ring buffer,
@@ -27,6 +28,7 @@ having to open SSMS on every individual server.
   while a silent background fetch completes; non-blocking `LinearProgress`
 
 ### Inventory and data
+
 - **Server View** — server inventory with composable filters: environment, hosting,
   AG, alias, owner, SQL Server version; CSV export with UTF-8 BOM for Excel
 - **DB View** — one row per database per server; columns: DATABASE · SERVER ·
@@ -41,6 +43,7 @@ having to open SSMS on every individual server.
   visible in the Overview tab and as a column in Inventory
 
 ### Alarms
+
 - **Automatic detection** — offline databases, expired backups, blocked sessions,
   CPU/memory thresholds; cap of 500 alarms / 7 days
 - **Email notifications** — WARNING and CRITICAL alerts send HTML emails via SMTP with
@@ -49,6 +52,7 @@ having to open SSMS on every individual server.
   the window is hidden in the tray; 15-minute cooldown; can be disabled from Settings
 
 ### Discovery and management
+
 - **Network discovery** — CIDR subnet scanning via TCP port scan (500ms timeout per host)
 - **Manual addition** — direct `host:port:instance` entry with connection test
 - **Grouping** — servers organized by environment (Production / Staging / Development)
@@ -57,6 +61,7 @@ having to open SSMS on every individual server.
   persistent expand/collapse state
 
 ### AI Assistant
+
 - **Integrated AI chat** — LangGraph agent with access to the live context of all servers
   (metrics, alarms, databases); answers questions about infrastructure status
 - **RAG Knowledge Base** — indexing of technical documentation (PDF/Markdown)
@@ -64,15 +69,17 @@ having to open SSMS on every individual server.
 - **Ollama support** — local models via Ollama (no data sent to the cloud)
 
 ### Background and tray
+
 - **System tray** — the app hides to the tray instead of closing; double-click
   or context menu to restore it; "Exit" to quit completely
 - **Background polling** — the worker keeps running with the window hidden;
-  *Light* mode (only 4 critical queries, history cap 3) or *Full* mode (unchanged)
+  _Light_ mode (only 4 critical queries, history cap 3) or _Full_ mode (unchanged)
 - **Pause on hidden window** — AgDashboard charts and renderer polling stop
   automatically when the window is not in the foreground (`visibilitychange`)
 - **Start with Windows** — toggle in Settings; uses `app.setLoginItemSettings`
 
 ### Security and authentication
+
 - **Local login** — authentication with credentials stored in SQLite; bcrypt 12 rounds;
   in-memory session 8h with sliding expiry; mandatory password change on first login
 - **Credentials encrypted at rest** — SQL Server passwords encrypted with `safeStorage`
@@ -82,6 +89,7 @@ having to open SSMS on every individual server.
   exempt channels declared explicitly
 
 ### Settings
+
 - **Dark / Light / System theme** — follows the OS preference in real time;
   dark mode with slate palette and accent tinted border on KpiCard
 - **Metrics retention** — configurable from Settings; automatic cleanup on startup
@@ -138,16 +146,16 @@ React Renderer
 
 ## Security
 
-| Area | Mechanism |
-|---|---|
-| Local auth | Credentials in SQLite, bcrypt 12 rounds, in-memory session 8h |
-| IPC auth | Every IPC channel requires authentication; exempt channels declared explicitly |
-| Credentials | Encrypted at rest with `safeStorage` (Windows DPAPI / macOS Keychain) |
-| SQL errors | `sanitizeSqlError()` strips host, port, and credentials before logging |
-| Path traversal | PDF filenames validated with `SAFE_PDF_NAME` regex before `path.join()` |
-| TCP scan | Explicit handshake timer (500 ms) — avoids pending sockets on filtered ports |
-| Parameterization | All T-SQL queries use parameters — no SQL string concatenation |
-| Sandbox | `contextIsolation: true`, `nodeIntegration: false`, `sandbox: false` main only |
+| Area             | Mechanism                                                                      |
+| ---------------- | ------------------------------------------------------------------------------ |
+| Local auth       | Credentials in SQLite, bcrypt 12 rounds, in-memory session 8h                  |
+| IPC auth         | Every IPC channel requires authentication; exempt channels declared explicitly |
+| Credentials      | Encrypted at rest with `safeStorage` (Windows DPAPI / macOS Keychain)          |
+| SQL errors       | `sanitizeSqlError()` strips host, port, and credentials before logging         |
+| Path traversal   | PDF filenames validated with `SAFE_PDF_NAME` regex before `path.join()`        |
+| TCP scan         | Explicit handshake timer (500 ms) — avoids pending sockets on filtered ports   |
+| Parameterization | All T-SQL queries use parameters — no SQL string concatenation                 |
+| Sandbox          | `contextIsolation: true`, `nodeIntegration: false`, `sandbox: false` main only |
 
 ---
 
@@ -155,14 +163,14 @@ React Renderer
 
 ### Requirements
 
-| Requirement | Detail |
-|---|---|
-| Operating system | Windows 10 / 11 x64 |
-| SQL Server | 2014 or later |
-| Authentication | Windows Auth or SQL Auth |
-| Network | Configured TCP port reachable from the monitoring machine |
-| Dependencies | None — SQL Sentinel is self-contained |
-| Agents on servers | Not required |
+| Requirement       | Detail                                                    |
+| ----------------- | --------------------------------------------------------- |
+| Operating system  | Windows 10 / 11 x64                                       |
+| SQL Server        | 2014 or later                                             |
+| Authentication    | Windows Auth or SQL Auth                                  |
+| Network           | Configured TCP port reachable from the monitoring machine |
+| Dependencies      | None — SQL Sentinel is self-contained                     |
+| Agents on servers | Not required                                              |
 
 ### Installer-based installation
 
@@ -186,9 +194,9 @@ React Renderer
 
 On first launch, sign in with the default credentials:
 
-| Field | Value |
-|---|---|
-| Username | `admin` |
+| Field    | Value        |
+| -------- | ------------ |
+| Username | `admin`      |
 | Password | `Admin1234!` |
 
 You will be immediately prompted to change your password (minimum 8 characters, 1 uppercase, 1 number).
@@ -199,15 +207,15 @@ You will be immediately prompted to change your password (minimum 8 characters, 
 2. Click **Add server manually**
 3. Fill in the fields:
 
-| Field | Example |
-|---|---|
-| Host | `192.168.1.10` or `localhost` |
-| Port | `1433` (default) or any configured TCP port |
-| Named instance | `SERVER\SQLEXPRESS` |
-| Authentication | Windows Auth (recommended) or SQL Auth |
-| Environment | Production / Staging / Development |
-| Alias | Descriptive name e.g. `SQL-PROD-01` |
-| Owner | Name of the person responsible for the server |
+| Field          | Example                                       |
+| -------------- | --------------------------------------------- |
+| Host           | `192.168.1.10` or `localhost`                 |
+| Port           | `1433` (default) or any configured TCP port   |
+| Named instance | `SERVER\SQLEXPRESS`                           |
+| Authentication | Windows Auth (recommended) or SQL Auth        |
+| Environment    | Production / Staging / Development            |
+| Alias          | Descriptive name e.g. `SQL-PROD-01`           |
+| Owner          | Name of the person responsible for the server |
 
 4. Click **Test connection** to verify connectivity
 5. Click **Add** — the server appears in the sidebar and polling starts automatically

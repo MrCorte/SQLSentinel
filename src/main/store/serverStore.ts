@@ -12,8 +12,8 @@ export type ServerHostingType = 'on-premise' | 'cloud'
 
 export interface StoredServer {
   id: string
-  host: string              // canonical address — required
-  ip?: string               // legacy alias kept for migration; normalizeServer() strips it
+  host: string // canonical address — required
+  ip?: string // legacy alias kept for migration; normalizeServer() strips it
   port: number
   instanceName?: string
   useWindowsAuth: boolean
@@ -22,19 +22,19 @@ export interface StoredServer {
   encryptedPassword?: string
   /** @deprecated Do not persist. Populated transiently by getAll/getByIpPort after decryption. */
   password?: string
-  addedAt: string           // ISO 8601
-  lastSeen?: string         // ISO 8601 — last successful connection
-  unreachable?: boolean     // true while health-check reports failure
+  addedAt: string // ISO 8601
+  lastSeen?: string // ISO 8601 — last successful connection
+  unreachable?: boolean // true while health-check reports failure
   unreachableSince?: string // ISO 8601 — timestamp of first failure
-  machineName?: string      // SERVERPROPERTY('MachineName') — used to group multiple instances on the same physical machine
+  machineName?: string // SERVERPROPERTY('MachineName') — used to group multiple instances on the same physical machine
   // Always On AG membership — populated at runtime, refreshed on startup
-  agGroupId?: string        // group_id UUID if this server belongs to an AG
-  agName?: string           // AG name, e.g. "AG-PROD-01" — used for sidebar grouping
+  agGroupId?: string // group_id UUID if this server belongs to an AG
+  agName?: string // AG name, e.g. "AG-PROD-01" — used for sidebar grouping
   agRole?: 'PRIMARY' | 'SECONDARY' | 'RESOLVING'
-  logicalCpus?: number      // cpu_count from sys.dm_os_sys_info (persisted, rarely changes)
-  physicalCpus?: number     // cpu_count / hyperthread_ratio
+  logicalCpus?: number // cpu_count from sys.dm_os_sys_info (persisted, rarely changes)
+  physicalCpus?: number // cpu_count / hyperthread_ratio
   hostingType?: ServerHostingType
-  notes?: string            // free-text notes; persisted in electron-store
+  notes?: string // free-text notes; persisted in electron-store
 }
 
 // ---------------------------------------------------------------------------
@@ -122,7 +122,9 @@ export function add(
   const servers = store.get('servers', [])
   // Duplicate check: accept both host and legacy ip from stored records
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (servers.some((s: any) => (s.host ?? s.ip) === normalized.host && s.port === normalized.port)) {
+  if (
+    servers.some((s: any) => (s.host ?? s.ip) === normalized.host && s.port === normalized.port)
+  ) {
     return { success: false, reason: 'duplicate' }
   }
   const server: StoredServer = {
@@ -187,7 +189,9 @@ export function upsertByIpPort(params: any): StoredServer {
   const normalized = normalizeServer(params)
   const servers = store.get('servers', [])
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const idx = servers.findIndex((s: any) => (s.host ?? s.ip) === normalized.host && s.port === normalized.port)
+  const idx = servers.findIndex(
+    (s: any) => (s.host ?? s.ip) === normalized.host && s.port === normalized.port
+  )
   if (idx >= 0) {
     const safePatch = { ...normalized }
     if (safePatch.password) {

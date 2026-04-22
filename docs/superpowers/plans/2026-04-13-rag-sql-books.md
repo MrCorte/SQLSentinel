@@ -12,29 +12,30 @@
 
 ## File Map
 
-| Stato | File | Responsabilità |
-|-------|------|----------------|
-| **Crea** | `data/` | Cartella dove il developer mette i PDF (da `.gitignore` se i libri sono proprietari) |
-| **Crea** | `src/main/store/ragRepository.ts` | CRUD SQLite per `rag_documents` + `rag_chunks`; serializzazione Float32Array ↔ BLOB |
-| **Crea** | `src/main/ai/rag.ts` | `chunkText`, `cosineSimilarity`, `ingestPdf`, `retrieveFromBooks` |
-| **Crea** | `src/main/ai/ragAutoIndex.ts` | `autoIndexRagBooks()`: scansiona `data/`, indicizza nuovi, rimuove cancellati |
-| **Crea** | `src/main/__tests__/rag.test.ts` | Test per `chunkText`, `cosineSimilarity`, pipeline ingest con mock |
-| **Crea** | `src/renderer/src/components/ai/RAGStatus.tsx` | Lista read-only dei libri indicizzati nel pannello AI |
-| **Modifica** | `src/main/store/database.ts` | DDL per `rag_documents` e `rag_chunks` |
-| **Modifica** | `src/main/ai/ollama.ts` | Aggiunge `ollamaEmbed(text): Promise<number[]>` |
-| **Modifica** | `src/main/ai/agent.ts` | Inietta excerpt RAG nel system prompt via `retrieveFromBooks` |
-| **Modifica** | `src/main/index.ts` | Chiama `autoIndexRagBooks()` dopo `initDb()` all'avvio |
-| **Modifica** | `src/main/ipc/types.ts` | Aggiunge `RAG_GET_DOCUMENTS = 'rag:getDocuments'` |
-| **Modifica** | `src/main/ipc/handlers.ts` | Handler per `RAG_GET_DOCUMENTS` (sola lettura) |
-| **Modifica** | `src/preload/index.ts` | `rag.getDocuments()` in `realApi`, `mockApi`, `bridgeApi` |
-| **Modifica** | `src/preload/index.d.ts` | `RagDocument` type + `rag` namespace in `SqlSentinelAPI` |
-| **Modifica** | `src/renderer/src/components/ai/AIPanel.tsx` | Tab "Libri" che monta `RAGStatus` |
+| Stato        | File                                           | Responsabilità                                                                       |
+| ------------ | ---------------------------------------------- | ------------------------------------------------------------------------------------ |
+| **Crea**     | `data/`                                        | Cartella dove il developer mette i PDF (da `.gitignore` se i libri sono proprietari) |
+| **Crea**     | `src/main/store/ragRepository.ts`              | CRUD SQLite per `rag_documents` + `rag_chunks`; serializzazione Float32Array ↔ BLOB  |
+| **Crea**     | `src/main/ai/rag.ts`                           | `chunkText`, `cosineSimilarity`, `ingestPdf`, `retrieveFromBooks`                    |
+| **Crea**     | `src/main/ai/ragAutoIndex.ts`                  | `autoIndexRagBooks()`: scansiona `data/`, indicizza nuovi, rimuove cancellati        |
+| **Crea**     | `src/main/__tests__/rag.test.ts`               | Test per `chunkText`, `cosineSimilarity`, pipeline ingest con mock                   |
+| **Crea**     | `src/renderer/src/components/ai/RAGStatus.tsx` | Lista read-only dei libri indicizzati nel pannello AI                                |
+| **Modifica** | `src/main/store/database.ts`                   | DDL per `rag_documents` e `rag_chunks`                                               |
+| **Modifica** | `src/main/ai/ollama.ts`                        | Aggiunge `ollamaEmbed(text): Promise<number[]>`                                      |
+| **Modifica** | `src/main/ai/agent.ts`                         | Inietta excerpt RAG nel system prompt via `retrieveFromBooks`                        |
+| **Modifica** | `src/main/index.ts`                            | Chiama `autoIndexRagBooks()` dopo `initDb()` all'avvio                               |
+| **Modifica** | `src/main/ipc/types.ts`                        | Aggiunge `RAG_GET_DOCUMENTS = 'rag:getDocuments'`                                    |
+| **Modifica** | `src/main/ipc/handlers.ts`                     | Handler per `RAG_GET_DOCUMENTS` (sola lettura)                                       |
+| **Modifica** | `src/preload/index.ts`                         | `rag.getDocuments()` in `realApi`, `mockApi`, `bridgeApi`                            |
+| **Modifica** | `src/preload/index.d.ts`                       | `RagDocument` type + `rag` namespace in `SqlSentinelAPI`                             |
+| **Modifica** | `src/renderer/src/components/ai/AIPanel.tsx`   | Tab "Libri" che monta `RAGStatus`                                                    |
 
 ---
 
 ## Task 1 — Dipendenza + schema SQLite + cartella `data/`
 
 **Files:**
+
 - `package.json`
 - `src/main/store/database.ts`
 - `data/.gitkeep` (crea la cartella)
@@ -111,6 +112,7 @@ git commit -m "feat(rag): add pdf-parse, rag_documents/rag_chunks tables, data/ 
 ## Task 2 — `ragRepository.ts`
 
 **Files:**
+
 - Create: `src/main/store/ragRepository.ts`
 
 - [ ] **Step 2.1 — Crea `src/main/store/ragRepository.ts`**
@@ -180,10 +182,12 @@ interface ChunkRow {
 export function insertDocument(doc: Omit<RagDocument, 'id'>): RagDocument {
   const id = randomUUID()
   getDb()
-    .prepare<[string, string, string, string, number]>(`
+    .prepare<[string, string, string, string, number]>(
+      `
       INSERT INTO rag_documents (id, filename, title, added_at, chunk_count)
       VALUES (?, ?, ?, ?, ?)
-    `)
+    `
+    )
     .run(id, doc.filename, doc.title, doc.addedAt, doc.chunkCount)
   return { id, ...doc }
 }
@@ -224,16 +228,12 @@ export function getAllDocuments(): RagDocument[] {
 
 /** Returns filenames of all indexed documents — used for incremental sync. */
 export function getIndexedFilenames(): Set<string> {
-  const rows = getDb()
-    .prepare<[], { filename: string }>('SELECT filename FROM rag_documents')
-    .all()
+  const rows = getDb().prepare<[], { filename: string }>('SELECT filename FROM rag_documents').all()
   return new Set(rows.map((r) => r.filename))
 }
 
 export function getAllChunks(): RagChunk[] {
-  const rows = getDb()
-    .prepare<[], ChunkRow>('SELECT * FROM rag_chunks')
-    .all()
+  const rows = getDb().prepare<[], ChunkRow>('SELECT * FROM rag_chunks').all()
   return rows.map((r) => ({
     id: r.id,
     documentId: r.document_id,
@@ -245,9 +245,7 @@ export function getAllChunks(): RagChunk[] {
 
 export function deleteDocumentByFilename(filename: string): void {
   // ON DELETE CASCADE removes related chunks
-  getDb()
-    .prepare<[string]>('DELETE FROM rag_documents WHERE filename = ?')
-    .run(filename)
+  getDb().prepare<[string]>('DELETE FROM rag_documents WHERE filename = ?').run(filename)
 }
 ```
 
@@ -271,6 +269,7 @@ git commit -m "feat(rag): ragRepository - CRUD rag_documents/rag_chunks with Flo
 ## Task 3 — `ollamaEmbed()` in `ollama.ts`
 
 **Files:**
+
 - Modify: `src/main/ai/ollama.ts`
 - Create: `src/main/__tests__/rag.test.ts` (sezione embed)
 
@@ -330,10 +329,7 @@ Output atteso: `FAIL` — `ollamaEmbed is not a function`.
 Aggiungi in fondo al file:
 
 ```typescript
-export async function ollamaEmbed(
-  text: string,
-  model = 'nomic-embed-text'
-): Promise<number[]> {
+export async function ollamaEmbed(text: string, model = 'nomic-embed-text'): Promise<number[]> {
   const res = await client.embed({ model, input: text })
   if (!res.embeddings || res.embeddings.length === 0) {
     throw new Error('[ollamaEmbed] Ollama returned empty embeddings')
@@ -362,6 +358,7 @@ git commit -m "feat(rag): ollamaEmbed() wraps Ollama embed API for nomic-embed-t
 ## Task 4 — `src/main/ai/rag.ts`
 
 **Files:**
+
 - Create: `src/main/ai/rag.ts`
 - Modify: `src/main/__tests__/rag.test.ts`
 
@@ -456,17 +453,30 @@ vi.mock('pdf-parse', () => ({
 
 vi.mock('../store/ragRepository', () => ({
   insertDocument: vi.fn().mockReturnValue({
-    id: 'doc-1', filename: 'guide.pdf', title: 'SQL Guide',
-    addedAt: '2026-01-01T00:00:00.000Z', chunkCount: 0
+    id: 'doc-1',
+    filename: 'guide.pdf',
+    title: 'SQL Guide',
+    addedAt: '2026-01-01T00:00:00.000Z',
+    chunkCount: 0
   }),
   updateChunkCount: vi.fn(),
   insertChunks: vi.fn(),
   getAllDocuments: vi.fn().mockReturnValue([{ id: 'doc-1', chunkCount: 2 }]),
   getAllChunks: vi.fn().mockReturnValue([
-    { id: 'c1', documentId: 'doc-1', chunkIndex: 0,
-      content: 'First paragraph about SQL Server indexes.', embedding: [1, 0] },
-    { id: 'c2', documentId: 'doc-1', chunkIndex: 1,
-      content: 'Second paragraph about query plans.', embedding: [0, 1] }
+    {
+      id: 'c1',
+      documentId: 'doc-1',
+      chunkIndex: 0,
+      content: 'First paragraph about SQL Server indexes.',
+      embedding: [1, 0]
+    },
+    {
+      id: 'c2',
+      documentId: 'doc-1',
+      chunkIndex: 1,
+      content: 'Second paragraph about query plans.',
+      embedding: [0, 1]
+    }
   ]),
   getIndexedFilenames: vi.fn().mockReturnValue(new Set()),
   deleteDocumentByFilename: vi.fn()
@@ -475,7 +485,7 @@ vi.mock('../store/ragRepository', () => ({
 describe('ingestPdf', () => {
   it('parses, chunks, embeds, and saves to repository', async () => {
     vi.resetModules()
-    const ragRepo = await import('../store/ragRepository') as any
+    const ragRepo = (await import('../store/ragRepository')) as any
     const { ingestPdf, invalidateChunkCache } = await import('../ai/rag')
     invalidateChunkCache()
 
@@ -506,7 +516,7 @@ describe('retrieveFromBooks', () => {
 
   it('returns empty array when no documents', async () => {
     vi.resetModules()
-    const ragRepo = await import('../store/ragRepository') as any
+    const ragRepo = (await import('../store/ragRepository')) as any
     ragRepo.getAllDocuments.mockReturnValueOnce([])
     const { retrieveFromBooks } = await import('../ai/rag')
     expect(await retrieveFromBooks('anything')).toHaveLength(0)
@@ -689,6 +699,7 @@ git commit -m "feat(rag): chunkText, cosineSimilarity, ingestPdf, retrieveFromBo
 ## Task 5 — `ragAutoIndex.ts` — indicizzazione automatica all'avvio
 
 **Files:**
+
 - Create: `src/main/ai/ragAutoIndex.ts`
 
 Questo modulo viene chiamato una volta all'avvio. Scansiona `data/*.pdf`, confronta con i filename già in SQLite, indicizza quelli nuovi e rimuove le righe per i PDF eliminati dalla cartella.
@@ -723,8 +734,7 @@ export async function autoIndexRagBooks(): Promise<void> {
     return
   }
 
-  const pdfFiles = readdirSync(dataDir)
-    .filter((f) => f.toLowerCase().endsWith('.pdf'))
+  const pdfFiles = readdirSync(dataDir).filter((f) => f.toLowerCase().endsWith('.pdf'))
 
   const indexed = ragRepository.getIndexedFilenames()
 
@@ -786,6 +796,7 @@ git commit -m "feat(rag): ragAutoIndex - scan data/*.pdf at startup, incremental
 ## Task 6 — Chiamata in `src/main/index.ts`
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 
 - [ ] **Step 6.1 — Aggiungi l'import e la chiamata in `src/main/index.ts`**
@@ -799,10 +810,10 @@ import { autoIndexRagBooks } from './ai/ragAutoIndex'
 Poi, **dopo** la riga `initDb(defaultDbPath(...))` (e le migrazioni), aggiungi:
 
 ```typescript
-  // Auto-index SQL books from data/ folder (non-blocking — logs to console)
-  autoIndexRagBooks().catch((err) =>
-    console.error('[RAG] autoIndexRagBooks failed:', err instanceof Error ? err.message : err)
-  )
+// Auto-index SQL books from data/ folder (non-blocking — logs to console)
+autoIndexRagBooks().catch((err) =>
+  console.error('[RAG] autoIndexRagBooks failed:', err instanceof Error ? err.message : err)
+)
 ```
 
 L'indicizzazione è fire-and-forget intenzionale: l'app si apre subito; i libri vengono indicizzati in background durante il primo avvio (o quando se ne aggiungono di nuovi).
@@ -827,6 +838,7 @@ git commit -m "feat(rag): call autoIndexRagBooks() at app startup (fire-and-forg
 ## Task 7 — IPC read-only + preload bridge
 
 **Files:**
+
 - Modify: `src/main/ipc/types.ts`
 - Modify: `src/main/ipc/handlers.ts`
 - Modify: `src/preload/index.ts`
@@ -865,14 +877,14 @@ import type { RagDocument } from './types'
 Handler **prima** di `// Restore original ipcMain.handle`:
 
 ```typescript
-  // RAG_GET_DOCUMENTS — lista libri indicizzati (sola lettura)
-  ipcMain.handle(IpcChannel.RAG_GET_DOCUMENTS, async (): Promise<IpcResult<RagDocument[]>> => {
-    try {
-      return { ok: true, data: ragRepository.getAllDocuments() }
-    } catch (err) {
-      return { ok: false, error: safeError(err) }
-    }
-  })
+// RAG_GET_DOCUMENTS — lista libri indicizzati (sola lettura)
+ipcMain.handle(IpcChannel.RAG_GET_DOCUMENTS, async (): Promise<IpcResult<RagDocument[]>> => {
+  try {
+    return { ok: true, data: ragRepository.getAllDocuments() }
+  } catch (err) {
+    return { ok: false, error: safeError(err) }
+  }
+})
 ```
 
 - [ ] **Step 7.3 — Aggiorna `src/preload/index.ts`**
@@ -944,6 +956,7 @@ git commit -m "feat(rag): RAG_GET_DOCUMENTS IPC channel + preload bridge (read-o
 ## Task 8 — UI `RAGStatus.tsx` + tab "Libri" in `AIPanel.tsx`
 
 **Files:**
+
 - Create: `src/renderer/src/components/ai/RAGStatus.tsx`
 - Modify: `src/renderer/src/components/ai/AIPanel.tsx`
 
@@ -1136,6 +1149,7 @@ git commit -m "feat(rag): RAGStatus read-only panel + Books tab in AIPanel"
 ## Task 9 — Arricchimento del system prompt in `agent.ts`
 
 **Files:**
+
 - Modify: `src/main/ai/agent.ts`
 
 - [ ] **Step 9.1 — Sostituisci `src/main/ai/agent.ts`**
@@ -1153,14 +1167,8 @@ Struttura la risposta in 3 sezioni brevi:
 3. AZIONE IMMEDIATA: query SELECT da eseguire (no DROP/DELETE/UPDATE)
 Se i dati non bastano scrivi solo "Ho bisogno di più contesto".`
 
-export async function aiAsk(
-  question: string,
-  history: ChatMessage[] = []
-): Promise<string> {
-  const [ctx, bookChunks] = await Promise.all([
-    gatherContext(),
-    retrieveFromBooks(question, 5)
-  ])
+export async function aiAsk(question: string, history: ChatMessage[] = []): Promise<string> {
+  const [ctx, bookChunks] = await Promise.all([gatherContext(), retrieveFromBooks(question, 5)])
 
   const bookSection =
     bookChunks.length > 0
@@ -1212,6 +1220,7 @@ npm run dev
 ```
 
 **Verifica nel log del main process:**
+
 ```
 [RAG] Indexing 1 new book(s)…
 [RAG]  → sql-server-internals.pdf
@@ -1223,12 +1232,14 @@ npm run dev
 ```
 
 **Verifica nel pannello AI:**
+
 1. Icona robot → pannello aperto
 2. Tab **Libri** → "SQL Server Internals — 1247 chunk"
 3. Tab **Chat** → "come funzionano gli indici columnstore?"
 4. Risposta cita `[1]`, `[2]`, `[3]` con excerpts dal libro
 
 **Secondo avvio** (senza PDF nuovi):
+
 ```
 [RAG] All 1 book(s) already indexed
 ```
@@ -1237,11 +1248,11 @@ npm run dev
 
 ## Note operative
 
-| Scenario | Comportamento |
-|----------|---------------|
-| Nuovo PDF in `data/` | Indicizzato al prossimo avvio |
-| PDF rimosso da `data/` | Riga rimossa da SQLite al prossimo avvio (CASCADE sui chunk) |
-| Ollama non attivo | `autoIndexRagBooks` fallisce silenziosamente (log errore), app apre normalmente |
-| `nomic-embed-text` non scaricato | Errore per ogni chunk, log `[RAG] Failed to index ...` |
-| Libro molto grande (2000+ chunk) | Indicizzazione richiede ~30-60 min; il log mostra progresso ogni 50 chunk |
-| Modello alternativo più veloce | Cambia il default in `ollamaEmbed(text, 'all-minilm')` — vettori 384-dim, più veloci ma meno precisi |
+| Scenario                         | Comportamento                                                                                        |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Nuovo PDF in `data/`             | Indicizzato al prossimo avvio                                                                        |
+| PDF rimosso da `data/`           | Riga rimossa da SQLite al prossimo avvio (CASCADE sui chunk)                                         |
+| Ollama non attivo                | `autoIndexRagBooks` fallisce silenziosamente (log errore), app apre normalmente                      |
+| `nomic-embed-text` non scaricato | Errore per ogni chunk, log `[RAG] Failed to index ...`                                               |
+| Libro molto grande (2000+ chunk) | Indicizzazione richiede ~30-60 min; il log mostra progresso ogni 50 chunk                            |
+| Modello alternativo più veloce   | Cambia il default in `ollamaEmbed(text, 'all-minilm')` — vettori 384-dim, più veloci ma meno precisi |

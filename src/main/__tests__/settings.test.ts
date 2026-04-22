@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 const mockAll = vi.fn()
 const mockRun = vi.fn()
 vi.mock('../store/database', () => ({
-  getDb: () => ({ prepare: () => ({ all: mockAll, run: mockRun }) }),
+  getDb: () => ({ prepare: () => ({ all: mockAll, run: mockRun }) })
 }))
 
 import { getSettings, saveSettings } from '../store/settings'

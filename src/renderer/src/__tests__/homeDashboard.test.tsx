@@ -90,15 +90,10 @@ beforeEach(() => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
-
   it('does not throw "Rendered more hooks than during previous render" when servers changes from [] to [srv]', () => {
     // Starting point: empty list → shows <EmptyState>
     const { rerender } = render(
-      <HomeDashboard
-        onNavigateToServer={noop}
-        onNavigateToDiscovery={noop}
-        onOpenAlerts={noop}
-      />
+      <HomeDashboard onNavigateToServer={noop} onNavigateToDiscovery={noop} onOpenAlerts={noop} />
     )
 
     expect(screen.getAllByText(/no monitored servers/i).length).toBeGreaterThan(0)
@@ -114,11 +109,7 @@ describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
     // No errors mean hooks are stable across renders
     expect(() =>
       rerender(
-        <HomeDashboard
-          onNavigateToServer={noop}
-          onNavigateToDiscovery={noop}
-          onOpenAlerts={noop}
-        />
+        <HomeDashboard onNavigateToServer={noop} onNavigateToDiscovery={noop} onOpenAlerts={noop} />
       )
     ).not.toThrow()
   })
@@ -127,45 +118,35 @@ describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
     useServersStore.setState({ servers: [makeStoredServer('10.0.0.1')], initialized: true })
 
     const { rerender } = render(
-      <HomeDashboard
-        onNavigateToServer={noop}
-        onNavigateToDiscovery={noop}
-        onOpenAlerts={noop}
-      />
+      <HomeDashboard onNavigateToServer={noop} onNavigateToDiscovery={noop} onOpenAlerts={noop} />
     )
 
     act(() => {
       useAlertsStore.setState({
-        alerts: [{
-          id: 'a1',
-          serverId: '10.0.0.1:1433',
-          category: 'cpu_high',
-          severity: 'WARNING',
-          message: 'CPU alta',
-          detectedAt: new Date(),
-          acknowledgedAt: null
-        }]
+        alerts: [
+          {
+            id: 'a1',
+            serverId: '10.0.0.1:1433',
+            category: 'cpu_high',
+            severity: 'WARNING',
+            message: 'CPU alta',
+            detectedAt: new Date(),
+            acknowledgedAt: null
+          }
+        ]
       })
     })
 
     expect(() =>
       rerender(
-        <HomeDashboard
-          onNavigateToServer={noop}
-          onNavigateToDiscovery={noop}
-          onOpenAlerts={noop}
-        />
+        <HomeDashboard onNavigateToServer={noop} onNavigateToDiscovery={noop} onOpenAlerts={noop} />
       )
     ).not.toThrow()
   })
 
   it('shows EmptyState only when servers is empty', () => {
     render(
-      <HomeDashboard
-        onNavigateToServer={noop}
-        onNavigateToDiscovery={noop}
-        onOpenAlerts={noop}
-      />
+      <HomeDashboard onNavigateToServer={noop} onNavigateToDiscovery={noop} onOpenAlerts={noop} />
     )
     expect(screen.getAllByText(/no monitored servers/i).length).toBeGreaterThan(0)
   })
@@ -177,11 +158,7 @@ describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
     })
 
     render(
-      <HomeDashboard
-        onNavigateToServer={noop}
-        onNavigateToDiscovery={noop}
-        onOpenAlerts={noop}
-      />
+      <HomeDashboard onNavigateToServer={noop} onNavigateToDiscovery={noop} onOpenAlerts={noop} />
     )
 
     // Must show the Home Dashboard with the "TOTAL SERVERS" KPI card
@@ -194,7 +171,6 @@ describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('AREA 4 — HomeDashboard: useMemo does not recalculate unnecessarily', () => {
-
   it('the "TOTAL SERVERS" value remains consistent after re-render with unchanged deps', () => {
     useServersStore.setState({
       servers: [makeStoredServer('10.0.0.1'), makeStoredServer('10.0.0.2')],
@@ -202,22 +178,14 @@ describe('AREA 4 — HomeDashboard: useMemo does not recalculate unnecessarily',
     })
 
     const { rerender } = render(
-      <HomeDashboard
-        onNavigateToServer={noop}
-        onNavigateToDiscovery={noop}
-        onOpenAlerts={noop}
-      />
+      <HomeDashboard onNavigateToServer={noop} onNavigateToDiscovery={noop} onOpenAlerts={noop} />
     )
 
-    const kpiBefore = screen.getAllByText('2').length  // "2" as KPI value
+    const kpiBefore = screen.getAllByText('2').length // "2" as KPI value
 
     // Re-render with same props and same store — memo must not change output
     rerender(
-      <HomeDashboard
-        onNavigateToServer={noop}
-        onNavigateToDiscovery={noop}
-        onOpenAlerts={noop}
-      />
+      <HomeDashboard onNavigateToServer={noop} onNavigateToDiscovery={noop} onOpenAlerts={noop} />
     )
 
     expect(screen.getAllByText('2').length).toBe(kpiBefore)
@@ -229,7 +197,6 @@ describe('AREA 4 — HomeDashboard: useMemo does not recalculate unnecessarily',
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('AREA 4 — getSidebarItemSize (estimateSize virtualizer)', () => {
-
   it('returns 40 for kind="group"', () => {
     const item: SidebarItem = {
       kind: 'group',

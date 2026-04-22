@@ -103,7 +103,7 @@ export function initDb(dbPath: string): Database.Database {
   _db.pragma('foreign_keys = ON')
   // Performance tuning — safe with WAL
   _db.pragma('synchronous  = NORMAL') // 2 fsync → 1 per transaction; no corruption risk with WAL
-  _db.pragma('cache_size   = -8192')  // 8 MB (default: 2 MB)
+  _db.pragma('cache_size   = -8192') // 8 MB (default: 2 MB)
   _db.pragma('temp_store   = MEMORY') // temporary tables in RAM
 
   // Schema migration: drop RAG tables with old schema (size_bytes → file_size)

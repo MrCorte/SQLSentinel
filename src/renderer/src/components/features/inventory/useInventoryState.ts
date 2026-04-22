@@ -6,7 +6,11 @@ import { useDebouncedValue } from '../../../hooks/useDebouncedValue'
 import { useGroupsStore } from '../../../store/groupsStore'
 import { useAppStore } from '../../../store/appStore'
 import { computeInventory, getSqlServerVersion } from '../../../utils/inventoryUtils'
-import { buildInventoryCsvRows, buildDbViewCsvRows, DB_VIEW_CSV_HEADERS } from '../../../utils/csvExportUtils'
+import {
+  buildInventoryCsvRows,
+  buildDbViewCsvRows,
+  DB_VIEW_CSV_HEADERS
+} from '../../../utils/csvExportUtils'
 import type { DbAssetCsvInput } from '../../../utils/csvExportUtils'
 import { getAllDbCustomFields, exportInventoryCsv } from '../../../api/ipc'
 import type { DbCustomFields } from '../../../../../preload/index'
@@ -158,8 +162,7 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
     const keys: string[] = []
     for (const g of inventory.groups) {
       for (const srv of g.standaloneServers) keys.push(`${srv.ip}:${srv.port}`)
-      for (const ag of g.agClusters)
-        for (const r of ag.replicas) keys.push(`${r.ip}:${r.port}`)
+      for (const ag of g.agClusters) for (const r of ag.replicas) keys.push(`${r.ip}:${r.port}`)
     }
     return keys
   }, [inventory.groups])
@@ -170,7 +173,8 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
   )
 
   const allDbRows = useMemo(
-    () => allDbViewRowsExpanded.filter((r): r is (typeof r & { type: 'db-row' }) => r.type === 'db-row'),
+    () =>
+      allDbViewRowsExpanded.filter((r): r is typeof r & { type: 'db-row' } => r.type === 'db-row'),
     [allDbViewRowsExpanded]
   )
 
@@ -202,8 +206,7 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
       if (filterDbOffline && r.stateDesc === 'ONLINE') return false
       if (filterDbNoBackup) {
         const noBackup =
-          !r.lastFullBackup ||
-          now - new Date(r.lastFullBackup).getTime() > 86_400_000
+          !r.lastFullBackup || now - new Date(r.lastFullBackup).getTime() > 86_400_000
         if (!noBackup) return false
       }
       return true
@@ -216,7 +219,7 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
     filterDbCompat,
     filterDbOffline,
     filterDbNoBackup,
-    hasActiveDbFilters,
+    hasActiveDbFilters
   ])
 
   const serversWithMatchingDbs = useMemo(() => {
@@ -242,7 +245,7 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
     filteredDbRows,
     serversWithMatchingDbs,
     expandedDbServers,
-    hasActiveDbFilters,
+    hasActiveDbFilters
   ])
 
   const dbViewStats = useMemo(() => {
@@ -255,11 +258,9 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
       fullRecovery: rows.filter((r) => r.recoveryModel === 'FULL').length,
       tdeActive: rows.filter((r) => r.isEncrypted).length,
       noBackup: rows.filter(
-        (r) =>
-          !r.lastFullBackup ||
-          now - new Date(r.lastFullBackup).getTime() > 86_400_000
+        (r) => !r.lastFullBackup || now - new Date(r.lastFullBackup).getTime() > 86_400_000
       ).length,
-      oldCompat: rows.filter((r) => (r.compatibilityLevel ?? 999) < 130).length,
+      oldCompat: rows.filter((r) => (r.compatibilityLevel ?? 999) < 130).length
     }
   }, [filteredDbRows])
 
@@ -287,7 +288,11 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
     const q = debouncedSearch.toLowerCase()
     return allRows.filter((row) => {
       if (filterType !== 'all') {
-        if (filterType === 'standalone' && row.type !== 'standalone' && row.type !== 'machine-header')
+        if (
+          filterType === 'standalone' &&
+          row.type !== 'standalone' &&
+          row.type !== 'machine-header'
+        )
           return false
         if (filterType === 'ag-primary' && !(row.type === 'ag-replica' && row.agRole === 'PRIMARY'))
           return false
@@ -306,7 +311,8 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
       if (filterEnv !== 'all' && row.envId !== filterEnv) return false
       if (filterState === 'online' && row.unreachable) return false
       if (filterState === 'offline' && !row.unreachable) return false
-      if (filterHost !== 'all' && row.hostingType !== (filterHost as ServerHostingType)) return false
+      if (filterHost !== 'all' && row.hostingType !== (filterHost as ServerHostingType))
+        return false
       if (filterAlias !== 'all') {
         if (row.type !== 'standalone' && row.type !== 'ag-replica') return false
         if (serverAliases[row.serverId ?? ''] !== filterAlias) return false
@@ -317,7 +323,8 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
         const dbs = metricsMap[key]?.databases ?? []
         if (!dbs.some((db) => db.referente === filterReferente)) return false
       }
-      if (filterVersion !== 'all' && getSqlServerVersion(row.version) !== filterVersion) return false
+      if (filterVersion !== 'all' && getSqlServerVersion(row.version) !== filterVersion)
+        return false
       return true
     })
   }, [
@@ -331,7 +338,7 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
     filterReferente,
     filterVersion,
     serverAliases,
-    metricsMap,
+    metricsMap
   ])
 
   const filteredStats = useMemo(() => {
@@ -478,7 +485,7 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
             lastFullBackup: r.lastFullBackup,
             lastLogBackup: r.lastLogBackup,
             owner: r.owner,
-            createDate: r.createDate,
+            createDate: r.createDate
           })
         )
       )
@@ -503,7 +510,10 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
         if (row.type !== 'standalone' && row.type !== 'ag-replica') return false
         if (filterType !== 'all') {
           if (filterType === 'standalone' && row.type !== 'standalone') return false
-          if (filterType === 'ag-primary' && !(row.type === 'ag-replica' && row.agRole === 'PRIMARY'))
+          if (
+            filterType === 'ag-primary' &&
+            !(row.type === 'ag-replica' && row.agRole === 'PRIMARY')
+          )
             return false
           if (
             filterType === 'ag-secondary' &&
@@ -521,13 +531,15 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
         if (filterEnv !== 'all' && row.envId !== filterEnv) return false
         if (filterState === 'online' && row.unreachable) return false
         if (filterState === 'offline' && !row.unreachable) return false
-        if (filterHost !== 'all' && row.hostingType !== (filterHost as ServerHostingType)) return false
+        if (filterHost !== 'all' && row.hostingType !== (filterHost as ServerHostingType))
+          return false
         if (filterAlias !== 'all' && aliases[row.serverId ?? ''] !== filterAlias) return false
         if (filterReferente !== 'all') {
           const dbs = mm[`${row.host}:${row.port}`]?.databases ?? []
           if (!dbs.some((db) => db.referente === filterReferente)) return false
         }
-        if (filterVersion !== 'all' && getSqlServerVersion(row.version) !== filterVersion) return false
+        if (filterVersion !== 'all' && getSqlServerVersion(row.version) !== filterVersion)
+          return false
         return true
       })
       allowedServerIds = new Set(matched.map((r) => r.serverId!))
@@ -553,7 +565,7 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
       'Infrastructure Type',
       'Logical CPUs',
       'Physical CPUs',
-      'Notes',
+      'Notes'
     ]
     const exportRows = buildInventoryCsvRows(
       inventory,
@@ -577,7 +589,7 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
     filterReferente,
     filterVersion,
     allClusterKeys,
-    allMachineKeys,
+    allMachineKeys
   ])
 
   const handleSort = useCallback((key: keyof InventoryRow) => {
@@ -703,6 +715,6 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
     handleExportCsv,
     toggleDbServer,
     handleResetDbFilters,
-    handleDbToggleAll,
+    handleDbToggleAll
   }
 }

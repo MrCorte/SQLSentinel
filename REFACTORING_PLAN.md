@@ -9,6 +9,7 @@
 **Tech Stack:** Electron 39, React 19, TypeScript strict, MUI v5, Zustand, better-sqlite3, mssql v12, electron-vite.
 
 **Verification commands (run after every task):**
+
 ```bash
 npm run typecheck   # zero errors required
 npm run lint        # zero warnings required
@@ -18,27 +19,28 @@ npm run lint        # zero warnings required
 
 ## Analysis Summary — Key Findings
 
-| Category | Finding | Priority |
-|---|---|---|
-| Monster files | Inventory 1823 LOC, Sidebar 1372, HomeDashboard 1251, MetricsPanel 861 | HIGH |
-| IPC handlers | All 42 handlers in one 760-LOC file, business logic mixed in | HIGH |
-| Preload bridge | Every method typed 3×: realApi + mockApi + bridgeApi (946 LOC total) | HIGH |
-| Console.log | 106 occurrences across 18 files, no logger | HIGH |
-| Prepared statements | 7 repositories inline `.prepare()` on every call (never cached) | HIGH |
-| Debounce duplication | Hand-rolled in Inventory, HomeDashboard, NoteEditor (3 copies) | MEDIUM |
-| IPC calls in components | 16 files call `window.sqlSentinel` directly (no wrapper layer) | MEDIUM |
-| `eslint-disable` hooks | 15 suppressed react-hooks/exhaustive-deps (hidden stale closures) | MEDIUM |
-| Server identity | Three conventions coexist: `id` UUID, `"ip:port"` string, legacy `ip` field | MEDIUM |
-| host/ip duality | `StoredServer` has both `host` and `ip?` fields; normalizer half-migrated | MEDIUM |
-| Interval leaks | `deferredPurge` (24h) and dev GC timer not cleared on app quit | LOW |
-| `noImplicitAny` | Disabled in `@electron-toolkit/tsconfig`; 27 `any` usages slip through | LOW |
-| `@types/mssql` | In `dependencies` instead of `devDependencies` | LOW |
+| Category                | Finding                                                                     | Priority |
+| ----------------------- | --------------------------------------------------------------------------- | -------- |
+| Monster files           | Inventory 1823 LOC, Sidebar 1372, HomeDashboard 1251, MetricsPanel 861      | HIGH     |
+| IPC handlers            | All 42 handlers in one 760-LOC file, business logic mixed in                | HIGH     |
+| Preload bridge          | Every method typed 3×: realApi + mockApi + bridgeApi (946 LOC total)        | HIGH     |
+| Console.log             | 106 occurrences across 18 files, no logger                                  | HIGH     |
+| Prepared statements     | 7 repositories inline `.prepare()` on every call (never cached)             | HIGH     |
+| Debounce duplication    | Hand-rolled in Inventory, HomeDashboard, NoteEditor (3 copies)              | MEDIUM   |
+| IPC calls in components | 16 files call `window.sqlSentinel` directly (no wrapper layer)              | MEDIUM   |
+| `eslint-disable` hooks  | 15 suppressed react-hooks/exhaustive-deps (hidden stale closures)           | MEDIUM   |
+| Server identity         | Three conventions coexist: `id` UUID, `"ip:port"` string, legacy `ip` field | MEDIUM   |
+| host/ip duality         | `StoredServer` has both `host` and `ip?` fields; normalizer half-migrated   | MEDIUM   |
+| Interval leaks          | `deferredPurge` (24h) and dev GC timer not cleared on app quit              | LOW      |
+| `noImplicitAny`         | Disabled in `@electron-toolkit/tsconfig`; 27 `any` usages slip through      | LOW      |
+| `@types/mssql`          | In `dependencies` instead of `devDependencies`                              | LOW      |
 
 ---
 
 ## File Map — What Will Be Created / Modified
 
 ### New files (main process)
+
 ```
 src/main/utils/logger.ts              ← structured logger, replaces console.*
 src/main/utils/constants.ts           ← shared intervals, limits, magic numbers
@@ -54,6 +56,7 @@ src/main/ipc/index.ts                  ← registers all handlers
 ```
 
 ### New files (renderer)
+
 ```
 src/renderer/src/api/ipc.ts                      ← typed wrapper for all window.sqlSentinel.*
 src/renderer/src/utils/constants.ts              ← UI magic numbers, refresh intervals
@@ -84,6 +87,7 @@ src/renderer/src/components/features/metrics/useMetricsData.ts
 ```
 
 ### Modified files (major)
+
 ```
 src/main/ipc/handlers.ts          ← gutted to thin delegating shells, then removed
 src/main/index.ts                 ← cleanup: fix interval leaks, use new logger
@@ -110,6 +114,7 @@ package.json                             ← move @types/mssql to devDependencie
 ### Task A1: Logger utility (main process)
 
 **Files:**
+
 - Create: `src/main/utils/logger.ts`
 
 - [ ] **Step 1: Create `src/main/utils/logger.ts`**
@@ -136,20 +141,23 @@ function write(level: Level, scope: string, msg: string, ...args: unknown[]): vo
 export function createLogger(scope: string) {
   return {
     debug: (msg: string, ...args: unknown[]) => write('debug', scope, msg, ...args),
-    info:  (msg: string, ...args: unknown[]) => write('info',  scope, msg, ...args),
-    warn:  (msg: string, ...args: unknown[]) => write('warn',  scope, msg, ...args),
-    error: (msg: string, ...args: unknown[]) => write('error', scope, msg, ...args),
+    info: (msg: string, ...args: unknown[]) => write('info', scope, msg, ...args),
+    warn: (msg: string, ...args: unknown[]) => write('warn', scope, msg, ...args),
+    error: (msg: string, ...args: unknown[]) => write('error', scope, msg, ...args)
   }
 }
 ```
 
 - [ ] **Step 2: Run typecheck**
+
 ```bash
 npm run typecheck:node
 ```
+
 Expected: no errors.
 
 - [ ] **Step 3: Commit**
+
 ```bash
 git add src/main/utils/logger.ts
 git commit -m "feat(infra): add structured logger for main process"
@@ -160,6 +168,7 @@ git commit -m "feat(infra): add structured logger for main process"
 ### Task A2: Logger utility (renderer)
 
 **Files:**
+
 - Create: `src/renderer/src/utils/logger.ts`
 
 - [ ] **Step 1: Create `src/renderer/src/utils/logger.ts`**
@@ -180,20 +189,23 @@ function write(level: Level, scope: string, msg: string, ...args: unknown[]): vo
 export function createLogger(scope: string) {
   return {
     debug: (msg: string, ...args: unknown[]) => write('debug', scope, msg, ...args),
-    info:  (msg: string, ...args: unknown[]) => write('info',  scope, msg, ...args),
-    warn:  (msg: string, ...args: unknown[]) => write('warn',  scope, msg, ...args),
-    error: (msg: string, ...args: unknown[]) => write('error', scope, msg, ...args),
+    info: (msg: string, ...args: unknown[]) => write('info', scope, msg, ...args),
+    warn: (msg: string, ...args: unknown[]) => write('warn', scope, msg, ...args),
+    error: (msg: string, ...args: unknown[]) => write('error', scope, msg, ...args)
   }
 }
 ```
 
 - [ ] **Step 2: Run typecheck**
+
 ```bash
 npm run typecheck:web
 ```
+
 Expected: no errors.
 
 - [ ] **Step 3: Commit**
+
 ```bash
 git add src/renderer/src/utils/logger.ts
 git commit -m "feat(infra): add structured logger for renderer process"
@@ -201,9 +213,10 @@ git commit -m "feat(infra): add structured logger for renderer process"
 
 ---
 
-### Task A3: Replace console.* with logger — main process (high-traffic files)
+### Task A3: Replace console.\* with logger — main process (high-traffic files)
 
 Target files in priority order (most calls first):
+
 1. `src/main/ipc/handlers.ts` — 23 occurrences
 2. `src/main/collectors/sqlCollector.ts` — 15 occurrences
 3. `src/main/store/serverStore.ts` — 10 occurrences
@@ -230,12 +243,15 @@ Then replace every `console.log(...)` → `log.info(...)`, `console.warn(...)` �
 - [ ] **Step 2: Repeat for each remaining file above** — add the import, create the logger, replace calls. Use the scope name matching the file's purpose (e.g., `'sql-collector'`, `'server-store'`, `'main'`, `'metrics-worker'`, `'rag-indexer'`, `'ag-collector'`, `'background'`, `'email-settings'`, `'auth'`, `'safe-storage'`).
 
 - [ ] **Step 3: Run typecheck**
+
 ```bash
 npm run typecheck:node
 ```
+
 Expected: no errors.
 
 - [ ] **Step 4: Commit**
+
 ```bash
 git add src/main/
 git commit -m "refactor(logging): replace console.* with structured logger in main process"
@@ -243,9 +259,10 @@ git commit -m "refactor(logging): replace console.* with structured logger in ma
 
 ---
 
-### Task A4: Replace console.* with logger — renderer
+### Task A4: Replace console.\* with logger — renderer
 
 Target files:
+
 1. `src/renderer/src/App.tsx` — 11 occurrences
 2. `src/renderer/src/store/serversStore.ts` — 10 occurrences
 3. `src/renderer/src/components/MetricsPanel.tsx` — 2 occurrences
@@ -271,20 +288,27 @@ Replace all `console.log/warn/error` → `log.info/warn/error`.
 
 ```typescript
 const _log = {
-  info: (...a: unknown[]) => { if (process.env.NODE_ENV !== 'production') console.log('[preload]', ...a) },
-  warn: (...a: unknown[]) => { if (process.env.NODE_ENV !== 'production') console.warn('[preload]', ...a) },
+  info: (...a: unknown[]) => {
+    if (process.env.NODE_ENV !== 'production') console.log('[preload]', ...a)
+  },
+  warn: (...a: unknown[]) => {
+    if (process.env.NODE_ENV !== 'production') console.warn('[preload]', ...a)
+  }
 }
 ```
 
 Replace the 6 console calls with `_log.info(...)`.
 
 - [ ] **Step 4: Run typecheck**
+
 ```bash
 npm run typecheck
 ```
+
 Expected: no errors.
 
 - [ ] **Step 5: Commit**
+
 ```bash
 git add src/renderer/ src/preload/
 git commit -m "refactor(logging): replace console.* with structured logger in renderer and preload"
@@ -295,9 +319,11 @@ git commit -m "refactor(logging): replace console.* with structured logger in re
 ### Task A5: Fix interval leaks in main process
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 
 **Context:** Two timers are never cleared on app quit:
+
 1. `deferredPurge` setInterval (24h, line ~171)
 2. Dev GC-logging timer (dev only, line ~234)
 
@@ -314,12 +340,15 @@ if (devGcIntervalId) clearInterval(devGcIntervalId)
 Ensure the variable declarations at module level use `let deferredPurgeIntervalId: ReturnType<typeof setInterval> | null = null` (not inline assignment).
 
 - [ ] **Step 2: Run typecheck**
+
 ```bash
 npm run typecheck:node
 ```
+
 Expected: no errors.
 
 - [ ] **Step 3: Commit**
+
 ```bash
 git add src/main/index.ts
 git commit -m "fix(main): clear deferredPurge and dev GC intervals on app quit"
@@ -332,6 +361,7 @@ git commit -m "fix(main): clear deferredPurge and dev GC intervals on app quit"
 **Context:** Every call to `authService`, `metricsRepository`, `serverRepository`, `emailSettings`, `settings`, `ragRepository`, `dbCustomFields` recompiles SQL via `db.prepare(...)`. Cache at module level for a substantial perf win on hot paths.
 
 **Files:**
+
 - Modify: `src/main/authService.ts`
 - Modify: `src/main/store/metricsRepository.ts`
 - Modify: `src/main/store/serverRepository.ts`
@@ -342,6 +372,7 @@ git commit -m "fix(main): clear deferredPurge and dev GC intervals on app quit"
 **Pattern to apply in each file:**
 
 Before (current — inline prepare per call):
+
 ```typescript
 export function getByToken(token: string) {
   const db = getDb()
@@ -350,6 +381,7 @@ export function getByToken(token: string) {
 ```
 
 After (cached — prepare once, reuse):
+
 ```typescript
 import { getDb } from './database'
 import type { Database } from 'better-sqlite3'
@@ -381,12 +413,15 @@ export function getByToken(token: string) {
 - [ ] **Step 4: Apply to `src/main/store/emailSettings.ts`**, `settings.ts`, `ragRepository.ts` — 4, 2, 6 prepares respectively.
 
 - [ ] **Step 5: Run typecheck and tests**
+
 ```bash
 npm run typecheck:node && npm test
 ```
+
 Expected: no errors, all tests pass.
 
 - [ ] **Step 6: Commit**
+
 ```bash
 git add src/main/
 git commit -m "perf(db): cache prepared statements at module level in all repositories"
@@ -399,6 +434,7 @@ git commit -m "perf(db): cache prepared statements at module level in all reposi
 **Context:** `Inventory.tsx`, `HomeDashboard.tsx`, and `NoteEditor.tsx` each hand-roll a debounce timer. Extract to one hook.
 
 **Files:**
+
 - Create: `src/renderer/src/hooks/useDebouncedValue.ts`
 
 - [ ] **Step 1: Create the hook**
@@ -421,6 +457,7 @@ export function useDebouncedValue<T>(value: T, delayMs: number): T {
 - [ ] **Step 2: Replace hand-rolled debounce in `src/renderer/src/pages/Inventory.tsx`**
 
 Find the `useEffect` with `setTimeout` on the search input (lines ~499-524). Replace with:
+
 ```typescript
 const debouncedSearch = useDebouncedValue(searchInput, 300)
 // Remove the local timer useEffect
@@ -432,12 +469,15 @@ const debouncedSearch = useDebouncedValue(searchInput, 300)
 - [ ] **Step 4: Replace in `src/renderer/src/components/NoteEditor.tsx`** (lines ~26-33) — use `useDebouncedValue(noteText, 500)` and trigger save via `useEffect([debouncedNoteText])`.
 
 - [ ] **Step 5: Run typecheck**
+
 ```bash
 npm run typecheck:web
 ```
+
 Expected: no errors.
 
 - [ ] **Step 6: Commit**
+
 ```bash
 git add src/renderer/src/hooks/useDebouncedValue.ts src/renderer/src/pages/Inventory.tsx src/renderer/src/components/HomeDashboard.tsx src/renderer/src/components/NoteEditor.tsx
 git commit -m "refactor(hooks): extract useDebouncedValue, remove 3 hand-rolled debounce timers"
@@ -450,6 +490,7 @@ git commit -m "refactor(hooks): extract useDebouncedValue, remove 3 hand-rolled 
 **Context:** `App.tsx` sets up 5 IPC event listeners each in its own `useEffect` with the same subscribe/unsubscribe pattern. Extract to one hook.
 
 **Files:**
+
 - Create: `src/renderer/src/hooks/useIpcEvent.ts`
 
 - [ ] **Step 1: Create the hook**
@@ -462,7 +503,7 @@ import { useEffect } from 'react'
  * The handler must be stable (wrap in useCallback at the call site).
  */
 export function useIpcEvent(
-  subscribe: (handler: (...args: unknown[]) => void) => (() => void),
+  subscribe: (handler: (...args: unknown[]) => void) => () => void,
   handler: (...args: unknown[]) => void
 ): void {
   useEffect(() => {
@@ -474,28 +515,42 @@ export function useIpcEvent(
 - [ ] **Step 2: Replace the 5 `useEffect` IPC listener patterns in `src/renderer/src/App.tsx`**
 
 Before (current pattern, repeated 5 times):
+
 ```typescript
 useEffect(() => {
-  const unsub = window.sqlSentinel.onMetricsPush((data) => { /* handler */ })
+  const unsub = window.sqlSentinel.onMetricsPush((data) => {
+    /* handler */
+  })
   return () => unsub()
-}, [])  // eslint-disable-line react-hooks/exhaustive-deps
+}, []) // eslint-disable-line react-hooks/exhaustive-deps
 ```
 
 After:
+
 ```typescript
-const handleMetricsPush = useCallback((data) => { /* handler */ }, [/* real deps */])
+const handleMetricsPush = useCallback(
+  (data) => {
+    /* handler */
+  },
+  [
+    /* real deps */
+  ]
+)
 useIpcEvent(window.sqlSentinel.onMetricsPush, handleMetricsPush)
 ```
 
 This also eliminates the 5 `eslint-disable-line react-hooks/exhaustive-deps` suppressions.
 
 - [ ] **Step 3: Run typecheck**
+
 ```bash
 npm run typecheck:web
 ```
+
 Expected: no errors.
 
 - [ ] **Step 4: Commit**
+
 ```bash
 git add src/renderer/src/hooks/useIpcEvent.ts src/renderer/src/App.tsx
 git commit -m "refactor(hooks): extract useIpcEvent, remove eslint-disable suppressions in App.tsx"
@@ -508,6 +563,7 @@ git commit -m "refactor(hooks): extract useIpcEvent, remove eslint-disable suppr
 **Context:** 16 renderer files call `window.sqlSentinel.*` directly. Centralizing in `api/ipc.ts` means one place to add timeout handling, error normalization, and mock injection.
 
 **Files:**
+
 - Create: `src/renderer/src/api/ipc.ts`
 
 - [ ] **Step 1: Create `src/renderer/src/api/ipc.ts`**
@@ -524,7 +580,7 @@ function withTimeout<T>(promise: Promise<T>, ms = DEFAULT_TIMEOUT_MS): Promise<T
     promise,
     new Promise<T>((_, reject) =>
       setTimeout(() => reject(new Error(`IPC timeout after ${ms}ms`)), ms)
-    ),
+    )
   ])
 }
 
@@ -532,8 +588,7 @@ const api = window.sqlSentinel
 
 // Servers
 export const getServers = () => withTimeout(api.getServers())
-export const addServer = (s: Parameters<typeof api.addServer>[0]) =>
-  withTimeout(api.addServer(s))
+export const addServer = (s: Parameters<typeof api.addServer>[0]) => withTimeout(api.addServer(s))
 export const removeServer = (id: string) => withTimeout(api.removeServer(id))
 export const updateServer = (s: Parameters<typeof api.updateServer>[0]) =>
   withTimeout(api.updateServer(s))
@@ -555,12 +610,15 @@ export const onAlarmPush = api.onAlarmPush?.bind(api)
 - [ ] **Step 3: Replace in `src/renderer/src/store/agStore.ts`**.
 
 - [ ] **Step 4: Run typecheck**
+
 ```bash
 npm run typecheck:web
 ```
+
 Expected: no errors.
 
 - [ ] **Step 5: Commit (partial — more files to migrate in component tasks)**
+
 ```bash
 git add src/renderer/src/api/ipc.ts src/renderer/src/store/
 git commit -m "feat(api): add typed IPC wrapper with timeout; migrate stores off window.sqlSentinel"
@@ -575,6 +633,7 @@ git commit -m "feat(api): add typed IPC wrapper with timeout; migrate stores off
 **Context:** `src/main/ipc/handlers.ts` is 760 LOC with 42 handlers. Split by domain without changing channel names or signatures.
 
 **Files:**
+
 - Create: `src/main/ipc/handlers/servers.ipc.ts`
 - Create: `src/main/ipc/handlers/metrics.ipc.ts`
 - Create: `src/main/ipc/handlers/alarms.ipc.ts`
@@ -603,7 +662,7 @@ const AUTH_EXEMPT = new Set<string>([
   IpcChannel.AUTH_LOGIN,
   IpcChannel.AUTH_LOGOUT,
   IpcChannel.AUTH_CHECK,
-  IpcChannel.SETTINGS_GET,
+  IpcChannel.SETTINGS_GET
 ])
 
 export function handle<R>(
@@ -630,6 +689,7 @@ export function handle<R>(
 - [ ] **Step 2: Create `src/main/ipc/handlers/servers.ipc.ts`**
 
 Move all `SERVERS_*` and `DISCOVERY_*` handlers from `handlers.ts`. Each handler should:
+
 1. Call `handle(IpcChannel.X, async (_event, args) => { ... })`.
 2. Delegate to a service (Task B2 creates these) rather than containing logic inline.
 
@@ -675,14 +735,17 @@ export function registerIpcHandlers(): void {
 - [ ] **Step 8: Update `src/main/index.ts`** to import from `./ipc/index` instead of `./ipc/handlers`.
 
 - [ ] **Step 9: Run typecheck and verify app boots**
+
 ```bash
 npm run typecheck:node && npm run dev
 ```
+
 Expected: typecheck clean, app boots, all IPC channels respond normally.
 
 - [ ] **Step 10: Delete old `src/main/ipc/handlers.ts`**
 
 - [ ] **Step 11: Commit**
+
 ```bash
 git add src/main/ipc/ src/main/index.ts
 git commit -m "refactor(ipc): split monolithic handlers.ts into domain handler files"
@@ -695,6 +758,7 @@ git commit -m "refactor(ipc): split monolithic handlers.ts into domain handler f
 **Context:** IPC handlers currently contain business logic. Extract into service files so handlers become thin input→service→output delegators.
 
 **Files:**
+
 - Create: `src/main/services/ServerService.ts`
 - Create: `src/main/services/MetricsService.ts`
 - Create: `src/main/services/AlarmService.ts`
@@ -744,12 +808,15 @@ export function registerServerHandlers(): void {
 ```
 
 - [ ] **Step 6: Run typecheck and tests**
+
 ```bash
 npm run typecheck && npm test
 ```
+
 Expected: no errors, all tests pass.
 
 - [ ] **Step 7: Commit**
+
 ```bash
 git add src/main/services/ src/main/ipc/handlers/
 git commit -m "refactor(architecture): extract Service layer, IPC handlers are now thin delegators"
@@ -762,6 +829,7 @@ git commit -m "refactor(architecture): extract Service layer, IPC handlers are n
 ### Task C1: Extract UI primitives
 
 **Files:**
+
 - Create: `src/renderer/src/components/ui/StatusDot.tsx`
 - Create: `src/renderer/src/components/ui/TruncatedCell.tsx`
 
@@ -825,12 +893,15 @@ export const TruncatedCell = memo(function TruncatedCell({ text, maxWidth = 200 
 ```
 
 - [ ] **Step 3: Run typecheck**
+
 ```bash
 npm run typecheck:web
 ```
+
 Expected: no errors.
 
 - [ ] **Step 4: Commit**
+
 ```bash
 git add src/renderer/src/components/ui/
 git commit -m "feat(ui): add reusable StatusDot and TruncatedCell primitives"
@@ -841,6 +912,7 @@ git commit -m "feat(ui): add reusable StatusDot and TruncatedCell primitives"
 ### Task C2: Split `HomeDashboard.tsx` (1251 → ≤ 300 LOC)
 
 **Files:**
+
 - Create: `src/renderer/src/components/features/home/useHomeDashboard.ts`
 - Create: `src/renderer/src/components/features/home/KpiCard.tsx`
 - Create: `src/renderer/src/components/features/home/ServerRow.tsx`
@@ -885,12 +957,15 @@ Target: HomeDashboard.tsx ≤ 250 LOC after split.
 - [ ] **Step 6: Migrate `window.sqlSentinel.*` calls** in useHomeDashboard to import from `../../api/ipc`.
 
 - [ ] **Step 7: Run typecheck**
+
 ```bash
 npm run typecheck:web
 ```
+
 Expected: no errors.
 
 - [ ] **Step 8: Commit**
+
 ```bash
 git add src/renderer/src/components/features/home/ src/renderer/src/components/HomeDashboard.tsx
 git commit -m "refactor(home): split HomeDashboard into hook + KpiCard + ServerRow (1251 → ≤300 LOC)"
@@ -903,6 +978,7 @@ git commit -m "refactor(home): split HomeDashboard into hook + KpiCard + ServerR
 **Context:** Sidebar conflates 5 concerns: tree state, search, DnD, virtualization (`useVirtualizer`), and visual style.
 
 **Files:**
+
 - Create: `src/renderer/src/components/features/sidebar/useSidebarTree.ts`
 - Create: `src/renderer/src/components/features/sidebar/SidebarSearch.tsx`
 - Create: `src/renderer/src/components/features/sidebar/SidebarTree.tsx`
@@ -916,9 +992,10 @@ git commit -m "refactor(home): split HomeDashboard into hook + KpiCard + ServerR
   - Server filtering by search
 
 Returns:
+
 ```typescript
 interface UseSidebarTreeReturn {
-  flatItems: VirtualItem[]  // for react-virtual
+  flatItems: VirtualItem[] // for react-virtual
   expandedAGs: Set<string>
   expandedMachines: Set<string>
   toggleAG: (id: string) => void
@@ -937,12 +1014,15 @@ interface UseSidebarTreeReturn {
 - [ ] **Step 5: Move the 4 memo'd sub-components** (`GroupHeader`, `AgGroupHeader`, `ServerItem`, `MachineHeader`) to `SidebarTree.tsx`.
 
 - [ ] **Step 6: Run typecheck**
+
 ```bash
 npm run typecheck:web
 ```
+
 Expected: no errors.
 
 - [ ] **Step 7: Commit**
+
 ```bash
 git add src/renderer/src/components/features/sidebar/ src/renderer/src/components/Sidebar.tsx
 git commit -m "refactor(sidebar): split Sidebar into hook + tree + search (1372 → ≤300 LOC)"
@@ -955,6 +1035,7 @@ git commit -m "refactor(sidebar): split Sidebar into hook + tree + search (1372 
 **Context:** Largest file. Mixes: tree expansion, filters, search, DataGrid columns, CSV export, 101 inline styles, 29 `window.sqlSentinel` calls.
 
 **Files:**
+
 - Create: `src/renderer/src/components/features/inventory/useInventoryState.ts`
 - Create: `src/renderer/src/components/features/inventory/InventoryFilters.tsx`
 - Create: `src/renderer/src/components/features/inventory/InventoryGrid.tsx`
@@ -989,12 +1070,15 @@ interface UseInventoryStateReturn {
 - [ ] **Step 6: Migrate all 29 `window.sqlSentinel.*` calls** in useInventoryState to import from `../../api/ipc`.
 
 - [ ] **Step 7: Run typecheck**
+
 ```bash
 npm run typecheck:web
 ```
+
 Expected: no errors.
 
 - [ ] **Step 8: Commit**
+
 ```bash
 git add src/renderer/src/components/features/inventory/ src/renderer/src/pages/Inventory.tsx
 git commit -m "refactor(inventory): split Inventory into hook + grid + filters + toolbar (1823 → ≤300 LOC)"
@@ -1005,6 +1089,7 @@ git commit -m "refactor(inventory): split Inventory into hook + grid + filters +
 ### Task C5: Split `MetricsPanel.tsx` (861 → ≤ 300 LOC)
 
 **Files:**
+
 - Create: `src/renderer/src/components/features/metrics/useMetricsData.ts`
 - Create: `src/renderer/src/components/features/metrics/MetricsTabs.tsx`
 - Modify: `src/renderer/src/components/MetricsPanel.tsx` (shrink to shell)
@@ -1018,12 +1103,15 @@ git commit -m "refactor(inventory): split Inventory into hook + grid + filters +
 - [ ] **Step 4: Migrate `window.sqlSentinel.*` calls** to `api/ipc.ts`.
 
 - [ ] **Step 5: Run typecheck**
+
 ```bash
 npm run typecheck:web
 ```
+
 Expected: no errors.
 
 - [ ] **Step 6: Commit**
+
 ```bash
 git add src/renderer/src/components/features/metrics/ src/renderer/src/components/MetricsPanel.tsx
 git commit -m "refactor(metrics): split MetricsPanel into hook + tabs (861 → ≤300 LOC)"
@@ -1038,6 +1126,7 @@ git commit -m "refactor(metrics): split MetricsPanel into hook + tabs (861 → �
 **Context:** `AgDashboard.tsx:221` has `setInterval(..., 60_000)` that fires even when the window is in the background, despite the main process already throttling. Add a renderer-side visibility pause.
 
 **Files:**
+
 - Create: `src/renderer/src/hooks/useVisibilityPoll.ts`
 - Modify: `src/renderer/src/components/AgDashboard.tsx`
 
@@ -1084,22 +1173,28 @@ export function useVisibilityPoll(callback: () => void, intervalMs: number): voi
 - [ ] **Step 2: Replace `setInterval` in `src/renderer/src/components/AgDashboard.tsx`**
 
 Find the manual `setInterval` at line ~221:
+
 ```typescript
 // Before:
 const intervalId = setInterval(() => updateAgDetails(connection), 60_000)
 // Somewhere: clearInterval(intervalId)
 
 // After — remove the above and use:
-useVisibilityPoll(() => { if (connection) updateAgDetails(connection) }, 60_000)
+useVisibilityPoll(() => {
+  if (connection) updateAgDetails(connection)
+}, 60_000)
 ```
 
 - [ ] **Step 3: Run typecheck**
+
 ```bash
 npm run typecheck:web
 ```
+
 Expected: no errors.
 
 - [ ] **Step 4: Commit**
+
 ```bash
 git add src/renderer/src/hooks/useVisibilityPoll.ts src/renderer/src/components/AgDashboard.tsx
 git commit -m "fix(ag): pause AgDashboard polling when window is hidden"
@@ -1112,6 +1207,7 @@ git commit -m "fix(ag): pause AgDashboard polling when window is hidden"
 **Context:** `agStore.ts` dynamically imports `serversStore` at runtime and calls `useServersStore.getState().updateServer(...)` — a circular store-to-store write.
 
 **Files:**
+
 - Modify: `src/renderer/src/store/agStore.ts`
 - Modify: `src/renderer/src/store/serversStore.ts`
 
@@ -1132,12 +1228,15 @@ pendingServerUpdates: Record<string, Partial<StoredServer>>
 Then in the component/hook that calls `agStore.updateAgDetails()`, subscribe to `pendingServerUpdates` and flush them to `serversStore`.
 
 - [ ] **Step 2: Run typecheck**
+
 ```bash
 npm run typecheck:web
 ```
+
 Expected: no errors.
 
 - [ ] **Step 3: Commit**
+
 ```bash
 git add src/renderer/src/store/
 git commit -m "fix(store): remove circular agStore → serversStore import"
@@ -1150,6 +1249,7 @@ git commit -m "fix(store): remove circular agStore → serversStore import"
 **Context:** `groupsStore` stores `serverAliases` keyed by `"ip:port"` string, but servers use UUID `id`. This causes stale lookups when a server's IP changes.
 
 **Files:**
+
 - Modify: `src/renderer/src/store/groupsStore.ts`
 - Modify: any component reading `serverAliases` by old key format
 
@@ -1159,10 +1259,10 @@ git commit -m "fix(store): remove circular agStore → serversStore import"
 
 ```typescript
 // Before:
-serverAliases: Record<string, string>  // keyed by "ip:port"
+serverAliases: Record<string, string> // keyed by "ip:port"
 
 // After:
-serverAliases: Record<string, string>  // keyed by server UUID id
+serverAliases: Record<string, string> // keyed by server UUID id
 ```
 
 - [ ] **Step 3: Add a migration function** that runs once if `electron-store` has old `"ip:port"` keys — convert them using the current `servers` list.
@@ -1170,12 +1270,15 @@ serverAliases: Record<string, string>  // keyed by server UUID id
 - [ ] **Step 4: Update all read sites** in components/hooks to use `server.id` as key instead of `` `${server.ip}:${port}` ``.
 
 - [ ] **Step 5: Run typecheck**
+
 ```bash
 npm run typecheck:web
 ```
+
 Expected: no errors.
 
 - [ ] **Step 6: Commit**
+
 ```bash
 git add src/renderer/src/store/groupsStore.ts src/renderer/src/
 git commit -m "fix(store): migrate serverAliases key from ip:port to UUID id"
@@ -1190,6 +1293,7 @@ git commit -m "fix(store): migrate serverAliases key from ip:port to UUID id"
 **Context:** The `@electron-toolkit/tsconfig` disables `noImplicitAny`. `serverStore.ts` has 12 `any` casts, the most of any file.
 
 **Files:**
+
 - Modify: `tsconfig.node.json`
 - Modify: `tsconfig.web.json`
 - Modify: `src/main/store/serverStore.ts`
@@ -1199,9 +1303,11 @@ git commit -m "fix(store): migrate serverAliases key from ip:port to UUID id"
 - [ ] **Step 1: Add `"noImplicitAny": true`** to both `tsconfig.node.json` and `tsconfig.web.json` under `compilerOptions`.
 
 - [ ] **Step 2: Run typecheck to see all failures**
+
 ```bash
 npm run typecheck 2>&1 | head -80
 ```
+
 Note every file with errors. Fix them in priority order.
 
 - [ ] **Step 3: Fix `src/main/store/serverStore.ts`** — replace the 12 `as any` casts with typed normalizer function:
@@ -1219,7 +1325,7 @@ function normalizeServerRow(row: RawServerRow): StoredServer {
   const addr = row.host
   return {
     ...row,
-    host: addr,
+    host: addr
     // ip field dropped in normalizer — callers must use .host
   }
 }
@@ -1239,12 +1345,15 @@ export function handle<R>(
 - [ ] **Step 6: Fix remaining `any` occurrences** in other files (ragIndexer `pdfParse as any` → use type assertion with proper type; preload `(srv as any)` → proper type guard).
 
 - [ ] **Step 7: Run typecheck — must be zero errors**
+
 ```bash
 npm run typecheck
 ```
+
 Expected: no errors.
 
 - [ ] **Step 8: Commit**
+
 ```bash
 git add tsconfig.node.json tsconfig.web.json src/main/ src/renderer/
 git commit -m "fix(types): enable noImplicitAny, eliminate 27 any usages"
@@ -1259,9 +1368,11 @@ git commit -m "fix(types): enable noImplicitAny, eliminate 27 any usages"
 **Context:** Both `src/main/store/serverRepository.ts` and `src/main/store/serverStore.ts` appear to persist server data, but only `serverStore.ts` is actively used. `serverRepository.ts` may be dead code.
 
 **Files:**
+
 - Audit: `src/main/store/serverRepository.ts`
 
 - [ ] **Step 1: Verify no active imports**
+
 ```bash
 grep -r "serverRepository" src/ --include="*.ts" --include="*.tsx"
 ```
@@ -1269,12 +1380,15 @@ grep -r "serverRepository" src/ --include="*.ts" --include="*.tsx"
 - [ ] **Step 2: If zero active imports**, delete `src/main/store/serverRepository.ts`.
 
 - [ ] **Step 3: Run typecheck**
+
 ```bash
 npm run typecheck
 ```
+
 Expected: no errors.
 
 - [ ] **Step 4: Commit**
+
 ```bash
 git commit -m "chore: remove dead serverRepository (replaced by serverStore)"
 ```
@@ -1286,35 +1400,44 @@ git commit -m "chore: remove dead serverRepository (replaced by serverStore)"
 **Context:** `react-router-dom` and `zod` are declared in `package.json` but usage was not confirmed in the analysis scan.
 
 - [ ] **Step 1: Search for usage**
+
 ```bash
 grep -r "react-router-dom\|from 'zod'" src/ --include="*.ts" --include="*.tsx"
 ```
 
 - [ ] **Step 2: If `react-router-dom` is unused**, remove it:
+
 ```bash
 npm uninstall react-router-dom
 ```
+
 If used, document where.
 
 - [ ] **Step 3: If `zod` is unused**, remove it:
+
 ```bash
 npm uninstall zod
 ```
+
 If used, document where.
 
 - [ ] **Step 4: Move `@types/mssql` to devDependencies** in `package.json`:
+
 ```bash
 npm install --save-dev @types/mssql
 npm uninstall @types/mssql  # removes from dependencies
 ```
 
 - [ ] **Step 5: Run typecheck**
+
 ```bash
 npm run typecheck
 ```
+
 Expected: no errors.
 
 - [ ] **Step 6: Commit**
+
 ```bash
 git add package.json package-lock.json
 git commit -m "chore(deps): move @types/mssql to devDependencies, remove unused deps"
@@ -1327,16 +1450,20 @@ git commit -m "chore(deps): move @types/mssql to devDependencies, remove unused 
 **Context:** Most handlers return `IpcResult<T>` but `SERVERS_*` handlers return flat values (explicitly noted in comments at handlers.ts lines 274, 290, 305). Standardize to always return `IpcResult<T>`.
 
 **Files:**
+
 - Modify: `src/main/ipc/handlers/servers.ipc.ts`
 - Modify: `src/renderer/src/api/ipc.ts` (unwrap on the renderer side)
 
 - [ ] **Step 1: Wrap server handler returns in `IpcResult`**
 
 Each server handler currently doing:
+
 ```typescript
-return serverStore.getServers()  // returns StoredServer[] directly
+return serverStore.getServers() // returns StoredServer[] directly
 ```
+
 Change to:
+
 ```typescript
 const servers = await ServerService.listServers()
 return { ok: true, data: servers }
@@ -1345,12 +1472,15 @@ return { ok: true, data: servers }
 - [ ] **Step 2: Update `api/ipc.ts`** to unwrap `IpcResult` envelope uniformly for all calls.
 
 - [ ] **Step 3: Run typecheck**
+
 ```bash
 npm run typecheck
 ```
+
 Expected: no errors.
 
 - [ ] **Step 4: Commit**
+
 ```bash
 git add src/main/ipc/ src/renderer/src/api/
 git commit -m "fix(ipc): standardize IpcResult envelope across all server handlers"
@@ -1363,21 +1493,27 @@ git commit -m "fix(ipc): standardize IpcResult envelope across all server handle
 ### Task G1: Full test and typecheck pass
 
 - [ ] **Step 1: Run full typecheck**
+
 ```bash
 npm run typecheck
 ```
+
 Expected: **zero errors**.
 
 - [ ] **Step 2: Run linter**
+
 ```bash
 npm run lint
 ```
+
 Expected: **zero warnings**.
 
 - [ ] **Step 3: Run tests**
+
 ```bash
 npm test
 ```
+
 Expected: **all tests pass**.
 
 - [ ] **Step 4: Manual smoke test** — run `npm run dev` and verify:
@@ -1393,6 +1529,7 @@ Expected: **all tests pass**.
   - Settings page loads
 
 - [ ] **Step 5: Final commit + CHANGELOG entry**
+
 ```bash
 # Update CHANGELOG.md with refactoring summary
 git add CHANGELOG.md
@@ -1403,17 +1540,17 @@ git commit -m "docs(changelog): document complete refactoring (Phases A-G)"
 
 ## Priority Order (if implementation must be partial)
 
-| Priority | Task | Why first |
-|---|---|---|
-| 1 | A1-A4 (Loggers) | Zero risk, eliminates 106 noisy console calls, needed by all other tasks |
-| 2 | A5 (Interval leaks) | 3-line fix, prevents real memory/resource leak |
-| 3 | A6 (Prepared stmts) | High-perf win with low risk, hot path in every poll cycle |
-| 4 | A7 (useDebouncedValue) | Simple, removes 3 copies of identical code |
-| 5 | A8 (useIpcEvent) | Removes 5 eslint suppressions, fixes stale closure risk |
-| 6 | A9 (api/ipc.ts) | Unblocks all component migrations, adds timeout safety |
-| 7 | B1 (Split handlers.ts) | Makes codebase navigable, prerequisite for B2 |
-| 8 | B2 (Services) | Separates concerns cleanly |
-| 9 | C1-C5 (Component splits) | Biggest file-size wins, most impactful for readability |
-| 10 | D1-D3 (Store fixes) | Medium risk, depends on component work being stable |
-| 11 | E1 (noImplicitAny) | Most risk, should be last before final verification |
-| 12 | F1-F3 (Cleanup) | Dead code removal, dep cleanup |
+| Priority | Task                     | Why first                                                                |
+| -------- | ------------------------ | ------------------------------------------------------------------------ |
+| 1        | A1-A4 (Loggers)          | Zero risk, eliminates 106 noisy console calls, needed by all other tasks |
+| 2        | A5 (Interval leaks)      | 3-line fix, prevents real memory/resource leak                           |
+| 3        | A6 (Prepared stmts)      | High-perf win with low risk, hot path in every poll cycle                |
+| 4        | A7 (useDebouncedValue)   | Simple, removes 3 copies of identical code                               |
+| 5        | A8 (useIpcEvent)         | Removes 5 eslint suppressions, fixes stale closure risk                  |
+| 6        | A9 (api/ipc.ts)          | Unblocks all component migrations, adds timeout safety                   |
+| 7        | B1 (Split handlers.ts)   | Makes codebase navigable, prerequisite for B2                            |
+| 8        | B2 (Services)            | Separates concerns cleanly                                               |
+| 9        | C1-C5 (Component splits) | Biggest file-size wins, most impactful for readability                   |
+| 10       | D1-D3 (Store fixes)      | Medium risk, depends on component work being stable                      |
+| 11       | E1 (noImplicitAny)       | Most risk, should be last before final verification                      |
+| 12       | F1-F3 (Cleanup)          | Dead code removal, dep cleanup                                           |

@@ -38,7 +38,9 @@ function stmts() {
   _db = db
   _stmts = {
     selectAll: db.prepare<[], SettingsRow>('SELECT key, value FROM settings'),
-    upsert: db.prepare<[string, string]>('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)'),
+    upsert: db.prepare<[string, string]>(
+      'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)'
+    )
   }
   return _stmts
 }
@@ -48,21 +50,27 @@ export function getSettings(): AppSettings {
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]))
   const rawTheme = map['theme_mode']
   return {
-    retentionMinutes:          safeInt(map['retentionMinutes'], 60, 1),
-    backgroundEnabled:         map['background_enabled']           != null ? map['background_enabled'] === 'true'              : true,
-    backgroundMode:            (map['background_mode'] === 'full') ? 'full'                                                    : 'light',
+    retentionMinutes: safeInt(map['retentionMinutes'], 60, 1),
+    backgroundEnabled:
+      map['background_enabled'] != null ? map['background_enabled'] === 'true' : true,
+    backgroundMode: map['background_mode'] === 'full' ? 'full' : 'light',
     backgroundIntervalMinutes: safeInt(map['background_interval_minutes'], 30, 1),
-    backgroundNotifications:   map['background_notifications']     != null ? map['background_notifications'] === 'true'         : true,
-    themeMode:                 (rawTheme === 'dark' || rawTheme === 'light') ? rawTheme                                         : 'system',
+    backgroundNotifications:
+      map['background_notifications'] != null ? map['background_notifications'] === 'true' : true,
+    themeMode: rawTheme === 'dark' || rawTheme === 'light' ? rawTheme : 'system'
   }
 }
 
 export function saveSettings(settings: Partial<AppSettings>): void {
   const upsert = stmts().upsert
-  if (settings.retentionMinutes          != null) upsert.run('retentionMinutes',            String(settings.retentionMinutes))
-  if (settings.backgroundEnabled         != null) upsert.run('background_enabled',           String(settings.backgroundEnabled))
-  if (settings.backgroundMode            != null) upsert.run('background_mode',              settings.backgroundMode)
-  if (settings.backgroundIntervalMinutes != null) upsert.run('background_interval_minutes',  String(settings.backgroundIntervalMinutes))
-  if (settings.backgroundNotifications   != null) upsert.run('background_notifications',     String(settings.backgroundNotifications))
-  if (settings.themeMode                 != null) upsert.run('theme_mode',                   settings.themeMode)
+  if (settings.retentionMinutes != null)
+    upsert.run('retentionMinutes', String(settings.retentionMinutes))
+  if (settings.backgroundEnabled != null)
+    upsert.run('background_enabled', String(settings.backgroundEnabled))
+  if (settings.backgroundMode != null) upsert.run('background_mode', settings.backgroundMode)
+  if (settings.backgroundIntervalMinutes != null)
+    upsert.run('background_interval_minutes', String(settings.backgroundIntervalMinutes))
+  if (settings.backgroundNotifications != null)
+    upsert.run('background_notifications', String(settings.backgroundNotifications))
+  if (settings.themeMode != null) upsert.run('theme_mode', settings.themeMode)
 }

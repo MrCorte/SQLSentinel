@@ -44,11 +44,22 @@ function makeMetrics(): ServerMetrics {
   return {
     collectedAt: new Date(),
     instanceInfo: {
-      version: '2019', edition: 'Dev', memoryUsedMb: 100,
-      memoryTargetMb: 200, cpuUsagePercent: 10, uptimeDays: 1, logicalCpus: 8, physicalCpus: 4
+      version: '2019',
+      edition: 'Dev',
+      memoryUsedMb: 100,
+      memoryTargetMb: 200,
+      cpuUsagePercent: 10,
+      uptimeDays: 1,
+      logicalCpus: 8,
+      physicalCpus: 4
     },
-    databases: [], activeSessions: [], topQueries: [],
-    backupStatus: [], waitStats: [], diskVolumes: [], databaseFiles: []
+    databases: [],
+    activeSessions: [],
+    topQueries: [],
+    backupStatus: [],
+    waitStats: [],
+    diskVolumes: [],
+    databaseFiles: []
   }
 }
 
@@ -87,9 +98,7 @@ afterEach(() => {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('AREA 1 — PollingManager', () => {
-
   describe('BATCH_SIZE', () => {
-
     it('is never exceeded: 35 servers → collectMetrics called exactly 30 times (BATCH_SIZE=30)', () => {
       vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))
       const servers = Array.from({ length: 35 }, (_, i) => makeServer(`10.0.0.${i + 1}`))
@@ -100,16 +109,21 @@ describe('AREA 1 — PollingManager', () => {
 
     it('with 5 servers exactly 5 jobs start (fewer than batch size)', () => {
       vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))
-      startWorker({ intervalSeconds: 60, servers: Array.from({ length: 5 }, (_, i) => makeServer(`10.0.0.${i + 1}`)) })
+      startWorker({
+        intervalSeconds: 60,
+        servers: Array.from({ length: 5 }, (_, i) => makeServer(`10.0.0.${i + 1}`))
+      })
       expect(vi.mocked(collectMetrics)).toHaveBeenCalledTimes(5)
     })
   })
 
   describe('setActiveServer', () => {
-
     it('bumps the job priority to 0 synchronously', () => {
       vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))
-      startWorker({ intervalSeconds: 60, servers: [makeServer('10.0.0.1'), makeServer('10.0.0.2')] })
+      startWorker({
+        intervalSeconds: 60,
+        servers: [makeServer('10.0.0.1'), makeServer('10.0.0.2')]
+      })
       expect(__getJobForTest('10.0.0.2:1433')?.priority).toBe(1)
       setActiveServer('10.0.0.2:1433')
       expect(__getJobForTest('10.0.0.2:1433')?.priority).toBe(0)
@@ -117,7 +131,11 @@ describe('AREA 1 — PollingManager', () => {
 
     it('lowers to 1 the priority of other jobs that were at 0', () => {
       vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))
-      startWorker({ intervalSeconds: 60, servers: [makeServer('10.0.0.1'), makeServer('10.0.0.2')], activeServerId: '10.0.0.1:1433' })
+      startWorker({
+        intervalSeconds: 60,
+        servers: [makeServer('10.0.0.1'), makeServer('10.0.0.2')],
+        activeServerId: '10.0.0.1:1433'
+      })
       expect(__getJobForTest('10.0.0.1:1433')?.priority).toBe(0)
       setActiveServer('10.0.0.2:1433')
       expect(__getJobForTest('10.0.0.1:1433')?.priority).toBe(1)
@@ -147,7 +165,6 @@ describe('AREA 1 — PollingManager', () => {
   })
 
   describe('syncServers — UPSERT', () => {
-
     it('adds new servers with nextRun ≤ now (immediate)', () => {
       startWorker({ intervalSeconds: 60, servers: [] })
       const now = Date.now()
@@ -158,7 +175,10 @@ describe('AREA 1 — PollingManager', () => {
     })
 
     it('removes deleted servers from the jobMap', () => {
-      startWorker({ intervalSeconds: 60, servers: [makeServer('10.0.0.1'), makeServer('10.0.0.2')] })
+      startWorker({
+        intervalSeconds: 60,
+        servers: [makeServer('10.0.0.1'), makeServer('10.0.0.2')]
+      })
       syncServers([makeServer('10.0.0.1')])
       expect(__getJobForTest('10.0.0.1:1433')).toBeDefined()
       expect(__getJobForTest('10.0.0.2:1433')).toBeUndefined()
@@ -170,12 +190,13 @@ describe('AREA 1 — PollingManager', () => {
 
       // First call fails, all subsequent ones are not triggered
       vi.mocked(collectMetrics).mockRejectedValueOnce(new Error('timeout'))
-      vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))  // keep hanging
+      vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {})) // keep hanging
 
       startWorker({ intervalSeconds: 60, servers: [server] })
       await drainJobCycle()
 
-      const health = messages.filter((m) => m.channel === 'server:healthUpdate').at(-1)?.data as ServerHealthPayload
+      const health = messages.filter((m) => m.channel === 'server:healthUpdate').at(-1)
+        ?.data as ServerHealthPayload
       expect(health?.failCount).toBe(1)
 
       // syncServers with the same server — failCount must be preserved
@@ -198,7 +219,6 @@ describe('AREA 1 — PollingManager', () => {
   })
 
   describe('Circuit breaker — exponential back-off', () => {
-
     it('failCount=1 → nextRun in 600 s (INTERVAL_OFFLINE_MS)', async () => {
       captureRendererMessages()
       vi.mocked(collectMetrics).mockRejectedValue(new Error('unreachable'))
@@ -238,7 +258,7 @@ describe('AREA 1 — PollingManager', () => {
       vi.mocked(collectMetrics).mockRejectedValue(new Error('fail'))
 
       startWorker({ intervalSeconds: 60, servers: [makeServer('10.0.0.1')] })
-      await drainJobCycle()  // fail 1
+      await drainJobCycle() // fail 1
 
       for (let i = 0; i < 2; i++) {
         const j = __getJobForTest('10.0.0.1:1433')!
@@ -279,15 +299,15 @@ describe('AREA 1 — PollingManager', () => {
       })
 
       startWorker({ intervalSeconds: 60, servers: [makeServer('10.0.0.1')] })
-      await drainJobCycle()  // fail 1
+      await drainJobCycle() // fail 1
 
       const j1 = __getJobForTest('10.0.0.1:1433')!
       vi.advanceTimersByTime(j1.nextRun - Date.now() + 1)
-      await drainJobCycle()  // fail 2
+      await drainJobCycle() // fail 2
 
       const j2 = __getJobForTest('10.0.0.1:1433')!
       vi.advanceTimersByTime(j2.nextRun - Date.now() + 1)
-      await drainJobCycle()  // success
+      await drainJobCycle() // success
 
       const job = __getJobForTest('10.0.0.1:1433')!
       expect(job.failCount).toBe(0)
@@ -297,11 +317,10 @@ describe('AREA 1 — PollingManager', () => {
   })
 
   describe('stopWorker', () => {
-
     it('clears tickHandle and activeDebounce: no job starts after stop', async () => {
       vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))
       startWorker({ intervalSeconds: 60, servers: [makeServer('10.0.0.1')] })
-      setActiveServer('10.0.0.1:1433')  // creates activeDebounce
+      setActiveServer('10.0.0.1:1433') // creates activeDebounce
 
       const callsBefore = vi.mocked(collectMetrics).mock.calls.length
       stopWorker()
@@ -313,7 +332,10 @@ describe('AREA 1 — PollingManager', () => {
     })
 
     it('jobMap is empty after stopWorker', () => {
-      startWorker({ intervalSeconds: 60, servers: [makeServer('10.0.0.1'), makeServer('10.0.0.2')] })
+      startWorker({
+        intervalSeconds: 60,
+        servers: [makeServer('10.0.0.1'), makeServer('10.0.0.2')]
+      })
       stopWorker()
       expect(__getJobForTest('10.0.0.1:1433')).toBeUndefined()
       expect(__getJobForTest('10.0.0.2:1433')).toBeUndefined()

@@ -44,7 +44,7 @@ function stmts() {
     setCustomFields: db.prepare<[string, string | null, string | null]>(
       'INSERT OR REPLACE INTO db_custom_fields (id, alias, referente) VALUES (?, ?, ?)'
     ),
-    getAllCustomFields: db.prepare<[], DbCustomFieldsRow>('SELECT * FROM db_custom_fields'),
+    getAllCustomFields: db.prepare<[], DbCustomFieldsRow>('SELECT * FROM db_custom_fields')
   }
   return _stmts
 }
@@ -56,7 +56,11 @@ export function getCustomFields(serverId: string, dbName: string): DbCustomField
 
 export function setCustomFields(serverId: string, dbName: string, fields: DbCustomFields): void {
   cachedFields = null // invalidate cache on every write
-  stmts().setCustomFields.run(`${serverId}/${dbName}`, fields.alias ?? null, fields.referente ?? null)
+  stmts().setCustomFields.run(
+    `${serverId}/${dbName}`,
+    fields.alias ?? null,
+    fields.referente ?? null
+  )
 }
 
 export function getAllCustomFields(): Record<string, DbCustomFields> {

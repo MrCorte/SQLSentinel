@@ -19,7 +19,7 @@ export const StatusDot = memo(function StatusDot({ color, size = 8, glow, sx }: 
         backgroundColor: color,
         flexShrink: 0,
         ...(glow && { boxShadow: `0 0 6px 1px ${color}` }),
-        ...sx,
+        ...sx
       }}
     />
   )

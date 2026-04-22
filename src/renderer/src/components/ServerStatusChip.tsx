@@ -20,7 +20,7 @@ export function ServerStatusChip({ reachable, responseTimeMs }: Props): React.JS
           borderRadius: '12px',
           bgcolor: 'background.default',
           border: '1px solid',
-          borderColor: 'divider',
+          borderColor: 'divider'
         }}
       >
         <Typography component="span" sx={{ fontSize: tokens.font.sizeXs, color: 'text.secondary' }}>
@@ -46,7 +46,14 @@ export function ServerStatusChip({ reachable, responseTimeMs }: Props): React.JS
           border: `1px solid ${tokens.color.success}`
         }}
       >
-        <Typography component="span" sx={{ fontSize: tokens.font.sizeXs, color: tokens.color.success, fontWeight: tokens.font.weightSemibold }}>
+        <Typography
+          component="span"
+          sx={{
+            fontSize: tokens.font.sizeXs,
+            color: tokens.color.success,
+            fontWeight: tokens.font.weightSemibold
+          }}
+        >
           {label}
         </Typography>
       </Box>
@@ -67,7 +74,14 @@ export function ServerStatusChip({ reachable, responseTimeMs }: Props): React.JS
         border: `1px solid ${tokens.color.error}`
       }}
     >
-      <Typography component="span" sx={{ fontSize: tokens.font.sizeXs, color: tokens.color.error, fontWeight: tokens.font.weightSemibold }}>
+      <Typography
+        component="span"
+        sx={{
+          fontSize: tokens.font.sizeXs,
+          color: tokens.color.error,
+          fontWeight: tokens.font.weightSemibold
+        }}
+      >
         Unreachable
       </Typography>
     </Box>

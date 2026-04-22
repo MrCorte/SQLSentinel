@@ -7,10 +7,9 @@ const { spawn } = require('child_process')
 const env = { ...process.env }
 delete env.ELECTRON_RUN_AS_NODE
 
-const proc = spawn(
-  process.execPath,
-  ['node_modules/electron-vite/bin/electron-vite.js', 'dev'],
-  { stdio: 'inherit', env }
-)
+const proc = spawn(process.execPath, ['node_modules/electron-vite/bin/electron-vite.js', 'dev'], {
+  stdio: 'inherit',
+  env
+})
 
 proc.on('close', (code) => process.exit(code ?? 0))

@@ -98,8 +98,8 @@ export function Dashboard(): React.JSX.Element {
   )
   const selectedServerId = selectedServer ? serverLabel(selectedServer) : null
 
-  const cachedMetrics = useMetricsStore(
-    (s) => (selectedServerId ? s.metricsMap[selectedServerId] ?? null : null)
+  const cachedMetrics = useMetricsStore((s) =>
+    selectedServerId ? (s.metricsMap[selectedServerId] ?? null) : null
   )
 
   const { metrics, isLoading, error, refresh, receiveMetrics } = useMetrics(connection, {
@@ -246,22 +246,24 @@ export function Dashboard(): React.JSX.Element {
         )}
 
         {/* AG Dashboard */}
-        {selectedAgName && !selectedServer && connection === null && (
+        {selectedAgName &&
+          !selectedServer &&
+          connection === null &&
           (() => {
             // Use any available server connection for AG queries (prefer the first one)
             const anyConn = servers.length > 0 ? toCollectRequest(servers[0]) : null
-            if (!anyConn) return (
-              <Alert severity="warning">
-                No server available to query the AG. Add at least one server first.
-              </Alert>
-            )
+            if (!anyConn)
+              return (
+                <Alert severity="warning">
+                  No server available to query the AG. Add at least one server first.
+                </Alert>
+              )
             return (
               <Box sx={{ flex: 1, overflow: 'auto' }}>
                 <AgDashboard agName={selectedAgName} connection={anyConn} />
               </Box>
             )
-          })()
-        )}
+          })()}
 
         {selectedServer && (
           <>
@@ -317,7 +319,12 @@ export function Dashboard(): React.JSX.Element {
                     {serverAliases[selectedServer.id] && (
                       <Typography
                         component="span"
-                        sx={{ fontSize: 12, color: 'text.secondary', whiteSpace: 'nowrap', flexShrink: 0 }}
+                        sx={{
+                          fontSize: 12,
+                          color: 'text.secondary',
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0
+                        }}
                       >
                         {serverLabel(selectedServer)}
                       </Typography>
@@ -369,7 +376,8 @@ export function Dashboard(): React.JSX.Element {
                   gap: 1.5,
                   px: 2,
                   py: 1,
-                  bgcolor: (theme) => alpha(theme.palette.error.main, theme.palette.mode === 'dark' ? 0.2 : 0.08),
+                  bgcolor: (theme) =>
+                    alpha(theme.palette.error.main, theme.palette.mode === 'dark' ? 0.2 : 0.08),
                   border: `1px solid ${tokens.color.error}`,
                   borderRadius: 1
                 }}
@@ -411,7 +419,14 @@ export function Dashboard(): React.JSX.Element {
 
               if (isFirstLoad) {
                 return (
-                  <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Box
+                    sx={{
+                      flex: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}
+                  >
                     <CircularProgress size={32} />
                   </Box>
                 )

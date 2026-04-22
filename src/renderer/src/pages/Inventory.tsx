@@ -87,13 +87,12 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
     handleExportCsv,
     toggleDbServer,
     handleResetDbFilters,
-    handleDbToggleAll,
+    handleDbToggleAll
   } = state
 
   return (
     <Box sx={{ height: '100%', overflow: 'auto', bgcolor: 'background.default' }}>
       <Box sx={{ maxWidth: 1400, mx: 'auto', px: 3, py: 2 }}>
-
         <InventoryTopBar
           refreshing={refreshing}
           lastRefresh={lastRefresh}
@@ -195,7 +194,6 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
             />
           </>
         )}
-
       </Box>
     </Box>
   )

@@ -68,7 +68,7 @@ export const InventoryFilters = memo(function InventoryFilters({
   expandedMachines,
   onToggleAll,
   onReset,
-  sortedRows,
+  sortedRows
 }: InventoryFiltersProps) {
   return (
     <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
@@ -82,7 +82,7 @@ export const InventoryFilters = memo(function InventoryFilters({
             <InputAdornment position="start">
               <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
             </InputAdornment>
-          ),
+          )
         }}
         sx={{ minWidth: 220 }}
       />
@@ -195,9 +195,7 @@ export const InventoryFilters = memo(function InventoryFilters({
 
       {(allClusterKeys.length > 0 || allMachineKeys.length > 0) && (
         <Button size="small" variant="text" color="inherit" onClick={onToggleAll} sx={{ ml: 0 }}>
-          {expandedClusters.size > 0 || expandedMachines.size > 0
-            ? 'Collapse all'
-            : 'Expand all'}
+          {expandedClusters.size > 0 || expandedMachines.size > 0 ? 'Collapse all' : 'Expand all'}
         </Button>
       )}
 

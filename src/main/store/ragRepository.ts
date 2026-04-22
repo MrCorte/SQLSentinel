@@ -27,7 +27,9 @@ function decodeEmbedding(blob: Buffer): Float32Array {
 }
 
 function cosine(a: Float32Array, b: Float32Array): number {
-  let dot = 0, ma = 0, mb = 0
+  let dot = 0,
+    ma = 0,
+    mb = 0
   for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i]
     ma += a[i] * a[i]
@@ -78,7 +80,7 @@ function stmts() {
     getAllChunks: db.prepare<[], RagChunkRow>('SELECT text, embedding FROM rag_chunks'),
     getAllDocuments: db.prepare<[], RagDocument>(
       'SELECT id, filename, file_size AS fileSize, indexed_at AS indexedAt, chunk_count AS chunkCount FROM rag_documents ORDER BY indexed_at DESC'
-    ),
+    )
   }
   return _stmts
 }
@@ -108,15 +110,18 @@ export function saveDocument(doc: {
     s.deleteChunks.run(doc.id)
 
     for (let i = 0; i < doc.chunks.length; i++) {
-      s.insertChunk.run(`${doc.id}:${i}`, doc.id, i, doc.chunks[i].text, encodeEmbedding(doc.chunks[i].embedding))
+      s.insertChunk.run(
+        `${doc.id}:${i}`,
+        doc.id,
+        i,
+        doc.chunks[i].text,
+        encodeEmbedding(doc.chunks[i].embedding)
+      )
     }
   })()
 }
 
-export function retrieveTopK(
-  queryEmbedding: number[],
-  k = 5
-): { text: string; score: number }[] {
+export function retrieveTopK(queryEmbedding: number[], k = 5): { text: string; score: number }[] {
   const rows = stmts().getAllChunks.all()
 
   if (rows.length === 0) return []

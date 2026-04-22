@@ -21,7 +21,11 @@ export interface CpuBarChartProps {
   cpuChartHeight: number
 }
 
-export function CpuBarChart({ cpuData, hasCpuData, cpuChartHeight }: CpuBarChartProps): React.JSX.Element {
+export function CpuBarChart({
+  cpuData,
+  hasCpuData,
+  cpuChartHeight
+}: CpuBarChartProps): React.JSX.Element {
   return (
     <Box
       sx={{
@@ -57,36 +61,40 @@ export function CpuBarChart({ cpuData, hasCpuData, cpuChartHeight }: CpuBarChart
         </Box>
       ) : (
         <Box sx={{ overflowY: 'auto', maxHeight: 400 }}>
-        <ResponsiveContainer width="100%" height={cpuChartHeight}>
-          <BarChart layout="vertical" data={cpuData} margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
-            <CartesianGrid horizontal={false} stroke={tokens.color.chartGrid} />
-            <XAxis
-              type="number"
-              domain={[0, 100]}
-              tickFormatter={(v: number) => `${v}%`}
-              tick={{ fontSize: tokens.font.sizeXs, fill: '#94a3b8' }}
-            />
-            <YAxis
-              type="category"
-              dataKey="name"
-              width={120}
-              tick={{ fontSize: tokens.font.sizeXs, fill: '#94a3b8' }}
-            />
-            <Tooltip
-              formatter={(value) => [`${value}%`, 'CPU']}
-              contentStyle={{
-                fontSize: tokens.font.sizeSm,
-                border: '1px solid rgba(128,128,128,0.3)',
-                borderRadius: tokens.radius.sm
-              }}
-            />
-            <Bar dataKey="cpu" radius={[0, 2, 2, 0]} isAnimationActive={false}>
-              {cpuData.map((entry) => (
-                <Cell key={entry.name} fill={entry.fill} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+          <ResponsiveContainer width="100%" height={cpuChartHeight}>
+            <BarChart
+              layout="vertical"
+              data={cpuData}
+              margin={{ top: 0, right: 16, left: 0, bottom: 0 }}
+            >
+              <CartesianGrid horizontal={false} stroke={tokens.color.chartGrid} />
+              <XAxis
+                type="number"
+                domain={[0, 100]}
+                tickFormatter={(v: number) => `${v}%`}
+                tick={{ fontSize: tokens.font.sizeXs, fill: '#94a3b8' }}
+              />
+              <YAxis
+                type="category"
+                dataKey="name"
+                width={120}
+                tick={{ fontSize: tokens.font.sizeXs, fill: '#94a3b8' }}
+              />
+              <Tooltip
+                formatter={(value) => [`${value}%`, 'CPU']}
+                contentStyle={{
+                  fontSize: tokens.font.sizeSm,
+                  border: '1px solid rgba(128,128,128,0.3)',
+                  borderRadius: tokens.radius.sm
+                }}
+              />
+              <Bar dataKey="cpu" radius={[0, 2, 2, 0]} isAnimationActive={false}>
+                {cpuData.map((entry) => (
+                  <Cell key={entry.name} fill={entry.fill} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </Box>
       )}
     </Box>

@@ -87,7 +87,12 @@ export function StatusDonutChart({
           }}
         >
           <Typography
-            sx={{ fontSize: 28, fontWeight: tokens.font.weightBold, color: 'text.primary', lineHeight: 1 }}
+            sx={{
+              fontSize: 28,
+              fontWeight: tokens.font.weightBold,
+              color: 'text.primary',
+              lineHeight: 1
+            }}
           >
             {totalServers}
           </Typography>
@@ -131,7 +136,11 @@ export function StatusDonutChart({
               {item.label}
             </Typography>
             <Typography
-              sx={{ fontSize: tokens.font.sizeXs, fontWeight: tokens.font.weightBold, color: 'text.primary' }}
+              sx={{
+                fontSize: tokens.font.sizeXs,
+                fontWeight: tokens.font.weightBold,
+                color: 'text.primary'
+              }}
             >
               {item.value}
             </Typography>

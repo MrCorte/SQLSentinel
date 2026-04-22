@@ -32,4 +32,3 @@ export async function checkOllamaHealth(): Promise<boolean> {
     return false
   }
 }
-

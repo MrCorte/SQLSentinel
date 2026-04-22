@@ -44,20 +44,42 @@ class MockStatement {
 
     // ── INSERT INTO servers (upsert with ON CONFLICT) ────────────────────────
     if (s.includes('insert into servers') && s.includes('on conflict')) {
-      const [id, ip, port, instance_name, use_windows_auth, username, encrypted_password,
-             added_at, last_seen_at, last_metrics_at] = args
+      const [
+        id,
+        ip,
+        port,
+        instance_name,
+        use_windows_auth,
+        username,
+        encrypted_password,
+        added_at,
+        last_seen_at,
+        last_metrics_at
+      ] = args
 
       // Look for an existing record by ip:port
-      const existing = [...servers.values()].find(r => r.ip === ip && r.port === port)
+      const existing = [...servers.values()].find((r) => r.ip === ip && r.port === port)
       if (existing) {
         Object.assign(existing, {
-          instance_name, use_windows_auth, username, encrypted_password,
-          last_seen_at, last_metrics_at
+          instance_name,
+          use_windows_auth,
+          username,
+          encrypted_password,
+          last_seen_at,
+          last_metrics_at
         })
       } else {
         servers.set(id as string, {
-          id, ip, port, instance_name, use_windows_auth, username,
-          encrypted_password, added_at, last_seen_at, last_metrics_at
+          id,
+          ip,
+          port,
+          instance_name,
+          use_windows_auth,
+          username,
+          encrypted_password,
+          added_at,
+          last_seen_at,
+          last_metrics_at
         })
       }
       return { changes: 1, lastInsertRowid: 1 }
@@ -95,7 +117,7 @@ class MockStatement {
 
     // ── DELETE FROM metrics_snapshots WHERE collected_at < datetime('now', ?) ─
     if (s.includes('delete from metrics_snapshots')) {
-      const days = args[0] as number   // e.g. -30
+      const days = args[0] as number // e.g. -30
       const cutoff = daysOffset(days)
       for (const [key, row] of metrics_snapshots) {
         if ((row.collected_at as string) < cutoff) {
@@ -120,17 +142,15 @@ class MockStatement {
     // ── SELECT * FROM servers WHERE ip = ? AND port = ? ──────────────────────
     if (s.includes('from servers where ip = ?') && s.includes('and port = ?')) {
       const [ip, port] = args
-      return [...servers.values()].find(r => r.ip === ip && r.port === port)
+      return [...servers.values()].find((r) => r.ip === ip && r.port === port)
     }
 
     // ── SELECT * FROM metrics_snapshots … LIMIT 1 (findLatest) ───────────────
     if (s.includes('from metrics_snapshots') && s.includes('limit 1')) {
       const sid = args[0] as string
       return [...metrics_snapshots.values()]
-        .filter(r => r.server_id === sid)
-        .sort((a, b) =>
-          (b.collected_at as string).localeCompare(a.collected_at as string)
-        )[0]
+        .filter((r) => r.server_id === sid)
+        .sort((a, b) => (b.collected_at as string).localeCompare(a.collected_at as string))[0]
     }
 
     return undefined
@@ -150,23 +170,23 @@ class MockStatement {
 
     // ── SELECT * FROM metrics_snapshots WHERE server_id = ? AND collected_at >= ─
     if (s.includes('from metrics_snapshots') && s.includes('collected_at >=')) {
-      const [sid, days] = args    // days es. -7
+      const [sid, days] = args // days es. -7
       const since = daysOffset(days as number)
       return [...metrics_snapshots.values()]
-        .filter(r => r.server_id === sid && (r.collected_at as string) >= since)
-        .sort((a, b) =>
-          (b.collected_at as string).localeCompare(a.collected_at as string)
-        )
+        .filter((r) => r.server_id === sid && (r.collected_at as string) >= since)
+        .sort((a, b) => (b.collected_at as string).localeCompare(a.collected_at as string))
     }
 
     // ── SELECT * FROM metrics_snapshots WHERE server_id = ? ORDER BY … LIMIT ? (findLastN) ──
-    if (s.includes('from metrics_snapshots') && s.includes('server_id = ?') && s.includes('limit')) {
+    if (
+      s.includes('from metrics_snapshots') &&
+      s.includes('server_id = ?') &&
+      s.includes('limit')
+    ) {
       const [sid, limit] = args
       return [...metrics_snapshots.values()]
-        .filter(r => r.server_id === sid)
-        .sort((a, b) =>
-          (b.collected_at as string).localeCompare(a.collected_at as string)
-        )
+        .filter((r) => r.server_id === sid)
+        .sort((a, b) => (b.collected_at as string).localeCompare(a.collected_at as string))
         .slice(0, limit as number)
     }
 
@@ -174,10 +194,8 @@ class MockStatement {
     if (s.includes('from metrics_snapshots') && s.includes('server_id = ?')) {
       const sid = args[0] as string
       return [...metrics_snapshots.values()]
-        .filter(r => r.server_id === sid)
-        .sort((a, b) =>
-          (b.collected_at as string).localeCompare(a.collected_at as string)
-        )
+        .filter((r) => r.server_id === sid)
+        .sort((a, b) => (b.collected_at as string).localeCompare(a.collected_at as string))
     }
 
     // ── findLastNBulk: ROW_NUMBER() OVER (PARTITION BY server_id) ─────────────
@@ -203,7 +221,9 @@ class MockStatement {
       // Sort by server_id then collected_at ASC (matches ORDER BY in real query)
       result.sort((a, b) => {
         const sidCmp = (a.server_id as string).localeCompare(b.server_id as string)
-        return sidCmp !== 0 ? sidCmp : (a.collected_at as string).localeCompare(b.collected_at as string)
+        return sidCmp !== 0
+          ? sidCmp
+          : (a.collected_at as string).localeCompare(b.collected_at as string)
       })
       return result
     }
@@ -220,9 +240,15 @@ class MockDatabase {
     metrics_snapshots: new Map()
   }
 
-  pragma(_sql: string): void { /* no-op */ }
-  exec(_sql: string): void   { /* no-op: DDL handled implicitly by the Maps */ }
-  close(): void              { /* no-op */ }
+  pragma(_sql: string): void {
+    /* no-op */
+  }
+  exec(_sql: string): void {
+    /* no-op: DDL handled implicitly by the Maps */
+  }
+  close(): void {
+    /* no-op */
+  }
 
   prepare(sql: string): MockStatement {
     return new MockStatement(sql, this.tables)
@@ -243,6 +269,6 @@ vi.mock('better-sqlite3', () => ({
 vi.mock('electron', () => ({
   app: {
     isPackaged: false,
-    getPath: () => '/tmp',
-  },
+    getPath: () => '/tmp'
+  }
 }))

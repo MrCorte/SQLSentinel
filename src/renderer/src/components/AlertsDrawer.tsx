@@ -50,7 +50,7 @@ function SectionHeader({ label }: { label: string }): React.JSX.Element {
         color: 'text.secondary',
         bgcolor: 'background.default',
         borderBottom: '1px solid',
-        borderBottomColor: 'divider',
+        borderBottomColor: 'divider'
       }}
     >
       {label}
@@ -123,7 +123,12 @@ function AlertRow({
           <>
             <Typography
               component="span"
-              sx={{ display: 'block', fontSize: tokens.font.sizeSm, color: 'text.primary', mb: 0.5 }}
+              sx={{
+                display: 'block',
+                fontSize: tokens.font.sizeSm,
+                color: 'text.primary',
+                mb: 0.5
+              }}
             >
               {alert.message}
             </Typography>
@@ -192,7 +197,7 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
             minHeight: tokens.size.navbarHeight,
             bgcolor: 'background.paper',
             borderBottom: '1px solid',
-            borderBottomColor: 'divider',
+            borderBottomColor: 'divider'
           }}
         >
           <Typography
@@ -222,11 +227,7 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
               </Typography>
             )}
           </Typography>
-          <IconButton
-            size="small"
-            onClick={onClose}
-            sx={{ color: 'text.secondary' }}
-          >
+          <IconButton size="small" onClick={onClose} sx={{ color: 'text.secondary' }}>
             <CloseIcon fontSize="small" />
           </IconButton>
         </Stack>
@@ -234,10 +235,7 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
         {/* Body */}
         <Box sx={{ flex: 1, overflow: 'auto' }}>
           {criticalFirst.length === 0 && acked.length === 0 && (
-            <Typography
-              variant="body2"
-              sx={{ p: 3, textAlign: 'center', color: 'text.secondary' }}
-            >
+            <Typography variant="body2" sx={{ p: 3, textAlign: 'center', color: 'text.secondary' }}>
               No active alerts.
             </Typography>
           )}

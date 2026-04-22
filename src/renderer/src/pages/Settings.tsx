@@ -288,8 +288,8 @@ export function Settings(): React.JSX.Element {
               Historical data retention
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              Defines how long the data collected by the worker is kept in memory
-              for each monitored server.
+              Defines how long the data collected by the worker is kept in memory for each monitored
+              server.
             </Typography>
           </Box>
 
@@ -317,8 +317,8 @@ export function Settings(): React.JSX.Element {
             ) : (
               <>
                 Auto-refresh <strong>not configured</strong> → with this retention you will keep
-                approximately <strong>{retainedPoints}</strong> points per server (calculated at 30 s
-                interval).
+                approximately <strong>{retainedPoints}</strong> points per server (calculated at 30
+                s interval).
               </>
             )}
           </Typography>
@@ -438,7 +438,7 @@ export function Settings(): React.JSX.Element {
               sx={{
                 ml: 2,
                 opacity: bgEnabled ? 1 : 0.4,
-                pointerEvents: bgEnabled ? 'auto' : 'none',
+                pointerEvents: bgEnabled ? 'auto' : 'none'
               }}
             >
               <Typography variant="body2" sx={{ mb: 1 }}>
@@ -545,7 +545,7 @@ export function Settings(): React.JSX.Element {
               sx={{
                 ml: 2,
                 opacity: emailEnabled ? 1 : 0.4,
-                pointerEvents: emailEnabled ? 'auto' : 'none',
+                pointerEvents: emailEnabled ? 'auto' : 'none'
               }}
             >
               <Stack spacing={2}>
@@ -656,9 +656,7 @@ export function Settings(): React.JSX.Element {
                     size="small"
                     onClick={handleTestEmail}
                     disabled={
-                      testEmailStatus === 'sending' ||
-                      !smtpHost ||
-                      emailRecipients.length === 0
+                      testEmailStatus === 'sending' || !smtpHost || emailRecipients.length === 0
                     }
                   >
                     {testEmailStatus === 'sending' ? 'Sending…' : 'Send test email'}

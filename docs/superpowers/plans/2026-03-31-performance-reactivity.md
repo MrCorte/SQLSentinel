@@ -12,15 +12,15 @@
 
 ## File modificati
 
-| File | Modifica |
-|------|----------|
-| `src/renderer/src/pages/Dashboard.tsx` | Selettore `useServersStore` + `useMetricsStore` precisi |
-| `src/renderer/src/components/Sidebar.tsx` | `useGroupsStore` con `useShallow` + rimozione debug log |
-| `src/main/collectors/sqlCollector.ts` | Aggiunge `collectMetricsCritical()` — 5 query invece di 8 |
-| `src/main/metricsWorker.ts` | Usa `collectMetricsCritical` quando `lightCollectors: true` |
-| `src/main/store/metricsRepository.ts` | Aggiunge `findLastNBulk()` — una query SQLite per tutti i server |
-| `src/main/collectors/sqlCollector.test.ts` | Test per `collectMetricsCritical` |
-| `src/main/store/__tests__/metricsRepository.bulk.test.ts` | Test per `findLastNBulk` |
+| File                                                      | Modifica                                                         |
+| --------------------------------------------------------- | ---------------------------------------------------------------- |
+| `src/renderer/src/pages/Dashboard.tsx`                    | Selettore `useServersStore` + `useMetricsStore` precisi          |
+| `src/renderer/src/components/Sidebar.tsx`                 | `useGroupsStore` con `useShallow` + rimozione debug log          |
+| `src/main/collectors/sqlCollector.ts`                     | Aggiunge `collectMetricsCritical()` — 5 query invece di 8        |
+| `src/main/metricsWorker.ts`                               | Usa `collectMetricsCritical` quando `lightCollectors: true`      |
+| `src/main/store/metricsRepository.ts`                     | Aggiunge `findLastNBulk()` — una query SQLite per tutti i server |
+| `src/main/collectors/sqlCollector.test.ts`                | Test per `collectMetricsCritical`                                |
+| `src/main/store/__tests__/metricsRepository.bulk.test.ts` | Test per `findLastNBulk`                                         |
 
 ---
 
@@ -29,6 +29,7 @@
 **Problema:** `useServersStore()` senza selettore (riga 59) causa re-render ad ogni cambio store (aggiunta server, rename, etc.). `useMetricsStore((s) => s.metricsMap)` (riga 78) causa re-render ad ogni aggiornamento di **qualsiasi** server (anche i 199 non visualizzati).
 
 **Files:**
+
 - Modify: `src/renderer/src/pages/Dashboard.tsx` righe 59, 78–85
 
 - [ ] **Step 1: Aggiorna gli import** — aggiungi `useShallow` in cima al file
@@ -50,7 +51,7 @@ const { servers, initialized, removeServer, updateServer } = useServersStore(
     servers: s.servers,
     initialized: s.initialized,
     removeServer: s.removeServer,
-    updateServer: s.updateServer,
+    updateServer: s.updateServer
   }))
 )
 ```
@@ -64,8 +65,8 @@ La riga `const metricsMap = useMetricsStore((s) => s.metricsMap)` va **spostata*
 // const metricsMap = useMetricsStore((s) => s.metricsMap)   ← ELIMINA
 
 // Dopo riga 90 (const selectedServerId = ...):
-const cachedMetrics = useMetricsStore(
-  (s) => (selectedServerId ? s.metricsMap[selectedServerId] ?? null : null)
+const cachedMetrics = useMetricsStore((s) =>
+  selectedServerId ? (s.metricsMap[selectedServerId] ?? null) : null
 )
 ```
 
@@ -73,7 +74,7 @@ const cachedMetrics = useMetricsStore(
 
 ```typescript
 // PRIMA:
-const displayMetrics = metrics ?? (selectedServerId ? metricsMap[selectedServerId] ?? null : null)
+const displayMetrics = metrics ?? (selectedServerId ? (metricsMap[selectedServerId] ?? null) : null)
 
 // DOPO:
 const displayMetrics = metrics ?? cachedMetrics
@@ -84,6 +85,7 @@ const displayMetrics = metrics ?? cachedMetrics
 ```bash
 npm run typecheck
 ```
+
 Expected: zero errori.
 
 - [ ] **Step 6: Commit**
@@ -100,6 +102,7 @@ git commit -m "perf(renderer): narrow Zustand selectors in Dashboard — avoid r
 **Problema:** `useGroupsStore()` senza selettore (riga 1011) causa re-render ad ogni cambio del groupsStore — inclusi toggle collapse, rename alias, ecc. Il `console.log` a riga 1026 emette una riga per ogni render (centinaia/secondo con 200+ server).
 
 **Files:**
+
 - Modify: `src/renderer/src/components/Sidebar.tsx` righe 1011–1026
 
 - [ ] **Step 1: Aggiungi import useShallow** (se non già presente nel file)
@@ -150,7 +153,7 @@ const {
     toggleAgCollapse: s.toggleAgCollapse,
     toggleMachineCollapse: s.toggleMachineCollapse,
     setServerGroup: s.setServerGroup,
-    setServerAlias: s.setServerAlias,
+    setServerAlias: s.setServerAlias
   }))
 )
 ```
@@ -170,6 +173,7 @@ Se l'import di `useServersStore` non è usato altrove nel file, rimuovilo dall'i
 ```bash
 npm run typecheck
 ```
+
 Expected: zero errori.
 
 - [ ] **Step 5: Commit**
@@ -186,6 +190,7 @@ git commit -m "perf(renderer): fix Sidebar useGroupsStore selector with useShall
 **Problema:** Con `lightCollectors: true` (server background) il worker esegue comunque 8 query T-SQL incluse `topQueries` (CROSS APPLY su query cache), `waitStats` (aggregazione wait stats) e `databaseFiles` (FILEPROPERTY per file), poi scarta i risultati. Su 200 server idle = 600 query T-SQL superflue per ciclo.
 
 **Files:**
+
 - Modify: `src/main/collectors/sqlCollector.ts` — aggiunge `collectMetricsCritical()`
 - Modify: `src/main/metricsWorker.ts` — usa la funzione giusta in base a `lightCollectors`
 - Modify: `src/main/collectors/sqlCollector.test.ts` — nuovo test
@@ -208,8 +213,9 @@ describe('collectMetricsCritical', () => {
 
   it('esegue solo 5 query (salta dm_exec_query_stats, dm_os_wait_stats, FILEPROPERTY)', async () => {
     const { mockPool, mockRequest } = makeMockPool()
-    vi.mocked(mssql.connect as (config: mssql.config | string) => Promise<mssql.ConnectionPool>)
-      .mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
+    vi.mocked(
+      mssql.connect as (config: mssql.config | string) => Promise<mssql.ConnectionPool>
+    ).mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
 
     const result = await collectMetricsCritical(CONN)
 
@@ -251,6 +257,7 @@ describe('collectMetricsCritical', () => {
 ```bash
 npm test -- --testPathPattern="sqlCollector"
 ```
+
 Expected: FAIL — `collectMetricsCritical is not a function`
 
 - [ ] **Step 3: Implementa collectMetricsCritical in sqlCollector.ts**
@@ -291,7 +298,7 @@ export async function collectMetricsCritical(connection: ServerConnection): Prom
       queryDiskVolumes(pool).catch((err: Error) => {
         console.error('[collector] disk volumes:', err.message)
         return [] as DiskVolume[]
-      }),
+      })
     ])
 
     return {
@@ -303,13 +310,13 @@ export async function collectMetricsCritical(connection: ServerConnection): Prom
       backupStatus,
       waitStats: [],
       diskVolumes,
-      databaseFiles: [],
+      databaseFiles: []
     }
   } finally {
     if (pool) {
-      await pool.close().catch((err: Error) =>
-        console.error('[collector] pool.close:', err.message)
-      )
+      await pool
+        .close()
+        .catch((err: Error) => console.error('[collector] pool.close:', err.message))
     }
   }
 }
@@ -335,7 +342,7 @@ const metrics = await Promise.race([
   collectMetrics(job.server),
   new Promise<never>((_, reject) =>
     setTimeout(() => reject(new Error('poll timeout')), POLL_TIMEOUT_MS)
-  ),
+  )
 ])
 // ... (blocco enrichedMetrics) ...
 if (intervalOverrides?.lightCollectors) {
@@ -343,7 +350,7 @@ if (intervalOverrides?.lightCollectors) {
     ...enrichedMetrics,
     topQueries: [],
     waitStats: [],
-    databaseFiles: [],
+    databaseFiles: []
   }
 }
 
@@ -353,7 +360,7 @@ const metrics = await Promise.race([
   collectFn(job.server),
   new Promise<never>((_, reject) =>
     setTimeout(() => reject(new Error('poll timeout')), POLL_TIMEOUT_MS)
-  ),
+  )
 ])
 // blocco strip rimosso — non più necessario
 ```
@@ -363,6 +370,7 @@ const metrics = await Promise.race([
 ```bash
 npm test
 ```
+
 Expected: 169+ passed (aggiunto 1 nuovo test), zero failed.
 
 - [ ] **Step 6: Verifica typecheck**
@@ -370,6 +378,7 @@ Expected: 169+ passed (aggiunto 1 nuovo test), zero failed.
 ```bash
 npm run typecheck
 ```
+
 Expected: zero errori.
 
 - [ ] **Step 7: Commit**
@@ -386,6 +395,7 @@ git commit -m "perf(worker): implement collectMetricsCritical — skip 3 expensi
 **Problema:** `loadHistoryFromDb()` esegue una query SQLite separata per ogni server in un loop (riga 154). Con 200 server = 200 round-trip al DB. Una query con window function `ROW_NUMBER() OVER (PARTITION BY server_id ...)` recupera tutto in una passata.
 
 **Files:**
+
 - Modify: `src/main/store/metricsRepository.ts` — aggiunge `findLastNBulk()`
 - Modify: `src/main/metricsWorker.ts` — `loadHistoryFromDb()` usa `findLastNBulk`
 - Create: `src/main/store/__tests__/metricsRepository.bulk.test.ts`
@@ -411,7 +421,7 @@ function makeMetrics(version: string): ServerMetrics {
       cpuUsagePercent: 10,
       uptimeDays: 1,
       logicalCpus: 4,
-      physicalCpus: 2,
+      physicalCpus: 2
     },
     databases: [],
     activeSessions: [],
@@ -419,7 +429,7 @@ function makeMetrics(version: string): ServerMetrics {
     backupStatus: [],
     waitStats: [],
     diskVolumes: [],
-    databaseFiles: [],
+    databaseFiles: []
   }
 }
 
@@ -431,7 +441,7 @@ describe('findLastNBulk', () => {
       { serverId: 'srv-A', metrics: makeMetrics('SQL 2019 v2') },
       { serverId: 'srv-A', metrics: makeMetrics('SQL 2019 v3') },
       { serverId: 'srv-B', metrics: makeMetrics('SQL 2022 v1') },
-      { serverId: 'srv-B', metrics: makeMetrics('SQL 2022 v2') },
+      { serverId: 'srv-B', metrics: makeMetrics('SQL 2022 v2') }
     ])
   })
 
@@ -478,6 +488,7 @@ describe('findLastNBulk', () => {
 ```bash
 npm test -- --testPathPattern="metricsRepository.bulk"
 ```
+
 Expected: FAIL — `findLastNBulk is not a function`
 
 - [ ] **Step 3: Implementa findLastNBulk in metricsRepository.ts**
@@ -495,7 +506,8 @@ export function findLastNBulk(serverIds: string[], n: number): Record<string, Se
   if (serverIds.length === 0) return {}
   const placeholders = serverIds.map(() => '?').join(',')
   const rows = getDb()
-    .prepare<unknown[], SnapshotRow>(`
+    .prepare<unknown[], SnapshotRow>(
+      `
       SELECT id, server_id, collected_at, metrics_json
       FROM (
         SELECT *,
@@ -505,7 +517,8 @@ export function findLastNBulk(serverIds: string[], n: number): Record<string, Se
       )
       WHERE rn <= ?
       ORDER BY server_id, collected_at ASC
-    `)
+    `
+    )
     .all([...serverIds, n])
 
   const result: Record<string, ServerMetrics[]> = {}
@@ -522,6 +535,7 @@ export function findLastNBulk(serverIds: string[], n: number): Record<string, Se
 ```bash
 npm test -- --testPathPattern="metricsRepository.bulk"
 ```
+
 Expected: PASS — tutti i test del file.
 
 - [ ] **Step 5: Aggiorna loadHistoryFromDb in metricsWorker.ts**
@@ -568,6 +582,7 @@ if (recordIdToSid.size > 0) {
 ```bash
 npm test
 ```
+
 Expected: 170+ passed, zero failed.
 
 - [ ] **Step 7: Verifica typecheck**
@@ -575,6 +590,7 @@ Expected: 170+ passed, zero failed.
 ```bash
 npm run typecheck
 ```
+
 Expected: zero errori.
 
 - [ ] **Step 8: Commit**
@@ -594,6 +610,7 @@ npm test            # tutti i test passano
 ```
 
 **Test manuale (facoltativo con DevTools aperti):**
+
 1. Aprire l'app con DevTools → React Profiler
 2. Con 3+ server monitorati: cliccare tra server diversi → il Profiler mostra re-render **solo** nel Dashboard, non nella Sidebar né in altri componenti non pertinenti
 3. Aprire Console → verificare assenza di `[Sidebar] render` log

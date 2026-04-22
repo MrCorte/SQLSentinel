@@ -12,7 +12,6 @@ function bracketEscape(name: string): string {
   return `[${name.replace(/]/g, ']]')}]`
 }
 
-
 function buildConfig(conn: CollectMetricsRequest, dbName: string): mssql.config {
   const base: mssql.config = {
     server: conn.ip,
@@ -125,13 +124,11 @@ export async function shrinkFile(
       const rmRow = await pool
         .request()
         .input('dbName', mssql.NVarChar, dbName)
-        .query<{ recovery_model_desc: string }>(
-          `SELECT recovery_model_desc FROM sys.databases WHERE name = @dbName`
-        )
+        .query<{
+          recovery_model_desc: string
+        }>(`SELECT recovery_model_desc FROM sys.databases WHERE name = @dbName`)
       if (rmRow.recordset[0]?.recovery_model_desc === 'FULL') {
-        await pool
-          .request()
-          .query(`BACKUP LOG ${bracketEscape(dbName)} TO DISK = N'NUL'`)
+        await pool.request().query(`BACKUP LOG ${bracketEscape(dbName)} TO DISK = N'NUL'`)
       }
     }
 
@@ -139,9 +136,9 @@ export async function shrinkFile(
     const beforeRow = await pool
       .request()
       .input('fn', mssql.NVarChar, fileName)
-      .query<{ size_mb: number }>(
-        `SELECT CAST(size * 8.0 / 1024 AS INT) AS size_mb FROM sys.database_files WHERE name = @fn`
-      )
+      .query<{
+        size_mb: number
+      }>(`SELECT CAST(size * 8.0 / 1024 AS INT) AS size_mb FROM sys.database_files WHERE name = @fn`)
     const beforeMb = beforeRow.recordset[0]?.size_mb ?? 0
 
     const safeSizeMb = Math.max(0, Math.floor(targetSizeMb))
@@ -152,9 +149,9 @@ export async function shrinkFile(
     const afterRow = await pool
       .request()
       .input('fn', mssql.NVarChar, fileName)
-      .query<{ size_mb: number }>(
-        `SELECT CAST(size * 8.0 / 1024 AS INT) AS size_mb FROM sys.database_files WHERE name = @fn`
-      )
+      .query<{
+        size_mb: number
+      }>(`SELECT CAST(size * 8.0 / 1024 AS INT) AS size_mb FROM sys.database_files WHERE name = @fn`)
     const afterMb = afterRow.recordset[0]?.size_mb ?? 0
 
     return {

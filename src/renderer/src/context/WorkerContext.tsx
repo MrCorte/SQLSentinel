@@ -69,10 +69,7 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
       const map = historyMapRef.current
       for (const [sid, snapshots] of Object.entries(allHistory)) {
         if (snapshots.length === 0) continue
-        map.set(
-          sid,
-          snapshots.map((m) => metricsToHistoryPoint(m)).slice(-maxPoints)
-        )
+        map.set(sid, snapshots.map((m) => metricsToHistoryPoint(m)).slice(-maxPoints))
       }
       useMetricsStore.getState().seedFromHistory(allHistory)
     },

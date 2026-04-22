@@ -11,7 +11,7 @@ import {
   DialogContent,
   DialogActions,
   Button,
-  TextField,
+  TextField
 } from '@mui/material'
 import EditIcon from '@mui/icons-material/Edit'
 import { DataGrid } from '@mui/x-data-grid'
@@ -22,7 +22,7 @@ import type {
   SessionInfo,
   BackupInfo,
   WaitStatInfo,
-  DbCustomFields,
+  DbCustomFields
 } from '../../../../../preload/index'
 import { NoteEditor } from '../../NoteEditor'
 import { compatLevelToSqlVersion } from '../../../utils/sqlVersionUtils'
@@ -40,11 +40,11 @@ export const GRID_HEADER_SX = {
     fontWeight: tokens.font.weightSemibold,
     textTransform: 'uppercase',
     letterSpacing: '0.04em',
-    color: 'text.secondary',
+    color: 'text.secondary'
   },
   '& .MuiDataGrid-columnHeaders': {
-    borderBottom: `2px solid ${tokens.color.primary}`,
-  },
+    borderBottom: `2px solid ${tokens.color.primary}`
+  }
 } as const
 
 // -----------------------------------------------------------------------
@@ -62,7 +62,7 @@ function KpiCard({
   label,
   value,
   accent,
-  tooltip,
+  tooltip
 }: {
   label: string
   value: string
@@ -90,8 +90,8 @@ function KpiCard({
         backgroundImage: `linear-gradient(135deg, transparent 60%, ${accent}14 100%)`,
         '&:hover': {
           boxShadow: tokens.shadow.cardHover,
-          transform: 'translateY(-2px)',
-        },
+          transform: 'translateY(-2px)'
+        }
       }}
     >
       <Typography
@@ -102,7 +102,7 @@ function KpiCard({
           letterSpacing: '0.6px',
           color: 'text.secondary',
           mb: '6px',
-          display: 'block',
+          display: 'block'
         }}
       >
         {label}
@@ -112,7 +112,7 @@ function KpiCard({
           fontSize: 20,
           fontWeight: tokens.font.weightBold,
           color: accent,
-          lineHeight: 1.2,
+          lineHeight: 1.2
         }}
       >
         {value}
@@ -120,7 +120,11 @@ function KpiCard({
     </Box>
   )
   return tooltip ? (
-    <Tooltip title={<span style={{ whiteSpace: 'pre-line' }}>{tooltip}</span>} placement="top" arrow>
+    <Tooltip
+      title={<span style={{ whiteSpace: 'pre-line' }}>{tooltip}</span>}
+      placement="top"
+      arrow
+    >
       {card}
     </Tooltip>
   ) : (
@@ -131,7 +135,7 @@ function KpiCard({
 export const TabPanoramica = memo(function TabPanoramica({
   metrics,
   serverDbId,
-  serverNotes,
+  serverNotes
 }: {
   metrics: ServerMetrics
   serverDbId: string
@@ -176,7 +180,7 @@ export const TabPanoramica = memo(function TabPanoramica({
           bgcolor: 'background.paper',
           borderRadius: 1,
           border: '1px solid',
-          borderColor: 'divider',
+          borderColor: 'divider'
         }}
       >
         <NoteEditor key={serverDbId} serverId={serverDbId} initialNote={serverNotes ?? ''} />
@@ -216,7 +220,7 @@ function DbEditDialog({
   dbName,
   initial,
   onClose,
-  onSave,
+  onSave
 }: DbEditDialogProps): React.JSX.Element {
   const [alias, setAlias] = useState(initial.alias ?? '')
   const [referente, setReferente] = useState(initial.referente ?? '')
@@ -230,7 +234,7 @@ function DbEditDialog({
   function handleSave(): void {
     onSave({
       alias: alias.trim() || undefined,
-      referente: referente.trim() || undefined,
+      referente: referente.trim() || undefined
     })
   }
 
@@ -287,13 +291,13 @@ const DB_SX = {
   '& .row-db-offline': {
     bgcolor: tokens.color.errorLight,
     color: tokens.color.error,
-    '&:hover': { bgcolor: '#fcc' },
+    '&:hover': { bgcolor: '#fcc' }
   },
   '& .row-db-warning': {
     bgcolor: tokens.color.warningLight,
     color: tokens.color.warning,
-    '&:hover': { bgcolor: '#fecba1' },
-  },
+    '&:hover': { bgcolor: '#fecba1' }
+  }
 } as const
 
 function StatoCell({ stateDesc }: { stateDesc: string }): React.JSX.Element {
@@ -333,7 +337,7 @@ function StatoCell({ stateDesc }: { stateDesc: string }): React.JSX.Element {
         fontWeight: 600,
         color,
         letterSpacing: '0.3px',
-        lineHeight: 1.4,
+        lineHeight: 1.4
       }}
     >
       {stateDesc}
@@ -345,7 +349,7 @@ export const TabDatabase = memo(function TabDatabase({
   databases,
   editingDb,
   setEditingDb,
-  handleSaveDbFields,
+  handleSaveDbFields
 }: {
   databases: DatabaseInfo[]
   editingDb: DatabaseInfo | null
@@ -358,13 +362,13 @@ export const TabDatabase = memo(function TabDatabase({
         field: 'name',
         headerName: 'Database',
         flex: 1,
-        renderCell: (p) => <NameCell value={p.value as string} />,
+        renderCell: (p) => <NameCell value={p.value as string} />
       },
       {
         field: 'stateDesc',
         headerName: 'State',
         width: 130,
-        renderCell: (p) => <StatoCell stateDesc={p.value as string} />,
+        renderCell: (p) => <StatoCell stateDesc={p.value as string} />
       },
       {
         field: 'alias',
@@ -374,7 +378,7 @@ export const TabDatabase = memo(function TabDatabase({
           <Typography variant="body2" color={p.value ? 'text.primary' : 'text.disabled'} noWrap>
             {(p.value as string | undefined) || '—'}
           </Typography>
-        ),
+        )
       },
       {
         field: 'referente',
@@ -384,7 +388,7 @@ export const TabDatabase = memo(function TabDatabase({
           <Typography variant="body2" color={p.value ? 'text.primary' : 'text.disabled'} noWrap>
             {(p.value as string | undefined) || '—'}
           </Typography>
-        ),
+        )
       },
       { field: 'recoveryModel', headerName: 'Recovery', width: 100 },
       {
@@ -394,7 +398,7 @@ export const TabDatabase = memo(function TabDatabase({
         width: 110,
         type: 'number',
         align: 'right',
-        valueFormatter: (v: number) => v.toLocaleString('en-US'),
+        valueFormatter: (v: number) => v.toLocaleString('en-US')
       },
       {
         field: 'logSizeMb',
@@ -403,7 +407,7 @@ export const TabDatabase = memo(function TabDatabase({
         type: 'number',
         align: 'right',
         headerAlign: 'right',
-        valueFormatter: (v: number) => v.toLocaleString('en-US'),
+        valueFormatter: (v: number) => v.toLocaleString('en-US')
       },
       {
         field: 'compatibilityLevel',
@@ -423,14 +427,14 @@ export const TabDatabase = memo(function TabDatabase({
                 variant="body2"
                 sx={{
                   color: level < 130 ? 'warning.main' : 'text.secondary',
-                  fontVariantNumeric: 'tabular-nums',
+                  fontVariantNumeric: 'tabular-nums'
                 }}
               >
                 {compatLevelToSqlVersion(level)}
               </Typography>
             </Tooltip>
           )
-        },
+        }
       },
       {
         field: 'actions',
@@ -442,8 +446,8 @@ export const TabDatabase = memo(function TabDatabase({
           <IconButton size="small" onClick={() => setEditingDb(p.row as DatabaseInfo)}>
             <EditIcon fontSize="small" />
           </IconButton>
-        ),
-      },
+        )
+      }
     ],
     [setEditingDb]
   )
@@ -468,7 +472,7 @@ export const TabDatabase = memo(function TabDatabase({
           dbName={editingDb.name}
           initial={{
             alias: editingDb.alias,
-            referente: editingDb.referente,
+            referente: editingDb.referente
           }}
           onClose={() => setEditingDb(null)}
           onSave={handleSaveDbFields}
@@ -494,13 +498,13 @@ const SESSION_SX = {
   '& .row-session-critical': {
     bgcolor: tokens.color.errorLight,
     color: tokens.color.error,
-    '&:hover': { bgcolor: '#fcc' },
+    '&:hover': { bgcolor: '#fcc' }
   },
   '& .row-session-blocked': {
     bgcolor: tokens.color.warningLight,
     color: tokens.color.warning,
-    '&:hover': { bgcolor: '#fecba1' },
-  },
+    '&:hover': { bgcolor: '#fecba1' }
+  }
 } as const
 
 const sessionColumns: GridColDef<SessionInfo>[] = [
@@ -516,7 +520,7 @@ const sessionColumns: GridColDef<SessionInfo>[] = [
         <Chip label={p.value} size="small" color="error" />
       ) : (
         <Typography variant="body2">—</Typography>
-      ),
+      )
   },
   {
     field: 'waitType',
@@ -528,15 +532,15 @@ const sessionColumns: GridColDef<SessionInfo>[] = [
           {p.value || '—'}
         </Typography>
       </Tooltip>
-    ),
+    )
   },
   { field: 'waitTimeMs', headerName: 'Wait (ms)', width: 95, type: 'number' },
   { field: 'cpuTime', headerName: 'CPU (ms)', width: 95, type: 'number' },
-  { field: 'logicalReads', headerName: 'Logical reads', width: 130, type: 'number' },
+  { field: 'logicalReads', headerName: 'Logical reads', width: 130, type: 'number' }
 ]
 
 export function TabSessioni({
-  activeSessions,
+  activeSessions
 }: {
   activeSessions: SessionInfo[]
 }): React.JSX.Element {
@@ -580,7 +584,7 @@ const backupColumns: GridColDef<BackupInfo>[] = [
     field: 'databaseName',
     headerName: 'Database',
     flex: 1,
-    renderCell: (p) => <NameCell value={p.value as string} />,
+    renderCell: (p) => <NameCell value={p.value as string} />
   },
   {
     field: 'lastFullBackup',
@@ -590,7 +594,7 @@ const backupColumns: GridColDef<BackupInfo>[] = [
       <span style={backupCellStyle(p.value as Date | null)}>
         {formatBackupDate(p.value as Date | null)}
       </span>
-    ),
+    )
   },
   {
     field: 'lastDiffBackup',
@@ -600,7 +604,7 @@ const backupColumns: GridColDef<BackupInfo>[] = [
       <span style={backupCellStyle(p.value as Date | null)}>
         {formatBackupDate(p.value as Date | null)}
       </span>
-    ),
+    )
   },
   {
     field: 'lastLogBackup',
@@ -610,8 +614,8 @@ const backupColumns: GridColDef<BackupInfo>[] = [
       <span style={backupCellStyle(p.value as Date | null)}>
         {formatBackupDate(p.value as Date | null)}
       </span>
-    ),
-  },
+    )
+  }
 ]
 
 export function TabBackup({ backupStatus }: { backupStatus: BackupInfo[] }): React.JSX.Element {
@@ -646,19 +650,15 @@ const queryColumns: GridColDef<QueryRow>[] = [
           {p.value}
         </Typography>
       </Tooltip>
-    ),
+    )
   },
   { field: 'executionCount', headerName: 'Executions', width: 105, type: 'number' },
   { field: 'totalElapsedTimeMs', headerName: 'Elapsed tot (ms)', width: 140, type: 'number' },
   { field: 'avgCpuTimeMs', headerName: 'Avg CPU (ms)', width: 120, type: 'number' },
-  { field: 'avgLogicalReads', headerName: 'Avg reads', width: 110, type: 'number' },
+  { field: 'avgLogicalReads', headerName: 'Avg reads', width: 110, type: 'number' }
 ]
 
-export function TabTopQuery({
-  topQueriesRows,
-}: {
-  topQueriesRows: QueryRow[]
-}): React.JSX.Element {
+export function TabTopQuery({ topQueriesRows }: { topQueriesRows: QueryRow[] }): React.JSX.Element {
   return (
     <DataGrid<QueryRow>
       rows={topQueriesRows}
@@ -680,7 +680,7 @@ export function TabTopQuery({
 // -----------------------------------------------------------------------
 
 export const WaitPercentCell = memo(function WaitPercentCell({
-  value,
+  value
 }: {
   value: number
 }): React.JSX.Element {
@@ -706,14 +706,14 @@ const waitStatColumns: GridColDef<WaitStatInfo>[] = [
       <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: 12 }}>
         {p.value as string}
       </Typography>
-    ),
+    )
   },
   {
     field: 'waitPercent',
     headerName: 'Wait %',
     width: 170,
     type: 'number',
-    renderCell: (p) => <WaitPercentCell value={p.value as number} />,
+    renderCell: (p) => <WaitPercentCell value={p.value as number} />
   },
   {
     field: 'waitTimeMs',
@@ -722,7 +722,7 @@ const waitStatColumns: GridColDef<WaitStatInfo>[] = [
     type: 'number',
     align: 'right',
     headerAlign: 'right',
-    valueFormatter: (v: number) => v.toLocaleString('en-US'),
+    valueFormatter: (v: number) => v.toLocaleString('en-US')
   },
   {
     field: 'maxWaitTimeMs',
@@ -731,7 +731,7 @@ const waitStatColumns: GridColDef<WaitStatInfo>[] = [
     type: 'number',
     align: 'right',
     headerAlign: 'right',
-    valueFormatter: (v: number) => v.toLocaleString('en-US'),
+    valueFormatter: (v: number) => v.toLocaleString('en-US')
   },
   {
     field: 'signalWaitTimeMs',
@@ -740,7 +740,7 @@ const waitStatColumns: GridColDef<WaitStatInfo>[] = [
     type: 'number',
     align: 'right',
     headerAlign: 'right',
-    valueFormatter: (v: number) => v.toLocaleString('en-US'),
+    valueFormatter: (v: number) => v.toLocaleString('en-US')
   },
   {
     field: 'waitingTasksCount',
@@ -748,8 +748,8 @@ const waitStatColumns: GridColDef<WaitStatInfo>[] = [
     width: 130,
     type: 'number',
     align: 'right',
-    headerAlign: 'right',
-  },
+    headerAlign: 'right'
+  }
 ]
 
 export function TabWaitStats({ waitStats }: { waitStats: WaitStatInfo[] }): React.JSX.Element {
@@ -768,4 +768,3 @@ export function TabWaitStats({ waitStats }: { waitStats: WaitStatInfo[] }): Reac
     />
   )
 }
-

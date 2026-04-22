@@ -15,6 +15,6 @@ export function createLogger(scope: string) {
     debug: (msg: string, ...args: unknown[]) => write('debug', scope, msg, ...args),
     info: (msg: string, ...args: unknown[]) => write('info', scope, msg, ...args),
     warn: (msg: string, ...args: unknown[]) => write('warn', scope, msg, ...args),
-    error: (msg: string, ...args: unknown[]) => write('error', scope, msg, ...args),
+    error: (msg: string, ...args: unknown[]) => write('error', scope, msg, ...args)
   }
 }

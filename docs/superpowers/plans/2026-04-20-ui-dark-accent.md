@@ -12,20 +12,21 @@
 
 ## File Map
 
-| File | What changes |
-|------|--------------|
-| `src/renderer/src/styles/tokens.ts` | Add gradient strings, glow shadow tokens, `borderDark` |
-| `src/renderer/src/styles/theme.ts` | MuiPaper border, MuiChip border, MuiTableCell head color, MuiListItemButton inset shadow |
-| `src/renderer/src/components/Sidebar.tsx` | `StatusDot` — add `boxShadow` glow |
-| `src/renderer/src/components/MetricsPanel.tsx` | `KpiCard` — accent-tinted `borderColor` in dark mode |
-| `src/renderer/src/components/HomeDashboard.tsx` | Legend dots — add `boxShadow` glow |
-| `src/renderer/src/components/AgDashboard.tsx` | `ReplicaCard` PRIMARY — extend `boxShadow` with glow outline |
+| File                                            | What changes                                                                             |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `src/renderer/src/styles/tokens.ts`             | Add gradient strings, glow shadow tokens, `borderDark`                                   |
+| `src/renderer/src/styles/theme.ts`              | MuiPaper border, MuiChip border, MuiTableCell head color, MuiListItemButton inset shadow |
+| `src/renderer/src/components/Sidebar.tsx`       | `StatusDot` — add `boxShadow` glow                                                       |
+| `src/renderer/src/components/MetricsPanel.tsx`  | `KpiCard` — accent-tinted `borderColor` in dark mode                                     |
+| `src/renderer/src/components/HomeDashboard.tsx` | Legend dots — add `boxShadow` glow                                                       |
+| `src/renderer/src/components/AgDashboard.tsx`   | `ReplicaCard` PRIMARY — extend `boxShadow` with glow outline                             |
 
 ---
 
 ## Task 1 — Add design tokens
 
 **Files:**
+
 - Modify: `src/renderer/src/styles/tokens.ts`
 
 - [ ] **Step 1: Add gradient + borderDark tokens to `tokens.color`**
@@ -54,6 +55,7 @@ In `tokens.ts`, inside the `shadow` object (currently lines 84-90), add after `d
 ```
 
 The full `shadow` block becomes:
+
 ```typescript
   shadow: {
     card: '0 1px 4px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.06)',
@@ -87,11 +89,13 @@ git commit -m "feat(ui): add Dark Accent design tokens — gradients, glow shado
 ## Task 2 — MUI theme overrides
 
 **Files:**
+
 - Modify: `src/renderer/src/styles/theme.ts`
 
 - [ ] **Step 1: MuiPaper — add subtle border in dark mode**
 
 Find the `MuiPaper` override (currently lines 70-77):
+
 ```typescript
       MuiPaper: {
         styleOverrides: {
@@ -99,6 +103,7 @@ Find the `MuiPaper` override (currently lines 70-77):
 ```
 
 Change `root` to:
+
 ```typescript
           root: {
             backgroundImage: 'none',
@@ -110,6 +115,7 @@ Change `root` to:
 - [ ] **Step 2: MuiChip — add subtle border in dark mode**
 
 Find the `MuiChip` override (currently lines 153-162):
+
 ```typescript
       MuiChip: {
         styleOverrides: {
@@ -124,6 +130,7 @@ Find the `MuiChip` override (currently lines 153-162):
 ```
 
 Change to:
+
 ```typescript
       MuiChip: {
         styleOverrides: {
@@ -141,11 +148,13 @@ Change to:
 - [ ] **Step 3: MuiTableCell head — deeper background in dark mode**
 
 Find line:
+
 ```typescript
             backgroundColor: isDark ? '#1a2744' : tokens.color.bgApp,
 ```
 
 Change to:
+
 ```typescript
             backgroundColor: isDark ? '#0f1f3d' : tokens.color.bgApp,
 ```
@@ -153,6 +162,7 @@ Change to:
 - [ ] **Step 4: MuiListItemButton selected — inset left accent via boxShadow**
 
 Find the `'&.Mui-selected'` block (currently lines 142-147):
+
 ```typescript
             '&.Mui-selected': {
               backgroundColor: tokens.color.bgSidebarSelected,
@@ -163,6 +173,7 @@ Find the `'&.Mui-selected'` block (currently lines 142-147):
 ```
 
 Change `boxShadow` to combine the existing drop shadow with an inset left accent:
+
 ```typescript
             '&.Mui-selected': {
               backgroundColor: tokens.color.bgSidebarSelected,
@@ -172,7 +183,7 @@ Change `boxShadow` to combine the existing drop shadow with an inset left accent
             },
 ```
 
-*(Using `inset` box-shadow avoids any layout shift — no padding adjustment needed.)*
+_(Using `inset` box-shadow avoids any layout shift — no padding adjustment needed.)_
 
 - [ ] **Step 5: Typecheck**
 
@@ -194,11 +205,13 @@ git commit -m "feat(ui): Dark Accent MUI theme overrides — Paper border, Chip 
 ## Task 3 — StatusDot glow (Sidebar)
 
 **Files:**
+
 - Modify: `src/renderer/src/components/Sidebar.tsx` lines ~86-102
 
 - [ ] **Step 1: Add boxShadow to StatusDot**
 
 Find the `StatusDot` function (lines ~86-102):
+
 ```typescript
 function StatusDot({ unreachable }: { unreachable?: boolean }): React.JSX.Element {
   const color = unreachable ? tokens.color.dotOffline : tokens.color.dotOnline
@@ -220,6 +233,7 @@ function StatusDot({ unreachable }: { unreachable?: boolean }): React.JSX.Elemen
 ```
 
 Add `boxShadow` property:
+
 ```typescript
 function StatusDot({ unreachable }: { unreachable?: boolean }): React.JSX.Element {
   const color = unreachable ? tokens.color.dotOffline : tokens.color.dotOnline
@@ -261,11 +275,13 @@ git commit -m "feat(ui): add glow shadow to StatusDot in sidebar"
 ## Task 4 — KpiCard accent border in dark mode (MetricsPanel)
 
 **Files:**
+
 - Modify: `src/renderer/src/components/MetricsPanel.tsx` lines ~60-82
 
 - [ ] **Step 1: Change borderColor to accent-tinted in dark mode**
 
 Find in `KpiCard`'s `sx` object:
+
 ```typescript
         border: '1px solid',
         borderColor: 'divider',
@@ -273,6 +289,7 @@ Find in `KpiCard`'s `sx` object:
 ```
 
 Change `borderColor` to a theme callback:
+
 ```typescript
         border: '1px solid',
         borderColor: (theme) =>
@@ -280,7 +297,7 @@ Change `borderColor` to a theme callback:
         borderLeft: `4px solid ${accent}`,
 ```
 
-*(`${accent}33` appends hex `33` = 20% opacity to the accent hex color, e.g. `#0078d433`. This works because all accent values are 6-digit hex strings.)*
+_(`${accent}33` appends hex `33` = 20% opacity to the accent hex color, e.g. `#0078d433`. This works because all accent values are 6-digit hex strings.)_
 
 - [ ] **Step 2: Typecheck**
 
@@ -302,11 +319,13 @@ git commit -m "feat(ui): KpiCard accent-tinted border in dark mode"
 ## Task 5 — Legend dots glow (HomeDashboard)
 
 **Files:**
+
 - Modify: `src/renderer/src/components/HomeDashboard.tsx` lines ~723-732
 
 - [ ] **Step 1: Add boxShadow to legend dots**
 
 Find the legend dot `Box` (lines ~723-732):
+
 ```typescript
                 <Box
                   sx={{
@@ -320,6 +339,7 @@ Find the legend dot `Box` (lines ~723-732):
 ```
 
 Add `boxShadow`:
+
 ```typescript
                 <Box
                   sx={{
@@ -357,16 +377,19 @@ git commit -m "feat(ui): add glow shadow to legend status dots in HomeDashboard"
 ## Task 6 — ReplicaCard PRIMARY glow outline (AgDashboard)
 
 **Files:**
+
 - Modify: `src/renderer/src/components/AgDashboard.tsx` lines ~73-86
 
 - [ ] **Step 1: Extend boxShadow on PRIMARY card**
 
 Find in `ReplicaCard`'s `sx` object:
+
 ```typescript
           boxShadow: hovered ? '0 4px 12px rgba(0,0,0,0.15)' : tokens.shadow.card,
 ```
 
 Change to a three-way expression:
+
 ```typescript
           boxShadow: hovered
             ? '0 4px 12px rgba(0,0,0,0.15)'
@@ -407,6 +430,7 @@ Expected: zero errors.
 Start `npm run dev` and verify:
 
 **Dark mode:**
+
 - [ ] Paper panels have a subtle `rgba(255,255,255,0.08)` border
 - [ ] Chips (HEALTHY, SYNCHRONIZED, PRIMARY, etc.) have a faint white border
 - [ ] DataGrid table headers are darker (`#0f1f3d`)
@@ -417,6 +441,7 @@ Start `npm run dev` and verify:
 - [ ] AG Dashboard PRIMARY card has a blue glow outline ring
 
 **Light mode:**
+
 - [ ] Paper panels have no border (dark-only override)
 - [ ] Chips have no border (dark-only override)
 - [ ] KpiCard borders remain `divider` gray (unchanged)

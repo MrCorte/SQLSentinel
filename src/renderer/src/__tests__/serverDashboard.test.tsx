@@ -21,7 +21,8 @@ import type { ServerHealthPayload } from '../../../preload/index'
 
 vi.mock('recharts', () => {
   const React = require('react')
-  const pass = ({ children }: { children?: React.ReactNode }) => React.createElement('div', null, children)
+  const pass = ({ children }: { children?: React.ReactNode }) =>
+    React.createElement('div', null, children)
   return {
     ResponsiveContainer: pass,
     LineChart: ({ children }: { children?: React.ReactNode }) =>
@@ -191,14 +192,14 @@ describe('ServerHistoryChart — cpu/memory index alignment in chartData', () =>
     // Three points: cpu 10,20,30 — memory 100,200,300 — same ts for alignment
     const now = Date.now()
     const cpu = [
-      { ts: now,              value: 10 },
-      { ts: now + 60_000,    value: 20 },
-      { ts: now + 120_000,   value: 30 }
+      { ts: now, value: 10 },
+      { ts: now + 60_000, value: 20 },
+      { ts: now + 120_000, value: 30 }
     ]
     const mem = [
-      { ts: now,              value: 100 },
-      { ts: now + 60_000,    value: 200 },
-      { ts: now + 120_000,   value: 300 }
+      { ts: now, value: 100 },
+      { ts: now + 60_000, value: 200 },
+      { ts: now + 120_000, value: 300 }
     ]
     setHistory('srv-1', cpu, mem)
 
@@ -273,7 +274,7 @@ describe('ServerHistoryChart — cpu/memory index alignment in chartData', () =>
     })
 
     const hist = useMetricsStore.getState().historyMap['srv-1']
-    expect(hist.memory[0].value).toBe(50)          // 4096/8192 = 50%
+    expect(hist.memory[0].value).toBe(50) // 4096/8192 = 50%
     expect(hist.cpu[0].value).toBe(25)
     // Must never be an MB value (e.g. 4096) — always ≤ 100
     expect(hist.memory[0].value).toBeLessThanOrEqual(100)
@@ -283,13 +284,22 @@ describe('ServerHistoryChart — cpu/memory index alignment in chartData', () =>
     useMetricsStore.getState().setMetrics('srv-1', {
       collectedAt: new Date(),
       instanceInfo: {
-        version: '15.0', edition: 'Dev',
-        memoryUsedMb: 2048, memoryTargetMb: 8192,
-        cpuUsagePercent: 15, uptimeDays: 1,
-        logicalCpus: 8, physicalCpus: 4
+        version: '15.0',
+        edition: 'Dev',
+        memoryUsedMb: 2048,
+        memoryTargetMb: 8192,
+        cpuUsagePercent: 15,
+        uptimeDays: 1,
+        logicalCpus: 8,
+        physicalCpus: 4
       },
-      databases: [], activeSessions: [], topQueries: [],
-      backupStatus: [], waitStats: [], diskVolumes: [], databaseFiles: []
+      databases: [],
+      activeSessions: [],
+      topQueries: [],
+      backupStatus: [],
+      waitStats: [],
+      diskVolumes: [],
+      databaseFiles: []
     })
     expect(useMetricsStore.getState().historyMap['srv-1'].cpu.length).toBe(1)
 

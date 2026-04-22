@@ -20,8 +20,8 @@ export interface InstanceInfo {
   memoryTargetMb: number
   cpuUsagePercent: number
   uptimeDays: number
-  logicalCpus: number    // cpu_count from sys.dm_os_sys_info (includes HT threads)
-  physicalCpus: number   // cpu_count / hyperthread_ratio
+  logicalCpus: number // cpu_count from sys.dm_os_sys_info (includes HT threads)
+  physicalCpus: number // cpu_count / hyperthread_ratio
 }
 
 export interface DatabaseInfo {

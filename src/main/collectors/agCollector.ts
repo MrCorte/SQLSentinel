@@ -69,7 +69,9 @@ export async function getAvailabilityGroups(
     `)
     return result.recordset
   } finally {
-    await pool?.close().catch((err: Error) => log.error('[agCollector] pool close:', sanitizeSqlError(err)))
+    await pool
+      ?.close()
+      .catch((err: Error) => log.error('[agCollector] pool close:', sanitizeSqlError(err)))
   }
 }
 
@@ -105,7 +107,9 @@ export async function getAvailabilityReplicas(
     `)
     return result.recordset
   } finally {
-    await pool?.close().catch((err: Error) => log.error('[agCollector] pool close:', sanitizeSqlError(err)))
+    await pool
+      ?.close()
+      .catch((err: Error) => log.error('[agCollector] pool close:', sanitizeSqlError(err)))
   }
 }
 
@@ -149,7 +153,9 @@ export async function detectAndSyncReplicaRoles(
     `)
     replicas = result.recordset
   } finally {
-    await pool?.close().catch((err: Error) => log.error('[agCollector] pool close:', sanitizeSqlError(err)))
+    await pool
+      ?.close()
+      .catch((err: Error) => log.error('[agCollector] pool close:', sanitizeSqlError(err)))
   }
 
   if (replicas.length === 0) return []
@@ -176,8 +182,8 @@ export async function detectAndSyncReplicaRoles(
     // Only write if something actually changed — avoid useless electron-store writes
     if (
       match.agGroupId !== patch.agGroupId ||
-      match.agName    !== patch.agName    ||
-      match.agRole    !== patch.agRole
+      match.agName !== patch.agName ||
+      match.agRole !== patch.agRole
     ) {
       serverStore.update(match.id, patch)
       updated.push({ ...match, ...patch })
@@ -237,6 +243,8 @@ export async function getAvailabilityDatabases(
       last_commit_time: r.last_commit_time ? r.last_commit_time.toISOString() : null
     })) as AvailabilityDatabase[]
   } finally {
-    await pool?.close().catch((err: Error) => log.error('[agCollector] pool close:', sanitizeSqlError(err)))
+    await pool
+      ?.close()
+      .catch((err: Error) => log.error('[agCollector] pool close:', sanitizeSqlError(err)))
   }
 }

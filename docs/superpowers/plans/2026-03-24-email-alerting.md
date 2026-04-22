@@ -8,7 +8,7 @@
 
 > **Critical schema note:** The existing `settings` table uses key-value rows (`INSERT OR REPLACE INTO settings (key, value)`). There is NO `ALTER TABLE` — email settings are just new keys in the same table. The spec's `ALTER TABLE` block describes logical fields, not SQL DDL.
 
-> **Critical `onAlert` note:** `onAlert` in `metricsWorker` is a **single-subscriber** replace-on-call function. `BackgroundService` already owns that slot. Email is dispatched by calling `sendAlertEmail()` from *inside* `BackgroundService.maybeNotify()`, before the CRITICAL-only toast filter — so both WARNING and CRITICAL alerts generate email (controlled by `emailEnabled` flag and dedup).
+> **Critical `onAlert` note:** `onAlert` in `metricsWorker` is a **single-subscriber** replace-on-call function. `BackgroundService` already owns that slot. Email is dispatched by calling `sendAlertEmail()` from _inside_ `BackgroundService.maybeNotify()`, before the CRITICAL-only toast filter — so both WARNING and CRITICAL alerts generate email (controlled by `emailEnabled` flag and dedup).
 
 **Tech Stack:** nodemailer v7, better-sqlite3 (existing key-value settings), Vitest for unit tests, MUI v5 for UI.
 
@@ -16,25 +16,26 @@
 
 ## File Map
 
-| File | Action | Responsibility |
-|---|---|---|
-| `src/main/store/emailSettings.ts` | **Create** | `getEmailSettings` / `saveEmailSettings` — key-value pattern |
-| `src/main/emailService.ts` | **Create** | nodemailer transport, HTML builder, module-level dedup, `sendAlertEmail`, `sendTestEmail` |
-| `src/main/__tests__/emailService.test.ts` | **Create** | Unit tests for email logic (mocks nodemailer + emailSettings store) |
-| `src/main/ipc/types.ts` | Modify | Add `EmailSettings`, `SaveEmailSettingsRequest`, 3 new `IpcChannel` values |
-| `src/preload/index.d.ts` | Modify | Mirror `EmailSettings`, `SaveEmailSettingsRequest`, 3 new bridge methods |
-| `src/preload/index.ts` | Modify | Add `getEmailSettings`, `saveEmailSettings`, `sendTestEmail` to realApi + mockApi + bridgeApi |
-| `src/main/ipc/handlers.ts` | Modify | Register handlers for EMAIL_SETTINGS_GET, EMAIL_SETTINGS_SET, EMAIL_TEST |
-| `src/main/backgroundService.ts` | Modify | Call `sendAlertEmail(alert)` from `maybeNotify()` before CRITICAL filter |
-| `src/main/__tests__/backgroundService.test.ts` | Modify | Add `vi.mock('../emailService', ...)` so existing tests don't hit nodemailer |
-| `src/renderer/src/pages/Settings.tsx` | Modify | Add "Notifiche Email" card |
-| `CHANGELOG.md` | Modify | Add feature entry |
+| File                                           | Action     | Responsibility                                                                                |
+| ---------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------- |
+| `src/main/store/emailSettings.ts`              | **Create** | `getEmailSettings` / `saveEmailSettings` — key-value pattern                                  |
+| `src/main/emailService.ts`                     | **Create** | nodemailer transport, HTML builder, module-level dedup, `sendAlertEmail`, `sendTestEmail`     |
+| `src/main/__tests__/emailService.test.ts`      | **Create** | Unit tests for email logic (mocks nodemailer + emailSettings store)                           |
+| `src/main/ipc/types.ts`                        | Modify     | Add `EmailSettings`, `SaveEmailSettingsRequest`, 3 new `IpcChannel` values                    |
+| `src/preload/index.d.ts`                       | Modify     | Mirror `EmailSettings`, `SaveEmailSettingsRequest`, 3 new bridge methods                      |
+| `src/preload/index.ts`                         | Modify     | Add `getEmailSettings`, `saveEmailSettings`, `sendTestEmail` to realApi + mockApi + bridgeApi |
+| `src/main/ipc/handlers.ts`                     | Modify     | Register handlers for EMAIL_SETTINGS_GET, EMAIL_SETTINGS_SET, EMAIL_TEST                      |
+| `src/main/backgroundService.ts`                | Modify     | Call `sendAlertEmail(alert)` from `maybeNotify()` before CRITICAL filter                      |
+| `src/main/__tests__/backgroundService.test.ts` | Modify     | Add `vi.mock('../emailService', ...)` so existing tests don't hit nodemailer                  |
+| `src/renderer/src/pages/Settings.tsx`          | Modify     | Add "Notifiche Email" card                                                                    |
+| `CHANGELOG.md`                                 | Modify     | Add feature entry                                                                             |
 
 ---
 
 ## Task 1: Install nodemailer
 
 **Files:**
+
 - Modify: `package.json` (via npm)
 
 - [ ] **Step 1: Install runtime + types**
@@ -49,6 +50,7 @@ npm install --save-dev @types/nodemailer
 ```bash
 node -e "require('nodemailer'); console.log('ok')"
 ```
+
 Expected: `ok`
 
 - [ ] **Step 3: Commit**
@@ -65,12 +67,14 @@ git commit -m "chore(deps): add nodemailer for email alerting"
 Add types and channel names. No logic yet — just widens the type surface.
 
 **Files:**
+
 - Modify: `src/main/ipc/types.ts`
 - Modify: `src/preload/index.d.ts`
 
 - [ ] **Step 1: Add 3 IpcChannel entries to `src/main/ipc/types.ts`**
 
 Inside the `IpcChannel` enum (after `DETECT_SERVER_INFO`), add:
+
 ```typescript
   // Email alerting
   EMAIL_SETTINGS_GET = 'email:getSettings',
@@ -81,6 +85,7 @@ Inside the `IpcChannel` enum (after `DETECT_SERVER_INFO`), add:
 - [ ] **Step 2: Add `EmailSettings` and `SaveEmailSettingsRequest` to `src/main/ipc/types.ts`**
 
 After the existing `SaveSettingsRequest` interface (around line 153), add:
+
 ```typescript
 export interface EmailSettings {
   emailEnabled: boolean
@@ -108,6 +113,7 @@ export interface SaveEmailSettingsRequest {
 After the existing `SaveSettingsRequest` interface (around line 253), add the same two interfaces (copy-paste — this file is compiled under `tsconfig.web.json` and cannot import from `src/main`).
 
 Also add the 3 new bridge method signatures to the `window.sqlSentinel` interface declaration (find the existing `getSettings` / `saveSettings` declarations and add after them):
+
 ```typescript
 getEmailSettings(): Promise<IpcResult<EmailSettings>>
 saveEmailSettings(req: SaveEmailSettingsRequest): Promise<IpcResult<null>>
@@ -119,6 +125,7 @@ sendTestEmail(): Promise<IpcResult<null>>
 ```bash
 npm run typecheck
 ```
+
 Expected: no errors
 
 - [ ] **Step 5: Commit**
@@ -135,6 +142,7 @@ git commit -m "feat(email): add EmailSettings types and IPC channel names"
 Key-value store for email configuration, using the same `getDb()` pattern as `settings.ts`.
 
 **Files:**
+
 - Create: `src/main/store/emailSettings.ts`
 
 - [ ] **Step 1: Create `src/main/store/emailSettings.ts`**
@@ -154,33 +162,41 @@ export interface EmailSettings {
 
 export function getEmailSettings(): EmailSettings {
   const db = getDb()
-  const rows = db.prepare('SELECT key, value FROM settings').all() as { key: string; value: string }[]
+  const rows = db.prepare('SELECT key, value FROM settings').all() as {
+    key: string
+    value: string
+  }[]
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]))
   let recipients: string[] = []
   if (map['email_recipients'] != null) {
-    try { recipients = JSON.parse(map['email_recipients']) as string[] } catch { recipients = [] }
+    try {
+      recipients = JSON.parse(map['email_recipients']) as string[]
+    } catch {
+      recipients = []
+    }
   }
   return {
-    emailEnabled:    map['email_enabled']  != null ? map['email_enabled'] === 'true'   : false,
-    smtpHost:        map['smtp_host']      ?? '',
-    smtpPort:        map['smtp_port']      != null ? parseInt(map['smtp_port'], 10)     : 587,
-    smtpUser:        map['smtp_user']      ?? '',
-    smtpPassword:    map['smtp_password']  ?? '',
-    smtpTls:         map['smtp_tls']       != null ? map['smtp_tls'] === 'true'         : true,
-    emailRecipients: recipients,
+    emailEnabled: map['email_enabled'] != null ? map['email_enabled'] === 'true' : false,
+    smtpHost: map['smtp_host'] ?? '',
+    smtpPort: map['smtp_port'] != null ? parseInt(map['smtp_port'], 10) : 587,
+    smtpUser: map['smtp_user'] ?? '',
+    smtpPassword: map['smtp_password'] ?? '',
+    smtpTls: map['smtp_tls'] != null ? map['smtp_tls'] === 'true' : true,
+    emailRecipients: recipients
   }
 }
 
 export function saveEmailSettings(settings: Partial<EmailSettings>): void {
   const db = getDb()
   const upsert = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
-  if (settings.emailEnabled    != null) upsert.run('email_enabled',    String(settings.emailEnabled))
-  if (settings.smtpHost        != null) upsert.run('smtp_host',        settings.smtpHost)
-  if (settings.smtpPort        != null) upsert.run('smtp_port',        String(settings.smtpPort))
-  if (settings.smtpUser        != null) upsert.run('smtp_user',        settings.smtpUser)
-  if (settings.smtpPassword    != null) upsert.run('smtp_password',    settings.smtpPassword)
-  if (settings.smtpTls         != null) upsert.run('smtp_tls',         String(settings.smtpTls))
-  if (settings.emailRecipients != null) upsert.run('email_recipients', JSON.stringify(settings.emailRecipients))
+  if (settings.emailEnabled != null) upsert.run('email_enabled', String(settings.emailEnabled))
+  if (settings.smtpHost != null) upsert.run('smtp_host', settings.smtpHost)
+  if (settings.smtpPort != null) upsert.run('smtp_port', String(settings.smtpPort))
+  if (settings.smtpUser != null) upsert.run('smtp_user', settings.smtpUser)
+  if (settings.smtpPassword != null) upsert.run('smtp_password', settings.smtpPassword)
+  if (settings.smtpTls != null) upsert.run('smtp_tls', String(settings.smtpTls))
+  if (settings.emailRecipients != null)
+    upsert.run('email_recipients', JSON.stringify(settings.emailRecipients))
 }
 ```
 
@@ -189,6 +205,7 @@ export function saveEmailSettings(settings: Partial<EmailSettings>): void {
 ```bash
 npm run typecheck
 ```
+
 Expected: no errors
 
 - [ ] **Step 3: Commit**
@@ -205,6 +222,7 @@ git commit -m "feat(email): add emailSettings store (key-value pattern)"
 The service owns transport creation, HTML building, module-level dedup, and sending. Tests are written first.
 
 **Files:**
+
 - Create: `src/main/__tests__/emailService.test.ts`
 - Create: `src/main/emailService.ts`
 
@@ -223,7 +241,7 @@ vi.mock('nodemailer', () => ({
 // --- Mock emailSettings store ---
 const mockGetEmailSettings = vi.fn()
 vi.mock('../store/emailSettings', () => ({
-  getEmailSettings: mockGetEmailSettings,
+  getEmailSettings: mockGetEmailSettings
 }))
 
 // --- Default settings helper ---
@@ -236,7 +254,7 @@ function makeSettings(overrides: Record<string, unknown> = {}) {
     smtpPassword: 'pass',
     smtpTls: true,
     emailRecipients: ['dest@example.com'],
-    ...overrides,
+    ...overrides
   }
 }
 
@@ -248,7 +266,7 @@ const testAlert = {
   severity: 'CRITICAL' as const,
   message: 'CPU al 95%',
   detectedAt: new Date('2026-03-24T10:00:00Z'),
-  acknowledgedAt: null,
+  acknowledgedAt: null
 }
 
 describe('sendAlertEmail', () => {
@@ -365,6 +383,7 @@ describe('sendTestEmail', () => {
 ```bash
 npm test -- --reporter=verbose src/main/__tests__/emailService.test.ts
 ```
+
 Expected: FAIL — `emailService` not found
 
 - [ ] **Step 3: Create `src/main/emailService.ts`**
@@ -405,7 +424,7 @@ function buildTransporter(s: EmailSettings) {
     requireTLS: s.smtpTls,
     auth: { user: s.smtpUser, pass: s.smtpPassword },
     connectionTimeout: 10_000,
-    greetingTimeout: 5_000,
+    greetingTimeout: 5_000
   })
 }
 
@@ -414,7 +433,7 @@ function buildContent(
   category: string,
   severity: 'WARNING' | 'CRITICAL',
   message: string,
-  timestamp: number,
+  timestamp: number
 ): { subject: string; html: string } {
   const emoji = severity === 'CRITICAL' ? '🔴' : '🟡'
   const color = severity === 'CRITICAL' ? '#dc2626' : '#d97706'
@@ -463,14 +482,14 @@ async function sendEmail(
   settings: EmailSettings,
   recipients: string[],
   subject: string,
-  html: string,
+  html: string
 ): Promise<void> {
   const transporter = buildTransporter(settings)
   await transporter.sendMail({
     from: `"SQL Sentinel" <${settings.smtpUser}>`,
     to: recipients.join(', '),
     subject,
-    html,
+    html
   })
 }
 
@@ -488,7 +507,7 @@ export async function sendAlertEmail(alert: Alert): Promise<void> {
     alert.category,
     alert.severity,
     alert.message,
-    alert.detectedAt.getTime(),
+    alert.detectedAt.getTime()
   )
   await sendEmail(settings, settings.emailRecipients, subject, html)
 }
@@ -496,14 +515,15 @@ export async function sendAlertEmail(alert: Alert): Promise<void> {
 export async function sendTestEmail(): Promise<IpcResult<null>> {
   const settings = getEmailSettings()
   if (!settings.smtpHost) return { ok: false, error: 'SMTP host non configurato' }
-  if (settings.emailRecipients.length === 0) return { ok: false, error: 'Nessun destinatario configurato' }
+  if (settings.emailRecipients.length === 0)
+    return { ok: false, error: 'Nessun destinatario configurato' }
   try {
     const { subject, html } = buildContent(
       'TEST-SERVER',
       'test',
       'WARNING',
       'Questa è una email di test da SQL Sentinel. Configurazione SMTP corretta ✅',
-      Date.now(),
+      Date.now()
     )
     await sendEmail(settings, settings.emailRecipients, subject, html)
     return { ok: true, data: null }
@@ -519,6 +539,7 @@ export async function sendTestEmail(): Promise<IpcResult<null>> {
 ```bash
 npm test -- --reporter=verbose src/main/__tests__/emailService.test.ts
 ```
+
 Expected: all PASS
 
 - [ ] **Step 5: Run full suite**
@@ -526,6 +547,7 @@ Expected: all PASS
 ```bash
 npm test
 ```
+
 Expected: all pass
 
 - [ ] **Step 6: Commit**
@@ -542,11 +564,13 @@ git commit -m "feat(email): add emailService with nodemailer, dedup, and sendTes
 Register the three email channels in the existing `registerIpcHandlers()` function.
 
 **Files:**
+
 - Modify: `src/main/ipc/handlers.ts`
 
 - [ ] **Step 1: Add imports to `src/main/ipc/handlers.ts`**
 
 Near the top (after existing store imports), add:
+
 ```typescript
 import { getEmailSettings, saveEmailSettings } from '../store/emailSettings'
 import type { EmailSettings, SaveEmailSettingsRequest } from './types'
@@ -560,47 +584,42 @@ Also add `EmailSettings` and `SaveEmailSettingsRequest` to the existing type imp
 - [ ] **Step 2: Add three handlers inside `registerIpcHandlers()`**
 
 Append before the closing `}` of `registerIpcHandlers()`:
+
 ```typescript
-  // EMAIL_SETTINGS_GET
-  ipcMain.handle(
-    IpcChannel.EMAIL_SETTINGS_GET,
-    async (): Promise<IpcResult<EmailSettings>> => {
-      try {
-        return { ok: true, data: getEmailSettings() }
-      } catch (err) {
-        console.error('[IPC] EMAIL_SETTINGS_GET:', safeError(err))
-        return { ok: false, error: safeError(err) }
-      }
-    }
-  )
+// EMAIL_SETTINGS_GET
+ipcMain.handle(IpcChannel.EMAIL_SETTINGS_GET, async (): Promise<IpcResult<EmailSettings>> => {
+  try {
+    return { ok: true, data: getEmailSettings() }
+  } catch (err) {
+    console.error('[IPC] EMAIL_SETTINGS_GET:', safeError(err))
+    return { ok: false, error: safeError(err) }
+  }
+})
 
-  // EMAIL_SETTINGS_SET
-  ipcMain.handle(
-    IpcChannel.EMAIL_SETTINGS_SET,
-    async (_event: IpcMainInvokeEvent, req: SaveEmailSettingsRequest): Promise<IpcResult<null>> => {
-      try {
-        saveEmailSettings(req)
-        return { ok: true, data: null }
-      } catch (err) {
-        console.error('[IPC] EMAIL_SETTINGS_SET:', safeError(err))
-        return { ok: false, error: safeError(err) }
-      }
+// EMAIL_SETTINGS_SET
+ipcMain.handle(
+  IpcChannel.EMAIL_SETTINGS_SET,
+  async (_event: IpcMainInvokeEvent, req: SaveEmailSettingsRequest): Promise<IpcResult<null>> => {
+    try {
+      saveEmailSettings(req)
+      return { ok: true, data: null }
+    } catch (err) {
+      console.error('[IPC] EMAIL_SETTINGS_SET:', safeError(err))
+      return { ok: false, error: safeError(err) }
     }
-  )
+  }
+)
 
-  // EMAIL_TEST — sendTestEmail() has its own internal try/catch and always returns IpcResult<null>,
-  // but we wrap in try/catch for consistency and to catch synchronous throws from getEmailSettings().
-  ipcMain.handle(
-    IpcChannel.EMAIL_TEST,
-    async (): Promise<IpcResult<null>> => {
-      try {
-        return await sendTestEmail()
-      } catch (err) {
-        console.error('[IPC] EMAIL_TEST:', safeError(err))
-        return { ok: false, error: safeError(err) }
-      }
-    }
-  )
+// EMAIL_TEST — sendTestEmail() has its own internal try/catch and always returns IpcResult<null>,
+// but we wrap in try/catch for consistency and to catch synchronous throws from getEmailSettings().
+ipcMain.handle(IpcChannel.EMAIL_TEST, async (): Promise<IpcResult<null>> => {
+  try {
+    return await sendTestEmail()
+  } catch (err) {
+    console.error('[IPC] EMAIL_TEST:', safeError(err))
+    return { ok: false, error: safeError(err) }
+  }
+})
 ```
 
 > **Note:** `safeError` is already defined in `handlers.ts`. If you can't find it, look for a helper that converts `unknown` to `string` — it is used in every existing try/catch block.
@@ -610,6 +629,7 @@ Append before the closing `}` of `registerIpcHandlers()`:
 ```bash
 npm run typecheck
 ```
+
 Expected: no errors
 
 - [ ] **Step 4: Commit**
@@ -626,11 +646,13 @@ git commit -m "feat(email): add IPC handlers for email settings get/set and test
 Expose the three new IPC channels through the contextBridge to the renderer.
 
 **Files:**
+
 - Modify: `src/preload/index.ts`
 
 - [ ] **Step 1: Add type imports**
 
 In the existing import block from `'../main/ipc/types'`, add `EmailSettings` and `SaveEmailSettingsRequest`:
+
 ```typescript
 import type {
   ...existing imports...
@@ -642,6 +664,7 @@ import type {
 - [ ] **Step 2: Add to `realApi`**
 
 After `saveSettings` in `realApi` (around line 388), add:
+
 ```typescript
   getEmailSettings: (): Promise<IpcResult<EmailSettings>> =>
     ipcRenderer.invoke(IpcChannel.EMAIL_SETTINGS_GET),
@@ -656,6 +679,7 @@ After `saveSettings` in `realApi` (around line 388), add:
 - [ ] **Step 3: Add stubs to `mockApi`**
 
 After `saveSettings` mock stub in `mockApi`, add:
+
 ```typescript
   getEmailSettings: (): Promise<IpcResult<EmailSettings>> =>
     Promise.resolve({
@@ -681,6 +705,7 @@ After `saveSettings` mock stub in `mockApi`, add:
 - [ ] **Step 4: Add to `bridgeApi`**
 
 After `saveSettings: (r: SaveSettingsRequest) => api.saveSettings(r)` in `bridgeApi`, add:
+
 ```typescript
   getEmailSettings:  () => api.getEmailSettings(),
   saveEmailSettings: (r: SaveEmailSettingsRequest) => api.saveEmailSettings(r),
@@ -692,6 +717,7 @@ After `saveSettings: (r: SaveSettingsRequest) => api.saveSettings(r)` in `bridge
 - [ ] **Step 5: Add re-export entries to the re-export block in `src/preload/index.ts`**
 
 Find the existing re-export block at the top of the file (lines ~41–50 where other types from `../main/ipc/types` are re-exported) and add:
+
 ```typescript
 export type { EmailSettings, SaveEmailSettingsRequest } from '../main/ipc/types'
 ```
@@ -703,6 +729,7 @@ This allows renderer components to import `EmailSettings` directly from the prel
 ```bash
 npm run typecheck
 ```
+
 Expected: no errors
 
 - [ ] **Step 7: Commit**
@@ -719,15 +746,17 @@ git commit -m "feat(email): expose email settings and test-send through preload 
 Call `sendAlertEmail()` from `maybeNotify()` before the CRITICAL-only toast filter.
 
 **Files:**
+
 - Modify: `src/main/backgroundService.ts`
 - Modify: `src/main/__tests__/backgroundService.test.ts`
 
 - [ ] **Step 1: Add mock for emailService to existing backgroundService tests**
 
 In `src/main/__tests__/backgroundService.test.ts`, add this `vi.mock` alongside the existing `vi.mock('../metricsWorker', ...)`:
+
 ```typescript
 vi.mock('../emailService', () => ({
-  sendAlertEmail: vi.fn().mockResolvedValue(undefined),
+  sendAlertEmail: vi.fn().mockResolvedValue(undefined)
 }))
 ```
 
@@ -736,16 +765,19 @@ vi.mock('../emailService', () => ({
 ```bash
 npm test -- --reporter=verbose src/main/__tests__/backgroundService.test.ts
 ```
+
 Expected: all PASS (mock prevents nodemailer from being called)
 
 - [ ] **Step 3: Add import and call in `src/main/backgroundService.ts`**
 
 Add import (after existing imports):
+
 ```typescript
 import { sendAlertEmail } from './emailService'
 ```
 
 In `maybeNotify()`, add a call at the very start (before any filters):
+
 ```typescript
 private maybeNotify(alert: Alert): void {
   // Email — fires for WARNING and CRITICAL, filtered by emailService settings + dedup
@@ -764,6 +796,7 @@ private maybeNotify(alert: Alert): void {
 ```bash
 npm test
 ```
+
 Expected: all pass
 
 - [ ] **Step 5: Run typecheck**
@@ -771,6 +804,7 @@ Expected: all pass
 ```bash
 npm run typecheck
 ```
+
 Expected: no errors
 
 - [ ] **Step 6: Commit**
@@ -787,6 +821,7 @@ git commit -m "feat(email): dispatch sendAlertEmail from BackgroundService.maybe
 Add the email configuration UI as a new `Card variant="outlined"` at the bottom of the Settings page.
 
 **Files:**
+
 - Modify: `src/renderer/src/pages/Settings.tsx`
 
 - [ ] **Step 1: Read the current Settings.tsx**
@@ -796,20 +831,23 @@ Read `src/renderer/src/pages/Settings.tsx` to see the exact current structure be
 - [ ] **Step 2: Add state and helpers inside the `Settings()` function**
 
 After the existing background settings state block (around line 95), add:
+
 ```typescript
 // --- Email settings state ---
-const [emailLoaded,       setEmailLoaded]       = useState(false)
-const [emailEnabled,      setEmailEnabled]       = useState(false)
-const [smtpHost,          setSmtpHost]           = useState('')
-const [smtpPort,          setSmtpPort]           = useState(587)
-const [smtpUser,          setSmtpUser]           = useState('')
-const [smtpPassword,      setSmtpPassword]       = useState('')
-const [smtpTls,           setSmtpTls]            = useState(true)
-const [emailRecipients,   setEmailRecipients]    = useState<string[]>([])
-const [recipientInput,    setRecipientInput]     = useState('')
-const [recipientError,    setRecipientError]     = useState('')
-const [testEmailStatus,   setTestEmailStatus]    = useState<'idle' | 'sending' | 'success' | 'error'>('idle')
-const [testEmailError,    setTestEmailError]     = useState('')
+const [emailLoaded, setEmailLoaded] = useState(false)
+const [emailEnabled, setEmailEnabled] = useState(false)
+const [smtpHost, setSmtpHost] = useState('')
+const [smtpPort, setSmtpPort] = useState(587)
+const [smtpUser, setSmtpUser] = useState('')
+const [smtpPassword, setSmtpPassword] = useState('')
+const [smtpTls, setSmtpTls] = useState(true)
+const [emailRecipients, setEmailRecipients] = useState<string[]>([])
+const [recipientInput, setRecipientInput] = useState('')
+const [recipientError, setRecipientError] = useState('')
+const [testEmailStatus, setTestEmailStatus] = useState<'idle' | 'sending' | 'success' | 'error'>(
+  'idle'
+)
+const [testEmailError, setTestEmailError] = useState('')
 
 useEffect(() => {
   window.sqlSentinel.getEmailSettings().then((res) => {
@@ -836,9 +874,18 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const addRecipient = () => {
   const email = recipientInput.trim()
-  if (!EMAIL_REGEX.test(email)) { setRecipientError('Email non valida'); return }
-  if (emailRecipients.includes(email)) { setRecipientError('Email già presente'); return }
-  if (emailRecipients.length >= 20) { setRecipientError('Massimo 20 destinatari'); return }
+  if (!EMAIL_REGEX.test(email)) {
+    setRecipientError('Email non valida')
+    return
+  }
+  if (emailRecipients.includes(email)) {
+    setRecipientError('Email già presente')
+    return
+  }
+  if (emailRecipients.length >= 20) {
+    setRecipientError('Massimo 20 destinatari')
+    return
+  }
   const next = [...emailRecipients, email]
   setEmailRecipients(next)
   setRecipientInput('')
@@ -868,147 +915,172 @@ const handleTestEmail = async () => {
 - [ ] **Step 3: Add the UI card to the JSX return**
 
 After the closing `)}` of the existing `{bgLoaded && (...)}` block (at the end of the JSX), and before the closing `</Box>`, add:
+
 ```tsx
-{/* Card — Notifiche Email */}
-{emailLoaded && (
-  <Card variant="outlined">
-    <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <Box>
-        <Typography variant="subtitle1" fontWeight={700}>
-          Notifiche Email
-        </Typography>
-      </Box>
+{
+  /* Card — Notifiche Email */
+}
+{
+  emailLoaded && (
+    <Card variant="outlined">
+      <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Box>
+          <Typography variant="subtitle1" fontWeight={700}>
+            Notifiche Email
+          </Typography>
+        </Box>
 
-      <FormControlLabel
-        control={
-          <Switch
-            checked={emailEnabled}
-            onChange={(e) => {
-              setEmailEnabled(e.target.checked)
-              saveEmail({ emailEnabled: e.target.checked })
-            }}
-          />
-        }
-        label="Abilita notifiche email"
-      />
+        <FormControlLabel
+          control={
+            <Switch
+              checked={emailEnabled}
+              onChange={(e) => {
+                setEmailEnabled(e.target.checked)
+                saveEmail({ emailEnabled: e.target.checked })
+              }}
+            />
+          }
+          label="Abilita notifiche email"
+        />
 
-      <Box sx={{ ml: 2, opacity: emailEnabled ? 1 : 0.4, pointerEvents: emailEnabled ? 'auto' : 'none' }}>
-        <Stack spacing={2}>
-          <TextField
-            label="SMTP Host"
-            size="small"
-            value={smtpHost}
-            onChange={(e) => setSmtpHost(e.target.value)}
-            onBlur={() => saveEmail({ smtpHost })}
-            placeholder="smtp.office365.com"
-          />
-          <Stack direction="row" spacing={2} alignItems="center">
+        <Box
+          sx={{
+            ml: 2,
+            opacity: emailEnabled ? 1 : 0.4,
+            pointerEvents: emailEnabled ? 'auto' : 'none'
+          }}
+        >
+          <Stack spacing={2}>
             <TextField
-              label="SMTP Port"
+              label="SMTP Host"
               size="small"
-              type="number"
-              value={smtpPort}
-              inputProps={{ min: 1, max: 65535 }}
-              sx={{ width: 120 }}
-              onChange={(e) => setSmtpPort(Number(e.target.value))}
-              onBlur={() => saveEmail({ smtpPort })}
+              value={smtpHost}
+              onChange={(e) => setSmtpHost(e.target.value)}
+              onBlur={() => saveEmail({ smtpHost })}
+              placeholder="smtp.office365.com"
             />
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={smtpTls}
-                  onChange={(e) => {
-                    setSmtpTls(e.target.checked)
-                    saveEmail({ smtpTls: e.target.checked })
-                  }}
-                />
-              }
-              label="TLS/STARTTLS"
-            />
-          </Stack>
-          <TextField
-            label="SMTP User (mittente)"
-            size="small"
-            value={smtpUser}
-            onChange={(e) => setSmtpUser(e.target.value)}
-            onBlur={() => saveEmail({ smtpUser })}
-            placeholder="alerts@azienda.it"
-          />
-          <TextField
-            label="SMTP Password"
-            size="small"
-            type="password"
-            value={smtpPassword}
-            onChange={(e) => setSmtpPassword(e.target.value)}
-            onBlur={() => saveEmail({ smtpPassword })}
-          />
-
-          {/* Recipient list */}
-          <Box>
-            <Typography variant="body2" gutterBottom>
-              Destinatari ({emailRecipients.length}/20)
-            </Typography>
-            <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+            <Stack direction="row" spacing={2} alignItems="center">
               <TextField
+                label="SMTP Port"
                 size="small"
-                placeholder="destinatario@azienda.it"
-                value={recipientInput}
-                onChange={(e) => { setRecipientInput(e.target.value); setRecipientError('') }}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addRecipient() } }}
-                error={!!recipientError}
-                helperText={recipientError}
-                sx={{ flexGrow: 1 }}
+                type="number"
+                value={smtpPort}
+                inputProps={{ min: 1, max: 65535 }}
+                sx={{ width: 120 }}
+                onChange={(e) => setSmtpPort(Number(e.target.value))}
+                onBlur={() => saveEmail({ smtpPort })}
               />
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={smtpTls}
+                    onChange={(e) => {
+                      setSmtpTls(e.target.checked)
+                      saveEmail({ smtpTls: e.target.checked })
+                    }}
+                  />
+                }
+                label="TLS/STARTTLS"
+              />
+            </Stack>
+            <TextField
+              label="SMTP User (mittente)"
+              size="small"
+              value={smtpUser}
+              onChange={(e) => setSmtpUser(e.target.value)}
+              onBlur={() => saveEmail({ smtpUser })}
+              placeholder="alerts@azienda.it"
+            />
+            <TextField
+              label="SMTP Password"
+              size="small"
+              type="password"
+              value={smtpPassword}
+              onChange={(e) => setSmtpPassword(e.target.value)}
+              onBlur={() => saveEmail({ smtpPassword })}
+            />
+
+            {/* Recipient list */}
+            <Box>
+              <Typography variant="body2" gutterBottom>
+                Destinatari ({emailRecipients.length}/20)
+              </Typography>
+              <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                <TextField
+                  size="small"
+                  placeholder="destinatario@azienda.it"
+                  value={recipientInput}
+                  onChange={(e) => {
+                    setRecipientInput(e.target.value)
+                    setRecipientError('')
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      addRecipient()
+                    }
+                  }}
+                  error={!!recipientError}
+                  helperText={recipientError}
+                  sx={{ flexGrow: 1 }}
+                />
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={addRecipient}
+                  disabled={emailRecipients.length >= 20}
+                >
+                  Aggiungi
+                </Button>
+              </Stack>
+              <Stack spacing={0.5}>
+                {emailRecipients.map((email) => (
+                  <Stack key={email} direction="row" alignItems="center" spacing={1}>
+                    <Typography variant="body2" sx={{ flexGrow: 1 }}>
+                      {email}
+                    </Typography>
+                    <Button
+                      size="small"
+                      color="error"
+                      onClick={() => removeRecipient(email)}
+                      sx={{ minWidth: 0, p: 0.5 }}
+                    >
+                      ❌
+                    </Button>
+                  </Stack>
+                ))}
+              </Stack>
+            </Box>
+
+            {/* Test email */}
+            <Box>
               <Button
                 variant="outlined"
                 size="small"
-                onClick={addRecipient}
-                disabled={emailRecipients.length >= 20}
+                onClick={handleTestEmail}
+                disabled={
+                  testEmailStatus === 'sending' || !smtpHost || emailRecipients.length === 0
+                }
               >
-                Aggiungi
+                {testEmailStatus === 'sending' ? 'Invio in corso…' : 'Invia email di test'}
               </Button>
-            </Stack>
-            <Stack spacing={0.5}>
-              {emailRecipients.map((email) => (
-                <Stack key={email} direction="row" alignItems="center" spacing={1}>
-                  <Typography variant="body2" sx={{ flexGrow: 1 }}>{email}</Typography>
-                  <Button
-                    size="small"
-                    color="error"
-                    onClick={() => removeRecipient(email)}
-                    sx={{ minWidth: 0, p: 0.5 }}
-                  >
-                    ❌
-                  </Button>
-                </Stack>
-              ))}
-            </Stack>
-          </Box>
-
-          {/* Test email */}
-          <Box>
-            <Button
-              variant="outlined"
-              size="small"
-              onClick={handleTestEmail}
-              disabled={testEmailStatus === 'sending' || !smtpHost || emailRecipients.length === 0}
-            >
-              {testEmailStatus === 'sending' ? 'Invio in corso…' : 'Invia email di test'}
-            </Button>
-            {testEmailStatus === 'success' && (
-              <Alert severity="success" sx={{ mt: 1 }}>Email di test inviata con successo</Alert>
-            )}
-            {testEmailStatus === 'error' && (
-              <Alert severity="error" sx={{ mt: 1 }}>
-                Errore invio: {testEmailError}
-              </Alert>
-            )}
-          </Box>
-        </Stack>
-      </Box>
-    </CardContent>
-  </Card>
-)}
+              {testEmailStatus === 'success' && (
+                <Alert severity="success" sx={{ mt: 1 }}>
+                  Email di test inviata con successo
+                </Alert>
+              )}
+              {testEmailStatus === 'error' && (
+                <Alert severity="error" sx={{ mt: 1 }}>
+                  Errore invio: {testEmailError}
+                </Alert>
+              )}
+            </Box>
+          </Stack>
+        </Box>
+      </CardContent>
+    </Card>
+  )
+}
 ```
 
 > **Note:** `Alert` in `@mui/material` is already imported (it's used for the existing export error). `Stack` is already imported. `TextField` and `Button` are already imported. Verify the import list before editing — add only what's missing.
@@ -1018,6 +1090,7 @@ After the closing `)}` of the existing `{bgLoaded && (...)}` block (at the end o
 ```bash
 npm run typecheck
 ```
+
 Expected: no errors
 
 - [ ] **Step 5: Run full test suite**
@@ -1025,6 +1098,7 @@ Expected: no errors
 ```bash
 npm test
 ```
+
 Expected: all pass
 
 - [ ] **Step 6: Commit**
@@ -1041,8 +1115,10 @@ git commit -m "feat(settings): add Notifiche Email card with SMTP config and tes
 - [ ] **Step 1: Add entry to `CHANGELOG.md`**
 
 Under `## [Unreleased]`, add before the existing tray entry:
+
 ```markdown
 ### Added — 2026-03-24 (email alerting)
+
 - **Notifiche email**: alert WARNING e CRITICAL inviano email HTML via SMTP quando rilevati; disabilitabili da Settings → Notifiche Email
 - **Dedup email**: cooldown 15 minuti per coppia (server, categoria) per evitare spam
 - **Configurazione SMTP**: host, porta, utente, password, toggle TLS/STARTTLS; persistito nella tabella `settings` come coppie chiave-valore (`email_enabled`, `smtp_host`, `smtp_port`, `smtp_user`, `smtp_password`, `smtp_tls`, `email_recipients`)

@@ -12,7 +12,16 @@ import type { ServerGroup } from '../../../types/index'
 
 const COL_WIDTHS = ['18%', '12%', '11%', '8%', '6%', '6%', '8%', '14%', '10%', '7%']
 const COL_HEADERS = [
-  'SERVER', 'ENVIRONMENT', 'INFRASTRUCTURE', 'TYPE', 'CPU%', 'MEM%', 'DB', 'ALERTS', 'STATUS', 'UPTIME'
+  'SERVER',
+  'ENVIRONMENT',
+  'INFRASTRUCTURE',
+  'TYPE',
+  'CPU%',
+  'MEM%',
+  'DB',
+  'ALERTS',
+  'STATUS',
+  'UPTIME'
 ]
 
 const thStyle: React.CSSProperties = {
@@ -69,7 +78,12 @@ export function ServerTable({
       }}
     >
       <table
-        style={{ width: '100%', borderCollapse: 'collapse', fontSize: tokens.font.sizeSm, tableLayout: 'fixed' }}
+        style={{
+          width: '100%',
+          borderCollapse: 'collapse',
+          fontSize: tokens.font.sizeSm,
+          tableLayout: 'fixed'
+        }}
       >
         <colgroup>
           {COL_WIDTHS.map((w, i) => (

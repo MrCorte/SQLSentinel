@@ -44,13 +44,18 @@ export function ServerDashboard({ server, metrics, connection }: Props): React.J
               onChange={async (e) => {
                 try {
                   setHostingError(null)
-                  await updateServer(server.id, { hostingType: e.target.value as ServerHostingType })
+                  await updateServer(server.id, {
+                    hostingType: e.target.value as ServerHostingType
+                  })
                   setEditingHosting(false)
                 } catch {
                   setHostingError('Failed to save')
                 }
               }}
-              onBlur={() => { setEditingHosting(false); setHostingError(null) }}
+              onBlur={() => {
+                setEditingHosting(false)
+                setHostingError(null)
+              }}
               sx={{ fontSize: 12, height: 28 }}
             >
               {HOSTING_OPTIONS.map((opt) => (
@@ -62,7 +67,9 @@ export function ServerDashboard({ server, metrics, connection }: Props): React.J
               ))}
             </Select>
             {hostingError && (
-              <Typography sx={{ fontSize: 11, color: 'error.main', ml: 1 }}>{hostingError}</Typography>
+              <Typography sx={{ fontSize: 11, color: 'error.main', ml: 1 }}>
+                {hostingError}
+              </Typography>
             )}
           </>
         ) : (

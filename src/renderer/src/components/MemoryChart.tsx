@@ -41,7 +41,11 @@ export function MemoryChart({ history }: Props): React.JSX.Element {
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={data} margin={{ top: 8, right: 16, left: -8, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={tokens.color.chartGrid} />
-          <XAxis dataKey="time" tick={{ fontSize: tokens.font.sizeXs }} interval="preserveStartEnd" />
+          <XAxis
+            dataKey="time"
+            tick={{ fontSize: tokens.font.sizeXs }}
+            interval="preserveStartEnd"
+          />
           <YAxis domain={[0, 100]} tick={{ fontSize: tokens.font.sizeXs }} unit="%" width={40} />
           <Tooltip
             formatter={(value, name) => [`${Number(value).toFixed(1)} %`, name as string]}

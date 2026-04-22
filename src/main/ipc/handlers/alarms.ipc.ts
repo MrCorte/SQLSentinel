@@ -1,12 +1,7 @@
 import type { IpcMainInvokeEvent } from 'electron'
 import { handle, safeError, log } from '../handleWrapper'
 import { getAlerts, acknowledgeAlert } from '../../metricsWorker'
-import {
-  IpcChannel,
-  type AcknowledgeAlertRequest,
-  type IpcResult,
-  type Alert,
-} from '../types'
+import { IpcChannel, type AcknowledgeAlertRequest, type IpcResult, type Alert } from '../types'
 
 export function registerAlarmHandlers(): void {
   handle(IpcChannel.ALERTS_GET_ALL, async (): Promise<IpcResult<Alert[]>> => {
@@ -20,10 +15,7 @@ export function registerAlarmHandlers(): void {
 
   handle(
     IpcChannel.ALERTS_ACKNOWLEDGE,
-    async (
-      _event: IpcMainInvokeEvent,
-      req: AcknowledgeAlertRequest
-    ): Promise<IpcResult<null>> => {
+    async (_event: IpcMainInvokeEvent, req: AcknowledgeAlertRequest): Promise<IpcResult<null>> => {
       try {
         const ok = acknowledgeAlert(req.alertId)
         if (!ok) return { ok: false, error: `Alert ${req.alertId} not found` }

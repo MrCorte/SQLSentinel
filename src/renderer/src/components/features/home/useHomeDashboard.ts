@@ -158,7 +158,9 @@ export function useHomeDashboard(onNavigateToServer: (id: string) => void): Home
   const derived = useMemo(() => {
     const onlineCount = servers.filter((s) => !s.unreachable && metricsMap[serverKey(s)]).length
     const offlineCount = servers.filter((s) => s.unreachable).length
-    const unreachableCount = servers.filter((s) => !s.unreachable && !metricsMap[serverKey(s)]).length
+    const unreachableCount = servers.filter(
+      (s) => !s.unreachable && !metricsMap[serverKey(s)]
+    ).length
     const totalDbs = Object.values(summaries).reduce((acc, s) => acc + s.dbCount, 0)
     const activeAlerts: Alert[] = alerts.filter((a) => a.acknowledgedAt === null)
     const criticalCount = activeAlerts.filter((a) => a.severity === 'CRITICAL').length

@@ -103,7 +103,7 @@ export const COLUMNS: ColDef[] = [
   { key: 'version', label: 'VERSION', width: '9%' },
   { key: 'logicalCpus', label: 'CPU', width: '5%' },
   { key: 'unreachable', label: 'STATUS', width: '6%' },
-  { key: 'notes', label: 'NOTES', width: '12%' },
+  { key: 'notes', label: 'NOTES', width: '12%' }
 ]
 
 export const GRID_TEMPLATE = COLUMNS.map((c) => c.width).join(' ')
@@ -121,7 +121,7 @@ export const DB_COLUMNS = [
   { label: 'LAST FULL', width: '9%' },
   { label: 'LAST LOG', width: '9%' },
   { label: 'OWNER', width: '8%' },
-  { label: 'CREATED', width: '8%' },
+  { label: 'CREATED', width: '8%' }
 ]
 
 export const DB_GRID_TEMPLATE = DB_COLUMNS.map((c) => c.width).join(' ')

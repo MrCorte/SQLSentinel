@@ -1,5 +1,13 @@
 import { memo } from 'react'
-import { Box, Button, CircularProgress, Tooltip, Typography, ToggleButtonGroup, ToggleButton } from '@mui/material'
+import {
+  Box,
+  Button,
+  CircularProgress,
+  Tooltip,
+  Typography,
+  ToggleButtonGroup,
+  ToggleButton
+} from '@mui/material'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import DownloadIcon from '@mui/icons-material/Download'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
@@ -23,7 +31,7 @@ export const InventoryTopBar = memo(function InventoryTopBar({
   onSetDbView,
   inventoryEmpty,
   onExportCsv,
-  onRefresh,
+  onRefresh
 }: InventoryTopBarProps): React.JSX.Element {
   return (
     <>

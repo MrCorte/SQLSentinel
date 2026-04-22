@@ -196,7 +196,9 @@ export function AddServerDialog({
               {testState === 'loading' && (
                 <>
                   <CircularProgress size={16} />
-                  <Typography variant="caption" color="text.secondary">Connecting…</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Connecting…
+                  </Typography>
                 </>
               )}
               {testState === 'success' && (
@@ -211,7 +213,9 @@ export function AddServerDialog({
               {testState === 'error' && (
                 <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
                   <ErrorIcon fontSize="small" color="error" sx={{ mt: '2px', flexShrink: 0 }} />
-                  <Typography variant="caption" color="error.main">{testLabel}</Typography>
+                  <Typography variant="caption" color="error.main">
+                    {testLabel}
+                  </Typography>
                 </Box>
               )}
             </Box>
@@ -222,7 +226,11 @@ export function AddServerDialog({
             value={form.alias ?? ''}
             onChange={(e) => set('alias', e.target.value || undefined)}
             placeholder="e.g. SQL-PROD-01"
-            helperText={testState === 'success' ? 'Auto-filled from MachineName — editable' : 'If empty, IP:Port will be shown'}
+            helperText={
+              testState === 'success'
+                ? 'Auto-filled from MachineName — editable'
+                : 'If empty, IP:Port will be shown'
+            }
             fullWidth
           />
 
@@ -283,9 +291,7 @@ export function AddServerDialog({
               />
             }
             label={
-              form.useWindowsAuth
-                ? 'Windows Authentication (NTLM)'
-                : 'SQL Server Authentication'
+              form.useWindowsAuth ? 'Windows Authentication (NTLM)' : 'SQL Server Authentication'
             }
           />
 
@@ -319,7 +325,9 @@ export function AddServerDialog({
         <Button
           onClick={handleTestConnection}
           disabled={testState === 'loading'}
-          startIcon={testState === 'loading' ? <CircularProgress size={14} color="inherit" /> : undefined}
+          startIcon={
+            testState === 'loading' ? <CircularProgress size={14} color="inherit" /> : undefined
+          }
         >
           Test connection
         </Button>

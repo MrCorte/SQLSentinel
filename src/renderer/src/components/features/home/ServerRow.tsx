@@ -166,8 +166,7 @@ export const ServerRow = memo(function ServerRow({
 
   const tdMemStyle: React.CSSProperties = {
     ...tdBase,
-    color:
-      memPct === null ? 'rgba(128,128,128,0.5)' : memPct >= 90 ? '#a4262c' : undefined,
+    color: memPct === null ? 'rgba(128,128,128,0.5)' : memPct >= 90 ? '#a4262c' : undefined,
     whiteSpace: 'nowrap'
   }
 
@@ -180,7 +179,7 @@ export const ServerRow = memo(function ServerRow({
           (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'rgba(128,128,128,0.08)'
       }}
       onMouseLeave={(e) => {
-        (e.currentTarget as HTMLTableRowElement).style.backgroundColor = rowBg
+        ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = rowBg
       }}
     >
       <td style={tdNameStyle}>

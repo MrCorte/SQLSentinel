@@ -25,7 +25,7 @@ export interface ServerSummary {
 
 /** Single data point for sparkline charts. */
 export interface HistoryPoint {
-  ts: number    // ms timestamp
+  ts: number // ms timestamp
   value: number
 }
 
@@ -45,9 +45,7 @@ function pushCapped(buf: HistoryPoint[], point: HistoryPoint, cap: number): Hist
 }
 
 function memPercent(info: ServerMetrics['instanceInfo']): number {
-  return info.memoryTargetMb > 0
-    ? Math.round((info.memoryUsedMb / info.memoryTargetMb) * 100)
-    : 0
+  return info.memoryTargetMb > 0 ? Math.round((info.memoryUsedMb / info.memoryTargetMb) * 100) : 0
 }
 
 function buildSummary(m: ServerMetrics): ServerSummary {

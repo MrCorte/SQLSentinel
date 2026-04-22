@@ -45,8 +45,14 @@ function makeMetrics(dbs: DbSpec[] = []): ServerMetrics {
   return {
     collectedAt: new Date(),
     instanceInfo: {
-      version: '2019', edition: 'Dev', memoryUsedMb: 100,
-      memoryTargetMb: 200, cpuUsagePercent: 10, uptimeDays: 1, logicalCpus: 8, physicalCpus: 4
+      version: '2019',
+      edition: 'Dev',
+      memoryUsedMb: 100,
+      memoryTargetMb: 200,
+      cpuUsagePercent: 10,
+      uptimeDays: 1,
+      logicalCpus: 8,
+      physicalCpus: 4
     },
     databases: dbs.map((d) => ({
       name: d.name,
@@ -78,11 +84,10 @@ const STORE_RESET = { metricsMap: {}, lastUpdate: null, serverHealth: {} }
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('AREA 2 — shouldSendDelta (hybrid threshold)', () => {
-
   it('true if changed ≤ 5, regardless of total', () => {
     expect(shouldSendDelta(0, 1_000)).toBe(true)
     expect(shouldSendDelta(3, 1_000)).toBe(true)
-    expect(shouldSendDelta(5, 1_000)).toBe(true)   // inclusive boundary
+    expect(shouldSendDelta(5, 1_000)).toBe(true) // inclusive boundary
   })
 
   it('false if changed = 6 and total = 10 (60% > 20%)', () => {
@@ -90,15 +95,15 @@ describe('AREA 2 — shouldSendDelta (hybrid threshold)', () => {
   })
 
   it('true if changed/total ≤ 0.20 (20%)', () => {
-    expect(shouldSendDelta(20, 100)).toBe(true)    // exactly 20%
-    expect(shouldSendDelta(10, 100)).toBe(true)    // 10%
-    expect(shouldSendDelta(19, 100)).toBe(true)    // 19%
+    expect(shouldSendDelta(20, 100)).toBe(true) // exactly 20%
+    expect(shouldSendDelta(10, 100)).toBe(true) // 10%
+    expect(shouldSendDelta(19, 100)).toBe(true) // 19%
   })
 
   it('false if changed > 5 AND changed/total > 0.20', () => {
-    expect(shouldSendDelta(21, 100)).toBe(false)   // 21%
-    expect(shouldSendDelta(11, 30)).toBe(false)    // 36.7%
-    expect(shouldSendDelta(6, 20)).toBe(false)     // 30%
+    expect(shouldSendDelta(21, 100)).toBe(false) // 21%
+    expect(shouldSendDelta(11, 30)).toBe(false) // 36.7%
+    expect(shouldSendDelta(6, 20)).toBe(false) // 30%
   })
 
   it('removedDbs included in changed count: 4 changed + 3 removed > threshold when total is low', () => {
@@ -120,7 +125,6 @@ describe('AREA 2 — shouldSendDelta (hybrid threshold)', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('AREA 2 — applyDelta (metricsStore)', () => {
-
   const SID = '10.0.0.1:1433'
 
   beforeEach(() => {
@@ -128,9 +132,9 @@ describe('AREA 2 — applyDelta (metricsStore)', () => {
   })
 
   it('removes DBs in removedDbs from the existing databases array', () => {
-    useMetricsStore.getState().setMetrics(SID, makeMetrics([
-      { name: 'DB_A' }, { name: 'DB_B' }, { name: 'DB_C' }
-    ]))
+    useMetricsStore
+      .getState()
+      .setMetrics(SID, makeMetrics([{ name: 'DB_A' }, { name: 'DB_B' }, { name: 'DB_C' }]))
 
     useMetricsStore.getState().applyDelta(SID, {
       ...makeMetrics([{ name: 'DB_A' }]),
@@ -145,10 +149,13 @@ describe('AREA 2 — applyDelta (metricsStore)', () => {
   })
 
   it('updates changed DBs in-place (matched by name, not by index)', () => {
-    useMetricsStore.getState().setMetrics(SID, makeMetrics([
-      { name: 'DB_A', sizeMb: 100 },
-      { name: 'DB_B', sizeMb: 200 }
-    ]))
+    useMetricsStore.getState().setMetrics(
+      SID,
+      makeMetrics([
+        { name: 'DB_A', sizeMb: 100 },
+        { name: 'DB_B', sizeMb: 200 }
+      ])
+    )
 
     useMetricsStore.getState().applyDelta(SID, {
       ...makeMetrics([{ name: 'DB_A', sizeMb: 999 }]),
@@ -157,7 +164,7 @@ describe('AREA 2 — applyDelta (metricsStore)', () => {
 
     const dbs = useMetricsStore.getState().metricsMap[SID].databases
     expect(dbs.find((d) => d.name === 'DB_A')?.sizeMb).toBe(999)
-    expect(dbs.find((d) => d.name === 'DB_B')?.sizeMb).toBe(200)  // unchanged
+    expect(dbs.find((d) => d.name === 'DB_B')?.sizeMb).toBe(200) // unchanged
   })
 
   it('adds new DBs not present in prev without removing existing ones', () => {
@@ -188,9 +195,9 @@ describe('AREA 2 — applyDelta (metricsStore)', () => {
   })
 
   it('isDelta:false (full refresh) replaces the entire databases array', () => {
-    useMetricsStore.getState().setMetrics(SID, makeMetrics([
-      { name: 'OLD_DB_1' }, { name: 'OLD_DB_2' }
-    ]))
+    useMetricsStore
+      .getState()
+      .setMetrics(SID, makeMetrics([{ name: 'OLD_DB_1' }, { name: 'OLD_DB_2' }]))
 
     const fresh = makeMetrics([{ name: 'ONLY_NEW' }])
     useMetricsStore.getState().applyDelta(SID, { ...fresh, isDelta: false } as ServerMetrics)
@@ -230,7 +237,6 @@ async function drainJobCycle(): Promise<void> {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
-
   beforeEach(() => {
     vi.useFakeTimers()
     __resetForTests()
@@ -254,29 +260,32 @@ describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
     ])
 
     const prevMetrics = makeMetrics([
-      { name: 'DB_KEEP' }, { name: 'DB_GONE_1' }, { name: 'DB_GONE_2' }
+      { name: 'DB_KEEP' },
+      { name: 'DB_GONE_1' },
+      { name: 'DB_GONE_2' }
     ])
     const freshMetrics = makeMetrics([{ name: 'DB_KEEP' }])
 
     // First collect: establishes the prev (sends full)
     vi.mocked(collectMetrics).mockResolvedValueOnce(prevMetrics)
-    vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))  // hang after first
-    startWorker({ intervalSeconds: 60, servers: [{ ip: '10.0.0.1', port: 1433, useWindowsAuth: true }] })
+    vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {})) // hang after first
+    startWorker({
+      intervalSeconds: 60,
+      servers: [{ ip: '10.0.0.1', port: 1433, useWindowsAuth: true }]
+    })
     await drainJobCycle()
-    pushed.length = 0  // reset capture
+    pushed.length = 0 // reset capture
 
     // Seconda collect: 2 DB rimossi → deve comparire in removedDbs
     vi.mocked(collectMetrics).mockResolvedValueOnce(freshMetrics)
-    vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))  // hang after second
-    vi.advanceTimersByTime(300_001)  // INTERVAL_IDLE_MS = 300_000
+    vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {})) // hang after second
+    vi.advanceTimersByTime(300_001) // INTERVAL_IDLE_MS = 300_000
     await drainJobCycle()
 
     const evt = pushed.find((m) => m.channel === 'metrics:batchUpdated')
     const batch = evt?.data as Array<{ serverId: string; metrics: ServerMetrics }>
     const payload = batch?.[0]
-    expect(payload?.metrics?.removedDbs).toEqual(
-      expect.arrayContaining(['DB_GONE_1', 'DB_GONE_2'])
-    )
+    expect(payload?.metrics?.removedDbs).toEqual(expect.arrayContaining(['DB_GONE_1', 'DB_GONE_2']))
     expect(payload?.metrics?.removedDbs).toHaveLength(2)
   })
 
@@ -291,8 +300,11 @@ describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
     ])
 
     vi.mocked(collectMetrics).mockResolvedValueOnce(makeMetrics([{ name: 'DB_A' }]))
-    vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))  // hang after first
-    startWorker({ intervalSeconds: 60, servers: [{ ip: '10.0.0.1', port: 1433, useWindowsAuth: true }] })
+    vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {})) // hang after first
+    startWorker({
+      intervalSeconds: 60,
+      servers: [{ ip: '10.0.0.1', port: 1433, useWindowsAuth: true }]
+    })
     await drainJobCycle()
 
     const evt = pushed.find((m) => m.channel === 'metrics:batchUpdated')
@@ -316,14 +328,17 @@ describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
     // First collect
     vi.mocked(collectMetrics).mockResolvedValueOnce(metrics)
     vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))
-    startWorker({ intervalSeconds: 60, servers: [{ ip: '10.0.0.1', port: 1433, useWindowsAuth: true }] })
+    startWorker({
+      intervalSeconds: 60,
+      servers: [{ ip: '10.0.0.1', port: 1433, useWindowsAuth: true }]
+    })
     await drainJobCycle()
     pushed.length = 0
 
     // Identical second collect → no changed fields
     vi.mocked(collectMetrics).mockResolvedValueOnce(metrics)
     vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))
-    vi.advanceTimersByTime(300_001)  // INTERVAL_IDLE_MS = 300_000
+    vi.advanceTimersByTime(300_001) // INTERVAL_IDLE_MS = 300_000
     await drainJobCycle()
 
     const evt = pushed.find((m) => m.channel === 'metrics:batchUpdated')

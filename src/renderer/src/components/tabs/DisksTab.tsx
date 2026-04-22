@@ -15,8 +15,7 @@ import { ShrinkDialog } from '../dialogs/ShrinkDialog'
 
 function autogrowthLabel(file: DatabaseFile): { text: string; isDisabled: boolean } {
   if (file.growth === 0) return { text: 'Autogrowth: Disabled', isDisabled: true }
-  if (file.is_percent_growth)
-    return { text: `Autogrowth: ${file.growth}%`, isDisabled: false }
+  if (file.is_percent_growth) return { text: `Autogrowth: ${file.growth}%`, isDisabled: false }
   const mb = (file.growth * 8) / 1024
   return { text: `Autogrowth: ${mb % 1 === 0 ? mb : mb.toFixed(1)} MB`, isDisabled: false }
 }
@@ -83,16 +82,13 @@ function VolumeCard({ vol }: { vol: DiskVolume }): React.JSX.Element {
 
       <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          Used:{' '}
-          <strong style={{ color: 'inherit' }}>{vol.used_gb.toFixed(1)} GB</strong>
+          Used: <strong style={{ color: 'inherit' }}>{vol.used_gb.toFixed(1)} GB</strong>
         </Typography>
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          Free:{' '}
-          <strong style={{ color: 'inherit' }}>{vol.free_gb.toFixed(1)} GB</strong>
+          Free: <strong style={{ color: 'inherit' }}>{vol.free_gb.toFixed(1)} GB</strong>
         </Typography>
         <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          Total:{' '}
-          <strong style={{ color: 'inherit' }}>{vol.total_gb.toFixed(1)} GB</strong>
+          Total: <strong style={{ color: 'inherit' }}>{vol.total_gb.toFixed(1)} GB</strong>
         </Typography>
       </Stack>
     </Box>
@@ -176,80 +172,83 @@ function DatabaseGroupCard({
 
   return (
     <>
-    <Box
-      sx={{
-        bgcolor: 'background.paper',
-        border: '1px solid',
-        borderColor: 'divider',
-        borderRadius: tokens.radius.sm,
-        overflow: 'hidden',
-        boxShadow: tokens.shadow.card
-      }}
-    >
-      {/* Header */}
-      <Stack
-        direction="row"
-        alignItems="center"
-        spacing={0.5}
+      <Box
         sx={{
-          px: 2,
-          py: 1,
-          bgcolor: 'background.default',
-          borderBottom: open ? '1px solid' : 'none',
-          borderBottomColor: open ? 'divider' : 'transparent',
-          cursor: 'pointer',
-          '&:hover': { bgcolor: 'action.hover' }
+          bgcolor: 'background.paper',
+          border: '1px solid',
+          borderColor: 'divider',
+          borderRadius: tokens.radius.sm,
+          overflow: 'hidden',
+          boxShadow: tokens.shadow.card
         }}
-        onClick={() => setOpen((v) => !v)}
       >
-        <FolderOpenIcon sx={{ fontSize: 15, color: tokens.color.primary }} />
-        <Typography sx={{ fontSize: 13, fontWeight: 600, flex: 1, color: 'text.primary' }}>
-          {dbName}
-        </Typography>
-        <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-          {files.length} {files.length === 1 ? 'file' : 'files'}
-        </Typography>
-        <Tooltip title="Shrink database">
-          <IconButton
-            size="small"
-            sx={{ p: 0.25, color: 'text.secondary', '&:hover': { color: tokens.color.primary } }}
-            onClick={(e) => { e.stopPropagation(); setShrinkOpen(true) }}
-          >
-            <SettingsIcon sx={{ fontSize: 14 }} />
+        {/* Header */}
+        <Stack
+          direction="row"
+          alignItems="center"
+          spacing={0.5}
+          sx={{
+            px: 2,
+            py: 1,
+            bgcolor: 'background.default',
+            borderBottom: open ? '1px solid' : 'none',
+            borderBottomColor: open ? 'divider' : 'transparent',
+            cursor: 'pointer',
+            '&:hover': { bgcolor: 'action.hover' }
+          }}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <FolderOpenIcon sx={{ fontSize: 15, color: tokens.color.primary }} />
+          <Typography sx={{ fontSize: 13, fontWeight: 600, flex: 1, color: 'text.primary' }}>
+            {dbName}
+          </Typography>
+          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            {files.length} {files.length === 1 ? 'file' : 'files'}
+          </Typography>
+          <Tooltip title="Shrink database">
+            <IconButton
+              size="small"
+              sx={{ p: 0.25, color: 'text.secondary', '&:hover': { color: tokens.color.primary } }}
+              onClick={(e) => {
+                e.stopPropagation()
+                setShrinkOpen(true)
+              }}
+            >
+              <SettingsIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+          </Tooltip>
+          <IconButton size="small" sx={{ p: 0.25 }}>
+            <ExpandMoreIcon
+              sx={{
+                fontSize: 16,
+                color: 'text.secondary',
+                transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 200ms ease'
+              }}
+            />
           </IconButton>
-        </Tooltip>
-        <IconButton size="small" sx={{ p: 0.25 }}>
-          <ExpandMoreIcon
-            sx={{
-              fontSize: 16,
-              color: 'text.secondary',
-              transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'transform 200ms ease'
-            }}
-          />
-        </IconButton>
-      </Stack>
+        </Stack>
 
-      {/* Files list */}
-      <Collapse in={open}>
-        <Box sx={{ px: 2, pb: 1 }}>
-          {files.map((file, idx) => (
-            <Box key={file.file_name}>
-              {idx > 0 && <Divider sx={{ my: 0.5 }} />}
-              <DatabaseFileRow file={file} />
-            </Box>
-          ))}
-        </Box>
-      </Collapse>
-    </Box>
+        {/* Files list */}
+        <Collapse in={open}>
+          <Box sx={{ px: 2, pb: 1 }}>
+            {files.map((file, idx) => (
+              <Box key={file.file_name}>
+                {idx > 0 && <Divider sx={{ my: 0.5 }} />}
+                <DatabaseFileRow file={file} />
+              </Box>
+            ))}
+          </Box>
+        </Collapse>
+      </Box>
 
-    <ShrinkDialog
-      open={shrinkOpen}
-      onClose={() => setShrinkOpen(false)}
-      dbName={dbName}
-      files={files}
-      connection={connection}
-    />
+      <ShrinkDialog
+        open={shrinkOpen}
+        onClose={() => setShrinkOpen(false)}
+        dbName={dbName}
+        files={files}
+        connection={connection}
+      />
     </>
   )
 }
@@ -264,7 +263,11 @@ interface DisksTabProps {
   connection: CollectMetricsRequest
 }
 
-export function DisksTab({ diskVolumes, databaseFiles, connection }: DisksTabProps): React.JSX.Element {
+export function DisksTab({
+  diskVolumes,
+  databaseFiles,
+  connection
+}: DisksTabProps): React.JSX.Element {
   // Group databaseFiles by database_name
   const byDb = new Map<string, DatabaseFile[]>()
   for (const file of databaseFiles) {
@@ -337,7 +340,12 @@ export function DisksTab({ diskVolumes, databaseFiles, connection }: DisksTabPro
         ) : (
           <Stack spacing={1.5}>
             {sortedDbNames.map((dbName) => (
-              <DatabaseGroupCard key={dbName} dbName={dbName} files={byDb.get(dbName)!} connection={connection} />
+              <DatabaseGroupCard
+                key={dbName}
+                dbName={dbName}
+                files={byDb.get(dbName)!}
+                connection={connection}
+              />
             ))}
           </Stack>
         )}

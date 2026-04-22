@@ -3,13 +3,7 @@ import { writeFileSync, promises as fsPromises } from 'node:fs'
 import path from 'node:path'
 import type { IpcMainInvokeEvent } from 'electron'
 import { handle, safeError, log } from '../handleWrapper'
-import {
-  login,
-  logout,
-  getSession,
-  isAuthenticated,
-  changePassword,
-} from '../../authService'
+import { login, logout, getSession, isAuthenticated, changePassword } from '../../authService'
 import { buildCsvContent } from '../../csvUtils'
 import { getSettings, saveSettings } from '../../store/settings'
 import { getEmailSettings, saveEmailSettings } from '../../store/emailSettings'
@@ -19,12 +13,12 @@ import { getShrinkEstimate, shrinkDatabase, shrinkFile } from '../../collectors/
 import {
   getAvailabilityGroups,
   getAvailabilityReplicas,
-  getAvailabilityDatabases,
+  getAvailabilityDatabases
 } from '../../collectors/agCollector'
 import {
   exportCustomFieldsCsv,
   exportInventoryCsv,
-  exportAlertsCsv,
+  exportAlertsCsv
 } from '../../services/SystemService'
 import {
   IpcChannel,
@@ -49,7 +43,7 @@ import {
   type SaveEmailSettingsRequest,
   type LoginResult,
   type ChangePasswordResult,
-  type AuthSession,
+  type AuthSession
 } from '../types'
 import { resolveConnection } from './servers.ipc'
 
@@ -80,7 +74,7 @@ export function registerSystemHandlers(): void {
     IpcChannel.AUTH_CHECK,
     async (): Promise<{ authenticated: boolean; session: AuthSession | null }> => ({
       authenticated: isAuthenticated(),
-      session: getSession(),
+      session: getSession()
     })
   )
 
@@ -110,18 +104,15 @@ export function registerSystemHandlers(): void {
       ok: true,
       data: {
         ...getSettings(),
-        autostartEnabled: app.getLoginItemSettings().openAtLogin,
-      },
+        autostartEnabled: app.getLoginItemSettings().openAtLogin
+      }
     }
   })
 
   // SETTINGS_SET — saves settings; updates OS autostart registry entry if requested
   handle(
     IpcChannel.SETTINGS_SET,
-    async (
-      _event: IpcMainInvokeEvent,
-      req: SaveSettingsRequest
-    ): Promise<IpcResult<null>> => {
+    async (_event: IpcMainInvokeEvent, req: SaveSettingsRequest): Promise<IpcResult<null>> => {
       saveSettings(req)
       if (req.autostartEnabled !== undefined) {
         app.setLoginItemSettings({ openAtLogin: req.autostartEnabled })
@@ -143,10 +134,7 @@ export function registerSystemHandlers(): void {
   // EMAIL_SETTINGS_SET
   handle(
     IpcChannel.EMAIL_SETTINGS_SET,
-    async (
-      _event: IpcMainInvokeEvent,
-      req: SaveEmailSettingsRequest
-    ): Promise<IpcResult<null>> => {
+    async (_event: IpcMainInvokeEvent, req: SaveEmailSettingsRequest): Promise<IpcResult<null>> => {
       try {
         saveEmailSettings(req)
         return { ok: true, data: null }
@@ -181,10 +169,7 @@ export function registerSystemHandlers(): void {
   // DB_SET_CUSTOM_FIELDS — saves custom fields for a single DB
   handle(
     IpcChannel.DB_SET_CUSTOM_FIELDS,
-    async (
-      _event: IpcMainInvokeEvent,
-      req: DbCustomFieldsSetRequest
-    ): Promise<IpcResult<null>> => {
+    async (_event: IpcMainInvokeEvent, req: DbCustomFieldsSetRequest): Promise<IpcResult<null>> => {
       setCustomFields(req.serverId, req.dbName, req.fields)
       return { ok: true, data: null }
     }
@@ -239,10 +224,7 @@ export function registerSystemHandlers(): void {
   // DB_SHRINK_FILE — shrink specific file (data or log)
   handle(
     IpcChannel.DB_SHRINK_FILE,
-    async (
-      _event: IpcMainInvokeEvent,
-      req: ShrinkFileParams
-    ): Promise<IpcResult<ShrinkResult>> => {
+    async (_event: IpcMainInvokeEvent, req: ShrinkFileParams): Promise<IpcResult<ShrinkResult>> => {
       try {
         const result = await shrinkFile(
           resolveConnection(req.connection),
@@ -262,10 +244,7 @@ export function registerSystemHandlers(): void {
   // AG_GET_GROUPS — availability groups on the server
   handle(
     IpcChannel.AG_GET_GROUPS,
-    async (
-      _event: IpcMainInvokeEvent,
-      req: AgParams
-    ): Promise<IpcResult<AvailabilityGroup[]>> => {
+    async (_event: IpcMainInvokeEvent, req: AgParams): Promise<IpcResult<AvailabilityGroup[]>> => {
       try {
         const data = await getAvailabilityGroups(resolveConnection(req.connection))
         return { ok: true, data }
@@ -343,7 +322,7 @@ export function registerSystemHandlers(): void {
             app.getPath('downloads'),
             `inventory-sql-${new Date().toISOString().slice(0, 10)}.csv`
           ),
-          filters: [{ name: 'CSV', extensions: ['csv'] }],
+          filters: [{ name: 'CSV', extensions: ['csv'] }]
         })
         if (result.canceled || !result.filePath) return { ok: true, data: null }
         const content = buildCsvContent(req.headers, req.rows)
@@ -359,10 +338,7 @@ export function registerSystemHandlers(): void {
   // FILE_SAVE_CSV — opens showSaveDialog and writes the file
   handle(
     IpcChannel.FILE_SAVE_CSV,
-    async (
-      event: IpcMainInvokeEvent,
-      req: SaveCsvRequest
-    ): Promise<IpcResult<string | null>> => {
+    async (event: IpcMainInvokeEvent, req: SaveCsvRequest): Promise<IpcResult<string | null>> => {
       try {
         const win =
           BrowserWindow.fromWebContents(event.sender) ??
@@ -370,7 +346,7 @@ export function registerSystemHandlers(): void {
           BrowserWindow.getAllWindows()[0]
         const result = await dialog.showSaveDialog(win, {
           defaultPath: req.filename,
-          filters: [{ name: 'CSV', extensions: ['csv'] }],
+          filters: [{ name: 'CSV', extensions: ['csv'] }]
         })
         if (result.canceled || !result.filePath) return { ok: true, data: null }
         writeFileSync(result.filePath, '\uFEFF' + req.content, 'utf8')

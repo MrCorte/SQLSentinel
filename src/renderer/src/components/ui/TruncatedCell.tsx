@@ -8,7 +8,7 @@ interface TruncatedCellProps {
 
 export const TruncatedCell = memo(function TruncatedCell({
   text,
-  maxWidth = 200,
+  maxWidth = 200
 }: TruncatedCellProps) {
   return (
     <Tooltip title={text} placement="top">
@@ -18,7 +18,7 @@ export const TruncatedCell = memo(function TruncatedCell({
           maxWidth,
           overflow: 'hidden',
           textOverflow: 'ellipsis',
-          fontVariantNumeric: 'tabular-nums',
+          fontVariantNumeric: 'tabular-nums'
         }}
       >
         {text}

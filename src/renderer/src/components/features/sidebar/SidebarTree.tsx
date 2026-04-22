@@ -36,7 +36,9 @@ function highlightText(text: string, query: string): React.JSX.Element {
   return (
     <>
       {text.slice(0, idx)}
-      <span style={{ color: '#ffb900', fontWeight: 700 }}>{text.slice(idx, idx + query.length)}</span>
+      <span style={{ color: '#ffb900', fontWeight: 700 }}>
+        {text.slice(idx, idx + query.length)}
+      </span>
       {text.slice(idx + query.length)}
     </>
   )
@@ -367,7 +369,11 @@ export const ServerItem = memo(function ServerItem({
   onSelect,
   onContextMenu
 }: ServerItemProps): React.JSX.Element {
-  const displayName = getServerDisplayName({ ip: server.ip ?? server.host, port: server.port, alias })
+  const displayName = getServerDisplayName({
+    ip: server.ip ?? server.host,
+    port: server.port,
+    alias
+  })
   const realAddr = serverLabel(server)
   const health = useMetricsStore((s) => s.serverHealth[realAddr])
   const tooltipTitle = server.unreachable

@@ -9,7 +9,7 @@ import {
   TabSessioni,
   TabBackup,
   TabTopQuery,
-  TabWaitStats,
+  TabWaitStats
 } from './features/metrics/MetricsTabs'
 
 const DisksTab = lazy(() => import('./tabs/DisksTab').then((m) => ({ default: m.DisksTab })))
@@ -27,17 +27,10 @@ export function MetricsPanel({
   serverId,
   serverDbId,
   serverNotes,
-  connection,
+  connection
 }: Props): React.JSX.Element {
-  const {
-    tab,
-    setTab,
-    databases,
-    editingDb,
-    setEditingDb,
-    handleSaveDbFields,
-    topQueriesRows,
-  } = useMetricsData({ metrics, serverId })
+  const { tab, setTab, databases, editingDb, setEditingDb, handleSaveDbFields, topQueriesRows } =
+    useMetricsData({ metrics, serverId })
 
   const activeSessions = metrics?.activeSessions ?? []
   const backupStatus = metrics?.backupStatus ?? []
@@ -52,7 +45,7 @@ export function MetricsPanel({
         sx={{
           bgcolor: 'background.paper',
           borderBottom: '1px solid',
-          borderBottomColor: 'divider',
+          borderBottomColor: 'divider'
         }}
       >
         <Tabs
@@ -67,12 +60,12 @@ export function MetricsPanel({
               color: 'text.secondary',
               py: 0,
               textTransform: 'none',
-              '&.Mui-selected': { color: tokens.color.primary },
+              '&.Mui-selected': { color: tokens.color.primary }
             },
             '& .MuiTabs-indicator': {
               backgroundColor: tokens.color.primary,
-              height: 2,
-            },
+              height: 2
+            }
           }}
         >
           <Tab label="Overview" />
@@ -105,7 +98,11 @@ export function MetricsPanel({
 
         {tab === 4 && (
           <Suspense fallback={<Box sx={{ p: 2, color: 'text.secondary' }}>Loading...</Box>}>
-            <DisksTab diskVolumes={diskVolumes} databaseFiles={databaseFiles} connection={connection} />
+            <DisksTab
+              diskVolumes={diskVolumes}
+              databaseFiles={databaseFiles}
+              connection={connection}
+            />
           </Suspense>
         )}
 

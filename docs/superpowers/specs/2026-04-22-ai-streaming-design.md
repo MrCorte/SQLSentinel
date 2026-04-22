@@ -46,10 +46,10 @@ IPC push    'ai:streamEvent'  → renderer listener receives incremental events
 ```typescript
 type AiStreamEvent =
   | { type: 'tool_start'; name: string }
-  | { type: 'tool_end';   name: string; output: string }
-  | { type: 'token';      text: string }
+  | { type: 'tool_end'; name: string; output: string }
+  | { type: 'token'; text: string }
   | { type: 'done' }
-  | { type: 'error';      message: string }
+  | { type: 'error'; message: string }
 ```
 
 ---
@@ -80,6 +80,7 @@ export async function langGraphStream(
 ### `src/main/ipc/types.ts`
 
 Add to `IpcChannel` enum:
+
 ```typescript
 AI_AGENT_STREAM = 'ai:agentStream',
 AI_AGENT_CANCEL = 'ai:agentCancel',
@@ -142,6 +143,7 @@ resetStreaming: (error: string) => void  // on unrecoverable error: discards str
 ### `src/renderer/src/components/ai/AIPanel.tsx`
 
 **Behavior changes:**
+
 - `sendMessage()` calls `startStreaming()`, then `aiAgentStream()` (invoke), then subscribes to `onAiStreamEvent()`
 - Unsubscribe function returned by `onAiStreamEvent` is called in cleanup and on cancel
 - Cancel button replaces Send during loading
@@ -152,12 +154,14 @@ resetStreaming: (error: string) => void  // on unrecoverable error: discards str
 **New sub-components (same file):**
 
 `ToolTimeline` — renders `toolSteps[]` as a vertical list:
+
 - Each step: status icon (spinner / checkmark) + tool name
 - MUI `Accordion` (collapsed by default) shows raw `output` truncated to 500 chars with "show all" toggle
 
 `StreamingBubble` — assistant bubble that renders `streamingText` with a blinking cursor while `loading === true`. Reuses `MessageBubble` styling.
 
 **Cancel button:**
+
 - Shown only when `loading === true`
 - Calls `window.sqlSentinel.aiAgentCancel()`
 - On `{ type: 'error' }` received after cancel: calls `finalizeStreaming()` (preserves partial text)
@@ -166,14 +170,14 @@ resetStreaming: (error: string) => void  // on unrecoverable error: discards str
 
 ## Error handling
 
-| Scenario | Behavior |
-|---|---|
-| Ollama not running | `error` event → error message bubble, partial text preserved |
-| Cancelled by user | `error` event with "Cancelled" → `finalizeStreaming()`, partial text shown |
-| Tool throws internally | Caught in `langGraphStream`, emits `error` event |
-| `webContents` destroyed mid-stream | `isDestroyed()` guard on every `send()` |
-| App closes during stream | `before-quit` aborts controller → `error` event → `finalizeStreaming()` |
-| No tokens received within 60s | `AbortSignal.timeout(60_000)` unchanged, triggers `error` event |
+| Scenario                           | Behavior                                                                   |
+| ---------------------------------- | -------------------------------------------------------------------------- |
+| Ollama not running                 | `error` event → error message bubble, partial text preserved               |
+| Cancelled by user                  | `error` event with "Cancelled" → `finalizeStreaming()`, partial text shown |
+| Tool throws internally             | Caught in `langGraphStream`, emits `error` event                           |
+| `webContents` destroyed mid-stream | `isDestroyed()` guard on every `send()`                                    |
+| App closes during stream           | `before-quit` aborts controller → `error` event → `finalizeStreaming()`    |
+| No tokens received within 60s      | `AbortSignal.timeout(60_000)` unchanged, triggers `error` event            |
 
 ---
 

@@ -54,7 +54,7 @@ function recordsetForSql(sql: string): unknown[] {
   if (sql.includes('dm_os_process_memory')) return [INSTANCE_ROW]
   if (sql.includes('dm_exec_requests')) return []
   if (sql.includes('dm_exec_query_stats')) return []
-  if (sql.includes('backupset')) return [BACKUP_ROW]   // before sys.databases (the query does a JOIN)
+  if (sql.includes('backupset')) return [BACKUP_ROW] // before sys.databases (the query does a JOIN)
   if (sql.includes('sys.databases')) return [DB_ROW]
   return []
 }
@@ -62,9 +62,7 @@ function recordsetForSql(sql: string): unknown[] {
 function makeMockPool(queryImpl?: (sql: string) => Promise<unknown>) {
   const mockRequest = {
     query: vi.fn((sql: string) =>
-      queryImpl
-        ? queryImpl(sql)
-        : Promise.resolve({ recordset: recordsetForSql(sql) })
+      queryImpl ? queryImpl(sql) : Promise.resolve({ recordset: recordsetForSql(sql) })
     )
   }
   const mockPool = {
@@ -81,7 +79,9 @@ describe('collectMetrics', () => {
 
   it('returns complete ServerMetrics when all queries succeed', async () => {
     const { mockPool } = makeMockPool()
-    vi.mocked(mssql.connect as (config: mssql.config | string) => Promise<mssql.ConnectionPool>).mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
+    vi.mocked(
+      mssql.connect as (config: mssql.config | string) => Promise<mssql.ConnectionPool>
+    ).mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
 
     const metrics = await collectMetrics(CONN)
 
@@ -144,7 +144,9 @@ describe('collectMetrics', () => {
       }
       return { recordset: recordsetForSql(sql) }
     })
-    vi.mocked(mssql.connect as (config: mssql.config | string) => Promise<mssql.ConnectionPool>).mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
+    vi.mocked(
+      mssql.connect as (config: mssql.config | string) => Promise<mssql.ConnectionPool>
+    ).mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
@@ -177,8 +179,9 @@ describe('collectMetricsCritical', () => {
 
   it('executes only 5 queries (skips dm_exec_query_stats, dm_os_wait_stats, FILEPROPERTY)', async () => {
     const { mockPool, mockRequest } = makeMockPool()
-    vi.mocked(mssql.connect as (config: mssql.config | string) => Promise<mssql.ConnectionPool>)
-      .mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
+    vi.mocked(
+      mssql.connect as (config: mssql.config | string) => Promise<mssql.ConnectionPool>
+    ).mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
 
     const result = await collectMetricsCritical(CONN)
 

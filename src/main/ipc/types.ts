@@ -21,7 +21,7 @@ export enum IpcChannel {
   SERVER_UNREACHABLE = 'server:unreachable',
   SERVER_RECOVERED = 'server:recovered',
   COLLECT_METRICS = 'metrics:collect',
-  METRICS_UPDATED = 'metrics:updated',       // push-only: main → renderer (legacy single-server)
+  METRICS_UPDATED = 'metrics:updated', // push-only: main → renderer (legacy single-server)
   METRICS_BATCH_UPDATED = 'metrics:batchUpdated', // push-only: coalesced batch per polling cycle
   ALERT_NEW = 'metrics:alert-new', // push-only: main → renderer
   WORKER_START = 'worker:start',
@@ -72,9 +72,9 @@ export enum IpcChannel {
   AI_CHECK = 'ai:check',
   // AI LangGraph agent (tool calling, local Ollama)
   AI_AGENT_ASK = 'ai:agentAsk',
-  AI_AGENT_STREAM = 'ai:agentStream',   // invoke: starts stream, returns IpcResult<void> immediately
-  AI_AGENT_CANCEL = 'ai:agentCancel',   // invoke: aborts active stream
-  AI_STREAM_EVENT = 'ai:streamEvent',   // push-only: main → renderer
+  AI_AGENT_STREAM = 'ai:agentStream', // invoke: starts stream, returns IpcResult<void> immediately
+  AI_AGENT_CANCEL = 'ai:agentCancel', // invoke: aborts active stream
+  AI_STREAM_EVENT = 'ai:streamEvent' // push-only: main → renderer
 }
 
 /** Unified result envelope — never throw raw errors to the renderer. */
@@ -145,8 +145,8 @@ export interface WorkerSyncServersRequest {
 export interface ServerHealthPayload {
   serverId: string
   failCount: number
-  nextRetry: number       // ms timestamp
-  lastSuccess: number | null  // ms timestamp
+  nextRetry: number // ms timestamp
+  lastSuccess: number | null // ms timestamp
 }
 
 export interface ExportInventoryCsvRequest {
@@ -322,4 +322,10 @@ export interface ChangePasswordResult {
 export type { DiscoveredServer, ScanOptions, ScanProgress }
 export type { ServerMetrics }
 export type { ServerInfo } from '../collectors/types'
-export type { AvailabilityGroup, AvailabilityReplica, AvailabilityDatabase, AgHealth, AgRole } from '../collectors/types'
+export type {
+  AvailabilityGroup,
+  AvailabilityReplica,
+  AvailabilityDatabase,
+  AgHealth,
+  AgRole
+} from '../collectors/types'

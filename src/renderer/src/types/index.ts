@@ -10,11 +10,7 @@ export interface ServerGroup {
  * Returns the display name for a server.
  * If an alias is set, returns it; otherwise falls back to "ip:port".
  */
-export function getServerDisplayName(server: {
-  ip: string
-  port: number
-  alias?: string
-}): string {
+export function getServerDisplayName(server: { ip: string; port: number; alias?: string }): string {
   if (server.alias?.trim()) return server.alias.trim()
   return server.port !== 1433 ? `${server.ip}:${server.port}` : server.ip
 }

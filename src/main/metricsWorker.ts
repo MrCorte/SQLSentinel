@@ -2,7 +2,14 @@ import { BrowserWindow } from 'electron'
 import { createLogger } from './utils/logger'
 const log = createLogger('metrics-worker')
 import { IpcChannel } from './ipc/types'
-import type { Alert, AlertCategory, AlertSeverity, WorkerStartRequest, CollectMetricsRequest, ServerHealthPayload } from './ipc/types'
+import type {
+  Alert,
+  AlertCategory,
+  AlertSeverity,
+  WorkerStartRequest,
+  CollectMetricsRequest,
+  ServerHealthPayload
+} from './ipc/types'
 import { collectMetrics, collectMetricsCritical } from './collectors/sqlCollector'
 import { detectAndSyncReplicaRoles } from './collectors/agCollector'
 import * as serverStore from './store/serverStore'
@@ -27,14 +34,14 @@ export interface IntervalOverrides {
 const MAX_HISTORY = 20
 const BATCH_SIZE = 30
 const SYSTEM_DBS = new Set(['master', 'tempdb', 'model', 'msdb', 'distribution'])
-const INTERVAL_ACTIVE_MS  = 60_000
-const INTERVAL_IDLE_MS    = 300_000
+const INTERVAL_ACTIVE_MS = 60_000
+const INTERVAL_IDLE_MS = 300_000
 const INTERVAL_OFFLINE_MS = 600_000
-const BACKOFF_CAP_MS      = 3_600_000 // 1 hour max back-off
-const POLL_TIMEOUT_MS     = 90_000   // max 90s per single job
-const SAVE_EVERY_N        = 5        // save to SQLite every N polls (≈5 min at 60s interval)
-const SAVE_FLUSH_MS       = 300_000  // flush batch every 5 min
-const AG_DETECT_EVERY_N   = 5        // detect AG roles every N polls — roles change only on failover
+const BACKOFF_CAP_MS = 3_600_000 // 1 hour max back-off
+const POLL_TIMEOUT_MS = 90_000 // max 90s per single job
+const SAVE_EVERY_N = 5 // save to SQLite every N polls (≈5 min at 60s interval)
+const SAVE_FLUSH_MS = 300_000 // flush batch every 5 min
+const AG_DETECT_EVERY_N = 5 // detect AG roles every N polls — roles change only on failover
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,9 +52,9 @@ interface PollJob {
   nextRun: number
   priority: number // 0=active, 1=idle, 2=offline
   lastFailed: boolean
-  failCount: number       // consecutive failures — drives exponential back-off
-  lastSuccess: number | null  // ms timestamp of last successful collect
-  pollCount: number       // total successful polls — drives SAVE_EVERY_N logic
+  failCount: number // consecutive failures — drives exponential back-off
+  lastSuccess: number | null // ms timestamp of last successful collect
+  pollCount: number // total successful polls — drives SAVE_EVERY_N logic
 }
 
 // ---------------------------------------------------------------------------
@@ -195,13 +202,18 @@ function computeDelta(sid: string, fresh: ServerMetrics): ServerMetrics {
     const prevDb = prevByName.get(db.name)
     return (
       !prevDb ||
-      prevDb.sizeMb    !== db.sizeMb    ||
+      prevDb.sizeMb !== db.sizeMb ||
       prevDb.logSizeMb !== db.logSizeMb ||
       prevDb.stateDesc !== db.stateDesc
     )
   })
 
-  if (shouldSendDelta(changedDbs.length + removedDbs.length, fresh.databases.length + removedDbs.length)) {
+  if (
+    shouldSendDelta(
+      changedDbs.length + removedDbs.length,
+      fresh.databases.length + removedDbs.length
+    )
+  ) {
     return { ...fresh, databases: changedDbs, isDelta: true, removedDbs }
   }
   return fresh
@@ -216,7 +228,15 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
   const now = new Date()
 
   function make(category: AlertCategory, severity: AlertSeverity, message: string): Alert {
-    return { id: nextAlertId(), serverId: sid, category, severity, message, detectedAt: now, acknowledgedAt: null }
+    return {
+      id: nextAlertId(),
+      serverId: sid,
+      category,
+      severity,
+      message,
+      detectedAt: now,
+      acknowledgedAt: null
+    }
   }
 
   // CPU
@@ -238,7 +258,11 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
   const offlineDBs = metrics.databases.filter((d) => d.stateDesc === 'OFFLINE')
   if (offlineDBs.length > 0) {
     alerts.push(
-      make('database_offline', 'CRITICAL', `DB offline: ${offlineDBs.map((d) => d.name).join(', ')}`)
+      make(
+        'database_offline',
+        'CRITICAL',
+        `DB offline: ${offlineDBs.map((d) => d.name).join(', ')}`
+      )
     )
   }
 
@@ -315,7 +339,9 @@ function processAlerts(sid: string, metrics: ServerMetrics): void {
 
 async function runJob(sid: string, job: PollJob): Promise<void> {
   const allCustomFields = getAllCustomFields()
-  const hasVisibleWindow = BrowserWindow.getAllWindows().some((w) => !w.isDestroyed() && w.isVisible())
+  const hasVisibleWindow = BrowserWindow.getAllWindows().some(
+    (w) => !w.isDestroyed() && w.isVisible()
+  )
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined
   // AbortController propagated to the collector: on timeout we close the pool immediately
   // instead of letting the TDS connection dangle until GC.
@@ -375,12 +401,14 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     const { logicalCpus, physicalCpus } = enrichedMetrics.instanceInfo
     if (logicalCpus > 0) {
       const srvRecord = serverStore.getByIpPort(job.server.ip, job.server.port)
-      if (srvRecord && (srvRecord.logicalCpus !== logicalCpus || srvRecord.physicalCpus !== physicalCpus)) {
+      if (
+        srvRecord &&
+        (srvRecord.logicalCpus !== logicalCpus || srvRecord.physicalCpus !== physicalCpus)
+      ) {
         serverStore.update(srvRecord.id, { logicalCpus, physicalCpus })
-        pushToRenderer(
-          IpcChannel.SERVER_CONFIG_UPDATED,
-          [serverStore.stripCredentials({ ...srvRecord, logicalCpus, physicalCpus })]
-        )
+        pushToRenderer(IpcChannel.SERVER_CONFIG_UPDATED, [
+          serverStore.stripCredentials({ ...srvRecord, logicalCpus, physicalCpus })
+        ])
       }
     }
 
@@ -392,7 +420,10 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
       detectAndSyncReplicaRoles(job.server)
         .then((updated) => {
           if (updated.length > 0) {
-            pushToRenderer(IpcChannel.SERVER_CONFIG_UPDATED, updated.map(serverStore.stripCredentials))
+            pushToRenderer(
+              IpcChannel.SERVER_CONFIG_UPDATED,
+              updated.map(serverStore.stripCredentials)
+            )
           }
         })
         .catch((err: unknown) => log.warn('[worker] AG sync:', err)) // not in AG or insufficient permissions
@@ -405,8 +436,8 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     }
 
     // Reset circuit-breaker on success
-    job.lastFailed  = false
-    job.failCount   = 0
+    job.lastFailed = false
+    job.failCount = 0
     job.lastSuccess = Date.now()
     const ov = intervalOverrides
     if (ov) {
@@ -417,7 +448,7 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
   } catch (err) {
     log.error(`[Worker] ${sid}:`, err)
     job.lastFailed = true
-    job.failCount  = (job.failCount ?? 0) + 1
+    job.failCount = (job.failCount ?? 0) + 1
     // Exponential back-off: 600s, 1200s, 2400s … capped at 1h
     const backoff = INTERVAL_OFFLINE_MS * Math.pow(2, job.failCount - 1)
     job.nextRun = Date.now() + Math.min(backoff, BACKOFF_CAP_MS)
@@ -434,9 +465,9 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     clearTimeout(timeoutHandle)
     // Always push health state so the UI can show retry info
     const health: ServerHealthPayload = {
-      serverId:    sid,
-      failCount:   job.failCount,
-      nextRetry:   job.nextRun,
+      serverId: sid,
+      failCount: job.failCount,
+      nextRetry: job.nextRun,
       lastSuccess: job.lastSuccess
     }
     if (hasVisibleWindow) {
@@ -528,9 +559,19 @@ export function setActiveServer(sid: string): void {
 }
 
 export function stopWorker(): void {
-  if (tickHandle)      { clearTimeout(tickHandle); tickHandle = null }
-  if (activeDebounce)  { clearTimeout(activeDebounce); activeDebounce = null }
-  if (saveFlushTimer)  { clearTimeout(saveFlushTimer); saveFlushTimer = null; flushSaveQueue() }
+  if (tickHandle) {
+    clearTimeout(tickHandle)
+    tickHandle = null
+  }
+  if (activeDebounce) {
+    clearTimeout(activeDebounce)
+    activeDebounce = null
+  }
+  if (saveFlushTimer) {
+    clearTimeout(saveFlushTimer)
+    saveFlushTimer = null
+    flushSaveQueue()
+  }
   jobs.clear()
   running = 0
   previousMetrics.clear()
@@ -643,7 +684,7 @@ export type { PollJob }
  * Call this in beforeEach / afterEach of unit tests to get a clean slate.
  */
 export function __resetForTests(): void {
-  stopWorker()           // clears jobs, running, tickHandle, activeDebounce, previousMetrics, flushes saveQueue
+  stopWorker() // clears jobs, running, tickHandle, activeDebounce, previousMetrics, flushes saveQueue
   metricsHistory.clear()
   dbOfflineTimestamps.clear()
   saveQueue.length = 0

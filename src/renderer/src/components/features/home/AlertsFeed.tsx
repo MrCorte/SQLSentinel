@@ -82,7 +82,13 @@ export function AlertsFeed({
       <Box sx={{ flex: 1, overflow: 'auto' }}>
         {recentAlerts.length === 0 ? (
           <Box
-            sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', p: 2 }}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              p: 2
+            }}
           >
             <Typography sx={{ fontSize: tokens.font.sizeBase, color: 'text.secondary' }}>
               No active alerts
@@ -92,7 +98,10 @@ export function AlertsFeed({
           recentAlerts.map((alert: Alert) => {
             const srvForAlert = servers.find((sv) => serverKey(sv) === alert.serverId)
             const alertSrvName = srvForAlert
-              ? serverAliases[srvForAlert.id] || srvForAlert.host || srvForAlert.ip || alert.serverId
+              ? serverAliases[srvForAlert.id] ||
+                srvForAlert.host ||
+                srvForAlert.ip ||
+                alert.serverId
               : alert.serverId
             const alertBorderColor = alert.severity === 'CRITICAL' ? '#a4262c' : '#d83b01'
 
@@ -114,7 +123,14 @@ export function AlertsFeed({
                   '&:hover': srvForAlert ? { bgcolor: 'action.hover' } : undefined
                 }}
               >
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.25 }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    mb: 0.25
+                  }}
+                >
                   <Typography sx={{ fontSize: 10, color: 'text.secondary', whiteSpace: 'nowrap' }}>
                     {formatTimeShort(new Date(alert.detectedAt))}
                   </Typography>

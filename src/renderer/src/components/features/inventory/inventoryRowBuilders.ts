@@ -56,7 +56,7 @@ export function buildRows(
           instanceCount: instances.length,
           clusterKey: machineKey,
           logicalCpus: instances.reduce((s, x) => s + (x.logicalCpus ?? 0), 0) || undefined,
-          physicalCpus: instances.reduce((s, x) => s + (x.physicalCpus ?? 0), 0) || undefined,
+          physicalCpus: instances.reduce((s, x) => s + (x.physicalCpus ?? 0), 0) || undefined
         })
         if (isExpanded) {
           for (const srv of instances) {
@@ -86,7 +86,7 @@ export function buildRows(
               clusterKey: machineKey,
               logicalCpus: srv.logicalCpus,
               physicalCpus: srv.physicalCpus,
-              notes: srv.notes,
+              notes: srv.notes
             })
           }
         }
@@ -116,7 +116,7 @@ export function buildRows(
           uptimeDays: srv.uptimeDays,
           logicalCpus: srv.logicalCpus,
           physicalCpus: srv.physicalCpus,
-          notes: srv.notes,
+          notes: srv.notes
         })
       }
     }
@@ -150,7 +150,7 @@ export function buildRows(
         totalDataMb: primary?.totalDataMb ?? ag.totalDataMb,
         totalLogMb: primary?.totalLogMb ?? ag.totalLogMb,
         logicalCpus: primary?.logicalCpus,
-        physicalCpus: primary?.physicalCpus,
+        physicalCpus: primary?.physicalCpus
       })
 
       if (isExpanded) {
@@ -180,7 +180,7 @@ export function buildRows(
             clusterKey,
             logicalCpus: srv.logicalCpus,
             physicalCpus: srv.physicalCpus,
-            notes: srv.notes,
+            notes: srv.notes
           })
         }
       }
@@ -204,7 +204,7 @@ export function buildDbViewRows(
   for (const group of inventory.groups) {
     const allServers = [
       ...group.standaloneServers,
-      ...group.agClusters.flatMap((ag) => ag.replicas),
+      ...group.agClusters.flatMap((ag) => ag.replicas)
     ]
 
     for (const srv of allServers) {
@@ -228,8 +228,7 @@ export function buildDbViewRows(
         serverVersion: srv.version ?? '—',
         clusterKey: serverKey,
         dbCount: databases.length,
-        agRole:
-          srv.agRole === 'PRIMARY' || srv.agRole === 'SECONDARY' ? srv.agRole : undefined,
+        agRole: srv.agRole === 'PRIMARY' || srv.agRole === 'SECONDARY' ? srv.agRole : undefined
       })
 
       if (isExpanded) {
@@ -259,7 +258,7 @@ export function buildDbViewRows(
             lastFullBackup: backup?.lastFullBackup ?? null,
             lastLogBackup: backup?.lastLogBackup ?? null,
             alias: db.alias,
-            referente: db.referente,
+            referente: db.referente
           })
         }
       }

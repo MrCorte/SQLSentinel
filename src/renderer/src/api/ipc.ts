@@ -10,7 +10,7 @@ function withTimeout<T>(promise: Promise<T>, ms = DEFAULT_TIMEOUT_MS): Promise<T
     promise,
     new Promise<T>((_, reject) =>
       setTimeout(() => reject(new Error(`IPC timeout after ${ms}ms`)), ms)
-    ),
+    )
   ])
 }
 
@@ -115,7 +115,7 @@ export const db = {
     withTimeout(api.db.shrinkEstimate(...args)),
   shrink: (...args: Parameters<typeof api.db.shrink>) => withTimeout(api.db.shrink(...args)),
   shrinkFile: (...args: Parameters<typeof api.db.shrinkFile>) =>
-    withTimeout(api.db.shrinkFile(...args)),
+    withTimeout(api.db.shrinkFile(...args))
 }
 
 // ---------------------------------------------------------------------------
@@ -128,7 +128,7 @@ export const ag = {
   getReplicas: (...args: Parameters<typeof api.ag.getReplicas>) =>
     withTimeout(api.ag.getReplicas(...args)),
   getDatabases: (...args: Parameters<typeof api.ag.getDatabases>) =>
-    withTimeout(api.ag.getDatabases(...args)),
+    withTimeout(api.ag.getDatabases(...args))
 }
 
 // ---------------------------------------------------------------------------
@@ -151,7 +151,7 @@ export const servers = {
   remove: (...args: Parameters<typeof api.servers.remove>): Promise<{ success: boolean }> =>
     unwrapServers(withTimeout(api.servers.remove(...args))),
   clearMocks: (): Promise<{ success: boolean; removed: number; remaining: number }> =>
-    unwrapServers(withTimeout(api.servers.clearMocks())),
+    unwrapServers(withTimeout(api.servers.clearMocks()))
 }
 
 // ---------------------------------------------------------------------------
@@ -170,8 +170,7 @@ export const onMetricsUpdated = (...args: Parameters<typeof api.onMetricsUpdated
 export const onMetricsBatchUpdated = (...args: Parameters<typeof api.onMetricsBatchUpdated>) =>
   api.onMetricsBatchUpdated(...args)
 
-export const onAlertNew = (...args: Parameters<typeof api.onAlertNew>) =>
-  api.onAlertNew(...args)
+export const onAlertNew = (...args: Parameters<typeof api.onAlertNew>) => api.onAlertNew(...args)
 
 export const onServerUnreachable = (...args: Parameters<typeof api.onServerUnreachable>) =>
   api.onServerUnreachable(...args)

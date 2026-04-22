@@ -16,7 +16,7 @@ import type {
   ManualServerRequest,
   RemoveServerRequest,
   ServerAddResult,
-  ServerInfo,
+  ServerInfo
 } from '../ipc/types'
 import type { ServerMetrics } from '../collectors/types'
 import { createLogger } from '../utils/logger'
@@ -40,7 +40,7 @@ export function resolveConnection(req: CollectMetricsRequest): CollectMetricsReq
   return {
     ...req,
     username: req.username ?? stored.username,
-    password: stored.password,
+    password: stored.password
   }
 }
 
@@ -55,7 +55,7 @@ export function toDiscovered(s: StoredServer): DiscoveredServer {
     port: s.port,
     reachable: !s.unreachable,
     responseTimeMs: 0,
-    discoveredAt: new Date(s.addedAt),
+    discoveredAt: new Date(s.addedAt)
   }
 }
 
@@ -80,7 +80,7 @@ export async function addServerManual(req: ManualServerRequest): Promise<Discove
     host: probed.ip,
     port: probed.port,
     instanceName: req.instanceName,
-    useWindowsAuth: true,
+    useWindowsAuth: true
   })
   return probed
 }
@@ -147,7 +147,7 @@ export async function collectMetricsWithCustomFields(
     ...metrics,
     databases: metrics.databases.map((db) => ({
       ...db,
-      ...(allCf[`${sid}/${db.name}`] ?? {}),
-    })),
+      ...(allCf[`${sid}/${db.name}`] ?? {})
+    }))
   }
 }

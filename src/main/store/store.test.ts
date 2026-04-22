@@ -46,7 +46,18 @@ function makeMetrics(overrides: Partial<ServerMetrics> = {}): ServerMetrics {
       physicalCpus: 8
     },
     databases: [
-      { name: 'master', stateDesc: 'ONLINE', recoveryModel: 'SIMPLE', sizeMb: 10, logSizeMb: 2, compatibilityLevel: 150, isEncrypted: false, isReadOnly: false, owner: 'sa', createDate: '2020-01-01T00:00:00.000Z' }
+      {
+        name: 'master',
+        stateDesc: 'ONLINE',
+        recoveryModel: 'SIMPLE',
+        sizeMb: 10,
+        logSizeMb: 2,
+        compatibilityLevel: 150,
+        isEncrypted: false,
+        isReadOnly: false,
+        owner: 'sa',
+        createDate: '2020-01-01T00:00:00.000Z'
+      }
     ],
     activeSessions: [],
     topQueries: [],
@@ -230,7 +241,7 @@ describe('metricsRepository', () => {
         new Date('2026-03-02T10:00:00Z'),
         new Date('2026-03-03T10:00:00Z'),
         new Date('2026-03-04T10:00:00Z'),
-        new Date('2026-03-05T10:00:00Z'),
+        new Date('2026-03-05T10:00:00Z')
       ]
       for (const collectedAt of dates) save(server.id, makeMetrics({ collectedAt }))
 
@@ -265,9 +276,18 @@ describe('metricsRepository', () => {
     it('inserts multiple snapshots in a transaction and retrieves them with findLastN', () => {
       const server = upsert(SERVER_A)
       batchSave([
-        { serverId: server.id, metrics: makeMetrics({ collectedAt: new Date('2026-03-01T10:00:00Z') }) },
-        { serverId: server.id, metrics: makeMetrics({ collectedAt: new Date('2026-03-02T10:00:00Z') }) },
-        { serverId: server.id, metrics: makeMetrics({ collectedAt: new Date('2026-03-03T10:00:00Z') }) },
+        {
+          serverId: server.id,
+          metrics: makeMetrics({ collectedAt: new Date('2026-03-01T10:00:00Z') })
+        },
+        {
+          serverId: server.id,
+          metrics: makeMetrics({ collectedAt: new Date('2026-03-02T10:00:00Z') })
+        },
+        {
+          serverId: server.id,
+          metrics: makeMetrics({ collectedAt: new Date('2026-03-03T10:00:00Z') })
+        }
       ])
       expect(findLastN(server.id, 10)).toHaveLength(3)
     })
@@ -294,15 +314,19 @@ describe('metricsRepository', () => {
       save(server.id, makeMetrics({ collectedAt: new Date() }))
 
       // Very old snapshot — insert manually with a past date
-      getDb().prepare(`
+      getDb()
+        .prepare(
+          `
         INSERT INTO metrics_snapshots (id, server_id, collected_at, metrics_json)
         VALUES (?, ?, ?, ?)
-      `).run(
-        'old-snapshot-id',
-        server.id,
-        new Date('2020-01-01T00:00:00Z').toISOString(),
-        JSON.stringify(makeMetrics())
-      )
+      `
+        )
+        .run(
+          'old-snapshot-id',
+          server.id,
+          new Date('2020-01-01T00:00:00Z').toISOString(),
+          JSON.stringify(makeMetrics())
+        )
 
       // Before cleanup there are 2 snapshots
       expect(findHistory(server.id, 9999)).toHaveLength(2)

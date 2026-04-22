@@ -11,7 +11,10 @@ export interface OfflineDbsTableProps {
   onNavigateToServer: (id: string) => void
 }
 
-export function OfflineDbsTable({ offlineDbs, onNavigateToServer }: OfflineDbsTableProps): React.JSX.Element {
+export function OfflineDbsTable({
+  offlineDbs,
+  onNavigateToServer
+}: OfflineDbsTableProps): React.JSX.Element {
   return (
     <Box
       sx={{

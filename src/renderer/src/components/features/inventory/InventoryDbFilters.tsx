@@ -1,13 +1,5 @@
 import { memo } from 'react'
-import {
-  Box,
-  Button,
-  MenuItem,
-  Select,
-  TextField,
-  Typography,
-  InputAdornment,
-} from '@mui/material'
+import { Box, Button, MenuItem, Select, TextField, Typography, InputAdornment } from '@mui/material'
 import FilterListIcon from '@mui/icons-material/FilterList'
 import SearchIcon from '@mui/icons-material/Search'
 import { compatLevelToSqlVersion } from '../../../utils/sqlVersionUtils'
@@ -53,7 +45,7 @@ export const InventoryDbFilters = memo(function InventoryDbFilters({
   onToggleAll,
   onReset,
   allDbViewRowsExpanded,
-  filteredDbRows,
+  filteredDbRows
 }: InventoryDbFiltersProps) {
   return (
     <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center', mb: 2, flexWrap: 'wrap' }}>
@@ -67,7 +59,7 @@ export const InventoryDbFilters = memo(function InventoryDbFilters({
             <InputAdornment position="start">
               <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
             </InputAdornment>
-          ),
+          )
         }}
         sx={{ minWidth: 220 }}
       />

@@ -41,10 +41,23 @@ export interface DbAssetCsvInput {
 }
 
 export const DB_VIEW_CSV_HEADERS = [
-  'Environment', 'Server', 'SQL Version', 'Database', 'Alias', 'Owner',
-  'DB Status', 'Recovery Model', 'Compat. Level', 'TDE', 'Read Only',
-  'Data (MB)', 'Log (MB)', 'Last Full Backup', 'Last Log Backup',
-  'Owner', 'Creation Date'
+  'Environment',
+  'Server',
+  'SQL Version',
+  'Database',
+  'Alias',
+  'Owner',
+  'DB Status',
+  'Recovery Model',
+  'Compat. Level',
+  'TDE',
+  'Read Only',
+  'Data (MB)',
+  'Log (MB)',
+  'Last Full Backup',
+  'Last Log Backup',
+  'Owner',
+  'Creation Date'
 ]
 
 export function buildDbViewCsvRows(rows: DbAssetCsvInput[]): string[][] {
@@ -65,7 +78,9 @@ export function buildDbViewCsvRows(rows: DbAssetCsvInput[]): string[][] {
     row.lastFullBackup ? formatDate(row.lastFullBackup) : 'Never',
     row.lastLogBackup
       ? formatDate(row.lastLogBackup)
-      : row.recoveryModel === 'SIMPLE' ? 'N/A' : 'Never',
+      : row.recoveryModel === 'SIMPLE'
+        ? 'N/A'
+        : 'Never',
     row.owner ?? '',
     row.createDate ? new Date(row.createDate).toLocaleDateString('en-US') : ''
   ])
@@ -112,8 +127,19 @@ export function buildInventoryCsvRows(
       if (databases.length === 0) {
         return [
           [
-            group.groupName, 'Standalone', '', srvLabel, alias, '', '',
-            '', '', '', '', '', '',
+            group.groupName,
+            'Standalone',
+            '',
+            srvLabel,
+            alias,
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
             srv.version ?? '',
             srv.uptimeDays?.toFixed(0) ?? '',
             srv.unreachable ? 'UNREACHABLE' : 'ONLINE',
@@ -130,7 +156,11 @@ export function buildInventoryCsvRows(
         const dbFields = dbCustomFields[cfKey] ?? {}
         const backup = backupMap[db.name]
         return [
-          group.groupName, 'Standalone', '', srvLabel, alias,
+          group.groupName,
+          'Standalone',
+          '',
+          srvLabel,
+          alias,
           dbFields.referente ?? '',
           '',
           db.name,
@@ -140,7 +170,9 @@ export function buildInventoryCsvRows(
           backup?.lastFullBackup ? formatDate(backup.lastFullBackup) : 'Never',
           backup?.lastLogBackup
             ? formatDate(backup.lastLogBackup)
-            : db.recoveryModel === 'SIMPLE' ? 'N/A' : 'Never',
+            : db.recoveryModel === 'SIMPLE'
+              ? 'N/A'
+              : 'Never',
           srv.version ?? '',
           srv.uptimeDays?.toFixed(0) ?? '',
           srv.unreachable ? 'UNREACHABLE' : 'ONLINE',
@@ -169,8 +201,19 @@ export function buildInventoryCsvRows(
         if (databases.length === 0) {
           return [
             [
-              group.groupName, 'Always On', ag.agName, srvLabel, alias, '', srv.agRole ?? '',
-              '', '', '', '', '', '',
+              group.groupName,
+              'Always On',
+              ag.agName,
+              srvLabel,
+              alias,
+              '',
+              srv.agRole ?? '',
+              '',
+              '',
+              '',
+              '',
+              '',
+              '',
               srv.version ?? '',
               srv.uptimeDays?.toFixed(0) ?? '',
               srv.unreachable ? 'UNREACHABLE' : 'ONLINE',
@@ -188,20 +231,24 @@ export function buildInventoryCsvRows(
           const backup = backupMap[db.name]
           const isPrimary = srv.agRole === 'PRIMARY'
           return [
-            group.groupName, 'Always On', ag.agName, srvLabel, alias,
+            group.groupName,
+            'Always On',
+            ag.agName,
+            srvLabel,
+            alias,
             dbFields.referente ?? '',
             srv.agRole ?? '',
             db.name,
             db.stateDesc ?? '',
             isPrimary ? (db.sizeMb?.toFixed(1) ?? '') : '(replica)',
             isPrimary ? (db.logSizeMb?.toFixed(1) ?? '') : '(replica)',
+            isPrimary ? (backup?.lastFullBackup ? formatDate(backup.lastFullBackup) : 'Never') : '',
             isPrimary
-              ? (backup?.lastFullBackup ? formatDate(backup.lastFullBackup) : 'Never')
-              : '',
-            isPrimary
-              ? (backup?.lastLogBackup
+              ? backup?.lastLogBackup
                 ? formatDate(backup.lastLogBackup)
-                : db.recoveryModel === 'SIMPLE' ? 'N/A' : 'Never')
+                : db.recoveryModel === 'SIMPLE'
+                  ? 'N/A'
+                  : 'Never'
               : '',
             srv.version ?? '',
             srv.uptimeDays?.toFixed(0) ?? '',

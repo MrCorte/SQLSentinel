@@ -9,7 +9,7 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
       mode,
       primary: {
         main: tokens.color.primary,
-        dark: tokens.color.primaryDark,
+        dark: tokens.color.primaryDark
       },
       success: { main: tokens.color.success },
       warning: { main: tokens.color.warning },
@@ -22,9 +22,9 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
         : {
             primary: tokens.color.textPrimary,
             secondary: tokens.color.textSecondary,
-            disabled: tokens.color.textDisabled,
+            disabled: tokens.color.textDisabled
           },
-      divider: isDark ? '#334155' : tokens.color.divider,
+      divider: isDark ? '#334155' : tokens.color.divider
     },
 
     typography: {
@@ -37,13 +37,13 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
       body2: { fontSize: tokens.font.sizeSm },
       caption: {
         fontSize: tokens.font.sizeXs,
-        color: isDark ? '#94a3b8' : tokens.color.textSecondary,
+        color: isDark ? '#94a3b8' : tokens.color.textSecondary
       },
       button: {
         fontSize: tokens.font.sizeBase,
         fontWeight: tokens.font.weightSemibold,
-        textTransform: 'none' as const,
-      },
+        textTransform: 'none' as const
+      }
     },
 
     shape: { borderRadius: tokens.radius.sm },
@@ -54,7 +54,7 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
           body: {
             backgroundColor: isDark ? '#0f172a' : tokens.color.bgApp,
             color: isDark ? '#f1f5f9' : tokens.color.textPrimary,
-            fontFamily: tokens.font.family,
+            fontFamily: tokens.font.family
           },
           // Scrollbar colours switch with the theme
           '::-webkit-scrollbar': { width: 6, height: 6 },
@@ -62,24 +62,24 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
           '::-webkit-scrollbar-thumb': {
             background: isDark ? '#334155' : '#c8c6c4',
             borderRadius: 3,
-            '&:hover': { background: isDark ? '#475569' : '#8a8886' },
-          },
-        },
+            '&:hover': { background: isDark ? '#475569' : '#8a8886' }
+          }
+        }
       },
 
       MuiPaper: {
         styleOverrides: {
           root: { backgroundImage: 'none', borderRadius: tokens.radius.sm },
           elevation0: {
-            ...(isDark && { border: `1px solid ${tokens.color.borderDark}` }),
+            ...(isDark && { border: `1px solid ${tokens.color.borderDark}` })
           },
           elevation1: {
             boxShadow: tokens.shadow.card,
-            ...(isDark && { border: `1px solid ${tokens.color.borderDark}` }),
+            ...(isDark && { border: `1px solid ${tokens.color.borderDark}` })
           },
           elevation2: { boxShadow: tokens.shadow.elevated },
-          elevation3: { boxShadow: tokens.shadow.cardHover },
-        },
+          elevation3: { boxShadow: tokens.shadow.cardHover }
+        }
       },
 
       MuiButton: {
@@ -89,21 +89,21 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
             textTransform: 'none',
             fontWeight: tokens.font.weightSemibold,
             fontSize: tokens.font.sizeBase,
-            transition: 'all 0.15s ease',
+            transition: 'all 0.15s ease'
           },
           contained: {
             boxShadow: '0 2px 8px rgba(0,120,212,0.25)',
             '&:hover': {
               boxShadow: '0 4px 14px rgba(0,120,212,0.35)',
               backgroundColor: tokens.color.primaryHover,
-              transform: 'translateY(-1px)',
+              transform: 'translateY(-1px)'
             },
-            '&:active': { transform: 'translateY(0)', boxShadow: '0 1px 4px rgba(0,120,212,0.2)' },
+            '&:active': { transform: 'translateY(0)', boxShadow: '0 1px 4px rgba(0,120,212,0.2)' }
           },
           outlined: {
-            '&:hover': { backgroundColor: tokens.color.primaryAlpha12 },
-          },
-        },
+            '&:hover': { backgroundColor: tokens.color.primaryAlpha12 }
+          }
+        }
       },
 
       MuiTab: {
@@ -113,13 +113,13 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
             fontWeight: tokens.font.weightSemibold,
             fontSize: tokens.font.sizeBase,
             minHeight: tokens.size.navbarHeight,
-            padding: '0 16px',
-          },
-        },
+            padding: '0 16px'
+          }
+        }
       },
 
       MuiTabs: {
-        styleOverrides: { indicator: { height: 3, borderRadius: '3px 3px 0 0' } },
+        styleOverrides: { indicator: { height: 3, borderRadius: '3px 3px 0 0' } }
       },
 
       MuiTableCell: {
@@ -131,10 +131,10 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
             letterSpacing: '0.04em',
             backgroundColor: isDark ? '#0f1f3d' : tokens.color.bgApp,
             color: isDark ? '#94a3b8' : tokens.color.textSecondary,
-            borderBottom: `2px solid ${tokens.color.primary}`,
+            borderBottom: `2px solid ${tokens.color.primary}`
           },
-          body: { fontSize: tokens.font.sizeSm },
-        },
+          body: { fontSize: tokens.font.sizeSm }
+        }
       },
 
       MuiListItemButton: {
@@ -149,11 +149,11 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
               backgroundColor: tokens.color.bgSidebarSelected,
               color: tokens.color.textOnDark,
               boxShadow: `inset 3px 0 0 rgba(255,255,255,0.6), 0 2px 8px rgba(0,120,212,0.4)`,
-              '&:hover': { backgroundColor: tokens.color.primaryHover },
+              '&:hover': { backgroundColor: tokens.color.primaryHover }
             },
-            '&:hover': { backgroundColor: tokens.color.bgSidebarHover },
-          },
-        },
+            '&:hover': { backgroundColor: tokens.color.bgSidebarHover }
+          }
+        }
       },
 
       MuiChip: {
@@ -162,22 +162,22 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
             borderRadius: tokens.radius.pill,
             fontWeight: tokens.font.weightSemibold,
             fontSize: tokens.font.sizeXs,
-            height: 20,
+            height: 20
           },
           filled: {
-            ...(isDark && { border: `1px solid ${tokens.color.dividerDark}` }),
-          },
-        },
+            ...(isDark && { border: `1px solid ${tokens.color.dividerDark}` })
+          }
+        }
       },
 
       MuiDrawer: {
-        styleOverrides: { paper: { boxShadow: tokens.shadow.drawer } },
+        styleOverrides: { paper: { boxShadow: tokens.shadow.drawer } }
       },
 
       MuiDivider: {
         styleOverrides: {
-          root: { borderColor: isDark ? '#334155' : tokens.color.divider },
-        },
+          root: { borderColor: isDark ? '#334155' : tokens.color.divider }
+        }
       },
 
       MuiIconButton: {
@@ -185,9 +185,9 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
           root: {
             borderRadius: tokens.radius.sm,
             transition: 'all 0.15s ease',
-            '&:hover': { transform: 'scale(1.08)' },
-          },
-        },
+            '&:hover': { transform: 'scale(1.08)' }
+          }
+        }
       },
 
       MuiTooltip: {
@@ -195,11 +195,10 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
           tooltip: {
             borderRadius: tokens.radius.sm,
             fontSize: tokens.font.sizeSm,
-            boxShadow: tokens.shadow.elevated,
-          },
-        },
-      },
-    },
+            boxShadow: tokens.shadow.elevated
+          }
+        }
+      }
+    }
   })
 }
-

@@ -48,7 +48,7 @@ export const ServerHistoryChart = memo(function ServerHistoryChart({ serverId }:
     return cpuHistory.map((point) => ({
       label: fmtTime(point.ts),
       cpu: Math.round(point.value),
-      memory: Math.round(memMap.get(point.ts) ?? 0),
+      memory: Math.round(memMap.get(point.ts) ?? 0)
     }))
   }, [cpuHistory, memHistory])
 
@@ -100,14 +100,20 @@ export const ServerHistoryChart = memo(function ServerHistoryChart({ serverId }:
           y={80}
           stroke={tokens.color.warning}
           strokeDasharray="4 4"
-          label={{ value: '80%', fontSize: tokens.font.sizeXs, fill: tokens.color.warning, position: 'insideTopRight' }}
+          label={{
+            value: '80%',
+            fontSize: tokens.font.sizeXs,
+            fill: tokens.color.warning,
+            position: 'insideTopRight'
+          }}
         />
 
         <Tooltip
           formatter={(value, name) => {
             const pct = typeof value === 'number' ? value : 0
             if (name === 'memory') {
-              const mbLabel = memoryUsedMb != null ? ` (${memoryUsedMb.toLocaleString('en-US')} MB)` : ''
+              const mbLabel =
+                memoryUsedMb != null ? ` (${memoryUsedMb.toLocaleString('en-US')} MB)` : ''
               return [`${pct}%${mbLabel}`, 'Memory'] as [string, string]
             }
             return [`${pct}%`, 'CPU'] as [string, string]
@@ -157,11 +163,7 @@ export type { Props as ServerHistoryChartProps }
  * Standalone section wrapper — used by ServerDashboard to render the chart
  * with a labelled Paper container.
  */
-export function ServerHistorySection({
-  serverId
-}: {
-  serverId: string
-}): React.JSX.Element {
+export function ServerHistorySection({ serverId }: { serverId: string }): React.JSX.Element {
   const sampleCount = useHistoryLength(serverId)
 
   return (

@@ -53,10 +53,11 @@ export const useAiChatStore = create<AiChatStore>((set, get) => ({
     })),
 
   finalizeStreaming: () => {
-    const { streamingText } = get()
-    if (!streamingText) return
+    const { streamingText, toolSteps } = get()
+    const content = streamingText || (toolSteps.length > 0 ? '*(no text response)*' : '')
+    if (!content) return
     set((s) => ({
-      messages: [...s.messages, { role: 'assistant', content: streamingText, ts: Date.now() }],
+      messages: [...s.messages, { role: 'assistant', content, ts: Date.now() }],
       streamingText: '',
       toolSteps: []
     }))

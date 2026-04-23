@@ -18,7 +18,6 @@ import { isAvailable as safeStorageAvailable } from './store/safeStorageUtil'
 import { IpcChannel } from './ipc/types'
 import * as serverStore from './store/serverStore'
 import { scanHost } from './discovery/tcpScanner'
-import { autoIndexRagBooks } from './ai/ragIndexer'
 import { abortActiveStream, warmupModel } from './ai/langGraphAgent'
 import { safeError as redactError } from './utils/safeLog'
 import { createLogger } from './utils/logger'
@@ -202,9 +201,6 @@ app.whenReady().then(() => {
   ipcMain.on('ping', () => log.info('pong'))
 
   registerIpcHandlers()
-
-  // Index PDFs in data/ in the background — non-blocking, graceful if Ollama is unavailable
-  autoIndexRagBooks().catch((err) => log.error('[RAG] Auto-index failed:', err))
 
   // Pre-load the LLM into Ollama memory so the first AI query is fast
   warmupModel()

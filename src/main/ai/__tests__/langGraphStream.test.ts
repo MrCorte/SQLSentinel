@@ -7,13 +7,12 @@ vi.mock('@langchain/langgraph/prebuilt', () => ({
   createReactAgent: vi.fn(() => mockAgent)
 }))
 vi.mock('@langchain/ollama', () => ({
-  ChatOllama: vi.fn(),
-  OllamaEmbeddings: vi.fn()
+  ChatOllama: vi.fn()
 }))
 vi.mock('../../store/serverStore', () => ({ getAll: vi.fn(() => []) }))
 vi.mock('../../store/metricsRepository', () => ({ findLastNBulk: vi.fn(() => ({})) }))
 vi.mock('../../metricsWorker', () => ({ getAlerts: vi.fn(() => []) }))
-vi.mock('../../store/ragRepository', () => ({ retrieveTopK: vi.fn(() => []) }))
+vi.mock('../../store/ftsRepository', () => ({ searchFts: vi.fn(() => []) }))
 
 import { langGraphStream, abortActiveStream } from '../langGraphAgent'
 import type { AiStreamEvent } from '../../ipc/types'

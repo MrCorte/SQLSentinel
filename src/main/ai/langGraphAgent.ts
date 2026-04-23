@@ -1,19 +1,45 @@
 import { createReactAgent } from '@langchain/langgraph/prebuilt'
 import type { AiStreamEvent } from '../ipc/types'
-import { ChatOllama, OllamaEmbeddings } from '@langchain/ollama'
-import { HumanMessage, AIMessage, AIMessageChunk, ToolMessage, type BaseMessage } from '@langchain/core/messages'
+import { ChatOllama } from '@langchain/ollama'
+import { HumanMessage, AIMessage, SystemMessage } from '@langchain/core/messages'
 import { DynamicStructuredTool } from '@langchain/core/tools'
 import { z } from 'zod'
 import * as serverStore from '../store/serverStore'
 import * as metricsRepository from '../store/metricsRepository'
 import { getAlerts } from '../metricsWorker'
-import { retrieveTopK } from '../store/ragRepository'
+import { searchFts } from '../store/ftsRepository'
+
+// Per-request event emitter — set in langGraphStream, null otherwise
+let _onEvent: ((ev: AiStreamEvent) => void) | null = null
+
+function extractText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content))
+    return (content as { type?: string; text?: string }[])
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text ?? '')
+      .join('')
+  return ''
+}
+
+async function withToolEvents<T>(name: string, fn: () => Promise<T>): Promise<T> {
+  _onEvent?.({ type: 'tool_start', name })
+  try {
+    const result = await fn()
+    _onEvent?.({ type: 'tool_end', name, output: String(result).slice(0, 2000) })
+    return result
+  } catch (err) {
+    _onEvent?.({ type: 'tool_end', name, output: String(err) })
+    throw err
+  }
+}
 
 // ---------------------------------------------------------------------------
 // System prompt
 // ---------------------------------------------------------------------------
 
 const SYSTEM_PROMPT = `You are an expert SQL Server DBA. ALWAYS respond in English.
+When calling search_sql_documentation, ALWAYS use English keywords even if the user wrote in another language.
 Before answering, use the tools to gather real data about the monitored servers.
 
 Structure the response with these sections:
@@ -43,7 +69,7 @@ const getServerMetricsTool = new DynamicStructuredTool({
   description:
     'Current metrics for all monitored servers: CPU %, RAM, blocking sessions, offline databases.',
   schema: z.object({}),
-  func: async () => {
+  func: () => withToolEvents('get_server_metrics', async () => {
     const servers = serverStore.getAll()
     const ids = servers.map((s) => `${s.host ?? s.ip}:${s.port}`)
     const bulk = metricsRepository.findLastNBulk(ids, 1)
@@ -62,14 +88,14 @@ const getServerMetricsTool = new DynamicStructuredTool({
       }
     })
     return JSON.stringify(result)
-  }
+  })
 })
 
 const getRecentAlertsTool = new DynamicStructuredTool({
   name: 'get_recent_alerts',
   description: 'Active alerts (CRITICAL and WARNING) from the last 24 hours.',
   schema: z.object({}),
-  func: async () => {
+  func: () => withToolEvents('get_recent_alerts', async () => {
     const cutoff = Date.now() - 86400000
     const alerts = getAlerts()
       .filter((a) => new Date(a.detectedAt).getTime() >= cutoff)
@@ -82,14 +108,14 @@ const getRecentAlertsTool = new DynamicStructuredTool({
         at: new Date(a.detectedAt).toISOString()
       }))
     return JSON.stringify(alerts)
-  }
+  })
 })
 
 const getSlowQueriesTool = new DynamicStructuredTool({
   name: 'get_slow_queries',
   description: 'Top 10 slowest queries (by total elapsed time) across all monitored instances.',
   schema: z.object({}),
-  func: async () => {
+  func: () => withToolEvents('get_slow_queries', async () => {
     const servers = serverStore.getAll()
     const ids = servers.map((s) => `${s.host ?? s.ip}:${s.port}`)
     const bulk = metricsRepository.findLastNBulk(ids, 1)
@@ -105,7 +131,7 @@ const getSlowQueriesTool = new DynamicStructuredTool({
     })
     queries.sort((a, b) => b.totalElapsedTimeMs - a.totalElapsedTimeMs)
     return JSON.stringify(queries.slice(0, 10))
-  }
+  })
 })
 
 const getServerNotesTool = new DynamicStructuredTool({
@@ -113,14 +139,14 @@ const getServerNotesTool = new DynamicStructuredTool({
   description:
     'DBA notes associated with servers: environment, application, criticality, contacts.',
   schema: z.object({}),
-  func: async () => {
-    return JSON.stringify(
+  func: () => withToolEvents('get_server_notes', async () =>
+    JSON.stringify(
       serverStore
         .getAll()
         .filter((s) => s.notes)
         .map((s) => ({ host: s.host ?? s.ip, notes: s.notes }))
     )
-  }
+  )
 })
 
 const TSQL_MAP: Record<string, string> = {
@@ -175,6 +201,23 @@ WHERE is_user_process = 1
 GROUP BY database_id, login_name
 ORDER BY COUNT(*) DESC`,
 
+  compatibility_level: `SELECT
+  name,
+  compatibility_level,
+  CASE compatibility_level
+    WHEN 160 THEN 'SQL Server 2022'
+    WHEN 150 THEN 'SQL Server 2019'
+    WHEN 140 THEN 'SQL Server 2017'
+    WHEN 130 THEN 'SQL Server 2016'
+    WHEN 120 THEN 'SQL Server 2014'
+    WHEN 110 THEN 'SQL Server 2012'
+    ELSE 'Other/Unknown'
+  END AS version_label,
+  state_desc,
+  user_access_desc
+FROM sys.databases
+ORDER BY name`,
+
   always_on: `SELECT
   ag.name                                         AS ag_name,
   ar.replica_server_name                          AS replica,
@@ -202,21 +245,22 @@ ORDER BY ag.name, ars.role_desc, ar.replica_server_name`
 
 const suggestTSQLTool = new DynamicStructuredTool({
   name: 'suggest_tsql',
-  description: 'Returns a ready-to-run diagnostic T-SQL query for a specific SQL Server problem.',
+  description:
+    'Returns a ready-to-run diagnostic T-SQL query. Call with one of: cpu_high, slow_queries, blocking, backup, disk, connections, always_on, compatibility_level.',
   schema: z.object({
-    problema: z
-      .any()
-      .describe('Problem type: cpu_high | slow_queries | blocking | backup | disk | connections | always_on')
+    problema: z.string()
   }),
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  func: async ({ problema }: { problema: any }) => {
-    const lower = (typeof problema === 'string' ? problema : JSON.stringify(problema)).toLowerCase()
+  func: ({ problema }: { problema: string }) => withToolEvents('suggest_tsql', async () => {
+    const lower = problema.toLowerCase()
     const ALIASES: Record<string, string> = {
       'always on': 'always_on',
       'availability group': 'always_on',
       hadr: 'always_on',
       ag_health: 'always_on',
-      replica: 'always_on'
+      replica: 'always_on',
+      'compatibility level': 'compatibility_level',
+      compat: 'compatibility_level',
+      dbcompat: 'compatibility_level'
     }
     const aliasKey = Object.keys(ALIASES).find((a) => lower.includes(a))
     if (aliasKey) return TSQL_MAP[ALIASES[aliasKey]]
@@ -226,42 +270,30 @@ const suggestTSQLTool = new DynamicStructuredTool({
     return key
       ? TSQL_MAP[key]
       : 'No predefined query for this topic. Use search_sql_documentation to find a relevant query from the indexed books.'
-  }
+  })
 })
 
 // ---------------------------------------------------------------------------
-// Tool: search_sql_documentation (RAG)
+// Tool: search_sql_documentation (FTS5)
 // ---------------------------------------------------------------------------
-
-let _embeddings: OllamaEmbeddings | null = null
-
-function getEmbeddings(): OllamaEmbeddings {
-  if (!_embeddings) {
-    _embeddings = new OllamaEmbeddings({
-      model: 'nomic-embed-text',
-      baseUrl: 'http://localhost:11434'
-    })
-  }
-  return _embeddings
-}
 
 const searchDocumentationTool = new DynamicStructuredTool({
   name: 'search_sql_documentation',
   description:
-    'Search SQL Server books (DMV, troubleshooting, performance tuning) for the most relevant passages for a technical question. Use when citing best practices or explanations from the books.',
+    'Search SQL Server books for relevant passages. ALWAYS call with English keywords regardless of the user language, e.g. "compatibility level", "index fragmentation", "blocking sessions", "always on replica".',
   schema: z.object({
-    query: z.string().describe('The technical question to search for in the SQL Server books')
+    query: z.string()
   }),
-  func: async ({ query }: { query: string }) => {
-    try {
-      const vec = await getEmbeddings().embedQuery(query)
-      const results = retrieveTopK(vec, 5)
-      if (results.length === 0) return 'No documents indexed yet.'
-      return results.map((r, i) => `[Excerpt ${i + 1}]\n${r.text}`).join('\n\n---\n\n')
-    } catch {
-      return 'Documentation not available (nomic-embed-text not installed or Ollama unreachable).'
+  func: ({ query }: { query: string }) => withToolEvents('search_sql_documentation', async () => {
+    if (!query || query.includes('"type"') || query.includes('"description"')) {
+      return 'Knowledge base not available or no results found.'
     }
-  }
+    const results = searchFts(query, 5)
+    if (results.length === 0) return 'Knowledge base not available or no results found.'
+    return results
+      .map((r, i) => `[Excerpt ${i + 1} — ${r.title}]\n${r.content}`)
+      .join('\n\n---\n\n')
+  })
 })
 
 const agentTools = [
@@ -277,19 +309,26 @@ const agentTools = [
 // Lazy agent factory (singleton, created on first use)
 // ---------------------------------------------------------------------------
 
+let _llm: ChatOllama | null = null
 let _agent: ReturnType<typeof createReactAgent> | null = null
+
+function getLlm(): ChatOllama {
+  if (!_llm) {
+    _llm = new ChatOllama({
+      model: 'llama3.2:3b',
+      baseUrl: 'http://localhost:11434',
+      temperature: 0,
+      numPredict: 768,
+      numCtx: 8192
+    })
+  }
+  return _llm
+}
 
 function getAgent(): ReturnType<typeof createReactAgent> {
   if (_agent) return _agent
-  const llm = new ChatOllama({
-    model: 'llama3.2:3b',
-    baseUrl: 'http://localhost:11434',
-    temperature: 0,
-    numPredict: 512,
-    numCtx: 4096
-  })
   _agent = createReactAgent({
-    llm,
+    llm: getLlm(),
     tools: agentTools,
     stateModifier: SYSTEM_PROMPT
   })
@@ -309,17 +348,12 @@ let _warmedUp = false
 export async function warmupModel(): Promise<void> {
   if (_warmedUp) return
   try {
-    console.log('[AI] warming up llama3.2:3b...')
-    const res = await fetch('http://localhost:11434/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'llama3.2:3b', prompt: '', stream: false }),
-      signal: AbortSignal.timeout(30_000)
-    })
-    if (res.ok) {
-      _warmedUp = true
-      console.log('[AI] model warm-up complete')
-    }
+    console.log('[AI] warming up llama3.2:3b via /api/chat...')
+    // Use /api/chat (same endpoint as LangChain ChatOllama) to ensure the model
+    // is fully loaded into memory before the first real request.
+    await getLlm().invoke([new HumanMessage('hi')], { signal: AbortSignal.timeout(180_000) })
+    _warmedUp = true
+    console.log('[AI] model warm-up complete')
   } catch {
     // best-effort — ignore if Ollama isn't running yet
   }
@@ -373,89 +407,74 @@ export async function langGraphStream(
   history: AgentHistory[],
   onEvent: (event: AiStreamEvent) => void
 ): Promise<void> {
+  console.log('[AI] langGraphStream START q=%j', question.slice(0, 60))
   const controller = new AbortController()
   _activeAbortController = controller
+  _onEvent = onEvent
 
-  // 120-second hard timeout — if Ollama is loading the model it can take a while
-  const timeoutId = setTimeout(() => controller.abort(), 120_000)
-
-  const agent = getAgent()
-  const messages = [
-    ...history
-      .slice(-6)
-      .map((h) => (h.role === 'user' ? new HumanMessage(h.content) : new AIMessage(h.content))),
-    new HumanMessage(question)
-  ]
-
-  const pendingTools = new Map<string, string>()
+  const _t0 = Date.now()
+  const timeoutId = setTimeout(() => controller.abort(), 300_000)
+  controller.signal.addEventListener('abort', () => {
+    console.log('[AI] signal aborted at t=%dms reason=%s', Date.now() - _t0, String(controller.signal.reason))
+  })
 
   try {
-    // Dual stream mode:
-    //   'messages' → AIMessageChunk tokens arrive word-by-word as the LLM generates them
-    //   'updates'  → node-completion events used for tool_start / tool_end detection
-    const stream = await agent.stream(
-      { messages },
-      { streamMode: ['updates', 'messages'], signal: controller.signal, recursionLimit: 10 }
-    )
+    // Step 1 — call all tools in parallel; each emits tool_start/tool_end via withToolEvents
+    const [metrics, alerts, docs, tsql] = await Promise.all([
+      getServerMetricsTool.invoke({}),
+      getRecentAlertsTool.invoke({}),
+      searchDocumentationTool.invoke({ query: question }),
+      suggestTSQLTool.invoke({ problema: question })
+    ])
 
-    for await (const raw of stream as AsyncIterable<unknown>) {
-      if (controller.signal.aborted) break
-
-      // LangGraph emits [mode, data] tuples when streamMode is an array
-      const [mode, data] = raw as [string, unknown]
-
-      if (mode === 'messages') {
-        // data = [AIMessageChunk | ToolMessage, metadata]
-        const [msgChunk] = data as [BaseMessage, unknown]
-        if (msgChunk instanceof AIMessageChunk) {
-          const text = typeof msgChunk.content === 'string' ? msgChunk.content : ''
-          // Skip chunks that are part of a tool-call decision (no readable text)
-          const hasToolCalls = (msgChunk.tool_calls?.length ?? 0) > 0
-          if (text && !hasToolCalls) {
-            onEvent({ type: 'token', text })
-          }
-        }
-      } else if (mode === 'updates') {
-        const update = data as Record<string, { messages?: BaseMessage[] }>
-
-        if (update.agent?.messages) {
-          for (const msg of update.agent.messages) {
-            const aiMsg = msg as AIMessage
-            if (aiMsg.tool_calls?.length) {
-              for (const tc of aiMsg.tool_calls) {
-                pendingTools.set(tc.id ?? tc.name, tc.name)
-                onEvent({ type: 'tool_start', name: tc.name })
-              }
-            }
-            // Final answer text is already streamed token-by-token from 'messages' mode — skip here
-          }
-        }
-
-        if (update.tools?.messages) {
-          for (const msg of update.tools.messages) {
-            if (msg._getType() === 'tool') {
-              const tm = msg as ToolMessage
-              const name = pendingTools.get(tm.tool_call_id) ?? 'tool'
-              pendingTools.delete(tm.tool_call_id)
-              onEvent({ type: 'tool_end', name, output: String(tm.content).slice(0, 2000) })
-            }
-          }
-        }
-      }
+    if (controller.signal.aborted) {
+      onEvent({ type: 'error', message: 'Cancelled' })
+      return
     }
 
-    onEvent(controller.signal.aborted ? { type: 'error', message: 'Cancelled' } : { type: 'done' })
+    // Step 2 — build context, filtering out empty/default responses
+    const NO_DOCS = 'Knowledge base not available or no results found.'
+    const NO_TSQL = 'No predefined query for this topic. Use search_sql_documentation to find a relevant query from the indexed books.'
+    const contextParts: string[] = [
+      `Server Metrics:\n${metrics}`,
+      `Recent Alerts:\n${alerts}`
+    ]
+    if (docs !== NO_DOCS) contextParts.push(`Documentation:\n${docs}`)
+    if (tsql !== NO_TSQL) contextParts.push(`Suggested T-SQL:\n${tsql}`)
+    const context = contextParts.join('\n\n---\n\n')
+
+    // Trim context to ~4000 chars to stay well within numCtx budget
+    const trimmedContext = context.slice(0, 4000)
+    console.log('[AI] tools done, context_len=%d trimmed=%d. Starting LLM stream...', context.length, trimmedContext.length)
+
+    // Step 3 — stream LLM response directly (no ReAct loop)
+    const msgs = [
+      new SystemMessage(`${SYSTEM_PROMPT}\n\nContext gathered from tools:\n${trimmedContext}`),
+      ...history
+        .slice(-4)
+        .map((h) => (h.role === 'user' ? new HumanMessage(h.content) : new AIMessage(h.content))),
+      new HumanMessage(question)
+    ]
+
+    const _t1 = Date.now()
+    console.log('[AI] calling llm.stream... aborted=%s msgs=%d', controller.signal.aborted, msgs.length)
+    const stream = await getLlm().stream(msgs, { signal: controller.signal })
+    console.log('[AI] stream opened after %dms', Date.now() - _t1)
+    for await (const chunk of stream) {
+      if (controller.signal.aborted) break
+      const tok = extractText(chunk.content)
+      if (tok) onEvent({ type: 'token', text: tok })
+    }
+
+    onEvent({ type: 'done' })
   } catch (err) {
-    onEvent({
-      type: 'error',
-      message: controller.signal.aborted
-        ? 'Cancelled'
-        : err instanceof Error
-          ? err.message
-          : String(err)
-    })
+    const msg = controller.signal.aborted ? 'Cancelled' : err instanceof Error ? err.message : String(err)
+    const rawErr = err instanceof Error ? err.message : String(err)
+    console.log('[AI] CATCH err=%s raw=%s aborted=%s', msg, rawErr, controller.signal.aborted)
+    onEvent({ type: 'error', message: msg })
   } finally {
     clearTimeout(timeoutId)
+    _onEvent = null
     if (_activeAbortController === controller) _activeAbortController = null
   }
 }

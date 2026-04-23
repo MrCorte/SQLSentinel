@@ -17,7 +17,7 @@ import logging
 import os
 import re
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -44,6 +44,8 @@ _ABBREV: dict[str, str] = {
     'advanced troubleshooting': 'SS',
     'dmvs in action': 'DMV',
     'dmv': 'DMV',
+    'teach yourself sql': 'SQL24',
+    'pro sql server': 'PSS',
 }
 
 # ---------------------------------------------------------------------------
@@ -90,6 +92,24 @@ def _clean_heading_text(raw: str) -> str:
     text = re.sub(r'(?<!\w)_+|_+(?!\w)', '', text)  # remove lone underscore markup
     text = re.sub(r'`', '', text)              # remove code backticks
     return text.strip()
+
+
+def _normalize_title_case(text: str) -> str:
+    """Normalize titles produced by decorative small-caps fonts.
+
+    PDFs that use small-caps or mixed-case decorative fonts produce headings
+    like ``PLANNiNG ThE DEPLoyMENT``.  When more than 25 % of non-initial
+    characters in a multi-word title are uppercase, the title is converted
+    to Python ``str.title()`` form.
+    """
+    words = text.split()
+    if len(words) < 2:
+        return text
+    non_initial_upper = sum(1 for w in words for c in w[1:] if c.isupper())
+    non_initial_total = sum(max(0, len(w) - 1) for w in words)
+    if non_initial_total > 0 and non_initial_upper / non_initial_total > 0.25:
+        return text.title()
+    return text
 
 
 def _book_abbrev(pdf_stem: str) -> str:
@@ -143,20 +163,44 @@ _XDOT1_RE = re.compile(
     re.MULTILINE,
 )
 
+# Strategy 5: "Hour N Title" / "Lesson N Title" — tutorial-style books (e.g. Sams 24 Hours).
+_HOUR_RE = re.compile(
+    r'^#{1,2}\s+(?:Hour|Lesson|Session|Part)\s+(\d+)[:\s]+([^\n]{5,})',
+    re.IGNORECASE | re.MULTILINE,
+)
+
 
 def _clean_chapter_title(raw: str) -> str:
-    """Strip markdown and 'CHAPTER N' prefix from a heading line.
-
-    Args:
-        raw: Raw heading text (may contain ``CHAPTER N``, ``**``, ``_``).
-
-    Returns:
-        Clean human-readable title.
-    """
+    """Strip markdown, 'CHAPTER N' prefix, and normalise case artifacts."""
     text = _clean_heading_text(raw)
-    # Remove leading "CHAPTER N " if somehow still present
-    text = re.sub(r'^CHAPTER\s+\d+\s+', '', text, flags=re.IGNORECASE)
+    # Remove leading "CHAPTER N " or "Hour N " if somehow still present
+    text = re.sub(r'^(?:CHAPTER|Hour|Lesson|Session|Part)\s+\d+[:\s]+', '', text, flags=re.IGNORECASE)
+    text = _normalize_title_case(text)
     return text.strip()
+
+
+def _merge_same_title_sections(sections: list[Section]) -> list[Section]:
+    """Merge consecutive sections that share the same normalised title.
+
+    Books with decorative fonts produce dozens of identically-named sections
+    (e.g. 15 × "GUI Installation") that all belong to the same chapter.
+    Merging them produces one note per real chapter with complete content.
+    Chapter numbers are reassigned after merging.
+    """
+    if not sections:
+        return []
+
+    merged: list[Section] = []
+    for s in sections:
+        if merged and s.title.lower() == merged[-1].title.lower():
+            merged[-1].content += '\n\n' + s.content
+        else:
+            merged.append(s)
+
+    for i, s in enumerate(merged):
+        s.chapter_num = i + 1
+
+    return merged
 
 
 def _split_sections(md_text: str, book_title: str, book_abbrev: str,
@@ -164,10 +208,15 @@ def _split_sections(md_text: str, book_title: str, book_abbrev: str,
     """Split a full-PDF markdown string into chapter-level :class:`Section` objects.
 
     Each section contains the full chapter content (all subsections included).
-    Strategy:
-      1. Look for ``## CHAPTER N Title`` headings (most O'Reilly books).
-      2. Fall back to ``## N Title`` top-level numbered sections.
-      3. Fall back to ``# Title`` H1 headings.
+    Strategies tried in order:
+      1. ``## CHAPTER N Title`` headings (most O'Reilly books).
+      2. ``## N Title`` top-level numbered sections.
+      3. ``# Title`` H1 headings.
+      4. ``## N.1 Title`` first-subsection markers (DMVs-style books).
+      5. ``## Hour N Title`` / ``## Lesson N Title`` (tutorial books).
+
+    After splitting, consecutive sections with the same title are merged into
+    one note (handles decorative-font books that repeat chapter headings).
 
     Args:
         md_text:     Full markdown text from pymupdf4llm.
@@ -196,6 +245,11 @@ def _split_sections(md_text: str, book_title: str, book_abbrev: str,
     if not matches:
         logger.debug('%s: trying X.1 section-start fallback', book_title)
         matches = [(m.start(), m.group(2), 'xdot1') for m in _XDOT1_RE.finditer(md_text)]
+
+    # --- Strategy 5: Hour/Lesson N headings (tutorial books) ---
+    if not matches:
+        logger.debug('%s: trying Hour/Lesson heading fallback', book_title)
+        matches = [(m.start(), m.group(2), 'hour') for m in _HOUR_RE.finditer(md_text)]
 
     if not matches:
         logger.warning('%s: no chapter boundaries found', book_title)
@@ -235,7 +289,7 @@ def _split_sections(md_text: str, book_title: str, book_abbrev: str,
             source_pdf=source_pdf,
         ))
 
-    return sections
+    return _merge_same_title_sections(sections)
 
 
 # ---------------------------------------------------------------------------
@@ -348,6 +402,7 @@ def _add_wikilinks(note_path: Path, own_link_target: str,
 
     Only the *first occurrence* of each title per note is linked.
     The note's own title is never self-linked.
+    Heading lines (starting with ``#``) are excluded to prevent nesting.
 
     Args:
         note_path:        Path to the .md file to update.
@@ -359,25 +414,33 @@ def _add_wikilinks(note_path: Path, own_link_target: str,
     """
     raw = note_path.read_text(encoding='utf-8')
     post = frontmatter.loads(raw)
-    content = post.content
+
+    # Split into heading lines (excluded) and body lines (linkable)
+    lines = post.content.splitlines(keepends=True)
+    heading_lines = {i for i, ln in enumerate(lines) if ln.lstrip().startswith('#')}
+
     links_added = 0
 
     for title, target, pattern in link_index:
         if target == own_link_target:
-            continue  # skip self
-        if f'[[{target}' in content:
+            continue
+        if f'[[{target}' in post.content:
             continue  # already linked
 
         def _replace(m: re.Match) -> str:  # noqa: ANN001
             return f'[[{target}|{m.group(0)}]]'
 
-        new_content, count = pattern.subn(_replace, content, count=1)
-        if count:
-            content = new_content
-            links_added += count
+        for i, line in enumerate(lines):
+            if i in heading_lines:
+                continue
+            new_line, count = pattern.subn(_replace, line, count=1)
+            if count:
+                lines[i] = new_line
+                links_added += count
+                break  # first occurrence only
 
     if links_added:
-        post.content = content
+        post.content = ''.join(lines)
         post['updated'] = _now_iso()
         note_path.write_text(frontmatter.dumps(post), encoding='utf-8')
 

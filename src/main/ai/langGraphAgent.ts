@@ -407,16 +407,11 @@ export async function langGraphStream(
   history: AgentHistory[],
   onEvent: (event: AiStreamEvent) => void
 ): Promise<void> {
-  console.log('[AI] langGraphStream START q=%j', question.slice(0, 60))
   const controller = new AbortController()
   _activeAbortController = controller
   _onEvent = onEvent
 
-  const _t0 = Date.now()
   const timeoutId = setTimeout(() => controller.abort(), 300_000)
-  controller.signal.addEventListener('abort', () => {
-    console.log('[AI] signal aborted at t=%dms reason=%s', Date.now() - _t0, String(controller.signal.reason))
-  })
 
   try {
     // Step 1 — call all tools in parallel; each emits tool_start/tool_end via withToolEvents
@@ -443,23 +438,16 @@ export async function langGraphStream(
     if (tsql !== NO_TSQL) contextParts.push(`Suggested T-SQL:\n${tsql}`)
     const context = contextParts.join('\n\n---\n\n')
 
-    // Trim context to ~4000 chars to stay well within numCtx budget
-    const trimmedContext = context.slice(0, 4000)
-    console.log('[AI] tools done, context_len=%d trimmed=%d. Starting LLM stream...', context.length, trimmedContext.length)
-
     // Step 3 — stream LLM response directly (no ReAct loop)
     const msgs = [
-      new SystemMessage(`${SYSTEM_PROMPT}\n\nContext gathered from tools:\n${trimmedContext}`),
+      new SystemMessage(`${SYSTEM_PROMPT}\n\nContext gathered from tools:\n${context.slice(0, 4000)}`),
       ...history
         .slice(-4)
         .map((h) => (h.role === 'user' ? new HumanMessage(h.content) : new AIMessage(h.content))),
       new HumanMessage(question)
     ]
 
-    const _t1 = Date.now()
-    console.log('[AI] calling llm.stream... aborted=%s msgs=%d', controller.signal.aborted, msgs.length)
     const stream = await getLlm().stream(msgs, { signal: controller.signal })
-    console.log('[AI] stream opened after %dms', Date.now() - _t1)
     for await (const chunk of stream) {
       if (controller.signal.aborted) break
       const tok = extractText(chunk.content)
@@ -469,8 +457,6 @@ export async function langGraphStream(
     onEvent({ type: 'done' })
   } catch (err) {
     const msg = controller.signal.aborted ? 'Cancelled' : err instanceof Error ? err.message : String(err)
-    const rawErr = err instanceof Error ? err.message : String(err)
-    console.log('[AI] CATCH err=%s raw=%s aborted=%s', msg, rawErr, controller.signal.aborted)
     onEvent({ type: 'error', message: msg })
   } finally {
     clearTimeout(timeoutId)

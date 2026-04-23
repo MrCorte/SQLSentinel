@@ -318,8 +318,8 @@ function getLlm(): ChatOllama {
       model: 'llama3.2:3b',
       baseUrl: 'http://localhost:11434',
       temperature: 0,
-      numPredict: 768,
-      numCtx: 8192
+      numPredict: 1024,
+      numCtx: 12288
     })
   }
   return _llm
@@ -430,7 +430,7 @@ export async function langGraphStream(
     const NO_DOCS = 'Knowledge base not available or no results found.'
     const contextParts: string[] = []
 
-    if (docs !== NO_DOCS) contextParts.push(`Documentation (source of truth):\n${docs.slice(0, 2500)}`)
+    if (docs !== NO_DOCS) contextParts.push(`Documentation (source of truth):\n${docs.slice(0, 4000)}`)
 
     // Server state — only include if non-trivial (not empty arrays)
     const metricsObj = JSON.parse(metrics) as unknown[]
@@ -442,7 +442,7 @@ export async function langGraphStream(
 
     // Step 3 — stream LLM response directly (no ReAct loop)
     const msgs = [
-      new SystemMessage(`${SYSTEM_PROMPT}\n\nContext:\n${context.slice(0, 4000)}`),
+      new SystemMessage(`${SYSTEM_PROMPT}\n\nContext:\n${context.slice(0, 6000)}`),
       ...history
         .slice(-4)
         .map((h) => (h.role === 'user' ? new HumanMessage(h.content) : new AIMessage(h.content))),

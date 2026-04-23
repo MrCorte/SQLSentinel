@@ -3,8 +3,9 @@ Step 2 — Sync Obsidian vault .md notes into a SQLite FTS5 database.
 
 Schema
 ------
-knowledge_fts  (FTS5 virtual table)  — full-text search
-knowledge_meta (regular table)       — metadata + checksums for delta sync
+knowledge_fts   (FTS5 virtual table) — full-text search over all notes
+knowledge_meta  (regular table)      — metadata + checksums for delta sync
+dba_cards_fts   (FTS5 virtual table) — structured DBA reference cards with T-SQL
 
 Usage:
     python md_to_sqlite.py            # sync entire vault
@@ -30,6 +31,11 @@ logger = logging.getLogger(__name__)
 # Regex to strip Obsidian [[WikiLinks]] → plain text
 _WIKILINK_RE = re.compile(r'\[\[([^\]]+)\]\]')
 
+# Regexes for extracting structured fields from dba-reference cards
+_TSQL_RE = re.compile(r'```sql\s*(.*?)```', re.DOTALL)
+_EXPLANATION_RE = re.compile(r'^# .+?\n\n(.+?)\n\n## T-SQL Query', re.DOTALL)
+_WHEN_RE = re.compile(r'## When to Use\n\n(.*?)$', re.DOTALL)
+
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -43,6 +49,22 @@ USING fts5(
     tags,
     type,
     source_file,
+    tokenize = 'porter unicode61'
+);
+"""
+
+# Structured DBA reference card table — stores T-SQL verbatim for accurate retrieval.
+# slug, tsql_query, when_to_use are UNINDEXED (stored but not searched);
+# title, tags, explanation are indexed for keyword search.
+_DDL_DBA_CARDS = """
+CREATE VIRTUAL TABLE IF NOT EXISTS dba_cards_fts
+USING fts5(
+    slug        UNINDEXED,
+    title,
+    tags,
+    explanation,
+    tsql_query  UNINDEXED,
+    when_to_use UNINDEXED,
     tokenize = 'porter unicode61'
 );
 """
@@ -80,7 +102,7 @@ def init_db(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.execute('PRAGMA journal_mode=WAL')
     conn.execute('PRAGMA foreign_keys=ON')
-    conn.executescript(_DDL_FTS + _DDL_META)
+    conn.executescript(_DDL_FTS + _DDL_META + _DDL_DBA_CARDS)
     conn.commit()
     logger.debug('Database ready: %s', db_path)
     return conn
@@ -238,6 +260,67 @@ def delete_note(conn: sqlite3.Connection, vault_path: str) -> bool:
 # Sync functions
 # ---------------------------------------------------------------------------
 
+def _rebuild_dba_cards_fts(conn: sqlite3.Connection, vault_dir: Path) -> int:
+    """Drop and rebuild dba_cards_fts from all dba-reference markdown files.
+
+    Called at the end of every vault sync so the structured T-SQL table
+    is always consistent with the markdown source files.
+
+    Args:
+        conn:      Open database connection.
+        vault_dir: Root of the Obsidian vault to walk.
+
+    Returns:
+        Number of DBA reference cards indexed.
+    """
+    conn.execute('DELETE FROM dba_cards_fts')
+    count = 0
+
+    for md_path in vault_dir.rglob('*.md'):
+        try:
+            raw = md_path.read_text(encoding='utf-8', errors='replace')
+            post = frontmatter.loads(raw)
+        except Exception:
+            continue
+
+        if post.get('type') != 'dba-reference':
+            continue
+        source = str(post.get('source', ''))
+        if not source.startswith('dba-reference/'):
+            continue
+
+        slug = source.split('/')[-1]
+        title = str(post.get('title', md_path.stem))
+        tags_raw = post.get('tags', [])
+        tags_str = ', '.join(tags_raw) if isinstance(tags_raw, list) else str(tags_raw)
+        content = post.content
+
+        tsql_match = _TSQL_RE.search(content)
+        if not tsql_match:
+            continue
+
+        exp_match = _EXPLANATION_RE.search(content)
+        when_match = _WHEN_RE.search(content)
+
+        conn.execute(
+            'INSERT INTO dba_cards_fts '
+            '(slug, title, tags, explanation, tsql_query, when_to_use) '
+            'VALUES (?, ?, ?, ?, ?, ?)',
+            (
+                slug,
+                title,
+                tags_str,
+                exp_match.group(1).strip() if exp_match else '',
+                tsql_match.group(1).strip(),
+                when_match.group(1).strip() if when_match else '',
+            ),
+        )
+        count += 1
+
+    conn.commit()
+    return count
+
+
 def sync_vault_to_sqlite(vault_dir: Path, db_path: Path) -> None:
     """Sync all .md files in *vault_dir* (recursively) into the database.
 
@@ -267,12 +350,14 @@ def sync_vault_to_sqlite(vault_dir: Path, db_path: Path) -> None:
         status = _upsert_note(conn, note)
         counts[status] += 1
 
+    n_dba = _rebuild_dba_cards_fts(conn, vault_dir)
+
     conn.commit()
     conn.close()
 
     logger.info(
-        'Sync complete — added: %d | updated: %d | unchanged: %d | errors: %d',
-        counts['added'], counts['updated'], counts['unchanged'], counts['errors'],
+        'Sync complete — added: %d | updated: %d | unchanged: %d | errors: %d | dba_cards: %d',
+        counts['added'], counts['updated'], counts['unchanged'], counts['errors'], n_dba,
     )
 
 

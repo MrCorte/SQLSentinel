@@ -38,21 +38,18 @@ async function withToolEvents<T>(name: string, fn: () => Promise<T>): Promise<T>
 // System prompt
 // ---------------------------------------------------------------------------
 
-const SYSTEM_PROMPT = `You are an expert SQL Server DBA. ALWAYS respond in English.
+const SYSTEM_PROMPT = `You are an expert SQL Server DBA assistant. ALWAYS respond in English.
 
-The context below contains data gathered from tools. Use it as your ONLY source of truth.
-
-CRITICAL RULES for T-SQL queries:
-- If "Suggested T-SQL" is present in the context, copy it VERBATIM in IMMEDIATE ACTION. Do NOT modify it or invent alternatives.
-- If "Documentation" contains a T-SQL example, use that verbatim.
-- Never invent T-SQL that is not in the context. If no query is provided, say so.
+Your ONLY source of T-SQL queries and technical explanations is the Documentation provided in the context.
+- If the Documentation contains a T-SQL query relevant to the question, copy it VERBATIM.
+- Do NOT invent or modify T-SQL queries. If the documentation has no relevant query, say so explicitly.
 - Use SELECT-only queries, never DML (INSERT/UPDATE/DELETE/DROP/EXEC).
 
-Structure the response with these sections:
-**OBSERVATION**: summarise the relevant data from the context (server metrics, alerts, docs)
-**PROBABLE CAUSE**: diagnosis based on the data
-**IMMEDIATE ACTION**: the exact T-SQL query from the context (copy it verbatim)
-**NEXT CHECKS**: recommended follow-up actions`
+Structure every response with:
+**OBSERVATION**: what the documentation says about the topic
+**PROBABLE CAUSE**: diagnosis based on documentation and server data (if available)
+**IMMEDIATE ACTION**: T-SQL query copied verbatim from the documentation
+**NEXT CHECKS**: follow-up actions suggested by the documentation`
 
 // ---------------------------------------------------------------------------
 // Types
@@ -417,12 +414,11 @@ export async function langGraphStream(
   const timeoutId = setTimeout(() => controller.abort(), 300_000)
 
   try {
-    // Step 1 — call all tools in parallel; each emits tool_start/tool_end via withToolEvents
-    const [metrics, alerts, docs, tsql] = await Promise.all([
+    // Step 1 — call tools in parallel; each emits tool_start/tool_end via withToolEvents
+    const [metrics, alerts, docs] = await Promise.all([
       getServerMetricsTool.invoke({}),
       getRecentAlertsTool.invoke({}),
-      searchDocumentationTool.invoke({ query: question }),
-      suggestTSQLTool.invoke({ problema: question })
+      searchDocumentationTool.invoke({ query: question })
     ])
 
     if (controller.signal.aborted) {
@@ -430,16 +426,13 @@ export async function langGraphStream(
       return
     }
 
-    // Step 2 — build context: T-SQL and docs first (highest priority), then metrics/alerts
+    // Step 2 — build context: documentation first (highest priority), then live server data
     const NO_DOCS = 'Knowledge base not available or no results found.'
-    const NO_TSQL = 'No predefined query for this topic. Use search_sql_documentation to find a relevant query from the indexed books.'
     const contextParts: string[] = []
 
-    // High-priority: authoritative T-SQL and documentation go first
-    if (tsql !== NO_TSQL) contextParts.push(`Suggested T-SQL (use verbatim):\n${tsql}`)
-    if (docs !== NO_DOCS) contextParts.push(`Documentation:\n${docs.slice(0, 2000)}`)
+    if (docs !== NO_DOCS) contextParts.push(`Documentation (source of truth):\n${docs.slice(0, 2500)}`)
 
-    // Low-priority: server state — only include if non-trivial (not empty arrays)
+    // Server state — only include if non-trivial (not empty arrays)
     const metricsObj = JSON.parse(metrics) as unknown[]
     if (metricsObj.length > 0) contextParts.push(`Server Metrics:\n${metrics}`)
     const alertsObj = JSON.parse(alerts) as unknown[]

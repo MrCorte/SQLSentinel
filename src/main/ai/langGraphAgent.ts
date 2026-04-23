@@ -39,17 +39,20 @@ async function withToolEvents<T>(name: string, fn: () => Promise<T>): Promise<T>
 // ---------------------------------------------------------------------------
 
 const SYSTEM_PROMPT = `You are an expert SQL Server DBA. ALWAYS respond in English.
-When calling search_sql_documentation, ALWAYS use English keywords even if the user wrote in another language.
-Before answering, use the tools to gather real data about the monitored servers.
+
+The context below contains data gathered from tools. Use it as your ONLY source of truth.
+
+CRITICAL RULES for T-SQL queries:
+- If "Suggested T-SQL" is present in the context, copy it VERBATIM in IMMEDIATE ACTION. Do NOT modify it or invent alternatives.
+- If "Documentation" contains a T-SQL example, use that verbatim.
+- Never invent T-SQL that is not in the context. If no query is provided, say so.
+- Use SELECT-only queries, never DML (INSERT/UPDATE/DELETE/DROP/EXEC).
 
 Structure the response with these sections:
-**OBSERVATION**: relevant data found via the tools
+**OBSERVATION**: summarise the relevant data from the context (server metrics, alerts, docs)
 **PROBABLE CAUSE**: diagnosis based on the data
-**IMMEDIATE ACTION**: show a ready-to-run T-SQL query. Use search_sql_documentation first to find the best diagnostic query from the indexed books; only fall back to suggest_tsql if the documentation returns nothing useful.
-**NEXT CHECKS**: list of recommended follow-up actions
-
-Use SELECT-only queries, never DML (no INSERT/UPDATE/DELETE/DROP).
-If you do not have enough data, write "I need more context."`
+**IMMEDIATE ACTION**: the exact T-SQL query from the context (copy it verbatim)
+**NEXT CHECKS**: recommended follow-up actions`
 
 // ---------------------------------------------------------------------------
 // Types
@@ -427,20 +430,26 @@ export async function langGraphStream(
       return
     }
 
-    // Step 2 — build context, filtering out empty/default responses
+    // Step 2 — build context: T-SQL and docs first (highest priority), then metrics/alerts
     const NO_DOCS = 'Knowledge base not available or no results found.'
     const NO_TSQL = 'No predefined query for this topic. Use search_sql_documentation to find a relevant query from the indexed books.'
-    const contextParts: string[] = [
-      `Server Metrics:\n${metrics}`,
-      `Recent Alerts:\n${alerts}`
-    ]
-    if (docs !== NO_DOCS) contextParts.push(`Documentation:\n${docs}`)
-    if (tsql !== NO_TSQL) contextParts.push(`Suggested T-SQL:\n${tsql}`)
+    const contextParts: string[] = []
+
+    // High-priority: authoritative T-SQL and documentation go first
+    if (tsql !== NO_TSQL) contextParts.push(`Suggested T-SQL (use verbatim):\n${tsql}`)
+    if (docs !== NO_DOCS) contextParts.push(`Documentation:\n${docs.slice(0, 2000)}`)
+
+    // Low-priority: server state — only include if non-trivial (not empty arrays)
+    const metricsObj = JSON.parse(metrics) as unknown[]
+    if (metricsObj.length > 0) contextParts.push(`Server Metrics:\n${metrics}`)
+    const alertsObj = JSON.parse(alerts) as unknown[]
+    if (alertsObj.length > 0) contextParts.push(`Recent Alerts:\n${alerts}`)
+
     const context = contextParts.join('\n\n---\n\n')
 
     // Step 3 — stream LLM response directly (no ReAct loop)
     const msgs = [
-      new SystemMessage(`${SYSTEM_PROMPT}\n\nContext gathered from tools:\n${context.slice(0, 4000)}`),
+      new SystemMessage(`${SYSTEM_PROMPT}\n\nContext:\n${context.slice(0, 4000)}`),
       ...history
         .slice(-4)
         .map((h) => (h.role === 'user' ? new HumanMessage(h.content) : new AIMessage(h.content))),

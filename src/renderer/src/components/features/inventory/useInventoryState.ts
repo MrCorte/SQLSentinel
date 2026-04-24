@@ -592,16 +592,17 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
     allMachineKeys
   ])
 
-  const handleSort = useCallback((key: keyof InventoryRow) => {
-    setSortKey((prev) => {
-      if (prev === key) {
+  const handleSort = useCallback(
+    (key: keyof InventoryRow) => {
+      if (key === sortKey) {
         setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
-        return prev
+      } else {
+        setSortKey(key)
+        setSortDir('asc')
       }
-      setSortDir('asc')
-      return key
-    })
-  }, [])
+    },
+    [sortKey]
+  )
 
   const handleResetFilters = useCallback(() => {
     setSearch('')

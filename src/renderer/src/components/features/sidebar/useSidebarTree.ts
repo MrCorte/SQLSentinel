@@ -36,6 +36,7 @@ export interface SidebarTreeResult {
 
   // Actions — context menu
   handleContextMenu: (e: React.MouseEvent, server: StoredServer) => void
+  handleAgContextMenu: (e: React.MouseEvent, agName: string) => void
   handleCloseCtx: () => void
   setMoveMenuOpen: (open: boolean) => void
   handleMoveToGroup: (groupId: string | undefined) => void
@@ -136,7 +137,6 @@ export function useSidebarTree(servers: StoredServer[]): SidebarTreeResult {
     const items: SidebarItem[] = []
     for (const group of sortedGroups) {
       const groupServers = serversByGroupId.get(group.id) ?? []
-      if (groupServers.length === 0) continue
       const onlineCount = groupServers.filter((s) => !s.unreachable).length
 
       items.push({ kind: 'group', group, onlineCount })
@@ -254,6 +254,18 @@ export function useSidebarTree(servers: StoredServer[]): SidebarTreeResult {
     setMoveMenuOpen(false)
   }, [])
 
+  const handleAgContextMenu = useCallback(
+    (e: React.MouseEvent, agName: string): void => {
+      const representative = servers.find(
+        (s) => s.agName?.trim().toLowerCase() === agName.trim().toLowerCase()
+      )
+      if (!representative) return
+      setCtxMenu({ mouseX: e.clientX, mouseY: e.clientY, server: representative })
+      setMoveMenuOpen(false)
+    },
+    [servers]
+  )
+
   const handleCloseCtx = useCallback((): void => {
     setCtxMenu(null)
     setMoveMenuOpen(false)
@@ -262,11 +274,20 @@ export function useSidebarTree(servers: StoredServer[]): SidebarTreeResult {
   const handleMoveToGroup = useCallback(
     (groupId: string | undefined): void => {
       if (!ctxMenu) return
-      setServerGroup(serverLabel(ctxMenu.server), groupId)
+      const agName = ctxMenu.server.agName?.trim().toLowerCase()
+      if (agName) {
+        // Move every server in the same AG cluster together
+        const clusterMembers = servers.filter((s) => s.agName?.trim().toLowerCase() === agName)
+        for (const s of clusterMembers) {
+          setServerGroup(serverLabel(s), groupId)
+        }
+      } else {
+        setServerGroup(serverLabel(ctxMenu.server), groupId)
+      }
       setCtxMenu(null)
       setMoveMenuOpen(false)
     },
-    [ctxMenu, setServerGroup]
+    [ctxMenu, servers, setServerGroup]
   )
 
   return {
@@ -281,6 +302,7 @@ export function useSidebarTree(servers: StoredServer[]): SidebarTreeResult {
     toggleAgCollapse,
     toggleMachineCollapse,
     handleContextMenu,
+    handleAgContextMenu,
     handleCloseCtx,
     setMoveMenuOpen,
     handleMoveToGroup,

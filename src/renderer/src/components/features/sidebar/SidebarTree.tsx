@@ -148,17 +148,20 @@ export const AgGroupHeader = memo(function AgGroupHeader({
   isSelected,
   isExpanded,
   onToggleCollapse,
-  onSelect
+  onSelect,
+  onContextMenu
 }: {
   ag: AgGroupState
   isSelected: boolean
   isExpanded: boolean
   onToggleCollapse: () => void
   onSelect: () => void
+  onContextMenu: (e: React.MouseEvent) => void
 }): React.JSX.Element {
   const color = agHealthColor(ag.health)
   return (
     <Box
+      onContextMenu={onContextMenu}
       sx={{
         display: 'flex',
         alignItems: 'center',
@@ -356,7 +359,7 @@ interface ServerItemProps {
   inAgGroup?: boolean
   inMachineGroup?: boolean
   onSelect: (server: StoredServer) => void
-  onContextMenu: (e: React.MouseEvent, server: StoredServer) => void
+  onContextMenu?: (e: React.MouseEvent, server: StoredServer) => void
 }
 
 export const ServerItem = memo(function ServerItem({
@@ -385,6 +388,7 @@ export const ServerItem = memo(function ServerItem({
   const handleClick = useCallback(() => onSelect(server), [onSelect, server])
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
+      if (!onContextMenu) return
       e.preventDefault()
       onContextMenu(e, server)
     },
@@ -481,6 +485,7 @@ export interface SidebarTreeProps {
   onToggleAgCollapse: (agName: string) => void
   onToggleMachineCollapse: (machineName: string) => void
   onContextMenu: (e: React.MouseEvent, server: StoredServer) => void
+  onAgContextMenu: (e: React.MouseEvent, agName: string) => void
 }
 
 export function SidebarTree({
@@ -496,7 +501,8 @@ export function SidebarTree({
   onToggleCollapse,
   onToggleAgCollapse,
   onToggleMachineCollapse,
-  onContextMenu
+  onContextMenu,
+  onAgContextMenu
 }: SidebarTreeProps): React.JSX.Element {
   const parentRef = useRef<HTMLDivElement>(null)
 
@@ -560,6 +566,10 @@ export function SidebarTree({
                     isExpanded={item.isExpanded}
                     onToggleCollapse={() => onToggleAgCollapse(item.agName)}
                     onSelect={() => onSelectAg(item.agName)}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      onAgContextMenu(e, item.agName)
+                    }}
                   />
                 )}
                 {item.kind === 'machine' && (
@@ -579,7 +589,7 @@ export function SidebarTree({
                     inAgGroup={item.inAgGroup}
                     inMachineGroup={item.inMachineGroup}
                     onSelect={onSelectServer}
-                    onContextMenu={onContextMenu}
+                    onContextMenu={item.inAgGroup ? undefined : onContextMenu}
                   />
                 )}
                 {item.kind === 'ungrouped-header' && (

@@ -124,14 +124,19 @@ export const InventoryServerTable = memo(function InventoryServerTable({
                   >
                     {col.label}
                   </Typography>
-                  {active && (
-                    <Typography
-                      variant="caption"
-                      sx={{ color: tokens.color.accent, fontSize: 10, flexShrink: 0 }}
-                    >
-                      {sortDir === 'asc' ? '▲' : '▼'}
-                    </Typography>
-                  )}
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontSize: 10,
+                      flexShrink: 0,
+                      color: active ? tokens.color.accent : 'text.disabled',
+                      opacity: active ? 1 : 0,
+                      transition: 'opacity 150ms',
+                      '.MuiBox-root:hover &': { opacity: active ? 1 : 0.4 },
+                    }}
+                  >
+                    {active ? (sortDir === 'asc' ? '▲' : '▼') : '▼'}
+                  </Typography>
                   {/* Resize handle */}
                   <Box
                     onMouseDown={(e) => startResize(e, idx)}

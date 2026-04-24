@@ -1,0 +1,116 @@
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist:wght@400;500;600;700&display=swap');
+  .sample-inter { font-family: 'Inter', sans-serif; }
+  .sample-geist { font-family: 'Geist', 'Inter', sans-serif; }
+  .sample-mono  { font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace; }
+  .ui-panel {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 14px;
+    margin-bottom: 8px;
+  }
+  .kpi-row { display: flex; gap: 10px; margin-bottom: 10px; }
+  .kpi {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 8px 12px;
+    flex: 1;
+    text-align: center;
+  }
+  .kpi-val { color: #00d4aa; font-size: 22px; font-weight: 700; line-height: 1.1; }
+  .kpi-lbl { color: #8b949e; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; margin-top: 2px; }
+  .alert-row {
+    background: #1a1a1a;
+    border-left: 3px solid #f78166;
+    padding: 6px 10px;
+    border-radius: 0 4px 4px 0;
+    margin-bottom: 5px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .alert-msg { color: #e6edf3; font-size: 11px; }
+  .alert-time { color: #8b949e; font-size: 10px; }
+  .section-label { color: #8b949e; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 8px; }
+  .server-name { color: #e6edf3; font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+  .server-sub  { color: #8b949e; font-size: 11px; }
+</style>
+
+<h2>Quale font per SQLSentinel?</h2>
+<p class="subtitle">Ogni opzione è renderizzata con UI reale — numeri, label, testo. Segoe UI attuale è escluso.</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="inter" onclick="toggleSelect(this)">
+    <div class="card-image sample-inter" style="background:#0d1117;padding:14px;min-height:190px">
+      <div class="ui-panel">
+        <div class="section-label">Dashboard — PROD-SQL-01</div>
+        <div class="kpi-row">
+          <div class="kpi"><div class="kpi-val">42%</div><div class="kpi-lbl">CPU</div></div>
+          <div class="kpi"><div class="kpi-val" style="color:#58a6ff">8.2GB</div><div class="kpi-lbl">RAM</div></div>
+          <div class="kpi"><div class="kpi-val" style="color:#f78166">3</div><div class="kpi-lbl">Blocking</div></div>
+        </div>
+        <div class="server-name">PROD-SQL-01 · SQL Server 2022</div>
+        <div class="server-sub">Last snapshot 12s ago · 14 databases · 247 connections</div>
+      </div>
+      <div class="alert-row">
+        <span class="alert-msg">High blocking detected — session 54 waiting 4.2s</span>
+        <span class="alert-time">2m ago</span>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Inter</h3>
+      <p>Lo standard de-facto del design moderno (Linear, Vercel, Notion, Figma). Ottimizzato per UI dense, leggibilissimo a 12–13px. Lettere leggermente più compatte di Segoe — più dati per riga.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="geist" onclick="toggleSelect(this)">
+    <div class="card-image sample-geist" style="background:#0d1117;padding:14px;min-height:190px">
+      <div class="ui-panel">
+        <div class="section-label">Dashboard — PROD-SQL-01</div>
+        <div class="kpi-row">
+          <div class="kpi"><div class="kpi-val">42%</div><div class="kpi-lbl">CPU</div></div>
+          <div class="kpi"><div class="kpi-val" style="color:#58a6ff">8.2GB</div><div class="kpi-lbl">RAM</div></div>
+          <div class="kpi"><div class="kpi-val" style="color:#f78166">3</div><div class="kpi-lbl">Blocking</div></div>
+        </div>
+        <div class="server-name">PROD-SQL-01 · SQL Server 2022</div>
+        <div class="server-sub">Last snapshot 12s ago · 14 databases · 247 connections</div>
+      </div>
+      <div class="alert-row">
+        <span class="alert-msg">High blocking detected — session 54 waiting 4.2s</span>
+        <span class="alert-time">2m ago</span>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Geist</h3>
+      <p>Il font di Vercel, pensato per tool tecnici. Leggermente più geometrico di Inter, caratteri più aperti. Look da "developer tool" — meno neutro, più identitario. Ottimo per testo tecnico e nomi di server.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="inter-mono-numbers" onclick="toggleSelect(this)">
+    <div class="card-image sample-inter" style="background:#0d1117;padding:14px;min-height:190px">
+      <div class="ui-panel">
+        <div class="section-label">Dashboard — PROD-SQL-01</div>
+        <div class="kpi-row">
+          <div class="kpi"><div class="kpi-val sample-mono" style="font-size:20px">42%</div><div class="kpi-lbl">CPU</div></div>
+          <div class="kpi"><div class="kpi-val sample-mono" style="color:#58a6ff;font-size:20px">8.2GB</div><div class="kpi-lbl">RAM</div></div>
+          <div class="kpi"><div class="kpi-val sample-mono" style="color:#f78166;font-size:20px">3</div><div class="kpi-lbl">Blocking</div></div>
+        </div>
+        <div class="server-name">PROD-SQL-01 · SQL Server 2022</div>
+        <div class="server-sub" class="sample-mono" style="font-family:'JetBrains Mono',monospace;font-size:10px">Last snapshot 12s ago · 14 databases · 247 connections</div>
+      </div>
+      <div class="alert-row">
+        <span class="alert-msg">High blocking detected — session 54 waiting 4.2s</span>
+        <span class="alert-time sample-mono" style="font-family:'JetBrains Mono',monospace">2m ago</span>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Inter + Mono per i numeri</h3>
+      <p>Inter per testo UI, JetBrains Mono per KPI, timestamp e valori numerici. I numeri si allineano perfettamente in colonna (tabular figures). Look da monitoring tool professionale — simile a Datadog, Grafana.</p>
+    </div>
+  </div>
+
+</div>
+<p class="subtitle" style="margin-top:16px;text-align:center">Clicca il font preferito → http://localhost:55517</p>

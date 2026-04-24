@@ -89,6 +89,7 @@ export function GroupManagerDialog({ open, onClose }: GroupManagerDialogProps): 
   const handleAdd = (): void => {
     if (!newName.trim()) return
     addGroup(newName.trim(), newColor)
+    setLocalGroups([...useGroupsStore.getState().groups].sort((a, b) => a.order - b.order))
     setNewName('')
     setNewColor(COLOR_PALETTE[0])
   }

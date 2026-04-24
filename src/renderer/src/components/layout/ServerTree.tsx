@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react'
-import { Box, Typography } from '@mui/material'
+import { Box, Typography, IconButton, Tooltip, Menu, MenuItem, Divider } from '@mui/material'
+import SettingsIcon from '@mui/icons-material/Settings'
 import { SidebarSearch } from '../features/sidebar/SidebarSearch'
 import { SidebarTree } from '../features/sidebar/SidebarTree'
+import { GroupManagerDialog } from '../features/sidebar/GroupManagerDialog'
 import { useSidebarTree } from '../features/sidebar/useSidebarTree'
 import { useServersStore } from '../../store/serversStore'
 import { useAlertsStore } from '../../store/alertsStore'
@@ -50,16 +52,22 @@ export function ServerTree({
   const servers = useServersStore((s) => s.servers)
   const alerts = useAlertsStore((s) => s.alerts)
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('all')
+  const [groupManagerOpen, setGroupManagerOpen] = useState(false)
 
   const {
     flatItems,
+    sortedGroups,
     serverAliases,
     searchText,
+    ctxMenu,
     setSearchText,
     toggleCollapse,
     toggleAgCollapse,
     toggleMachineCollapse,
-    handleContextMenu
+    handleContextMenu,
+    handleAgContextMenu,
+    handleCloseCtx,
+    handleMoveToGroup
   } = useSidebarTree(servers)
 
   // Build a set of server IDs that match the active severity filter
@@ -163,18 +171,29 @@ export function ServerTree({
           borderBottom: `1px solid ${tokens.color.bgBorder}`
         }}
       >
-        <Typography
-          sx={{
-            fontSize: tokens.font.sizeXs,
-            fontWeight: tokens.font.weightSemibold,
-            color: tokens.color.textMuted,
-            textTransform: 'uppercase',
-            letterSpacing: '0.8px',
-            mb: 0.75
-          }}
-        >
-          Servers
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.75 }}>
+          <Typography
+            sx={{
+              fontSize: tokens.font.sizeXs,
+              fontWeight: tokens.font.weightSemibold,
+              color: tokens.color.textMuted,
+              textTransform: 'uppercase',
+              letterSpacing: '0.8px',
+              flex: 1
+            }}
+          >
+            Servers
+          </Typography>
+          <Tooltip title="Manage environments" placement="right">
+            <IconButton
+              size="small"
+              onClick={() => setGroupManagerOpen(true)}
+              sx={{ p: 0.25, color: tokens.color.textMuted, '&:hover': { color: '#fff' } }}
+            >
+              <SettingsIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+          </Tooltip>
+        </Box>
 
         {/* Search */}
         <SidebarSearch value={searchText} onChange={setSearchText} />
@@ -225,6 +244,35 @@ export function ServerTree({
         </Typography>
       </Box>
 
+      <GroupManagerDialog open={groupManagerOpen} onClose={() => setGroupManagerOpen(false)} />
+
+      {/* Context menu — right-click on a server */}
+      <Menu
+        open={ctxMenu !== null}
+        onClose={handleCloseCtx}
+        anchorReference="anchorPosition"
+        anchorPosition={ctxMenu ? { top: ctxMenu.mouseY, left: ctxMenu.mouseX } : undefined}
+        slotProps={{ paper: { sx: { minWidth: 200 } } }}
+      >
+        <Typography sx={{ px: 2, py: 0.5, fontSize: 10, color: tokens.color.textMuted, textTransform: 'uppercase', letterSpacing: '0.6px' }}>
+          {ctxMenu?.server.agName ? `Move AG cluster "${ctxMenu.server.agName}"` : 'Move to environment'}
+        </Typography>
+        {sortedGroups.map((g) => (
+          <MenuItem
+            key={g.id}
+            onClick={() => handleMoveToGroup(g.id)}
+            sx={{ fontSize: 13, gap: 1 }}
+          >
+            <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: g.color, flexShrink: 0 }} />
+            {g.name}
+          </MenuItem>
+        ))}
+        <Divider />
+        <MenuItem onClick={() => handleMoveToGroup(undefined)} sx={{ fontSize: 13, color: tokens.color.textMuted }}>
+          Remove from group
+        </MenuItem>
+      </Menu>
+
       {/* Tree */}
       <SidebarTree
         flatItems={visibleItems}
@@ -240,6 +288,7 @@ export function ServerTree({
         onToggleAgCollapse={toggleAgCollapse}
         onToggleMachineCollapse={toggleMachineCollapse}
         onContextMenu={handleContextMenu}
+        onAgContextMenu={handleAgContextMenu}
       />
     </Box>
   )

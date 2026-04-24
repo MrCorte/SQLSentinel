@@ -31,7 +31,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
   const dbRowVirtualizer = useVirtualizer({
     count: displayDbViewRows.length,
     getScrollElement: () => dbParentRef.current,
-    estimateSize: () => 40,
+    estimateSize: () => 48,
     overscan: 10,
   })
 
@@ -73,7 +73,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
               display: 'grid',
               gridTemplateColumns: gridTemplate,
               px: 2,
-              py: 1,
+              py: 1.5,
               bgcolor: tokens.color.bgBase,
               borderBottom: `2px solid ${tokens.color.bgBorder}`,
               position: 'sticky',

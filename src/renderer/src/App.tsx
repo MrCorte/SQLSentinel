@@ -1,9 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { Box, Tabs, Tab, IconButton, Badge, Tooltip, Typography } from '@mui/material'
-import NotificationsIcon from '@mui/icons-material/Notifications'
-import SettingsIcon from '@mui/icons-material/Settings'
-import LogoutIcon from '@mui/icons-material/Logout'
-import SmartToyIcon from '@mui/icons-material/SmartToy'
+import { Box } from '@mui/material'
 import { AIPanel } from './components/ai/AIPanel'
 import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
@@ -20,12 +16,14 @@ import { useServersStore } from './store/serversStore'
 import { useAlertsStore } from './store/alertsStore'
 import { useAppStore } from './store/appStore'
 import { useMetricsStore } from './store/metricsStore'
-import { tokens } from './styles/tokens'
 import { useMockData } from './hooks/useMockData'
 import { useIpcEvent } from './hooks/useIpcEvent'
 import { buildTheme } from './styles/theme'
-import { ThemeContext, type ThemeMode } from './context/ThemeContext'
 import { AuthContext } from './context/AuthContext'
+import { AccentProvider } from './components/layout/AccentProvider'
+import { IconRail } from './components/layout/IconRail'
+import { BreadcrumbBar } from './components/layout/BreadcrumbBar'
+import { ServerTree } from './components/layout/ServerTree'
 import type {
   AuthSession,
   ServerHealthPayload,
@@ -39,11 +37,14 @@ import { migrateAliasKeys } from './store/groupsStore'
 const log = createLogger('app')
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
 
+// Tree is visible on Inventory (2) and Dashboard (3) only
+const TREE_VISIBLE_TABS = new Set([2, 3])
+
 // ---------------------------------------------------------------------------
 // Inner — accesses WorkerContext (must be inside WorkerProvider)
 // ---------------------------------------------------------------------------
 
-function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
+function AppInner(): React.JSX.Element {
   const [tab, setTab] = useState(0)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
@@ -57,6 +58,15 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
     addAlert,
     acknowledgeAlert: acknowledgeAlertInStore
   } = useAlertsStore()
+  const { selectedServerId, setSelectedServerId } = useAppStore()
+  const servers = useServersStore((s) => s.servers)
+
+  // Derive selected server object from id
+  const selectedServer = useMemo(
+    () => servers.find((s) => s.id === selectedServerId) ?? null,
+    [servers, selectedServerId]
+  )
+  const [selectedAgName, setSelectedAgName] = useState<string | null>(null)
 
   // Load persisted servers on mount — runs in both real and mock mode so that
   // servers added manually while VITE_USE_MOCK=true are preserved across restarts
@@ -72,14 +82,14 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
 
     loadServers()
       .then(() => {
-        const { servers } = useServersStore.getState()
-        log.info('loadServers completato, servers:', servers.length)
-        migrateAliasKeys(servers)
-        if (servers.length > 0) {
+        const { servers: srvs } = useServersStore.getState()
+        log.info('loadServers completato, servers:', srvs.length)
+        migrateAliasKeys(srvs)
+        if (srvs.length > 0) {
           window.sqlSentinel
             .workerStart({
               intervalSeconds: 60,
-              servers: servers.map((s) => ({
+              servers: srvs.map((s) => ({
                 ip: s.ip ?? s.host,
                 port: s.port,
                 instanceName: s.instanceName,
@@ -104,7 +114,7 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
         }
       })
       .catch((err) => log.error('loadServers failed:', err))
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync server list with the background worker whenever servers are added/removed
   // Skip in mock mode — mock IPs (10.0.x.x) are not reachable
@@ -223,195 +233,103 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
       .catch((err) => log.error('acknowledgeAlert failed:', err))
   }
 
-  const criticalCount = alerts.filter(
-    (a) => a.severity === 'CRITICAL' && a.acknowledgedAt === null
-  ).length
+  function handleSelectServer(server: StoredServer): void {
+    setSelectedServerId(server.id)
+    setSelectedAgName(null)
+    setTab(3)
+  }
+
+  const showTree = TREE_VISIBLE_TABS.has(tab)
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-      {/* ---- Navbar 48px ---- */}
-      <Box
-        component="header"
-        sx={{
-          height: tokens.size.navbarHeight,
-          minHeight: tokens.size.navbarHeight,
-          bgcolor: 'background.paper',
-          borderBottom: `2px solid`,
-          borderColor: 'primary.main',
-          boxShadow: tokens.shadow.navbar,
-          display: 'flex',
-          alignItems: 'center',
-          zIndex: 100,
-          flexShrink: 0,
-          px: 2,
-          gap: 1,
-          backgroundImage: (theme) =>
-            theme.palette.mode === 'dark'
-              ? 'linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #162032 100%)'
-              : 'linear-gradient(135deg, #ffffff 0%, #f0f6ff 100%)'
-        }}
-      >
-        {/* Logo / product name */}
-        <Typography
-          onClick={() => setTab(0)}
-          sx={{
-            fontSize: tokens.font.sizeMd,
-            fontWeight: tokens.font.weightBold,
-            background: `linear-gradient(135deg, ${tokens.color.primary} 0%, ${tokens.color.primaryDark} 100%)`,
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-            letterSpacing: '-0.02em',
-            mr: 2,
-            whiteSpace: 'nowrap',
-            cursor: 'pointer',
-            userSelect: 'none'
-          }}
-        >
-          SQL Sentinel
-        </Typography>
+    <AccentProvider>
+      <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+        {/* Icon Rail */}
+        <IconRail activeTab={tab} onTabChange={setTab} onSettingsClick={() => setTab(4)} />
 
-        {/* Pivot tabs — centrate, crescono */}
-        <Tabs
-          value={tab === 0 || tab === 4 ? false : tab}
-          onChange={(_e, v) => setTab(v as number)}
+        {/* Right of rail: breadcrumb + (tree + content) */}
+        <Box
           sx={{
             flex: 1,
-            minHeight: tokens.size.navbarHeight,
-            '& .MuiTabs-indicator': {
-              backgroundColor: tokens.color.primary,
-              height: 3,
-              borderRadius: '3px 3px 0 0'
-            }
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            minWidth: 0
           }}
         >
-          <Tab
-            value={1}
-            label="Discovery"
-            sx={{
-              color: 'text.secondary',
-              '&.Mui-selected': { color: 'primary.main' }
-            }}
+          <BreadcrumbBar
+            activeTab={tab}
+            selectedServerName={selectedServer?.host ?? selectedServer?.ip ?? null}
+            onOpenAlerts={() => setDrawerOpen(true)}
+            onOpenAI={() => setAiOpen(true)}
           />
-          <Tab
-            value={2}
-            label="Inventory"
-            sx={{
-              color: 'text.secondary',
-              '&.Mui-selected': { color: 'primary.main' }
-            }}
-          />
-          <Tab
-            value={3}
-            label="Dashboard"
-            sx={{
-              color: 'text.secondary',
-              '&.Mui-selected': { color: 'primary.main' }
-            }}
-          />
-        </Tabs>
 
-        {/* Icon buttons — destra */}
-        <Tooltip
-          title={criticalCount > 0 ? `${criticalCount} critical alerts` : 'Alerts'}
-          disableHoverListener={false}
-        >
-          <IconButton
-            size="small"
-            onClick={() => setDrawerOpen(true)}
-            sx={{
-              color: criticalCount > 0 ? 'error.main' : 'text.secondary',
-              '&:hover': { bgcolor: 'action.hover' }
-            }}
-          >
-            <Badge badgeContent={criticalCount || undefined} color="error" max={99}>
-              <NotificationsIcon fontSize="small" />
-            </Badge>
-          </IconButton>
-        </Tooltip>
+          <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+            {/* Server tree — visible on Inventory + Dashboard tabs */}
+            {showTree && (
+              <ServerTree
+                selectedServer={selectedServer}
+                selectedAgName={selectedAgName}
+                onSelectServer={handleSelectServer}
+                onSelectAg={(agName) => {
+                  setSelectedAgName(agName)
+                  setTab(3)
+                }}
+                onRemoveServer={(server) => {
+                  window.sqlSentinel.servers.remove(server.id).catch(() => {})
+                  useServersStore.getState().removeServer(server.id)
+                  if (selectedServerId === server.id) setSelectedServerId(null)
+                }}
+              />
+            )}
 
-        <Tooltip title="AI Assistant">
-          <IconButton
-            size="small"
-            onClick={() => setAiOpen(true)}
-            sx={{
-              color: aiOpen ? 'primary.main' : 'text.secondary',
-              '&:hover': { bgcolor: 'action.hover' }
-            }}
-          >
-            <SmartToyIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-
-        <Tooltip title="Settings">
-          <IconButton
-            size="small"
-            onClick={() => setTab(4)}
-            sx={{
-              color: tab === 4 ? 'primary.main' : 'text.secondary',
-              '&:hover': { bgcolor: 'action.hover' }
-            }}
-          >
-            <SettingsIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-
-        <Tooltip title="Log out">
-          <IconButton
-            size="small"
-            onClick={onLogout}
-            sx={{ color: 'text.secondary', '&:hover': { bgcolor: 'action.hover' } }}
-          >
-            <LogoutIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
-      </Box>
-
-      {/* ---- Page content ---- */}
-      <Box sx={{ flex: 1, overflow: 'hidden' }}>
-        {tab === 0 && (
-          <Box sx={{ height: '100%', overflow: 'auto' }}>
-            <HomeDashboard
-              onNavigateToServer={(id) => {
-                useAppStore.getState().setPendingServerId(id)
-                setTab(3)
-              }}
-              onNavigateToDiscovery={() => setTab(1)}
-              onOpenAlerts={() => setDrawerOpen(true)}
-            />
+            {/* Main content */}
+            <Box sx={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+              {tab === 0 && (
+                <Box sx={{ height: '100%', overflow: 'auto' }}>
+                  <HomeDashboard
+                    onNavigateToServer={(id) => {
+                      setSelectedServerId(id)
+                      setTab(3)
+                    }}
+                    onNavigateToDiscovery={() => setTab(1)}
+                    onOpenAlerts={() => setDrawerOpen(true)}
+                  />
+                </Box>
+              )}
+              {tab === 1 && (
+                <Box sx={{ height: '100%', overflow: 'auto' }}>
+                  <Discovery />
+                </Box>
+              )}
+              {tab === 2 && (
+                <Box sx={{ height: '100%', overflow: 'hidden' }}>
+                  <Inventory onNavigateToDashboard={() => setTab(3)} />
+                </Box>
+              )}
+              {tab === 3 && (
+                <Box sx={{ height: '100%', overflow: 'hidden' }}>
+                  <Dashboard />
+                </Box>
+              )}
+              {tab === 4 && (
+                <Box sx={{ height: '100%', overflow: 'auto' }}>
+                  <Settings />
+                </Box>
+              )}
+            </Box>
           </Box>
-        )}
-        {tab === 1 && (
-          <Box sx={{ height: '100%', overflow: 'auto' }}>
-            <Discovery />
-          </Box>
-        )}
-        {tab === 2 && (
-          <Box sx={{ height: '100%', overflow: 'hidden' }}>
-            <Inventory onNavigateToDashboard={() => setTab(3)} />
-          </Box>
-        )}
-        {tab === 3 && (
-          <Box sx={{ height: '100%', overflow: 'hidden' }}>
-            <Dashboard />
-          </Box>
-        )}
-        {tab === 4 && (
-          <Box sx={{ height: '100%', overflow: 'auto' }}>
-            <Settings />
-          </Box>
-        )}
+        </Box>
       </Box>
 
       <AIPanel open={aiOpen} onClose={() => setAiOpen(false)} />
-
       <AlertsDrawer
         open={drawerOpen}
         alerts={alerts}
         onClose={() => setDrawerOpen(false)}
         onAcknowledge={handleAcknowledge}
       />
-    </Box>
+    </AccentProvider>
   )
 }
 
@@ -420,12 +338,11 @@ function AppInner({ onLogout }: { onLogout: () => void }): React.JSX.Element {
 // ---------------------------------------------------------------------------
 
 function App(): React.JSX.Element {
-  const [themeMode, setThemeModeState] = useState<ThemeMode>('system')
-  const [systemDark, setSystemDark] = useState(
-    () => window.matchMedia('(prefers-color-scheme: dark)').matches
-  )
   const [session, setSession] = useState<AuthSession | null>(null)
   const [authChecking, setAuthChecking] = useState(true)
+
+  // Theme is always dark — no toggle
+  const muiTheme = useMemo(() => buildTheme(), [])
 
   // Check if a session already exists (e.g. app restarted within the same process)
   useEffect(() => {
@@ -458,54 +375,19 @@ function App(): React.JSX.Element {
     setSession(null)
   }, [])
 
-  // Load persisted theme preference on mount (exempt from auth — needed for login page)
-  useEffect(() => {
-    window.sqlSentinel
-      .getSettings()
-      .then((result) => {
-        if (result.ok && result.data.themeMode) {
-          setThemeModeState(result.data.themeMode as ThemeMode)
-        }
-      })
-      .catch((err) => log.error('getSettings (theme) failed:', err))
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Track OS dark-mode preference for 'system' mode
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const handler = (e: MediaQueryListEvent) => setSystemDark(e.matches)
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
-  }, [])
-
-  const effectiveMode = useMemo((): 'light' | 'dark' => {
-    if (themeMode === 'dark') return 'dark'
-    if (themeMode === 'light') return 'light'
-    return systemDark ? 'dark' : 'light'
-  }, [themeMode, systemDark])
-
-  const muiTheme = useMemo(() => buildTheme(effectiveMode), [effectiveMode])
-
-  const setThemeMode = useCallback(async (mode: ThemeMode): Promise<void> => {
-    setThemeModeState(mode)
-    await window.sqlSentinel.saveSettings({ themeMode: mode })
-  }, [])
-
   return (
-    <ThemeContext.Provider value={{ themeMode, setThemeMode }}>
-      <ThemeProvider theme={muiTheme}>
-        <CssBaseline />
-        {authChecking ? null : !session ? (
-          <LoginPage onLogin={setSession} />
-        ) : (
-          <AuthContext.Provider value={{ session, logout: handleLogout }}>
-            <WorkerProvider>
-              <AppInner onLogout={handleLogout} />
-            </WorkerProvider>
-          </AuthContext.Provider>
-        )}
-      </ThemeProvider>
-    </ThemeContext.Provider>
+    <ThemeProvider theme={muiTheme}>
+      <CssBaseline />
+      {authChecking ? null : !session ? (
+        <LoginPage onLogin={setSession} />
+      ) : (
+        <AuthContext.Provider value={{ session, logout: handleLogout }}>
+          <WorkerProvider>
+            <AppInner />
+          </WorkerProvider>
+        </AuthContext.Provider>
+      )}
+    </ThemeProvider>
   )
 }
 

@@ -31,12 +31,11 @@ export function AlertsRecapCard(): React.JSX.Element {
   const servers = useServersStore((s) => s.servers)
   const serverAliases = useGroupsStore((s) => s.serverAliases)
 
-  // serverId (ip:port) → display name
+  // serverId (UUID) → display name
   const serverNameMap = useMemo(() => {
     const map: Record<string, string> = {}
     for (const s of servers) {
-      const key = `${s.host ?? s.ip}:${s.port}`
-      map[key] = serverAliases[s.id] ?? key
+      map[s.id] = serverAliases[s.id] ?? `${s.host ?? s.ip}:${s.port}`
     }
     return map
   }, [servers, serverAliases])

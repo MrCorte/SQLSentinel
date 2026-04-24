@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Box, Typography } from '@mui/material'
 import type { FilteredStats, DbViewStats } from './useInventoryState'
 import type { DbViewRow } from './inventoryTypes'
+import { tokens } from '../../../styles/tokens'
 
 // ---------------------------------------------------------------------------
 // KPI card primitive
@@ -19,9 +20,9 @@ function KpiCard({ label, value, accentColor }: KpiCardProps): React.JSX.Element
       sx={{
         flex: '1 1 0',
         minWidth: 100,
-        bgcolor: 'background.paper',
+        bgcolor: tokens.color.bgSurface,
         border: '1px solid',
-        borderColor: 'divider',
+        borderColor: tokens.color.bgBorder,
         borderTop: `3px solid ${accentColor}`,
         borderRadius: '4px',
         px: 2,
@@ -31,7 +32,7 @@ function KpiCard({ label, value, accentColor }: KpiCardProps): React.JSX.Element
       <Typography
         sx={{
           fontSize: 10,
-          color: 'text.secondary',
+          color: tokens.color.textMuted,
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
           mb: 0.5
@@ -39,7 +40,7 @@ function KpiCard({ label, value, accentColor }: KpiCardProps): React.JSX.Element
       >
         {label}
       </Typography>
-      <Typography sx={{ fontSize: 22, fontWeight: 700, color: 'text.primary', lineHeight: 1 }}>
+      <Typography sx={{ fontSize: 22, fontWeight: 700, color: tokens.color.textPrimary, lineHeight: 1 }}>
         {value}
       </Typography>
     </Box>
@@ -144,7 +145,7 @@ export const InventoryKpiRow = memo(function InventoryKpiRow({
 
       {/* ── Empty placeholder ── */}
       {inventoryEmpty && (
-        <Box sx={{ textAlign: 'center', py: 8, color: 'text.secondary' }}>
+        <Box sx={{ textAlign: 'center', py: 8, color: tokens.color.textMuted }}>
           <Typography sx={{ fontSize: 14 }}>
             No monitored servers. Add servers from the Discovery section.
           </Typography>

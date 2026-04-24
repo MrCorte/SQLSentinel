@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Box, Typography, TextField, CircularProgress } from '@mui/material'
 import { useServersStore } from '../store/serversStore'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { tokens } from '../styles/tokens'
 
 interface NoteEditorProps {
   serverId: string
@@ -40,7 +41,7 @@ export function NoteEditor({ serverId, initialNote }: NoteEditorProps): React.JS
         <Typography
           variant="caption"
           sx={{
-            color: 'text.secondary',
+            color: tokens.color.textMuted,
             fontWeight: 600,
             textTransform: 'uppercase',
             letterSpacing: '0.04em'

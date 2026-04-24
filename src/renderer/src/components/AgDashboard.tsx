@@ -22,7 +22,6 @@ import { useAgStore } from '../store/agStore'
 import { useServersStore } from '../store/serversStore'
 import { useGroupsStore } from '../store/groupsStore'
 import { useAppStore } from '../store/appStore'
-import { alpha } from '@mui/material/styles'
 import { tokens } from '../styles/tokens'
 import { useVisibilityPoll } from '../hooks/useVisibilityPoll'
 
@@ -76,11 +75,9 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         sx={{
-          bgcolor: 'background.paper',
-          border: (theme) =>
-            `1px solid ${isPrimary ? tokens.color.primary : theme.palette.divider}`,
-          borderTop: (theme) =>
-            `3px solid ${isPrimary ? tokens.color.primary : theme.palette.divider}`,
+          bgcolor: tokens.color.bgSurface,
+          border: `1px solid ${isPrimary ? tokens.color.primary : tokens.color.bgBorder}`,
+          borderTop: `3px solid ${isPrimary ? tokens.color.primary : tokens.color.bgBorder}`,
           borderRadius: tokens.radius.sm,
           p: 1.5,
           minWidth: 220,
@@ -99,12 +96,12 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
         {/* Header */}
         <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography sx={{ fontSize: 13, fontWeight: 700, color: 'text.primary' }}>
+            <Typography sx={{ fontSize: 13, fontWeight: 700, color: tokens.color.textPrimary }}>
               {isPrimary ? '★ ' : '○ '}
               {displayName}
             </Typography>
             {displayName !== replica.replica_server_name && (
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
                 {replica.replica_server_name}
               </Typography>
             )}
@@ -116,8 +113,8 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
               fontSize: 9,
               height: 18,
               fontWeight: 700,
-              bgcolor: isPrimary ? tokens.color.successAlpha12 : 'background.default',
-              color: isPrimary ? tokens.color.success : 'text.secondary'
+              bgcolor: isPrimary ? tokens.color.successAlpha12 : tokens.color.bgBase,
+              color: isPrimary ? tokens.color.success : tokens.color.textMuted
             }}
           />
         </Stack>
@@ -126,10 +123,10 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
 
         <Stack spacing={0.5}>
           <Stack direction="row" justifyContent="space-between">
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
               Mode
             </Typography>
-            <Typography variant="caption" sx={{ color: 'text.primary', fontWeight: 600 }}>
+            <Typography variant="caption" sx={{ color: tokens.color.textPrimary, fontWeight: 600 }}>
               {replica.availability_mode_desc === 'SYNCHRONOUS_COMMIT' ? 'SYNC' : 'ASYNC'}
               {' — '}
               {replica.failover_mode_desc === 'AUTOMATIC' ? 'AUTO' : 'MANUAL'}
@@ -137,7 +134,7 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
           </Stack>
 
           <Stack direction="row" justifyContent="space-between">
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
               Connection
             </Typography>
             <Typography
@@ -152,7 +149,7 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
           </Stack>
 
           <Stack direction="row" justifyContent="space-between">
-            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+            <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
               Sync health
             </Typography>
             <Typography
@@ -169,10 +166,10 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
 
           {replica.operational_state_desc && (
             <Stack direction="row" justifyContent="space-between">
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
                 Op. state
               </Typography>
-              <Typography variant="caption" sx={{ color: 'text.primary' }}>
+              <Typography variant="caption" sx={{ color: tokens.color.textPrimary }}>
                 {replica.operational_state_desc}
               </Typography>
             </Stack>
@@ -213,20 +210,17 @@ const LOG_QUEUE_WARN_KB = 10240
 const DB_GRID_SX = {
   border: 0,
   '& .MuiDataGrid-columnHeader': {
-    bgcolor: 'background.default',
+    bgcolor: tokens.color.bgBase,
     fontSize: 11,
     fontWeight: 700,
     textTransform: 'uppercase' as const,
     letterSpacing: '0.04em',
-    color: 'text.secondary'
+    color: tokens.color.textMuted
   },
   '& .MuiDataGrid-columnHeaders': {
     borderBottom: `2px solid ${tokens.color.primary}`
   },
-  '& .row-sync': {
-    bgcolor: (theme: { palette: { mode: string; warning: { main: string } } }) =>
-      theme.palette.mode === 'dark' ? alpha(theme.palette.warning.main, 0.15) : '#fff4ce'
-  },
+  '& .row-sync': { bgcolor: tokens.color.warningAlpha12 },
   '& .row-nosync': { bgcolor: tokens.color.dangerAlpha12 }
 }
 
@@ -286,7 +280,7 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 3 }}>
         <CircularProgress size={20} />
-        <Typography sx={{ color: 'text.secondary' }}>Loading AG data...</Typography>
+        <Typography sx={{ color: tokens.color.textMuted }}>Loading AG data...</Typography>
       </Box>
     )
   }
@@ -399,9 +393,9 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
       {/* AG Header */}
       <Box
         sx={{
-          bgcolor: 'background.paper',
+          bgcolor: tokens.color.bgSurface,
           border: '1px solid',
-          borderColor: 'divider',
+          borderColor: tokens.color.bgBorder,
           borderLeft: `4px solid ${healthColor(detail.ag_health)}`,
           borderRadius: tokens.radius.sm,
           px: 2,
@@ -410,7 +404,7 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
         }}
       >
         <Stack direction="row" alignItems="center" spacing={1.5}>
-          <Typography sx={{ fontSize: 18, fontWeight: 700, color: 'text.primary', flex: 1 }}>
+          <Typography sx={{ fontSize: 18, fontWeight: 700, color: tokens.color.textPrimary, flex: 1 }}>
             {detail.ag_name}
           </Typography>
           <Chip
@@ -425,16 +419,16 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
           />
         </Stack>
         <Stack direction="row" spacing={3} sx={{ mt: 0.75 }}>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
             Primary: <strong style={{ color: 'inherit' }}>{detail.primary_replica || '—'}</strong>
           </Typography>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
             Updated:{' '}
             <strong style={{ color: 'inherit' }}>
               {detail.lastUpdated.toLocaleTimeString('en-US')}
             </strong>
           </Typography>
-          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+          <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
             {detail.replicas.length} replicas · {detail.databases.length} DB
           </Typography>
         </Stack>
@@ -448,14 +442,14 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
             fontWeight: 700,
             textTransform: 'uppercase',
             letterSpacing: '0.5px',
-            color: 'text.secondary',
+            color: tokens.color.textMuted,
             mb: 1.5
           }}
         >
           Replicas — click to open the server dashboard
         </Typography>
         {detail.replicas.length === 0 ? (
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          <Typography variant="body2" sx={{ color: tokens.color.textMuted }}>
             No replicas available.
           </Typography>
         ) : (
@@ -482,14 +476,14 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
             fontWeight: 700,
             textTransform: 'uppercase',
             letterSpacing: '0.5px',
-            color: 'text.secondary',
+            color: tokens.color.textMuted,
             mb: 1.5
           }}
         >
           AG Databases
         </Typography>
         {detail.databases.length === 0 ? (
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          <Typography variant="body2" sx={{ color: tokens.color.textMuted }}>
             No AG databases available (this replica may be SECONDARY — data is only visible from the
             PRIMARY).
           </Typography>

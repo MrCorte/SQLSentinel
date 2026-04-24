@@ -189,7 +189,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
             display: 'flex',
             flexDirection: 'column',
             gap: 1.5,
-            bgcolor: 'background.default'
+            bgcolor: tokens.color.bgBase
           }}
         >
           {/* Welcome bubble */}
@@ -219,8 +219,8 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
             px: 2,
             py: 1.5,
             borderTop: 1,
-            borderColor: 'divider',
-            bgcolor: 'background.paper',
+            borderColor: tokens.color.bgBorder,
+            bgcolor: tokens.color.bgSurface,
             flexShrink: 0
           }}
         >
@@ -287,9 +287,9 @@ function MessageBubble({ role, content }: MessageBubbleProps): React.JSX.Element
           px: 1.5,
           py: 1,
           borderRadius: isUser ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-          bgcolor: isUser ? tokens.color.accentAlpha12 : 'background.paper',
+          bgcolor: isUser ? tokens.color.accentAlpha12 : tokens.color.bgSurface,
           border: isUser ? `1px solid ${tokens.color.accentAlpha40}` : '1px solid',
-          borderColor: isUser ? 'transparent' : 'divider',
+          borderColor: isUser ? 'transparent' : tokens.color.bgBorder,
           boxShadow: isUser ? 'none' : tokens.shadow.card
         }}
       >
@@ -301,7 +301,7 @@ function MessageBubble({ role, content }: MessageBubbleProps): React.JSX.Element
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
             m: 0,
-            color: 'text.primary'
+            color: tokens.color.textPrimary
           }}
         >
           {content}
@@ -329,10 +329,10 @@ function ToolTimeline({ steps }: ToolTimelineProps): React.JSX.Element {
           elevation={0}
           sx={{
             border: 1,
-            borderColor: 'divider',
+            borderColor: tokens.color.bgBorder,
             borderRadius: '8px !important',
             '&:before': { display: 'none' },
-            bgcolor: 'background.paper'
+            bgcolor: tokens.color.bgSurface
           }}
         >
           <AccordionSummary
@@ -389,7 +389,7 @@ function ToolOutput({ output }: ToolOutputProps): React.JSX.Element {
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-all',
           m: 0,
-          color: 'text.secondary',
+          color: tokens.color.textMuted,
           maxHeight: 200,
           overflowY: 'auto'
         }}
@@ -436,7 +436,7 @@ function WaitingSpinner(): React.JSX.Element {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: 1 }}>
       <CircularProgress size={14} />
-      <Typography sx={{ fontSize: tokens.font.sizeSm, color: 'text.secondary', fontStyle: 'italic' }}>
+      <Typography sx={{ fontSize: tokens.font.sizeSm, color: tokens.color.textMuted, fontStyle: 'italic' }}>
         {label}
       </Typography>
     </Box>
@@ -452,9 +452,9 @@ function StreamingBubble({ text, loading }: StreamingBubbleProps): React.JSX.Ele
           px: 1.5,
           py: 1,
           borderRadius: '12px 12px 12px 2px',
-          bgcolor: 'background.paper',
+          bgcolor: tokens.color.bgSurface,
           border: 1,
-          borderColor: 'divider',
+          borderColor: tokens.color.bgBorder,
           boxShadow: tokens.shadow.card
         }}
       >
@@ -466,7 +466,7 @@ function StreamingBubble({ text, loading }: StreamingBubbleProps): React.JSX.Ele
             whiteSpace: 'pre-wrap',
             wordBreak: 'break-word',
             m: 0,
-            color: 'text.primary'
+            color: tokens.color.textPrimary
           }}
         >
           {text}
@@ -477,7 +477,7 @@ function StreamingBubble({ text, loading }: StreamingBubbleProps): React.JSX.Ele
                 display: 'inline-block',
                 width: 8,
                 height: '1em',
-                bgcolor: 'text.primary',
+                bgcolor: tokens.color.textPrimary,
                 ml: '2px',
                 verticalAlign: 'text-bottom',
                 animation: 'blink 1s step-end infinite',

@@ -70,7 +70,7 @@ export const ServerHistoryChart = memo(function ServerHistoryChart({ serverId }:
           alignItems: 'center',
           justifyContent: 'center',
           height: 160,
-          color: 'text.secondary',
+          color: tokens.color.textMuted,
           fontSize: 13
         }}
       >
@@ -170,7 +170,7 @@ export function ServerHistorySection({ serverId }: { serverId: string }): React.
     <>
       <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1 }}>
         Storico CPU / Memoria
-        <Typography component="span" variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
+        <Typography component="span" variant="caption" sx={{ ml: 1, color: tokens.color.textMuted }}>
           ultimi {sampleCount} campioni · aggiornamento ogni 60&nbsp;s
         </Typography>
       </Typography>

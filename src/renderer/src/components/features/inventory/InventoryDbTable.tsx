@@ -1,5 +1,4 @@
 import { useRef, useState, memo } from 'react'
-import { alpha } from '@mui/material/styles'
 import { Box, Chip, Paper, Tooltip, Typography } from '@mui/material'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
@@ -75,8 +74,8 @@ export const InventoryDbTable = memo(function InventoryDbTable({
               gridTemplateColumns: gridTemplate,
               px: 2,
               py: 1,
-              bgcolor: 'background.default',
-              borderBottom: (theme) => `2px solid ${theme.palette.divider}`,
+              bgcolor: tokens.color.bgBase,
+              borderBottom: `2px solid ${tokens.color.bgBorder}`,
               position: 'sticky',
               top: 0,
               zIndex: 2,
@@ -97,7 +96,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                   variant="caption"
                   fontWeight={700}
                   noWrap
-                  sx={{ color: 'text.secondary' }}
+                  sx={{ color: tokens.color.textMuted }}
                 >
                   {col.label}
                 </Typography>
@@ -125,7 +124,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
 
           {/* Virtual rows */}
           {displayDbViewRows.length === 0 ? (
-            <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
+            <Box sx={{ p: 4, textAlign: 'center', color: tokens.color.textMuted }}>
               No databases match the selected filters
             </Box>
           ) : (
@@ -148,24 +147,14 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                       alignItems: 'center',
                       px: 2,
                       cursor: isHeader ? 'pointer' : 'default',
-                      borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
-                      bgcolor: (theme) =>
-                        isHeader
-                          ? theme.palette.mode === 'dark'
-                            ? alpha(theme.palette.primary.main, 0.12)
-                            : '#eef4fb'
-                          : row.stateDesc !== 'ONLINE'
-                            ? theme.palette.mode === 'dark'
-                              ? alpha(theme.palette.error.main, 0.15)
-                              : '#fde7e9'
-                            : theme.palette.background.paper,
+                      borderBottom: `1px solid ${tokens.color.bgBorder}`,
+                      bgcolor: isHeader
+                        ? tokens.color.accentAlpha12
+                        : row.stateDesc !== 'ONLINE'
+                          ? tokens.color.dangerAlpha12
+                          : tokens.color.bgSurface,
                       '&:hover': {
-                        bgcolor: (theme) =>
-                          isHeader
-                            ? theme.palette.mode === 'dark'
-                              ? alpha(theme.palette.primary.main, 0.22)
-                              : '#dce9f5'
-                            : theme.palette.action.hover,
+                        bgcolor: isHeader ? tokens.color.accentAlpha40 : tokens.color.bgBorder,
                       },
                     }}
                   >
@@ -181,12 +170,12 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                         {expandedDbServers.has(row.serverKey) ? (
                           <ExpandMoreIcon
                             fontSize="small"
-                            sx={{ color: 'text.secondary', flexShrink: 0 }}
+                            sx={{ color: tokens.color.textMuted, flexShrink: 0 }}
                           />
                         ) : (
                           <ChevronRightIcon
                             fontSize="small"
-                            sx={{ color: 'text.secondary', flexShrink: 0 }}
+                            sx={{ color: tokens.color.textMuted, flexShrink: 0 }}
                           />
                         )}
                         <Box
@@ -225,17 +214,16 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                               bgcolor: row.agRole === 'PRIMARY' ? '#107c10' : 'transparent',
                               color: row.agRole === 'PRIMARY' ? '#fff' : 'text.secondary',
                               border: row.agRole === 'SECONDARY' ? '1px solid' : 'none',
-                              borderColor: 'divider',
+                              borderColor: tokens.color.bgBorder,
                             }}
                           />
                         )}
-                        <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                        <Typography variant="caption" sx={{ color: tokens.color.textMuted, ml: 1 }}>
                           {row.serverVersion}
                         </Typography>
                         <Typography
                           variant="caption"
-                          color="text.secondary"
-                          sx={{ ml: 1, flexShrink: 0 }}
+                          sx={{ color: tokens.color.textMuted, ml: 1, flexShrink: 0 }}
                         >
                           {row.dbCount} DB
                         </Typography>
@@ -261,12 +249,12 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                         </Box>
 
                         {/* SERVER */}
-                        <Typography variant="caption" color="text.secondary" noWrap>
+                        <Typography variant="caption" sx={{ color: tokens.color.textMuted }} noWrap>
                           {row.serverLabel}
                         </Typography>
 
                         {/* ALIAS */}
-                        <Typography variant="caption" color="text.secondary" noWrap>
+                        <Typography variant="caption" sx={{ color: tokens.color.textMuted }} noWrap>
                           {row.alias ?? '—'}
                         </Typography>
 
@@ -311,7 +299,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                             variant="caption"
                             sx={{
                               color:
-                                (row.compatibilityLevel ?? 999) < 130 ? '#ca5010' : 'text.secondary',
+                                (row.compatibilityLevel ?? 999) < 130 ? tokens.color.dotWarning : tokens.color.textMuted,
                             }}
                           >
                             {row.compatibilityLevel
@@ -363,7 +351,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                         {(() => {
                           if (row.recoveryModel === 'SIMPLE') {
                             return (
-                              <Typography variant="caption" color="text.disabled">
+                              <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
                                 N/A
                               </Typography>
                             )
@@ -382,12 +370,12 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                         })()}
 
                         {/* OWNER */}
-                        <Typography variant="caption" color="text.secondary" noWrap>
+                        <Typography variant="caption" sx={{ color: tokens.color.textMuted }} noWrap>
                           {row.owner || '—'}
                         </Typography>
 
                         {/* CREATED */}
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
                           {row.createDate
                             ? new Date(row.createDate).toLocaleDateString('en-US')
                             : '—'}

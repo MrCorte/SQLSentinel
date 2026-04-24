@@ -46,7 +46,7 @@ export const DB_VIEW_CSV_HEADERS = [
   'SQL Version',
   'Database',
   'Alias',
-  'Owner',
+  'Contact',
   'DB Status',
   'Recovery Model',
   'Compat. Level',

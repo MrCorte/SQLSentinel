@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Box, Button, MenuItem, Select, TextField, Typography, InputAdornment } from '@mui/material'
 import FilterListIcon from '@mui/icons-material/FilterList'
 import SearchIcon from '@mui/icons-material/Search'
+import { tokens } from '../../../styles/tokens'
 import { compatLevelToSqlVersion } from '../../../utils/sqlVersionUtils'
 import type { FilterDbRecovery, FilterDbTde } from './useInventoryState'
 import type { DbViewRow } from './inventoryTypes'
@@ -57,7 +58,7 @@ export const InventoryDbFilters = memo(function InventoryDbFilters({
         InputProps={{
           startAdornment: (
             <InputAdornment position="start">
-              <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+              <SearchIcon fontSize="small" sx={{ color: tokens.color.textMuted }} />
             </InputAdornment>
           )
         }}
@@ -137,7 +138,7 @@ export const InventoryDbFilters = memo(function InventoryDbFilters({
         {expandedDbServers.size > 0 ? 'Collapse all' : 'Expand all'}
       </Button>
 
-      <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+      <Typography variant="caption" sx={{ color: tokens.color.textMuted, ml: 'auto' }}>
         {allDbViewRowsExpanded.filter((r) => r.type === 'server-header').length} server ·{' '}
         {filteredDbRows.length} DB
       </Typography>

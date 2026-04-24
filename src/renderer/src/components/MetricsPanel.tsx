@@ -43,9 +43,9 @@ export function MetricsPanel({
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Box
         sx={{
-          bgcolor: 'background.paper',
+          bgcolor: tokens.color.bgSurface,
           borderBottom: '1px solid',
-          borderBottomColor: 'divider'
+          borderBottomColor: tokens.color.bgBorder
         }}
       >
         <Tabs
@@ -57,7 +57,7 @@ export function MetricsPanel({
               minHeight: 36,
               fontSize: tokens.font.sizeBase,
               fontWeight: tokens.font.weightSemibold,
-              color: 'text.secondary',
+              color: tokens.color.textMuted,
               py: 0,
               textTransform: 'none',
               '&.Mui-selected': { color: tokens.color.primary }
@@ -97,7 +97,7 @@ export function MetricsPanel({
         {tab === 3 && <TabBackup backupStatus={backupStatus} />}
 
         {tab === 4 && (
-          <Suspense fallback={<Box sx={{ p: 2, color: 'text.secondary' }}>Loading...</Box>}>
+          <Suspense fallback={<Box sx={{ p: 2, color: tokens.color.textMuted }}>Loading...</Box>}>
             <DisksTab
               diskVolumes={diskVolumes}
               databaseFiles={databaseFiles}

@@ -165,9 +165,6 @@ export function ServerTree({
 
   const totalServerCount = servers.length
 
-  // serversError is not exposed by useSidebarTree — pass null
-  const serversError: string | null = null
-
   return (
     <Box
       sx={{
@@ -297,7 +294,7 @@ export function ServerTree({
       <SidebarTree
         flatItems={visibleItems}
         servers={servers}
-        serversError={serversError}
+        serversError={null}
         selectedServer={selectedServer}
         selectedAgName={selectedAgName}
         searchText={searchText}

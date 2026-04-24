@@ -68,9 +68,9 @@ export function ServerTable({
     <Box
       sx={{
         flex: 1,
-        bgcolor: 'background.paper',
+        bgcolor: tokens.color.bgSurface,
         border: '1px solid',
-        borderColor: 'divider',
+        borderColor: tokens.color.bgBorder,
         borderRadius: `${tokens.radius.md}px`,
         boxShadow: tokens.shadow.elevated,
         overflow: 'auto',

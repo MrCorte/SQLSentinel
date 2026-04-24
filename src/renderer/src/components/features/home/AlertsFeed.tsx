@@ -27,9 +27,8 @@ export function AlertsFeed({
       sx={{
         width: 300,
         flexShrink: 0,
-        bgcolor: 'background.paper',
-        border: '1px solid',
-        borderColor: 'divider',
+        bgcolor: tokens.color.bgSurface,
+        border: `1px solid ${tokens.color.bgBorder}`,
         borderRadius: `${tokens.radius.md}px`,
         boxShadow: tokens.shadow.elevated,
         display: 'flex',
@@ -46,19 +45,16 @@ export function AlertsFeed({
           px: 1.5,
           py: 1,
           borderBottom: '1px solid',
-          borderBottomColor: 'divider',
+          borderBottomColor: tokens.color.bgBorder,
           flexShrink: 0,
-          backgroundImage: (theme) =>
-            theme.palette.mode === 'dark'
-              ? 'linear-gradient(135deg, rgba(164,38,44,0.08) 0%, transparent 100%)'
-              : 'linear-gradient(135deg, rgba(164,38,44,0.05) 0%, transparent 100%)'
+          backgroundImage: 'linear-gradient(135deg, rgba(247,129,102,0.07) 0%, transparent 100%)'
         }}
       >
         <Typography
           sx={{
             fontSize: tokens.font.sizeXs,
             fontWeight: tokens.font.weightBold,
-            color: 'text.secondary',
+            color: tokens.color.textMuted,
             textTransform: 'uppercase',
             letterSpacing: '0.04em'
           }}
@@ -90,7 +86,7 @@ export function AlertsFeed({
               p: 2
             }}
           >
-            <Typography sx={{ fontSize: tokens.font.sizeBase, color: 'text.secondary' }}>
+            <Typography sx={{ fontSize: tokens.font.sizeBase, color: tokens.color.textMuted }}>
               No active alerts
             </Typography>
           </Box>
@@ -103,7 +99,7 @@ export function AlertsFeed({
                 srvForAlert.ip ||
                 alert.serverId
               : alert.serverId
-            const alertBorderColor = alert.severity === 'CRITICAL' ? '#a4262c' : '#d83b01'
+            const alertBorderColor = alert.severity === 'CRITICAL' ? tokens.color.danger : tokens.color.dotWarning
 
             return (
               <Box
@@ -116,11 +112,11 @@ export function AlertsFeed({
                   px: 1.5,
                   py: 0.75,
                   borderBottom: '1px solid',
-                  borderBottomColor: 'divider',
+                  borderBottomColor: tokens.color.bgBorder,
                   cursor: srvForAlert ? 'pointer' : 'default',
                   transition: 'background-color 0.12s ease',
                   backgroundImage: `linear-gradient(90deg, ${alertBorderColor}0a 0%, transparent 40%)`,
-                  '&:hover': srvForAlert ? { bgcolor: 'action.hover' } : undefined
+                  '&:hover': srvForAlert ? { bgcolor: tokens.color.bgBorder } : undefined
                 }}
               >
                 <Box
@@ -131,14 +127,14 @@ export function AlertsFeed({
                     mb: 0.25
                   }}
                 >
-                  <Typography sx={{ fontSize: 10, color: 'text.secondary', whiteSpace: 'nowrap' }}>
+                  <Typography sx={{ fontSize: 10, color: tokens.color.textMuted, whiteSpace: 'nowrap' }}>
                     {formatTimeShort(new Date(alert.detectedAt))}
                   </Typography>
                   <Typography
                     sx={{
                       fontSize: tokens.font.sizeXs,
                       fontWeight: tokens.font.weightSemibold,
-                      color: 'text.primary',
+                      color: tokens.color.textPrimary,
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
@@ -152,7 +148,7 @@ export function AlertsFeed({
                 <Typography
                   sx={{
                     fontSize: tokens.font.sizeXs,
-                    color: 'text.secondary',
+                    color: tokens.color.textMuted,
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap'

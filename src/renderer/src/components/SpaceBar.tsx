@@ -1,4 +1,5 @@
 import { Box, Typography } from '@mui/material'
+import { tokens } from '../styles/tokens'
 
 interface SpaceBarProps {
   used: number
@@ -38,7 +39,7 @@ export function SpaceBar({ used, total, unit }: SpaceBarProps): React.JSX.Elemen
       </Box>
       <Typography
         variant="caption"
-        sx={{ color: 'text.secondary', mt: 0.5, display: 'block', fontSize: 11 }}
+        sx={{ color: tokens.color.textMuted, mt: 0.5, display: 'block', fontSize: 11 }}
       >
         {used.toFixed(1)} / {total.toFixed(1)} {unit} ({pct.toFixed(1)}%)
       </Typography>

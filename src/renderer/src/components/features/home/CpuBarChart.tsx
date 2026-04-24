@@ -30,9 +30,9 @@ export function CpuBarChart({
     <Box
       sx={{
         flex: 1,
-        bgcolor: 'background.paper',
+        bgcolor: tokens.color.bgSurface,
         border: '1px solid',
-        borderColor: 'divider',
+        borderColor: tokens.color.bgBorder,
         borderTop: `3px solid ${tokens.color.chartCpu}`,
         borderRadius: `${tokens.radius.md}px`,
         boxShadow: tokens.shadow.elevated,
@@ -45,7 +45,7 @@ export function CpuBarChart({
         sx={{
           fontSize: tokens.font.sizeXs,
           fontWeight: tokens.font.weightBold,
-          color: 'text.secondary',
+          color: tokens.color.textMuted,
           textTransform: 'uppercase',
           letterSpacing: '0.04em',
           mb: 1
@@ -55,7 +55,7 @@ export function CpuBarChart({
       </Typography>
       {!hasCpuData ? (
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 180 }}>
-          <Typography sx={{ fontSize: tokens.font.sizeBase, color: 'text.secondary' }}>
+          <Typography sx={{ fontSize: tokens.font.sizeBase, color: tokens.color.textMuted }}>
             No metrics available
           </Typography>
         </Box>

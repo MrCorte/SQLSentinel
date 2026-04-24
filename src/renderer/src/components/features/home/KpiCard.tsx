@@ -25,9 +25,9 @@ export const KpiCard = memo(function KpiCard({
       sx={{
         flex: '1 1 110px',
         minWidth: 100,
-        bgcolor: 'background.paper',
+        bgcolor: tokens.color.bgSurface,
         border: '1px solid',
-        borderColor: 'divider',
+        borderColor: tokens.color.bgBorder,
         borderLeft: `4px solid ${borderColor}`,
         borderRadius: `${tokens.radius.md}px`,
         p: 1.5,
@@ -44,7 +44,7 @@ export const KpiCard = memo(function KpiCard({
         sx={{
           fontSize: 10,
           fontWeight: tokens.font.weightBold,
-          color: 'text.secondary',
+          color: tokens.color.textMuted,
           textTransform: 'uppercase',
           letterSpacing: '0.05em',
           mb: 0.5

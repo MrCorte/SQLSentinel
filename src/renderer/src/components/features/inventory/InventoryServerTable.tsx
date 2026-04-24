@@ -105,7 +105,7 @@ export const InventoryServerTable = memo(function InventoryServerTable({
               gridTemplateColumns: gridTemplate,
               px: 2,
               py: 1,
-              bgcolor: 'background.default',
+              bgcolor: tokens.color.bgBase,
               borderBottom: (theme) => `2px solid ${theme.palette.divider}`,
               position: 'sticky',
               top: 0,
@@ -175,7 +175,7 @@ export const InventoryServerTable = memo(function InventoryServerTable({
 
           {/* Virtual rows */}
           {sortedRows.length === 0 ? (
-            <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
+            <Box sx={{ p: 4, textAlign: 'center', color: tokens.color.textMuted }}>
               No servers match the selected filters
             </Box>
           ) : (
@@ -249,9 +249,9 @@ export const InventoryServerTable = memo(function InventoryServerTable({
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
                       {row.type === 'ag-cluster' &&
                         (expandedClusters.has(row.clusterKey!) ? (
-                          <ExpandMoreIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
+                          <ExpandMoreIcon fontSize="small" sx={{ color: tokens.color.textMuted, flexShrink: 0 }} />
                         ) : (
-                          <ChevronRightIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
+                          <ChevronRightIcon fontSize="small" sx={{ color: tokens.color.textMuted, flexShrink: 0 }} />
                         ))}
                       {row.type === 'machine-header' &&
                         (expandedMachines.has(row.clusterKey!) ? (
@@ -451,7 +451,7 @@ export const InventoryServerTable = memo(function InventoryServerTable({
                         <Typography
                           variant="body2"
                           noWrap
-                          sx={{ color: 'text.secondary', cursor: 'help' }}
+                          sx={{ color: tokens.color.textMuted, cursor: 'help' }}
                         >
                           {row.notes}
                         </Typography>

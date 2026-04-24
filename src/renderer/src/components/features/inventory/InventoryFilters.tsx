@@ -5,6 +5,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import type { ServerGroup } from '../../../types/index'
 import type { FilterType, FilterState, FilterHost } from './useInventoryState'
 import type { InventoryRow } from './inventoryTypes'
+import { tokens } from '../../../styles/tokens'
 
 interface InventoryFiltersProps {
   // search
@@ -80,7 +81,7 @@ export const InventoryFilters = memo(function InventoryFilters({
         InputProps={{
           startAdornment: (
             <InputAdornment position="start">
-              <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+              <SearchIcon fontSize="small" sx={{ color: tokens.color.textMuted }} />
             </InputAdornment>
           )
         }}

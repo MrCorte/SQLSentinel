@@ -36,7 +36,7 @@ function highlightText(text: string, query: string): React.JSX.Element {
   return (
     <>
       {text.slice(0, idx)}
-      <span style={{ color: '#ffb900', fontWeight: 700 }}>
+      <span style={{ color: tokens.color.warning, fontWeight: 700 }}>
         {text.slice(idx, idx + query.length)}
       </span>
       {text.slice(idx + query.length)}
@@ -138,9 +138,9 @@ export const GroupHeader = memo(function GroupHeader({
 // ---------------------------------------------------------------------------
 
 function agHealthColor(health: AgGroupState['health']): string {
-  if (health === 'HEALTHY') return '#107c10'
-  if (health === 'PARTIALLY_HEALTHY') return '#d83b01'
-  return '#a4262c'
+  if (health === 'HEALTHY') return tokens.color.success
+  if (health === 'PARTIALLY_HEALTHY') return tokens.color.dotWarning
+  return tokens.color.danger
 }
 
 export const AgGroupHeader = memo(function AgGroupHeader({
@@ -250,9 +250,9 @@ export const AgGroupHeader = memo(function AgGroupHeader({
 
 function RoleBadge({ role }: { role: 'PRIMARY' | 'SECONDARY' | 'RESOLVING' }): React.JSX.Element {
   const styles: Record<string, { bg: string; color: string; label: string }> = {
-    PRIMARY: { bg: '#dff6dd', color: '#107c10', label: 'PRIMARY' },
-    SECONDARY: { bg: '#f3f2f1', color: '#605e5c', label: 'SECONDARY' },
-    RESOLVING: { bg: '#fed9cc', color: '#d83b01', label: 'RESOLVING' }
+    PRIMARY: { bg: tokens.color.successAlpha12, color: tokens.color.success, label: 'PRIMARY' },
+    SECONDARY: { bg: tokens.color.bgBorder, color: tokens.color.textMuted, label: 'SECONDARY' },
+    RESOLVING: { bg: tokens.color.warningAlpha12, color: tokens.color.dotWarning, label: 'RESOLVING' }
   }
   const s = styles[role] ?? styles.RESOLVING
   return (
@@ -459,7 +459,7 @@ export const ServerItem = memo(function ServerItem({
             placement="right"
             arrow
           >
-            <WarningAmberIcon sx={{ fontSize: 13, color: '#d83b01', flexShrink: 0 }} />
+            <WarningAmberIcon sx={{ fontSize: 13, color: tokens.color.dotWarning, flexShrink: 0 }} />
           </Tooltip>
         )}
       </Box>

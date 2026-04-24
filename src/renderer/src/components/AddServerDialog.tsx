@@ -23,6 +23,7 @@ import ErrorIcon from '@mui/icons-material/Error'
 import { useGroupsStore } from '../store/groupsStore'
 import { HOSTING_OPTIONS } from '../constants/hosting'
 import type { ServerHostingType } from '../constants/hosting'
+import { tokens } from '../styles/tokens'
 
 export interface AddServerFormData {
   ip: string
@@ -196,7 +197,7 @@ export function AddServerDialog({
               {testState === 'loading' && (
                 <>
                   <CircularProgress size={16} />
-                  <Typography variant="caption" color="text.secondary">
+                  <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
                     Connecting…
                   </Typography>
                 </>
@@ -297,7 +298,7 @@ export function AddServerDialog({
 
           {!form.useWindowsAuth && (
             <>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
                 Credentials are stored locally in encrypted form.
               </Typography>
               <TextField

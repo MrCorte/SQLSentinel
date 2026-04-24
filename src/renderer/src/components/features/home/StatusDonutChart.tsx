@@ -25,9 +25,8 @@ export function StatusDonutChart({
     <Box
       sx={{
         flex: '0 0 260px',
-        bgcolor: 'background.paper',
-        border: '1px solid',
-        borderColor: 'divider',
+        bgcolor: tokens.color.bgSurface,
+        border: `1px solid ${tokens.color.bgBorder}`,
         borderTop: `3px solid ${tokens.color.primary}`,
         borderRadius: `${tokens.radius.md}px`,
         boxShadow: tokens.shadow.elevated,
@@ -38,7 +37,7 @@ export function StatusDonutChart({
         sx={{
           fontSize: tokens.font.sizeXs,
           fontWeight: tokens.font.weightBold,
-          color: 'text.secondary',
+          color: tokens.color.textMuted,
           textTransform: 'uppercase',
           letterSpacing: '0.04em',
           mb: 1
@@ -90,7 +89,7 @@ export function StatusDonutChart({
             sx={{
               fontSize: 28,
               fontWeight: tokens.font.weightBold,
-              color: 'text.primary',
+              color: tokens.color.textPrimary,
               lineHeight: 1
             }}
           >
@@ -100,7 +99,7 @@ export function StatusDonutChart({
             sx={{
               fontSize: 10,
               fontWeight: tokens.font.weightBold,
-              color: 'text.secondary',
+              color: tokens.color.textMuted,
               textTransform: 'uppercase',
               letterSpacing: '0.06em'
             }}
@@ -112,9 +111,9 @@ export function StatusDonutChart({
       {/* Legend */}
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 1 }}>
         {[
-          { label: 'Online', color: '#107c10', value: onlineCount },
-          { label: 'Offline', color: '#a4262c', value: offlineCount },
-          { label: 'Unreachable', color: '#d83b01', value: unreachableCount }
+          { label: 'Online', color: tokens.color.dotOnline, value: onlineCount },
+          { label: 'Offline', color: tokens.color.dotOffline, value: offlineCount },
+          { label: 'Unreachable', color: tokens.color.dotWarning, value: unreachableCount }
         ].map((item) => (
           <Box key={item.label} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Box
@@ -132,14 +131,14 @@ export function StatusDonutChart({
                       : tokens.shadow.dotGlowError
               }}
             />
-            <Typography sx={{ fontSize: tokens.font.sizeXs, color: 'text.secondary', flex: 1 }}>
+            <Typography sx={{ fontSize: tokens.font.sizeXs, color: tokens.color.textMuted, flex: 1 }}>
               {item.label}
             </Typography>
             <Typography
               sx={{
                 fontSize: tokens.font.sizeXs,
                 fontWeight: tokens.font.weightBold,
-                color: 'text.primary'
+                color: tokens.color.textPrimary
               }}
             >
               {item.value}

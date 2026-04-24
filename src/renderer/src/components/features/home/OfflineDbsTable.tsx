@@ -19,10 +19,9 @@ export function OfflineDbsTable({
     <Box
       sx={{
         mx: 0,
-        bgcolor: 'background.paper',
-        border: '1px solid',
-        borderColor: 'divider',
-        borderLeft: '4px solid #a4262c',
+        bgcolor: tokens.color.bgSurface,
+        border: `1px solid ${tokens.color.bgBorder}`,
+        borderLeft: `4px solid ${tokens.color.danger}`,
         borderRadius: `${tokens.radius.md}px`,
         boxShadow: tokens.shadow.elevated,
         overflow: 'hidden',
@@ -34,22 +33,18 @@ export function OfflineDbsTable({
         sx={{
           px: 2,
           py: 1,
-          borderBottom: '1px solid',
-          borderBottomColor: 'divider',
+          borderBottom: `1px solid ${tokens.color.bgBorder}`,
           display: 'flex',
           alignItems: 'center',
           gap: 1,
-          backgroundImage: (theme) =>
-            theme.palette.mode === 'dark'
-              ? 'linear-gradient(135deg, rgba(164,38,44,0.10) 0%, transparent 100%)'
-              : 'linear-gradient(135deg, rgba(164,38,44,0.06) 0%, transparent 100%)'
+          backgroundImage: 'linear-gradient(135deg, rgba(247,129,102,0.08) 0%, transparent 100%)'
         }}
       >
         <Typography
           sx={{
             fontSize: tokens.font.sizeXs,
             fontWeight: tokens.font.weightBold,
-            color: '#a4262c',
+            color: tokens.color.danger,
             textTransform: 'uppercase',
             letterSpacing: '0.04em'
           }}
@@ -61,7 +56,7 @@ export function OfflineDbsTable({
             ml: 0.5,
             px: 0.75,
             py: 0.1,
-            bgcolor: '#a4262c',
+            bgcolor: tokens.color.danger,
             color: '#fff',
             borderRadius: 1,
             fontSize: 10,
@@ -152,7 +147,7 @@ export function OfflineDbsTable({
                     borderRadius: 3,
                     fontSize: 10,
                     fontWeight: tokens.font.weightBold,
-                    background: db.stateDesc === 'OFFLINE' ? '#a4262c' : '#d83b01',
+                    background: db.stateDesc === 'OFFLINE' ? tokens.color.danger : tokens.color.dotWarning,
                     color: '#fff'
                   }}
                 >

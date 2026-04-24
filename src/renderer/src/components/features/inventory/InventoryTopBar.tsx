@@ -37,11 +37,11 @@ export const InventoryTopBar = memo(function InventoryTopBar({
     <>
       {/* ── Top bar ── */}
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2, gap: 1 }}>
-        <Typography sx={{ fontSize: 18, fontWeight: 700, color: 'text.primary', flex: 1 }}>
+        <Typography sx={{ fontSize: 18, fontWeight: 700, color: tokens.color.textPrimary, flex: 1 }}>
           SQL Server Inventory
         </Typography>
         {lastRefresh && (
-          <Typography sx={{ fontSize: 12, color: 'text.secondary' }}>
+          <Typography sx={{ fontSize: 12, color: tokens.color.textMuted }}>
             Updated: {lastRefresh.toLocaleTimeString('en-US')}
           </Typography>
         )}

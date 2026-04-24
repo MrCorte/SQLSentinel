@@ -35,12 +35,12 @@ import type { MetricsData, QueryRow } from './useMetricsData'
 
 export const GRID_HEADER_SX = {
   '& .MuiDataGrid-columnHeader': {
-    bgcolor: 'background.default',
+    bgcolor: tokens.color.bgBase,
     fontSize: tokens.font.sizeXs,
     fontWeight: tokens.font.weightSemibold,
     textTransform: 'uppercase',
     letterSpacing: '0.04em',
-    color: 'text.secondary'
+    color: tokens.color.textMuted
   },
   '& .MuiDataGrid-columnHeaders': {
     borderBottom: `2px solid ${tokens.color.primary}`
@@ -74,7 +74,7 @@ function KpiCard({
       sx={{
         position: 'relative',
         overflow: 'hidden',
-        bgcolor: 'background.paper',
+        bgcolor: tokens.color.bgSurface,
         border: '1px solid',
         borderColor: (theme) =>
           theme.palette.mode === 'dark' ? `${accent}33` : theme.palette.divider,
@@ -100,7 +100,7 @@ function KpiCard({
           fontWeight: tokens.font.weightSemibold,
           textTransform: 'uppercase',
           letterSpacing: '0.6px',
-          color: 'text.secondary',
+          color: tokens.color.textMuted,
           mb: '6px',
           display: 'block'
         }}
@@ -177,10 +177,10 @@ export const TabPanoramica = memo(function TabPanoramica({
       <Box
         sx={{
           p: 2,
-          bgcolor: 'background.paper',
+          bgcolor: tokens.color.bgSurface,
           borderRadius: 1,
           border: '1px solid',
-          borderColor: 'divider'
+          borderColor: tokens.color.bgBorder
         }}
       >
         <NoteEditor key={serverDbId} serverId={serverDbId} initialNote={serverNotes ?? ''} />
@@ -301,9 +301,9 @@ const DB_SX = {
 } as const
 
 function StatoCell({ stateDesc }: { stateDesc: string }): React.JSX.Element {
-  let bgcolor = 'background.default'
+  let bgcolor = tokens.color.bgBase
   let color = 'text.secondary'
-  let borderColor = 'divider'
+  let borderColor = tokens.color.bgBorder
 
   if (stateDesc === 'ONLINE') {
     bgcolor = tokens.color.successAlpha12

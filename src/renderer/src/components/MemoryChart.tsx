@@ -31,9 +31,9 @@ export function MemoryChart({ history }: Props): React.JSX.Element {
   return (
     <Box
       sx={{
-        bgcolor: 'background.paper',
+        bgcolor: tokens.color.bgSurface,
         border: '1px solid',
-        borderColor: 'divider',
+        borderColor: tokens.color.bgBorder,
         borderRadius: tokens.radius.sm,
         p: 1.5
       }}

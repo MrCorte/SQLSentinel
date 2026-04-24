@@ -16,7 +16,7 @@ const CATEGORIES: { key: AlertCategory; label: string }[] = [
   { key: 'disk_space_low', label: 'Disk' }
 ]
 
-function relativeTime(date: Date): string {
+function relativeTime(date: Date | string): string {
   const diffMs = Date.now() - new Date(date).getTime()
   const mins = Math.floor(diffMs / 60_000)
   if (mins < 2) return 'just now'
@@ -35,7 +35,7 @@ export function AlertsRecapCard(): React.JSX.Element {
   const serverNameMap = useMemo(() => {
     const map: Record<string, string> = {}
     for (const s of servers) {
-      map[s.id] = serverAliases[s.id] ?? `${s.host ?? s.ip}:${s.port}`
+      map[s.id] = serverAliases[s.id] ?? `${s.host}:${s.port}`
     }
     return map
   }, [servers, serverAliases])
@@ -63,7 +63,7 @@ export function AlertsRecapCard(): React.JSX.Element {
         .sort((a, b) => {
           if (!a.acknowledgedAt && b.acknowledgedAt) return -1
           if (a.acknowledgedAt && !b.acknowledgedAt) return 1
-          return new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime()
+          return new Date(String(b.detectedAt)).getTime() - new Date(String(a.detectedAt)).getTime()
         })
         .slice(0, 5),
     [alerts]
@@ -83,7 +83,6 @@ export function AlertsRecapCard(): React.JSX.Element {
         height: '100%'
       }}
     >
-      {/* Card title */}
       <Typography
         sx={{
           fontSize: tokens.font.sizeXs,
@@ -98,7 +97,6 @@ export function AlertsRecapCard(): React.JSX.Element {
         Alerts
       </Typography>
 
-      {/* Zone A — category badges */}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1, flexShrink: 0 }}>
         {CATEGORIES.map(({ key, label }) => {
           const counts = categoryCounts[key]
@@ -138,7 +136,6 @@ export function AlertsRecapCard(): React.JSX.Element {
         })}
       </Box>
 
-      {/* Zone B — recent alerts list */}
       {alerts.length === 0 ? (
         <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Typography sx={{ fontSize: tokens.font.sizeSm, color: tokens.color.textMuted }}>

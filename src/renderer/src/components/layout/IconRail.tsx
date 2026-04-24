@@ -37,36 +37,30 @@ export function IconRail({ activeTab, onTabChange, onSettingsClick }: Props): Re
         zIndex: 200
       }}
     >
-      {/* Logo — background reacts to --color-accent */}
+      {/* Logo */}
       <Box
         onClick={() => onTabChange(0)}
-        sx={{
-          width: 26,
-          height: 26,
-          borderRadius: '6px',
-          background: 'var(--color-accent, #00d4aa)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          mb: 1.5,
-          cursor: 'pointer',
-          flexShrink: 0,
-          transition: 'background 0.3s ease'
-        }}
+        sx={{ mb: 1.5, cursor: 'pointer', flexShrink: 0, display: 'flex', userSelect: 'none' }}
       >
-        <Box
-          component="span"
-          sx={{
-            fontSize: 9,
-            fontWeight: 800,
-            color: tokens.color.textOnAccent,
-            fontFamily: tokens.font.family,
-            lineHeight: 1,
-            userSelect: 'none'
-          }}
-        >
-          SS
-        </Box>
+        <svg viewBox="0 0 56 56" width="30" height="30" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="ss-logo-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#2b8bd6" />
+              <stop offset="100%" stopColor="#005a9e" />
+            </linearGradient>
+          </defs>
+          <g transform="translate(4,4)">
+            <path d="M24 0 L48 6 V26 C48 37 38 45 24 48 C10 45 0 37 0 26 V6 Z" fill="url(#ss-logo-grad)" />
+            <g fill="#ffffff" transform="translate(0,10)">
+              <ellipse cx="24" cy="5" rx="11" ry="2.6" />
+              <path d="M13 5 V9 C13 10.6 18 12 24 12 C30 12 35 10.6 35 9 V5" fill="rgba(255,255,255,0.85)" />
+              <ellipse cx="24" cy="14" rx="11" ry="2.6" opacity="0.9" />
+              <path d="M13 14 V18 C13 19.6 18 21 24 21 C30 21 35 19.6 35 18 V14" fill="rgba(255,255,255,0.7)" />
+              <ellipse cx="24" cy="23" rx="11" ry="2.6" opacity="0.8" />
+              <path d="M13 23 V27 C13 28.6 18 30 24 30 C30 30 35 28.6 35 27 V23" fill="rgba(255,255,255,0.55)" />
+            </g>
+          </g>
+        </svg>
       </Box>
 
       {/* Nav icons */}

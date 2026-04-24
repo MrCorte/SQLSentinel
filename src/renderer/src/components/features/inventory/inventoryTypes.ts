@@ -91,37 +91,37 @@ export interface ColDef {
 }
 
 export const COLUMNS: ColDef[] = [
-  { key: 'serverLabel', label: 'SERVER', width: '17%' },
-  { key: 'envName', label: 'ENVIRONMENT', width: '8%' },
-  { key: 'type', label: 'TYPE', width: '8%' },
-  { key: 'machineName', label: 'MACHINE', width: '8%' },
-  { key: 'hostingType', label: 'HOSTING', width: '6%' },
-  { key: 'dbCount', label: 'DB', width: '4%' },
-  { key: 'onlineCount', label: 'ONLINE', width: '5%' },
-  { key: 'offlineCount', label: 'OFFLINE', width: '5%' },
-  { key: 'totalDataMb', label: 'DATA', width: '7%' },
-  { key: 'version', label: 'VERSION', width: '9%' },
-  { key: 'logicalCpus', label: 'CPU', width: '5%' },
-  { key: 'unreachable', label: 'STATUS', width: '6%' },
-  { key: 'notes', label: 'NOTES', width: '12%' }
+  { key: 'serverLabel', label: 'SERVER', width: 'minmax(min-content, 17fr)' },
+  { key: 'envName', label: 'ENVIRONMENT', width: 'minmax(min-content, 8fr)' },
+  { key: 'type', label: 'TYPE', width: 'minmax(min-content, 8fr)' },
+  { key: 'machineName', label: 'MACHINE', width: 'minmax(min-content, 8fr)' },
+  { key: 'hostingType', label: 'HOSTING', width: 'minmax(min-content, 6fr)' },
+  { key: 'dbCount', label: 'DB', width: 'minmax(min-content, 4fr)' },
+  { key: 'onlineCount', label: 'ONLINE', width: 'minmax(min-content, 5fr)' },
+  { key: 'offlineCount', label: 'OFFLINE', width: 'minmax(min-content, 5fr)' },
+  { key: 'totalDataMb', label: 'DATA', width: 'minmax(min-content, 7fr)' },
+  { key: 'version', label: 'VERSION', width: 'minmax(min-content, 9fr)' },
+  { key: 'logicalCpus', label: 'CPU', width: 'minmax(min-content, 5fr)' },
+  { key: 'unreachable', label: 'STATUS', width: 'minmax(min-content, 6fr)' },
+  { key: 'notes', label: 'NOTES', width: 'minmax(min-content, 12fr)' }
 ]
 
 export const GRID_TEMPLATE = COLUMNS.map((c) => c.width).join(' ')
 
 export const DB_COLUMNS = [
-  { label: 'DATABASE', width: '13%' },
-  { label: 'SERVER', width: '10%' },
-  { label: 'ALIAS', width: '8%' },
-  { label: 'STATUS', width: '6%' },
-  { label: 'RECOVERY', width: '6%' },
-  { label: 'COMPAT', width: '7%' },
-  { label: 'TDE', width: '5%' },
-  { label: 'DATA', width: '6%' },
-  { label: 'LOG', width: '5%' },
-  { label: 'LAST FULL', width: '9%' },
-  { label: 'LAST LOG', width: '9%' },
-  { label: 'OWNER', width: '8%' },
-  { label: 'CREATED', width: '8%' }
+  { label: 'DATABASE', width: 'minmax(min-content, 13fr)' },
+  { label: 'SERVER', width: 'minmax(min-content, 10fr)' },
+  { label: 'ALIAS', width: 'minmax(min-content, 8fr)' },
+  { label: 'STATUS', width: 'minmax(min-content, 6fr)' },
+  { label: 'RECOVERY', width: 'minmax(min-content, 6fr)' },
+  { label: 'COMPAT', width: 'minmax(min-content, 7fr)' },
+  { label: 'TDE', width: 'minmax(min-content, 5fr)' },
+  { label: 'DATA', width: 'minmax(min-content, 6fr)' },
+  { label: 'LOG', width: 'minmax(min-content, 5fr)' },
+  { label: 'LAST FULL', width: 'minmax(min-content, 9fr)' },
+  { label: 'LAST LOG', width: 'minmax(min-content, 9fr)' },
+  { label: 'OWNER', width: 'minmax(min-content, 8fr)' },
+  { label: 'CREATED', width: 'minmax(min-content, 8fr)' }
 ]
 
 export const DB_GRID_TEMPLATE = DB_COLUMNS.map((c) => c.width).join(' ')

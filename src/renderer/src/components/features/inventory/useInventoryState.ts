@@ -1,6 +1,7 @@
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useServersStore } from '../../../store/serversStore'
 import { useMetricsStore } from '../../../store/metricsStore'
+import { useThrottledMetricsMap } from '../../../hooks/useThrottledMetrics'
 import { useRefreshAllServers } from '../../../hooks/useRefreshAllServers'
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue'
 import { useGroupsStore } from '../../../store/groupsStore'
@@ -75,28 +76,14 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
   const debouncedSearch = useDebouncedValue(search, 300)
 
   // Store subscriptions
-  useServersStore((s) => s.servers)
+  const servers = useServersStore((s) => s.servers)
   const envGroups = useGroupsStore((s) => s.groups)
   const serverAliases = useGroupsStore((s) => s.serverAliases)
 
-  // Throttle metrics updates — avoid rerender storm when many servers push simultaneously
-  const [metricsMap, setMetricsMap] = useState(() => useMetricsStore.getState().metricsMap)
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const unsub = useMetricsStore.subscribe(() => {
-      if (timer) return
-      timer = setTimeout(() => {
-        setMetricsMap(useMetricsStore.getState().metricsMap)
-        timer = null
-      }, 1000)
-    })
-    return () => {
-      unsub()
-      if (timer) clearTimeout(timer)
-    }
-  }, [])
+  // Throttled metrics snapshot — max 1 re-render/s to handle 200+ servers
+  const metricsMap = useThrottledMetricsMap()
 
-  const inventory = computeInventory()
+  const inventory = useMemo(() => computeInventory(), [servers, envGroups, serverAliases])
   const { totals } = inventory
 
   // ── Cluster / machine key collections ───────────────────────────────────

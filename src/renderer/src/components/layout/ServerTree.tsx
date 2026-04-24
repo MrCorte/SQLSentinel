@@ -50,7 +50,24 @@ export function ServerTree({
   onRemoveServer: _onRemoveServer
 }: Props): React.JSX.Element {
   const servers = useServersStore((s) => s.servers)
-  const alerts = useAlertsStore((s) => s.alerts)
+
+  // Stable string selectors — Zustand re-renders only when the HOST:PORT set for that
+  // severity actually changes, not on every alert property update (ack, message, etc.)
+  const criticalKey = useAlertsStore((s) =>
+    s.alerts
+      .filter((a) => a.severity === 'CRITICAL')
+      .map((a) => a.serverId)
+      .sort()
+      .join('\0')
+  )
+  const warningKey = useAlertsStore((s) =>
+    s.alerts
+      .filter((a) => a.severity === 'WARNING')
+      .map((a) => a.serverId)
+      .sort()
+      .join('\0')
+  )
+
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('all')
   const [groupManagerOpen, setGroupManagerOpen] = useState(false)
 
@@ -70,20 +87,23 @@ export function ServerTree({
     handleMoveToGroup
   } = useSidebarTree(servers)
 
-  // Build a set of server IDs that match the active severity filter
+  // Build a set of host:port keys that match the active severity filter.
+  // alert.serverId is "host:port" (set by metricsWorker), so we compare against
+  // server host:port, not server.id (UUID).
   const filteredServerIds = useMemo((): Set<string> | null => {
     if (severityFilter === 'all') return null
 
     if (severityFilter === 'offline') {
-      return new Set(servers.filter((s) => s.unreachable).map((s) => s.id))
+      return new Set(
+        servers
+          .filter((s) => s.unreachable)
+          .map((s) => `${s.host ?? s.ip}:${s.port}`)
+      )
     }
 
-    const targetSeverity = severityFilter === 'critical' ? 'CRITICAL' : 'WARNING'
-    const serverIdsWithAlerts = new Set(
-      alerts.filter((a) => a.severity === targetSeverity).map((a) => a.serverId)
-    )
-    return serverIdsWithAlerts
-  }, [severityFilter, servers, alerts])
+    const raw = severityFilter === 'critical' ? criticalKey : warningKey
+    return new Set(raw ? raw.split('\0') : [])
+  }, [severityFilter, servers, criticalKey, warningKey])
 
   // Filter flatItems: when a severity filter is active, keep only server items
   // (and search-server items) whose server ID is in filteredServerIds
@@ -92,7 +112,7 @@ export function ServerTree({
 
     const filtered = flatItems.filter((item) => {
       if (item.kind === 'server' || item.kind === 'search-server') {
-        return filteredServerIds.has(item.server.id)
+        return filteredServerIds.has(`${item.server.host ?? item.server.ip}:${item.server.port}`)
       }
       // Keep structural items (group headers, AG headers, machine headers)
       // only if they have at least one visible server

@@ -1,4 +1,4 @@
-import { useRef, useState, memo } from 'react'
+import { useRef, useState, memo, useEffect } from 'react'
 import { alpha } from '@mui/material/styles'
 import { Box, Chip, Paper, Tooltip, Typography } from '@mui/material'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
@@ -46,6 +46,17 @@ export const InventoryServerTable = memo(function InventoryServerTable({
   const colWidthsRef = useRef<number[]>(colWidths)
   colWidthsRef.current = colWidths
 
+  // Cleanup drag listeners if the component unmounts mid-drag
+  const activeListenersRef = useRef<{ move: (e: MouseEvent) => void; up: () => void } | null>(null)
+  useEffect(() => {
+    return () => {
+      if (activeListenersRef.current) {
+        document.removeEventListener('mousemove', activeListenersRef.current.move)
+        document.removeEventListener('mouseup', activeListenersRef.current.up)
+      }
+    }
+  }, [])
+
   const rowVirtualizer = useVirtualizer({
     count: sortedRows.length,
     getScrollElement: () => parentRef.current,
@@ -72,7 +83,9 @@ export const InventoryServerTable = memo(function InventoryServerTable({
     function onUp(): void {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
+      activeListenersRef.current = null
     }
+    activeListenersRef.current = { move: onMove, up: onUp }
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
   }

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback } from 'react'
+import { useMemo, useCallback } from 'react'
 import { useServersStore } from '../../../store/serversStore'
 import { useMetricsStore } from '../../../store/metricsStore'
 import { useGroupsStore } from '../../../store/groupsStore'
@@ -6,6 +6,7 @@ import { useAgStore } from '../../../store/agStore'
 import { useAlertsStore } from '../../../store/alertsStore'
 import { useRefreshAllServers } from '../../../hooks/useRefreshAllServers'
 import { useNow } from '../../../hooks/useNow'
+import { useThrottledMetrics } from '../../../hooks/useThrottledMetrics'
 import type { StoredServer, Alert } from '../../../../../preload/index'
 import type { ServerGroup } from '../../../types/index'
 
@@ -104,24 +105,8 @@ export function useHomeDashboard(onNavigateToServer: (id: string) => void): Home
   const servers = useServersStore((s) => s.servers)
   const lastUpdate = useMetricsStore((s) => s.lastUpdate)
 
-  // Throttled metrics subscription — max 1 re-render/s to handle 200+ servers
-  const [metricsMap, setMetricsMap] = useState(() => useMetricsStore.getState().metricsMap)
-  const [summaries, setSummaries] = useState(() => useMetricsStore.getState().summaries)
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const unsub = useMetricsStore.subscribe(() => {
-      if (timer) return
-      timer = setTimeout(() => {
-        setMetricsMap(useMetricsStore.getState().metricsMap)
-        setSummaries(useMetricsStore.getState().summaries)
-        timer = null
-      }, 1000)
-    })
-    return () => {
-      unsub()
-      if (timer) clearTimeout(timer)
-    }
-  }, [])
+  // Throttled metrics snapshot — max 1 re-render/s to handle 200+ servers
+  const { metricsMap, summaries } = useThrottledMetrics()
 
   const now = useNow()
   const { groups, serverGroups, serverAliases } = useGroupsStore()

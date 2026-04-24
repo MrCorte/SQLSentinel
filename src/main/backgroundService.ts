@@ -169,7 +169,7 @@ export class BackgroundService {
     try {
       if (!Notification.isSupported()) return
       const n = new Notification({
-        title: 'SQLSentinel — Alert Critico',
+        title: 'SQLSentinel — Critical Alert',
         body: `${alert.serverId} — ${alert.message}`
       })
       n.on('click', () => {

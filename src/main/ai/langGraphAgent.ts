@@ -499,12 +499,17 @@ export async function langGraphStream(
   const timeoutId = setTimeout(() => controller.abort(), 300_000)
 
   try {
-    // Step 1 — call tools in parallel; each emits tool_start/tool_end via withToolEvents
-    const [metrics, alerts, docs] = await Promise.all([
+    // Step 1 — call tools in parallel; partial failures return empty results so the LLM
+    // still gets useful context from the tools that succeeded
+    const NO_DOCS = 'Knowledge base not available or no results found.'
+    const [metricsResult, alertsResult, docsResult] = await Promise.allSettled([
       getServerMetricsTool.invoke({}),
       getRecentAlertsTool.invoke({}),
       searchDocumentationTool.invoke({ query: question })
     ])
+    const metrics = metricsResult.status === 'fulfilled' ? metricsResult.value : '[]'
+    const alerts  = alertsResult.status  === 'fulfilled' ? alertsResult.value  : '[]'
+    const docs    = docsResult.status    === 'fulfilled' ? docsResult.value    : NO_DOCS
 
     if (controller.signal.aborted) {
       onEvent({ type: 'error', message: 'Cancelled' })
@@ -512,7 +517,6 @@ export async function langGraphStream(
     }
 
     // Step 2 — build context: predefined queries first, then FTS docs, then live server data
-    const NO_DOCS = 'Knowledge base not available or no results found.'
     const contextParts: string[] = []
 
     const predefined = lookupTsqlMap(question)
@@ -539,7 +543,8 @@ export async function langGraphStream(
 
     const stream = await getLlm().stream(msgs, { signal: controller.signal })
     for await (const chunk of stream) {
-      if (controller.signal.aborted) break
+      // Stop if aborted or if a newer request has taken over
+      if (controller.signal.aborted || _activeAbortController !== controller) break
       const tok = extractText(chunk.content)
       if (tok) onEvent({ type: 'token', text: tok })
     }

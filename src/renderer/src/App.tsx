@@ -36,6 +36,8 @@ import type {
 } from '../../preload/index'
 import { createLogger } from './utils/logger'
 import { migrateAliasKeys } from './store/groupsStore'
+import { useGroupsStore } from './store/groupsStore'
+import { getServerDisplayName } from './types/index'
 
 const log = createLogger('app')
 const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
@@ -63,12 +65,22 @@ function AppInner(): React.JSX.Element {
   } = useAlertsStore()
   const { selectedServerId, setSelectedServerId } = useAppStore()
   const servers = useServersStore((s) => s.servers)
+  const serverAliases = useGroupsStore((s) => s.serverAliases)
 
   // Derive selected server object from id
   const selectedServer = useMemo(
     () => servers.find((s) => s.id === selectedServerId) ?? null,
     [servers, selectedServerId]
   )
+
+  const selectedServerName = useMemo(() => {
+    if (!selectedServer) return null
+    return getServerDisplayName({
+      ip: selectedServer.host ?? selectedServer.ip ?? '',
+      port: selectedServer.port,
+      alias: serverAliases[selectedServer.id]
+    })
+  }, [selectedServer, serverAliases])
   const [selectedAgName, setSelectedAgName] = useState<string | null>(null)
 
   // Load persisted servers on mount — runs in both real and mock mode so that
@@ -262,7 +274,7 @@ function AppInner(): React.JSX.Element {
         >
           <BreadcrumbBar
             activeTab={tab}
-            selectedServerName={selectedServer?.host ?? selectedServer?.ip ?? null}
+            selectedServerName={selectedServerName}
             onOpenAlerts={() => setDrawerOpen(true)}
             onOpenAI={() => setAiOpen(true)}
           />

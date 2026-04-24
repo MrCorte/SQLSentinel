@@ -67,7 +67,7 @@ function AlertRow({
 }): React.JSX.Element {
   const isCritical = alert.severity === 'CRITICAL'
   const isAcknowledged = alert.acknowledgedAt !== null
-  const accentColor = isCritical ? tokens.color.error : tokens.color.warning
+  const accentColor = isCritical ? tokens.color.danger : tokens.color.warning
 
   return (
     <ListItem
@@ -146,7 +146,7 @@ function AlertRow({
                   sx={{
                     fontSize: tokens.font.sizeXs,
                     fontWeight: tokens.font.weightSemibold,
-                    color: tokens.color.primary,
+                    color: tokens.color.accent,
                     cursor: 'pointer',
                     '&:hover': { textDecoration: 'underline' }
                   }}
@@ -193,8 +193,8 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
           alignItems="center"
           sx={{
             px: 2,
-            height: tokens.size.navbarHeight,
-            minHeight: tokens.size.navbarHeight,
+            height: 48,
+            minHeight: 48,
             bgcolor: 'background.paper',
             borderBottom: '1px solid',
             borderBottomColor: 'divider'
@@ -217,7 +217,7 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
                   fontSize: tokens.font.sizeXs,
                   fontWeight: tokens.font.weightSemibold,
                   color: 'common.white',
-                  bgcolor: tokens.color.error,
+                  bgcolor: tokens.color.danger,
                   px: 0.75,
                   py: 0.25,
                   borderRadius: tokens.radius.sm

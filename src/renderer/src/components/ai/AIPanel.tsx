@@ -144,7 +144,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
           pb: 0,
           display: 'flex',
           flexDirection: 'column',
-          bgcolor: tokens.color.primary,
+          bgcolor: tokens.color.accent,
           color: '#fff',
           flexShrink: 0
         }}
@@ -287,8 +287,8 @@ function MessageBubble({ role, content }: MessageBubbleProps): React.JSX.Element
           px: 1.5,
           py: 1,
           borderRadius: isUser ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-          bgcolor: isUser ? `${tokens.color.primary}18` : 'background.paper',
-          border: isUser ? `1px solid ${tokens.color.primary}40` : '1px solid',
+          bgcolor: isUser ? tokens.color.accentAlpha12 : 'background.paper',
+          border: isUser ? `1px solid ${tokens.color.accentAlpha40}` : '1px solid',
           borderColor: isUser ? 'transparent' : 'divider',
           boxShadow: isUser ? 'none' : tokens.shadow.card
         }}

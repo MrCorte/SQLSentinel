@@ -1,30 +1,25 @@
 import { createTheme, type Theme } from '@mui/material/styles'
+import '@mui/x-data-grid/themeAugmentation'
 import { tokens } from './tokens'
 
-export function buildTheme(mode: 'light' | 'dark'): Theme {
-  const isDark = mode === 'dark'
-
+export function buildTheme(): Theme {
   return createTheme({
     palette: {
-      mode,
-      primary: {
-        main: tokens.color.primary,
-        dark: tokens.color.primaryDark
-      },
+      mode: 'dark',
+      primary: { main: tokens.color.accent },
       success: { main: tokens.color.success },
       warning: { main: tokens.color.warning },
-      error: { main: tokens.color.error },
-      background: isDark
-        ? { default: '#0f172a', paper: '#1e293b' }
-        : { default: tokens.color.bgApp, paper: tokens.color.bgCard },
-      text: isDark
-        ? { primary: '#f1f5f9', secondary: '#94a3b8', disabled: '#475569' }
-        : {
-            primary: tokens.color.textPrimary,
-            secondary: tokens.color.textSecondary,
-            disabled: tokens.color.textDisabled
-          },
-      divider: isDark ? '#334155' : tokens.color.divider
+      error: { main: tokens.color.danger },
+      background: {
+        default: tokens.color.bgBase,
+        paper: tokens.color.bgSurface
+      },
+      text: {
+        primary: tokens.color.textPrimary,
+        secondary: tokens.color.textMuted,
+        disabled: tokens.color.textMuted
+      },
+      divider: tokens.color.bgBorder
     },
 
     typography: {
@@ -35,10 +30,7 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
       subtitle2: { fontSize: tokens.font.sizeBase, fontWeight: tokens.font.weightSemibold },
       body1: { fontSize: tokens.font.sizeBase },
       body2: { fontSize: tokens.font.sizeSm },
-      caption: {
-        fontSize: tokens.font.sizeXs,
-        color: isDark ? '#94a3b8' : tokens.color.textSecondary
-      },
+      caption: { fontSize: tokens.font.sizeXs, color: tokens.color.textMuted },
       button: {
         fontSize: tokens.font.sizeBase,
         fontWeight: tokens.font.weightSemibold,
@@ -52,33 +44,27 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
       MuiCssBaseline: {
         styleOverrides: {
           body: {
-            backgroundColor: isDark ? '#0f172a' : tokens.color.bgApp,
-            color: isDark ? '#f1f5f9' : tokens.color.textPrimary,
+            backgroundColor: tokens.color.bgBase,
+            color: tokens.color.textPrimary,
             fontFamily: tokens.font.family
           },
-          // Scrollbar colours switch with the theme
           '::-webkit-scrollbar': { width: 6, height: 6 },
           '::-webkit-scrollbar-track': { background: 'transparent' },
           '::-webkit-scrollbar-thumb': {
-            background: isDark ? '#334155' : '#c8c6c4',
+            background: tokens.color.bgBorder,
             borderRadius: 3,
-            '&:hover': { background: isDark ? '#475569' : '#8a8886' }
+            '&:hover': { background: tokens.color.textMuted }
           }
         }
       },
 
       MuiPaper: {
         styleOverrides: {
-          root: { backgroundImage: 'none', borderRadius: tokens.radius.sm },
-          elevation0: {
-            ...(isDark && { border: `1px solid ${tokens.color.borderDark}` })
-          },
-          elevation1: {
-            boxShadow: tokens.shadow.card,
-            ...(isDark && { border: `1px solid ${tokens.color.borderDark}` })
-          },
-          elevation2: { boxShadow: tokens.shadow.elevated },
-          elevation3: { boxShadow: tokens.shadow.cardHover }
+          root: {
+            backgroundImage: 'none',
+            borderRadius: tokens.radius.sm,
+            border: `1px solid ${tokens.color.bgBorder}`
+          }
         }
       },
 
@@ -89,69 +75,17 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
             textTransform: 'none',
             fontWeight: tokens.font.weightSemibold,
             fontSize: tokens.font.sizeBase,
-            transition: 'all 0.15s ease'
+            boxShadow: 'none',
+            '&:hover': { boxShadow: 'none' }
           },
           contained: {
-            boxShadow: '0 2px 8px rgba(0,120,212,0.25)',
-            '&:hover': {
-              boxShadow: '0 4px 14px rgba(0,120,212,0.35)',
-              backgroundColor: tokens.color.primaryHover,
-              transform: 'translateY(-1px)'
-            },
-            '&:active': { transform: 'translateY(0)', boxShadow: '0 1px 4px rgba(0,120,212,0.2)' }
+            backgroundColor: tokens.color.accent,
+            color: tokens.color.textOnAccent,
+            '&:hover': { backgroundColor: '#00b896' }
           },
           outlined: {
-            '&:hover': { backgroundColor: tokens.color.primaryAlpha12 }
-          }
-        }
-      },
-
-      MuiTab: {
-        styleOverrides: {
-          root: {
-            textTransform: 'none',
-            fontWeight: tokens.font.weightSemibold,
-            fontSize: tokens.font.sizeBase,
-            minHeight: tokens.size.navbarHeight,
-            padding: '0 16px'
-          }
-        }
-      },
-
-      MuiTabs: {
-        styleOverrides: { indicator: { height: 3, borderRadius: '3px 3px 0 0' } }
-      },
-
-      MuiTableCell: {
-        styleOverrides: {
-          head: {
-            fontSize: tokens.font.sizeXs,
-            fontWeight: tokens.font.weightSemibold,
-            textTransform: 'uppercase',
-            letterSpacing: '0.04em',
-            backgroundColor: isDark ? '#0f1f3d' : tokens.color.bgApp,
-            color: isDark ? '#94a3b8' : tokens.color.textSecondary,
-            borderBottom: `2px solid ${tokens.color.primary}`
-          },
-          body: { fontSize: tokens.font.sizeSm }
-        }
-      },
-
-      MuiListItemButton: {
-        // Sidebar is intentionally always dark regardless of theme mode
-        styleOverrides: {
-          root: {
-            borderRadius: tokens.radius.sm,
-            margin: '1px 8px',
-            width: 'calc(100% - 16px)',
-            transition: 'all 0.15s ease',
-            '&.Mui-selected': {
-              backgroundColor: tokens.color.bgSidebarSelected,
-              color: tokens.color.textOnDark,
-              boxShadow: `inset 3px 0 0 rgba(255,255,255,0.6), 0 2px 8px rgba(0,120,212,0.4)`,
-              '&:hover': { backgroundColor: tokens.color.primaryHover }
-            },
-            '&:hover': { backgroundColor: tokens.color.bgSidebarHover }
+            borderColor: tokens.color.bgBorder,
+            '&:hover': { backgroundColor: tokens.color.accentAlpha12, borderColor: tokens.color.accent }
           }
         }
       },
@@ -159,33 +93,11 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
       MuiChip: {
         styleOverrides: {
           root: {
-            borderRadius: tokens.radius.pill,
-            fontWeight: tokens.font.weightSemibold,
-            fontSize: tokens.font.sizeXs,
-            height: 20
-          },
-          filled: {
-            ...(isDark && { border: `1px solid ${tokens.color.dividerDark}` })
-          }
-        }
-      },
-
-      MuiDrawer: {
-        styleOverrides: { paper: { boxShadow: tokens.shadow.drawer } }
-      },
-
-      MuiDivider: {
-        styleOverrides: {
-          root: { borderColor: isDark ? '#334155' : tokens.color.divider }
-        }
-      },
-
-      MuiIconButton: {
-        styleOverrides: {
-          root: {
             borderRadius: tokens.radius.sm,
-            transition: 'all 0.15s ease',
-            '&:hover': { transform: 'scale(1.08)' }
+            fontWeight: tokens.font.weightMedium,
+            fontSize: tokens.font.sizeXs,
+            height: 20,
+            border: `1px solid ${tokens.color.bgBorder}`
           }
         }
       },
@@ -193,9 +105,122 @@ export function buildTheme(mode: 'light' | 'dark'): Theme {
       MuiTooltip: {
         styleOverrides: {
           tooltip: {
-            borderRadius: tokens.radius.sm,
+            backgroundColor: tokens.color.bgBorder,
+            color: tokens.color.textPrimary,
+            fontSize: tokens.font.sizeXs,
+            borderRadius: tokens.radius.sm
+          }
+        }
+      },
+
+      MuiTableCell: {
+        styleOverrides: {
+          head: {
+            fontSize: tokens.font.sizeXs,
+            fontWeight: tokens.font.weightMedium,
+            color: tokens.color.textMuted,
+            backgroundColor: tokens.color.bgSurface,
+            borderBottom: `1px solid ${tokens.color.bgBorder}`
+          },
+          body: {
             fontSize: tokens.font.sizeSm,
-            boxShadow: tokens.shadow.elevated
+            borderBottom: `1px solid ${tokens.color.bgBorder}`
+          }
+        }
+      },
+
+      MuiDataGrid: {
+        styleOverrides: {
+          root: {
+            border: `1px solid ${tokens.color.bgBorder}`,
+            '--DataGrid-rowBorderColor': tokens.color.bgBorder,
+            '--DataGrid-containerBackground': tokens.color.bgSurface,
+            fontSize: tokens.font.sizeSm,
+            '& .MuiDataGrid-columnHeaders': {
+              backgroundColor: tokens.color.bgSurface,
+              borderBottom: `1px solid ${tokens.color.bgBorder}`,
+              minHeight: '36px !important',
+              maxHeight: '36px !important',
+              lineHeight: '36px !important'
+            },
+            '& .MuiDataGrid-columnHeaderTitle': {
+              fontSize: tokens.font.sizeXs,
+              fontWeight: tokens.font.weightMedium,
+              color: tokens.color.textMuted,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em'
+            },
+            '& .MuiDataGrid-row': {
+              '&:hover': { backgroundColor: `${tokens.color.bgSurface}cc` }
+            },
+            '& .MuiDataGrid-cell': {
+              borderBottom: `1px solid ${tokens.color.bgBorder}`,
+              padding: '0 8px'
+            },
+            '& .MuiDataGrid-footerContainer': {
+              borderTop: `1px solid ${tokens.color.bgBorder}`,
+              backgroundColor: tokens.color.bgSurface
+            }
+          }
+        },
+        defaultProps: {
+          rowHeight: 32,
+          columnHeaderHeight: 36,
+          disableRowSelectionOnClick: false,
+          hideFooterPagination: false
+        }
+      },
+
+      MuiListItemButton: {
+        styleOverrides: {
+          root: {
+            borderRadius: tokens.radius.sm,
+            margin: '1px 6px',
+            width: 'calc(100% - 12px)',
+            '&.Mui-selected': {
+              backgroundColor: tokens.color.accentAlpha12,
+              borderLeft: `2px solid ${tokens.color.accent}`,
+              borderRadius: `0 ${tokens.radius.sm}px ${tokens.radius.sm}px 0`,
+              marginLeft: 0,
+              paddingLeft: '14px',
+              '&:hover': { backgroundColor: tokens.color.accentAlpha12 }
+            },
+            '&:hover': { backgroundColor: `${tokens.color.bgSurface}aa` }
+          }
+        }
+      },
+
+      MuiDrawer: {
+        styleOverrides: {
+          paper: {
+            backgroundColor: tokens.color.bgSurface,
+            boxShadow: tokens.shadow.drawer,
+            border: `1px solid ${tokens.color.bgBorder}`
+          }
+        }
+      },
+
+      MuiDivider: {
+        styleOverrides: { root: { borderColor: tokens.color.bgBorder } }
+      },
+
+      MuiIconButton: {
+        styleOverrides: {
+          root: {
+            borderRadius: tokens.radius.sm,
+            '&:hover': { backgroundColor: tokens.color.accentAlpha12 }
+          }
+        }
+      },
+
+      MuiTextField: {
+        styleOverrides: {
+          root: {
+            '& .MuiOutlinedInput-root': {
+              '& fieldset': { borderColor: tokens.color.bgBorder },
+              '&:hover fieldset': { borderColor: tokens.color.textMuted },
+              '&.Mui-focused fieldset': { borderColor: tokens.color.accent }
+            }
           }
         }
       }

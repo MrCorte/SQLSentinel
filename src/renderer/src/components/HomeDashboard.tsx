@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Box, Typography } from '@mui/material'
 import { DataGrid, type GridColDef, type GridRowParams } from '@mui/x-data-grid'
 import { useHomeDashboard } from './features/home/useHomeDashboard'
+import { DashboardCharts } from './features/home/DashboardCharts'
 import { tokens } from '../styles/tokens'
 import { useAppStore } from '../store/appStore'
 import { useGroupsStore } from '../store/groupsStore'
@@ -100,8 +101,12 @@ export function HomeDashboard({
     alertCountByServer,
     onlineCount,
     offlineCount,
+    unreachableCount,
     criticalCount,
-    warningCount
+    warningCount,
+    donutFinal,
+    cpuData,
+    hasCpuData
   } = useHomeDashboard(onNavigateToServer)
 
   const setSelectedServerId = useAppStore((s) => s.setSelectedServerId)
@@ -349,6 +354,17 @@ export function HomeDashboard({
         />
         <KpiCard label="Online" value={onlineCount} color={tokens.color.success} />
       </Box>
+
+      {/* ---- Charts ---- */}
+      <DashboardCharts
+        totalServers={servers.length}
+        donutFinal={donutFinal}
+        onlineCount={onlineCount}
+        offlineCount={offlineCount}
+        unreachableCount={unreachableCount}
+        cpuData={cpuData}
+        hasCpuData={hasCpuData}
+      />
 
       {/* ---- DataGrid ---- */}
       <Box sx={{ flex: 1, minHeight: 0 }}>

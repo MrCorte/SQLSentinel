@@ -1,25 +1,26 @@
-import { createTheme, type Theme } from '@mui/material/styles'
+import { createTheme, alpha, type Theme } from '@mui/material/styles'
 import '@mui/x-data-grid/themeAugmentation'
 import { tokens } from './tokens'
+import type { ThemePalette } from './tokens'
 
-export function buildTheme(): Theme {
+export function buildTheme(mode: 'light' | 'dark', palette: ThemePalette): Theme {
   return createTheme({
     palette: {
-      mode: 'dark',
+      mode,
       primary: { main: tokens.color.accent },
       success: { main: tokens.color.success },
       warning: { main: tokens.color.warning },
       error: { main: tokens.color.danger },
       background: {
-        default: tokens.color.bgBase,
-        paper: tokens.color.bgSurface
+        default: palette.bgBase,
+        paper: palette.bgSurface
       },
       text: {
-        primary: tokens.color.textPrimary,
-        secondary: tokens.color.textMuted,
-        disabled: tokens.color.textMuted
+        primary: palette.textPrimary,
+        secondary: palette.textMuted,
+        disabled: palette.textMuted
       },
-      divider: tokens.color.bgBorder
+      divider: palette.bgBorder
     },
 
     typography: {
@@ -151,7 +152,7 @@ export function buildTheme(): Theme {
               letterSpacing: '0.06em'
             },
             '& .MuiDataGrid-row': {
-              '&:hover': { backgroundColor: `${tokens.color.bgSurface}cc` }
+              '&:hover': { backgroundColor: alpha(palette.bgSurface, mode === 'dark' ? 0.8 : 0.06) }
             },
             '& .MuiDataGrid-cell': {
               borderBottom: `1px solid ${tokens.color.bgBorder}`,
@@ -185,7 +186,7 @@ export function buildTheme(): Theme {
               paddingLeft: '14px',
               '&:hover': { backgroundColor: tokens.color.accentAlpha12 }
             },
-            '&:hover': { backgroundColor: `${tokens.color.bgSurface}aa` }
+            '&:hover': { backgroundColor: alpha(palette.bgSurface, mode === 'dark' ? 0.67 : 0.06) }
           }
         }
       },

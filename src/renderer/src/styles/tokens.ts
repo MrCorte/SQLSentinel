@@ -1,5 +1,31 @@
 // Dark Pro design tokens — single source of truth for all UI constants
 
+// Actual hex values per mode — injected as CSS custom properties by the theme provider.
+// Components use tokens.color.bg*/text* which reference the CSS vars and auto-switch.
+export const darkValues = {
+  bgBase: '#0d1117',
+  bgSurface: '#161b22',
+  bgBorder: '#30363d',
+  textPrimary: '#e6edf3',
+  textMuted: '#8b949e',
+} as const
+
+export const lightValues = {
+  bgBase: '#ffffff',
+  bgSurface: '#f6f8fa',
+  bgBorder: '#d0d7de',
+  textPrimary: '#1f2328',
+  textMuted: '#636c76',
+} as const
+
+export interface ThemePalette {
+  bgBase: string
+  bgSurface: string
+  bgBorder: string
+  textPrimary: string
+  textMuted: string
+}
+
 export const tokens = {
   color: {
     // Accent
@@ -16,14 +42,14 @@ export const tokens = {
     danger: '#f78166',
     dangerAlpha12: 'rgba(247,129,102,0.12)',
 
-    // Backgrounds
-    bgBase: '#0d1117',
-    bgSurface: '#161b22',
-    bgBorder: '#30363d',
+    // Adaptive surfaces — resolved via CSS custom properties injected by App
+    bgBase: 'var(--t-bg-base)',
+    bgSurface: 'var(--t-bg-surface)',
+    bgBorder: 'var(--t-bg-border)',
 
-    // Text
-    textPrimary: '#e6edf3',
-    textMuted: '#8b949e',
+    // Adaptive text — resolved via CSS custom properties injected by App
+    textPrimary: 'var(--t-text-primary)',
+    textMuted: 'var(--t-text-muted)',
     textOnAccent: '#0d1117',
 
     // Sidebar selection / hover

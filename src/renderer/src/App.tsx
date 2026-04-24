@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback } from 'react'
 import { Box } from '@mui/material'
 import { AIPanel } from './components/ai/AIPanel'
 import { ThemeProvider } from '@mui/material/styles'
@@ -19,6 +19,9 @@ import { useMetricsStore } from './store/metricsStore'
 import { useMockData } from './hooks/useMockData'
 import { useIpcEvent } from './hooks/useIpcEvent'
 import { buildTheme } from './styles/theme'
+import { darkValues, lightValues } from './styles/tokens'
+import { ThemeContext } from './context/ThemeContext'
+import type { ThemeMode } from './context/ThemeContext'
 import { AuthContext } from './context/AuthContext'
 import { AccentProvider } from './components/layout/AccentProvider'
 import { IconRail } from './components/layout/IconRail'
@@ -340,8 +343,45 @@ function App(): React.JSX.Element {
   const [session, setSession] = useState<AuthSession | null>(null)
   const [authChecking, setAuthChecking] = useState(true)
 
-  // Theme is always dark — no toggle
-  const muiTheme = useMemo(() => buildTheme(), [])
+  // ── Theme mode ────────────────────────────────────────────────────────────
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(
+    () => (localStorage.getItem('themeMode') as ThemeMode) ?? 'system'
+  )
+  const [sysDark, setSysDark] = useState(
+    () => window.matchMedia('(prefers-color-scheme: dark)').matches
+  )
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const handler = (e: MediaQueryListEvent): void => setSysDark(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  const effectiveMode: 'light' | 'dark' =
+    themeMode === 'system' ? (sysDark ? 'dark' : 'light') : themeMode
+
+  // Inject CSS custom properties before paint so all components using
+  // tokens.color.bg*/text* CSS vars pick up the right values immediately
+  useLayoutEffect(() => {
+    const vals = effectiveMode === 'dark' ? darkValues : lightValues
+    const root = document.documentElement
+    root.style.setProperty('--t-bg-base', vals.bgBase)
+    root.style.setProperty('--t-bg-surface', vals.bgSurface)
+    root.style.setProperty('--t-bg-border', vals.bgBorder)
+    root.style.setProperty('--t-text-primary', vals.textPrimary)
+    root.style.setProperty('--t-text-muted', vals.textMuted)
+  }, [effectiveMode])
+
+  const muiTheme = useMemo(() => {
+    const vals = effectiveMode === 'dark' ? darkValues : lightValues
+    return buildTheme(effectiveMode, vals)
+  }, [effectiveMode])
+
+  const setThemeMode = useCallback(async (mode: ThemeMode): Promise<void> => {
+    localStorage.setItem('themeMode', mode)
+    setThemeModeState(mode)
+  }, [])
 
   // Check if a session already exists (e.g. app restarted within the same process)
   useEffect(() => {
@@ -375,18 +415,20 @@ function App(): React.JSX.Element {
   }, [])
 
   return (
-    <ThemeProvider theme={muiTheme}>
-      <CssBaseline />
-      {authChecking ? null : !session ? (
-        <LoginPage onLogin={setSession} />
-      ) : (
-        <AuthContext.Provider value={{ session, logout: handleLogout }}>
-          <WorkerProvider>
-            <AppInner />
-          </WorkerProvider>
-        </AuthContext.Provider>
-      )}
-    </ThemeProvider>
+    <ThemeContext.Provider value={{ themeMode, setThemeMode }}>
+      <ThemeProvider theme={muiTheme}>
+        <CssBaseline />
+        {authChecking ? null : !session ? (
+          <LoginPage onLogin={setSession} />
+        ) : (
+          <AuthContext.Provider value={{ session, logout: handleLogout }}>
+            <WorkerProvider>
+              <AppInner />
+            </WorkerProvider>
+          </AuthContext.Provider>
+        )}
+      </ThemeProvider>
+    </ThemeContext.Provider>
   )
 }
 

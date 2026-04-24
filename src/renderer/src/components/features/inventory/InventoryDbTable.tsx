@@ -259,19 +259,21 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                         </Typography>
 
                         {/* STATUS */}
-                        <Chip
-                          label={row.stateDesc ?? '—'}
-                          size="small"
-                          sx={{
-                            height: 18,
-                            fontSize: 9,
-                            fontWeight: 700,
-                            borderRadius: '3px',
-                            bgcolor: row.stateDesc === 'ONLINE' ? '#107c10' : '#a4262c',
-                            color: '#fff',
-                            width: 'fit-content',
-                          }}
-                        />
+                        <Tooltip title={row.stateDesc ?? ''} disableHoverListener={row.stateDesc === 'ONLINE' || row.stateDesc === 'OFFLINE'}>
+                          <Chip
+                            label={row.stateDesc ?? '—'}
+                            size="small"
+                            sx={{
+                              height: 18,
+                              fontSize: 9,
+                              fontWeight: 700,
+                              borderRadius: '3px',
+                              bgcolor: row.stateDesc === 'ONLINE' ? '#107c10' : '#a4262c',
+                              color: '#fff',
+                              maxWidth: '100%',
+                            }}
+                          />
+                        </Tooltip>
 
                         {/* RECOVERY */}
                         <Chip
@@ -289,7 +291,7 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                                   ? '#038387'
                                   : '#737373',
                             color: '#fff',
-                            width: 'fit-content',
+                            maxWidth: '100%',
                           }}
                         />
 

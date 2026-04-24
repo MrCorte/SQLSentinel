@@ -194,8 +194,8 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                           label={row.unreachable ? 'OFFLINE' : 'ONLINE'}
                           size="small"
                           sx={{
-                            height: 18,
-                            fontSize: 9,
+                            height: 20,
+                            fontSize: 10,
                             fontWeight: 700,
                             borderRadius: '3px',
                             bgcolor: row.unreachable ? '#a4262c' : '#107c10',
@@ -207,8 +207,8 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                             label={row.agRole === 'PRIMARY' ? '★ PRIMARY' : '○ SECONDARY'}
                             size="small"
                             sx={{
-                              height: 18,
-                              fontSize: 9,
+                              height: 20,
+                              fontSize: 10,
                               fontWeight: 700,
                               borderRadius: '3px',
                               bgcolor: row.agRole === 'PRIMARY' ? '#107c10' : 'transparent',
@@ -264,8 +264,8 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                             label={row.stateDesc ?? '—'}
                             size="small"
                             sx={{
-                              height: 18,
-                              fontSize: 9,
+                              height: 20,
+                              fontSize: 10,
                               fontWeight: 700,
                               borderRadius: '3px',
                               bgcolor: row.stateDesc === 'ONLINE' ? '#107c10' : '#a4262c',
@@ -280,8 +280,8 @@ export const InventoryDbTable = memo(function InventoryDbTable({
                           label={row.recoveryModel ?? '—'}
                           size="small"
                           sx={{
-                            height: 18,
-                            fontSize: 9,
+                            height: 20,
+                            fontSize: 10,
                             fontWeight: 700,
                             borderRadius: '3px',
                             bgcolor:

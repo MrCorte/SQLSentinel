@@ -288,6 +288,7 @@ function dbRowClass(db: DatabaseInfo): string {
 const DB_SX = {
   border: 0,
   ...GRID_HEADER_SX,
+  '& .MuiDataGrid-cell': { overflow: 'visible !important' },
   '& .row-db-offline': {
     bgcolor: tokens.color.dangerAlpha12,
     color: tokens.color.danger,
@@ -322,26 +323,23 @@ function StatoCell({ stateDesc }: { stateDesc: string }): React.JSX.Element {
   }
 
   return (
-    <Box
-      component="span"
-      sx={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        px: '10px',
-        py: '2px',
-        borderRadius: '12px',
-        border: '1px solid',
-        borderColor,
-        bgcolor,
+    <span
+      style={{
+        display: 'inline-block',
+        padding: '2px 10px',
+        borderRadius: 12,
+        border: `1px solid ${borderColor}`,
+        background: bgcolor,
         fontSize: 11,
         fontWeight: 600,
         color,
         letterSpacing: '0.3px',
-        lineHeight: 1.4
+        whiteSpace: 'nowrap',
+        lineHeight: '16px',
       }}
     >
       {stateDesc}
-    </Box>
+    </span>
   )
 }
 
@@ -459,6 +457,7 @@ export const TabDatabase = memo(function TabDatabase({
         columns={columns}
         getRowId={(r) => r.name}
         density="compact"
+        rowHeight={44}
         autoHeight
         disableRowSelectionOnClick
         pageSizeOptions={[25, 50]}

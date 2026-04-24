@@ -4,6 +4,8 @@ import { DataGrid, type GridColDef, type GridRowParams } from '@mui/x-data-grid'
 import { useHomeDashboard } from './features/home/useHomeDashboard'
 import { tokens } from '../styles/tokens'
 import { useAppStore } from '../store/appStore'
+import { useGroupsStore } from '../store/groupsStore'
+import { getServerDisplayName } from '../types/index'
 import type { StoredServer } from '../../../preload/index'
 
 // ---------------------------------------------------------------------------
@@ -103,6 +105,7 @@ export function HomeDashboard({
   } = useHomeDashboard(onNavigateToServer)
 
   const setSelectedServerId = useAppStore((s) => s.setSelectedServerId)
+  const serverAliases = useGroupsStore((s) => s.serverAliases)
 
   const rows = useMemo(
     () =>
@@ -128,7 +131,7 @@ export function HomeDashboard({
           id: s.id,
           serverId: s.id,
           statusColor,
-          serverName: s.host ?? s.ip ?? '—',
+          serverName: getServerDisplayName({ ip: s.host ?? s.ip ?? '', port: s.port, alias: serverAliases[s.id] }),
           cpu,
           ramGb,
           blocking,
@@ -137,7 +140,7 @@ export function HomeDashboard({
           lastSeen
         }
       }),
-    [servers, metricsMap, summaries, alertCountByServer]
+    [servers, metricsMap, summaries, alertCountByServer, serverAliases]
   )
 
   const columns: GridColDef[] = [

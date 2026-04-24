@@ -87,44 +87,45 @@ export interface DbViewRow {
 export interface ColDef {
   key: keyof InventoryRow
   label: string
-  width: string
+  defaultWidth: number // pixels
 }
 
 export const COLUMNS: ColDef[] = [
-  { key: 'serverLabel', label: 'SERVER', width: 'minmax(min-content, 17fr)' },
-  { key: 'envName', label: 'ENVIRONMENT', width: 'minmax(min-content, 8fr)' },
-  { key: 'type', label: 'TYPE', width: 'minmax(min-content, 8fr)' },
-  { key: 'machineName', label: 'MACHINE', width: 'minmax(min-content, 8fr)' },
-  { key: 'hostingType', label: 'HOSTING', width: 'minmax(min-content, 6fr)' },
-  { key: 'dbCount', label: 'DB', width: 'minmax(min-content, 4fr)' },
-  { key: 'onlineCount', label: 'ONLINE', width: 'minmax(min-content, 5fr)' },
-  { key: 'offlineCount', label: 'OFFLINE', width: 'minmax(min-content, 5fr)' },
-  { key: 'totalDataMb', label: 'DATA', width: 'minmax(min-content, 7fr)' },
-  { key: 'version', label: 'VERSION', width: 'minmax(min-content, 9fr)' },
-  { key: 'logicalCpus', label: 'CPU', width: 'minmax(min-content, 5fr)' },
-  { key: 'unreachable', label: 'STATUS', width: 'minmax(min-content, 6fr)' },
-  { key: 'notes', label: 'NOTES', width: 'minmax(min-content, 12fr)' }
+  { key: 'serverLabel',  label: 'SERVER',      defaultWidth: 220 },
+  { key: 'envName',      label: 'ENVIRONMENT', defaultWidth: 100 },
+  { key: 'type',         label: 'TYPE',        defaultWidth: 100 },
+  { key: 'machineName',  label: 'MACHINE',     defaultWidth: 110 },
+  { key: 'hostingType',  label: 'HOSTING',     defaultWidth: 76 },
+  { key: 'dbCount',      label: 'DB',          defaultWidth: 44 },
+  { key: 'onlineCount',  label: 'ONLINE',      defaultWidth: 62 },
+  { key: 'offlineCount', label: 'OFFLINE',     defaultWidth: 64 },
+  { key: 'totalDataMb',  label: 'DATA',        defaultWidth: 76 },
+  { key: 'version',      label: 'VERSION',     defaultWidth: 120 },
+  { key: 'logicalCpus',  label: 'CPU',         defaultWidth: 76 },
+  { key: 'unreachable',  label: 'STATUS',      defaultWidth: 76 },
+  { key: 'notes',        label: 'NOTES',       defaultWidth: 160 },
 ]
 
-export const GRID_TEMPLATE = COLUMNS.map((c) => c.width).join(' ')
+export interface DbColDef {
+  label: string
+  defaultWidth: number // pixels
+}
 
-export const DB_COLUMNS = [
-  { label: 'DATABASE', width: 'minmax(min-content, 13fr)' },
-  { label: 'SERVER', width: 'minmax(min-content, 10fr)' },
-  { label: 'ALIAS', width: 'minmax(min-content, 8fr)' },
-  { label: 'STATUS', width: 'minmax(min-content, 6fr)' },
-  { label: 'RECOVERY', width: 'minmax(min-content, 6fr)' },
-  { label: 'COMPAT', width: 'minmax(min-content, 7fr)' },
-  { label: 'TDE', width: 'minmax(min-content, 5fr)' },
-  { label: 'DATA', width: 'minmax(min-content, 6fr)' },
-  { label: 'LOG', width: 'minmax(min-content, 5fr)' },
-  { label: 'LAST FULL', width: 'minmax(min-content, 9fr)' },
-  { label: 'LAST LOG', width: 'minmax(min-content, 9fr)' },
-  { label: 'OWNER', width: 'minmax(min-content, 8fr)' },
-  { label: 'CREATED', width: 'minmax(min-content, 8fr)' }
+export const DB_COLUMNS: DbColDef[] = [
+  { label: 'DATABASE',  defaultWidth: 170 },
+  { label: 'SERVER',    defaultWidth: 130 },
+  { label: 'ALIAS',     defaultWidth: 110 },
+  { label: 'STATUS',    defaultWidth: 76 },
+  { label: 'RECOVERY',  defaultWidth: 84 },
+  { label: 'COMPAT',    defaultWidth: 84 },
+  { label: 'TDE',       defaultWidth: 50 },
+  { label: 'DATA',      defaultWidth: 76 },
+  { label: 'LOG',       defaultWidth: 76 },
+  { label: 'LAST FULL', defaultWidth: 104 },
+  { label: 'LAST LOG',  defaultWidth: 104 },
+  { label: 'OWNER',     defaultWidth: 110 },
+  { label: 'CREATED',   defaultWidth: 104 },
 ]
-
-export const DB_GRID_TEMPLATE = DB_COLUMNS.map((c) => c.width).join(' ')
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -1,4 +1,4 @@
-import { useRef, memo } from 'react'
+import { useRef, useState, memo } from 'react'
 import { alpha } from '@mui/material/styles'
 import { Box, Chip, Paper, Tooltip, Typography } from '@mui/material'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
@@ -7,8 +7,11 @@ import LockIcon from '@mui/icons-material/Lock'
 import LockOpenIcon from '@mui/icons-material/LockOpen'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { compatLevelToSqlVersion } from '../../../utils/sqlVersionUtils'
-import { DB_COLUMNS, DB_GRID_TEMPLATE, formatMb } from './inventoryTypes'
+import { tokens } from '../../../styles/tokens'
+import { DB_COLUMNS, formatMb } from './inventoryTypes'
 import type { DbViewRow } from './inventoryTypes'
+
+const MIN_COL_W = 40
 
 interface InventoryDbTableProps {
   displayDbViewRows: DbViewRow[]
@@ -19,326 +22,384 @@ interface InventoryDbTableProps {
 export const InventoryDbTable = memo(function InventoryDbTable({
   displayDbViewRows,
   expandedDbServers,
-  onToggleDbServer
+  onToggleDbServer,
 }: InventoryDbTableProps) {
   const dbParentRef = useRef<HTMLDivElement>(null)
+  const [colWidths, setColWidths] = useState<number[]>(() => DB_COLUMNS.map((c) => c.defaultWidth))
+  const colWidthsRef = useRef<number[]>(colWidths)
+  colWidthsRef.current = colWidths
 
   const dbRowVirtualizer = useVirtualizer({
     count: displayDbViewRows.length,
     getScrollElement: () => dbParentRef.current,
     estimateSize: () => 40,
-    overscan: 10
+    overscan: 10,
   })
+
+  const gridTemplate = colWidths.map((w) => `${w}px`).join(' ')
+  const totalWidth = colWidths.reduce((a, b) => a + b, 0) + 32
+
+  function startResize(e: React.MouseEvent, idx: number): void {
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.clientX
+    const startW = colWidthsRef.current[idx]
+    function onMove(ev: MouseEvent): void {
+      const newW = Math.max(MIN_COL_W, startW + ev.clientX - startX)
+      setColWidths((prev) => {
+        const next = [...prev]
+        next[idx] = newW
+        return next
+      })
+    }
+    function onUp(): void {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
 
   return (
     <Paper sx={{ overflow: 'hidden' }}>
-      {/* Sticky column headers */}
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: DB_GRID_TEMPLATE,
-          px: 2,
-          py: 1,
-          bgcolor: 'background.default',
-          borderBottom: (theme) => `2px solid ${theme.palette.divider}`,
-          position: 'sticky',
-          top: 0,
-          zIndex: 1
-        }}
-      >
-        {DB_COLUMNS.map((col) => (
-          <Typography
-            key={col.label}
-            variant="caption"
-            fontWeight={700}
-            sx={{ color: 'text.secondary' }}
-          >
-            {col.label}
-          </Typography>
-        ))}
-      </Box>
-
+      {/* Single scroll container — X and Y together keeps header aligned with rows */}
       <Box
         ref={dbParentRef}
-        sx={{ height: 'calc(100vh - 380px)', overflowY: 'auto', position: 'relative' }}
+        sx={{ height: 'calc(100vh - 380px)', overflowX: 'auto', overflowY: 'auto', position: 'relative' }}
       >
-        {displayDbViewRows.length === 0 ? (
-          <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-            No databases match the selected filters
-          </Box>
-        ) : (
-          <Box sx={{ height: dbRowVirtualizer.getTotalSize(), position: 'relative' }}>
-            {dbRowVirtualizer.getVirtualItems().map((vRow) => {
-              const row = displayDbViewRows[vRow.index]
-              const isHeader = row.type === 'server-header'
-
-              return (
+        <Box sx={{ minWidth: totalWidth }}>
+          {/* Sticky header */}
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: gridTemplate,
+              px: 2,
+              py: 1,
+              bgcolor: 'background.default',
+              borderBottom: (theme) => `2px solid ${theme.palette.divider}`,
+              position: 'sticky',
+              top: 0,
+              zIndex: 2,
+            }}
+          >
+            {DB_COLUMNS.map((col, idx) => (
+              <Box
+                key={col.label}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  pr: '6px',
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  fontWeight={700}
+                  noWrap
+                  sx={{ color: 'text.secondary' }}
+                >
+                  {col.label}
+                </Typography>
+                {/* Resize handle */}
                 <Box
-                  key={row.id}
-                  onClick={() => (isHeader ? onToggleDbServer(row.serverKey) : undefined)}
+                  onMouseDown={(e) => startResize(e, idx)}
+                  onClick={(e) => e.stopPropagation()}
                   sx={{
                     position: 'absolute',
-                    top: vRow.start,
-                    height: vRow.size,
-                    width: '100%',
-                    display: 'grid',
-                    gridTemplateColumns: DB_GRID_TEMPLATE,
-                    alignItems: 'center',
-                    px: 2,
-                    cursor: isHeader ? 'pointer' : 'default',
-                    borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
-                    bgcolor: (theme) =>
-                      isHeader
-                        ? theme.palette.mode === 'dark'
-                          ? alpha(theme.palette.primary.main, 0.12)
-                          : '#eef4fb'
-                        : row.stateDesc !== 'ONLINE'
-                          ? theme.palette.mode === 'dark'
-                            ? alpha(theme.palette.error.main, 0.15)
-                            : '#fde7e9'
-                          : theme.palette.background.paper,
+                    right: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: 5,
+                    cursor: 'col-resize',
+                    zIndex: 1,
+                    borderRight: `2px solid transparent`,
                     '&:hover': {
+                      borderRight: `2px solid ${tokens.color.accent}`,
+                    },
+                  }}
+                />
+              </Box>
+            ))}
+          </Box>
+
+          {/* Virtual rows */}
+          {displayDbViewRows.length === 0 ? (
+            <Box sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
+              No databases match the selected filters
+            </Box>
+          ) : (
+            <Box sx={{ height: dbRowVirtualizer.getTotalSize(), position: 'relative' }}>
+              {dbRowVirtualizer.getVirtualItems().map((vRow) => {
+                const row = displayDbViewRows[vRow.index]
+                const isHeader = row.type === 'server-header'
+
+                return (
+                  <Box
+                    key={row.id}
+                    onClick={() => (isHeader ? onToggleDbServer(row.serverKey) : undefined)}
+                    sx={{
+                      position: 'absolute',
+                      top: vRow.start,
+                      height: vRow.size,
+                      width: '100%',
+                      display: 'grid',
+                      gridTemplateColumns: gridTemplate,
+                      alignItems: 'center',
+                      px: 2,
+                      cursor: isHeader ? 'pointer' : 'default',
+                      borderBottom: (theme) => `1px solid ${theme.palette.divider}`,
                       bgcolor: (theme) =>
                         isHeader
                           ? theme.palette.mode === 'dark'
-                            ? alpha(theme.palette.primary.main, 0.22)
-                            : '#dce9f5'
-                          : theme.palette.action.hover
-                    }
-                  }}
-                >
-                  {isHeader ? (
-                    // Server header — spans all columns
-                    <Box
-                      sx={{
-                        gridColumn: '1 / -1',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 0.75
-                      }}
-                    >
-                      {expandedDbServers.has(row.serverKey) ? (
-                        <ExpandMoreIcon
-                          fontSize="small"
-                          sx={{ color: 'text.secondary', flexShrink: 0 }}
-                        />
-                      ) : (
-                        <ChevronRightIcon
-                          fontSize="small"
-                          sx={{ color: 'text.secondary', flexShrink: 0 }}
-                        />
-                      )}
+                            ? alpha(theme.palette.primary.main, 0.12)
+                            : '#eef4fb'
+                          : row.stateDesc !== 'ONLINE'
+                            ? theme.palette.mode === 'dark'
+                              ? alpha(theme.palette.error.main, 0.15)
+                              : '#fde7e9'
+                            : theme.palette.background.paper,
+                      '&:hover': {
+                        bgcolor: (theme) =>
+                          isHeader
+                            ? theme.palette.mode === 'dark'
+                              ? alpha(theme.palette.primary.main, 0.22)
+                              : '#dce9f5'
+                            : theme.palette.action.hover,
+                      },
+                    }}
+                  >
+                    {isHeader ? (
                       <Box
                         sx={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: '50%',
-                          bgcolor: row.envColor,
-                          flexShrink: 0
+                          gridColumn: '1 / -1',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 0.75,
                         }}
-                      />
-                      <Typography variant="body2" fontWeight={700} noWrap sx={{ flex: 1 }}>
-                        {row.serverLabel}
-                      </Typography>
-                      <Chip
-                        label={row.unreachable ? 'OFFLINE' : 'ONLINE'}
-                        size="small"
-                        sx={{
-                          height: 18,
-                          fontSize: 9,
-                          fontWeight: 700,
-                          borderRadius: '3px',
-                          bgcolor: row.unreachable ? '#a4262c' : '#107c10',
-                          color: '#fff'
-                        }}
-                      />
-                      {row.agRole && (
+                      >
+                        {expandedDbServers.has(row.serverKey) ? (
+                          <ExpandMoreIcon
+                            fontSize="small"
+                            sx={{ color: 'text.secondary', flexShrink: 0 }}
+                          />
+                        ) : (
+                          <ChevronRightIcon
+                            fontSize="small"
+                            sx={{ color: 'text.secondary', flexShrink: 0 }}
+                          />
+                        )}
+                        <Box
+                          sx={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: '50%',
+                            bgcolor: row.envColor,
+                            flexShrink: 0,
+                          }}
+                        />
+                        <Typography variant="body2" fontWeight={700} noWrap sx={{ flex: 1 }}>
+                          {row.serverLabel}
+                        </Typography>
                         <Chip
-                          label={row.agRole === 'PRIMARY' ? '★ PRIMARY' : '○ SECONDARY'}
+                          label={row.unreachable ? 'OFFLINE' : 'ONLINE'}
                           size="small"
                           sx={{
                             height: 18,
                             fontSize: 9,
                             fontWeight: 700,
                             borderRadius: '3px',
-                            bgcolor: row.agRole === 'PRIMARY' ? '#107c10' : 'transparent',
-                            color: row.agRole === 'PRIMARY' ? '#fff' : 'text.secondary',
-                            border: row.agRole === 'SECONDARY' ? '1px solid' : 'none',
-                            borderColor: 'divider'
+                            bgcolor: row.unreachable ? '#a4262c' : '#107c10',
+                            color: '#fff',
                           }}
                         />
-                      )}
-                      <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                        {row.serverVersion}
-                      </Typography>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ ml: 1, flexShrink: 0 }}
-                      >
-                        {row.dbCount} DB
-                      </Typography>
-                    </Box>
-                  ) : (
-                    // DB row — 13 cells
-                    <>
-                      {/* DATABASE */}
-                      <Box
-                        sx={{ display: 'flex', alignItems: 'center', gap: 0.5, pl: 2, minWidth: 0 }}
-                      >
-                        <Typography variant="body2" noWrap fontWeight={500}>
-                          {row.dbName}
-                        </Typography>
-                        {row.isReadOnly && (
-                          <Tooltip title="Read-only">
-                            <Typography
-                              sx={{ fontSize: 10, color: 'text.disabled', flexShrink: 0 }}
-                            >
-                              R/O
-                            </Typography>
-                          </Tooltip>
+                        {row.agRole && (
+                          <Chip
+                            label={row.agRole === 'PRIMARY' ? '★ PRIMARY' : '○ SECONDARY'}
+                            size="small"
+                            sx={{
+                              height: 18,
+                              fontSize: 9,
+                              fontWeight: 700,
+                              borderRadius: '3px',
+                              bgcolor: row.agRole === 'PRIMARY' ? '#107c10' : 'transparent',
+                              color: row.agRole === 'PRIMARY' ? '#fff' : 'text.secondary',
+                              border: row.agRole === 'SECONDARY' ? '1px solid' : 'none',
+                              borderColor: 'divider',
+                            }}
+                          />
                         )}
-                      </Box>
-
-                      {/* SERVER */}
-                      <Typography variant="caption" color="text.secondary" noWrap>
-                        {row.serverLabel}
-                      </Typography>
-
-                      {/* ALIAS */}
-                      <Typography variant="caption" color="text.secondary" noWrap>
-                        {row.alias ?? '—'}
-                      </Typography>
-
-                      {/* STATO */}
-                      <Chip
-                        label={row.stateDesc ?? '—'}
-                        size="small"
-                        sx={{
-                          height: 18,
-                          fontSize: 9,
-                          fontWeight: 700,
-                          borderRadius: '3px',
-                          bgcolor: row.stateDesc === 'ONLINE' ? '#107c10' : '#a4262c',
-                          color: '#fff',
-                          width: 'fit-content'
-                        }}
-                      />
-
-                      {/* RECOVERY */}
-                      <Chip
-                        label={row.recoveryModel ?? '—'}
-                        size="small"
-                        sx={{
-                          height: 18,
-                          fontSize: 9,
-                          fontWeight: 700,
-                          borderRadius: '3px',
-                          bgcolor:
-                            row.recoveryModel === 'FULL'
-                              ? '#0078d4'
-                              : row.recoveryModel === 'BULK_LOGGED'
-                                ? '#038387'
-                                : '#737373',
-                          color: '#fff',
-                          width: 'fit-content'
-                        }}
-                      />
-
-                      {/* COMPAT */}
-                      <Tooltip title={`Compatibility level ${row.compatibilityLevel ?? '—'}`}>
+                        <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                          {row.serverVersion}
+                        </Typography>
                         <Typography
                           variant="caption"
-                          sx={{
-                            color:
-                              (row.compatibilityLevel ?? 999) < 130 ? '#ca5010' : 'text.secondary'
-                          }}
+                          color="text.secondary"
+                          sx={{ ml: 1, flexShrink: 0 }}
                         >
-                          {row.compatibilityLevel
-                            ? compatLevelToSqlVersion(row.compatibilityLevel)
-                            : '—'}
+                          {row.dbCount} DB
                         </Typography>
-                      </Tooltip>
-
-                      {/* TDE */}
-                      <Tooltip title={row.isEncrypted ? 'TDE enabled' : 'TDE disabled'}>
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          {row.isEncrypted ? (
-                            <LockIcon sx={{ fontSize: 15, color: '#038387' }} />
-                          ) : (
-                            <LockOpenIcon sx={{ fontSize: 15, color: 'text.disabled' }} />
+                      </Box>
+                    ) : (
+                      <>
+                        {/* DATABASE */}
+                        <Box
+                          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, pl: 2, minWidth: 0 }}
+                        >
+                          <Typography variant="body2" noWrap fontWeight={500}>
+                            {row.dbName}
+                          </Typography>
+                          {row.isReadOnly && (
+                            <Tooltip title="Read-only">
+                              <Typography
+                                sx={{ fontSize: 10, color: 'text.disabled', flexShrink: 0 }}
+                              >
+                                R/O
+                              </Typography>
+                            </Tooltip>
                           )}
                         </Box>
-                      </Tooltip>
 
-                      {/* DATI */}
-                      <Typography variant="body2">
-                        {row.sizeMb ? formatMb(row.sizeMb) : '—'}
-                      </Typography>
+                        {/* SERVER */}
+                        <Typography variant="caption" color="text.secondary" noWrap>
+                          {row.serverLabel}
+                        </Typography>
 
-                      {/* LOG */}
-                      <Typography variant="body2">
-                        {row.logSizeMb ? formatMb(row.logSizeMb) : '—'}
-                      </Typography>
+                        {/* ALIAS */}
+                        <Typography variant="caption" color="text.secondary" noWrap>
+                          {row.alias ?? '—'}
+                        </Typography>
 
-                      {/* ULTIMO FULL */}
-                      {(() => {
-                        const noBackup = !row.lastFullBackup
-                        const stale =
-                          !noBackup &&
-                          Date.now() - new Date(row.lastFullBackup!).getTime() > 86_400_000
-                        return (
+                        {/* STATUS */}
+                        <Chip
+                          label={row.stateDesc ?? '—'}
+                          size="small"
+                          sx={{
+                            height: 18,
+                            fontSize: 9,
+                            fontWeight: 700,
+                            borderRadius: '3px',
+                            bgcolor: row.stateDesc === 'ONLINE' ? '#107c10' : '#a4262c',
+                            color: '#fff',
+                            width: 'fit-content',
+                          }}
+                        />
+
+                        {/* RECOVERY */}
+                        <Chip
+                          label={row.recoveryModel ?? '—'}
+                          size="small"
+                          sx={{
+                            height: 18,
+                            fontSize: 9,
+                            fontWeight: 700,
+                            borderRadius: '3px',
+                            bgcolor:
+                              row.recoveryModel === 'FULL'
+                                ? '#0078d4'
+                                : row.recoveryModel === 'BULK_LOGGED'
+                                  ? '#038387'
+                                  : '#737373',
+                            color: '#fff',
+                            width: 'fit-content',
+                          }}
+                        />
+
+                        {/* COMPAT */}
+                        <Tooltip title={`Compatibility level ${row.compatibilityLevel ?? '—'}`}>
                           <Typography
                             variant="caption"
-                            sx={{ color: noBackup || stale ? '#a4262c' : 'text.secondary' }}
+                            sx={{
+                              color:
+                                (row.compatibilityLevel ?? 999) < 130 ? '#ca5010' : 'text.secondary',
+                            }}
                           >
-                            {noBackup
-                              ? 'Never'
-                              : new Date(row.lastFullBackup!).toLocaleDateString('en-US')}
+                            {row.compatibilityLevel
+                              ? compatLevelToSqlVersion(row.compatibilityLevel)
+                              : '—'}
                           </Typography>
-                        )
-                      })()}
+                        </Tooltip>
 
-                      {/* ULTIMO LOG */}
-                      {(() => {
-                        if (row.recoveryModel === 'SIMPLE') {
+                        {/* TDE */}
+                        <Tooltip title={row.isEncrypted ? 'TDE enabled' : 'TDE disabled'}>
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            {row.isEncrypted ? (
+                              <LockIcon sx={{ fontSize: 15, color: '#038387' }} />
+                            ) : (
+                              <LockOpenIcon sx={{ fontSize: 15, color: 'text.disabled' }} />
+                            )}
+                          </Box>
+                        </Tooltip>
+
+                        {/* DATA */}
+                        <Typography variant="body2">
+                          {row.sizeMb ? formatMb(row.sizeMb) : '—'}
+                        </Typography>
+
+                        {/* LOG */}
+                        <Typography variant="body2">
+                          {row.logSizeMb ? formatMb(row.logSizeMb) : '—'}
+                        </Typography>
+
+                        {/* LAST FULL */}
+                        {(() => {
+                          const noBackup = !row.lastFullBackup
+                          const stale =
+                            !noBackup &&
+                            Date.now() - new Date(row.lastFullBackup!).getTime() > 86_400_000
                           return (
-                            <Typography variant="caption" color="text.disabled">
-                              N/A
+                            <Typography
+                              variant="caption"
+                              sx={{ color: noBackup || stale ? '#a4262c' : 'text.secondary' }}
+                            >
+                              {noBackup
+                                ? 'Never'
+                                : new Date(row.lastFullBackup!).toLocaleDateString('en-US')}
                             </Typography>
                           )
-                        }
-                        const noLog = !row.lastLogBackup
-                        return (
-                          <Typography
-                            variant="caption"
-                            sx={{ color: noLog ? '#d83b01' : 'text.secondary' }}
-                          >
-                            {noLog
-                              ? 'Never'
-                              : new Date(row.lastLogBackup!).toLocaleDateString('en-US')}
-                          </Typography>
-                        )
-                      })()}
+                        })()}
 
-                      {/* OWNER */}
-                      <Typography variant="caption" color="text.secondary" noWrap>
-                        {row.owner || '—'}
-                      </Typography>
+                        {/* LAST LOG */}
+                        {(() => {
+                          if (row.recoveryModel === 'SIMPLE') {
+                            return (
+                              <Typography variant="caption" color="text.disabled">
+                                N/A
+                              </Typography>
+                            )
+                          }
+                          const noLog = !row.lastLogBackup
+                          return (
+                            <Typography
+                              variant="caption"
+                              sx={{ color: noLog ? '#d83b01' : 'text.secondary' }}
+                            >
+                              {noLog
+                                ? 'Never'
+                                : new Date(row.lastLogBackup!).toLocaleDateString('en-US')}
+                            </Typography>
+                          )
+                        })()}
 
-                      {/* CREATO */}
-                      <Typography variant="caption" color="text.secondary">
-                        {row.createDate
-                          ? new Date(row.createDate).toLocaleDateString('en-US')
-                          : '—'}
-                      </Typography>
-                    </>
-                  )}
-                </Box>
-              )
-            })}
-          </Box>
-        )}
+                        {/* OWNER */}
+                        <Typography variant="caption" color="text.secondary" noWrap>
+                          {row.owner || '—'}
+                        </Typography>
+
+                        {/* CREATED */}
+                        <Typography variant="caption" color="text.secondary">
+                          {row.createDate
+                            ? new Date(row.createDate).toLocaleDateString('en-US')
+                            : '—'}
+                        </Typography>
+                      </>
+                    )}
+                  </Box>
+                )
+              })}
+            </Box>
+          )}
+        </Box>
       </Box>
     </Paper>
   )

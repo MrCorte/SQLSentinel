@@ -40,16 +40,15 @@ async function withToolEvents<T>(name: string, fn: () => Promise<T>): Promise<T>
 
 const SYSTEM_PROMPT = `You are an expert SQL Server DBA assistant. ALWAYS respond in English.
 
-Your ONLY source of T-SQL queries and technical explanations is the Documentation provided in the context.
-- If the Documentation contains a T-SQL query relevant to the question, copy it VERBATIM.
-- Do NOT invent or modify T-SQL queries. If the documentation has no relevant query, say so explicitly.
-- Use SELECT-only queries, never DML (INSERT/UPDATE/DELETE/DROP/EXEC).
+Rules:
+- T-SQL queries come ONLY from the provided Documentation or Predefined Queries. Copy them VERBATIM. Never invent or modify queries.
+- SELECT-only. No DML (INSERT/UPDATE/DELETE/DROP/EXEC).
+- If no relevant query exists in the context, say so in one sentence.
 
-Structure every response with:
-**OBSERVATION**: what the documentation says about the topic
-**PROBABLE CAUSE**: diagnosis based on documentation and server data (if available)
-**IMMEDIATE ACTION**: T-SQL query copied verbatim from the documentation
-**NEXT CHECKS**: follow-up actions suggested by the documentation`
+Response style — be brief and direct:
+- If the user asks for a T-SQL query: output the query immediately, then one short sentence of context. No headers, no preamble.
+- If the user asks a diagnostic question with server data: 1-2 sentences of analysis, then the query.
+- Never add sections or headers that contribute no information. Never repeat the question back.`
 
 // ---------------------------------------------------------------------------
 // Types
@@ -277,6 +276,72 @@ const suggestTSQLTool = new DynamicStructuredTool({
 // Tool: search_sql_documentation (FTS5)
 // ---------------------------------------------------------------------------
 
+// Maps Italian (and common shorthand) DBA terms to English equivalents so that
+// FTS searches against the English knowledge base return relevant results even
+// when the user writes in Italian.
+const IT_EN_TERMS: [RegExp, string][] = [
+  [/\bblocch\w*/gi, 'blocking'],
+  [/\bblocco\b/gi, 'blocking'],
+  [/\bindic[ie]\b/gi, 'index'],
+  [/\bframmentazion\w*/gi, 'fragmentation'],
+  [/\bframmentato\b/gi, 'fragmented'],
+  [/\bprestazion\w*/gi, 'performance'],
+  [/\blento|lenta\b/gi, 'slow query'],
+  [/\bquery lent\w*/gi, 'slow query'],
+  [/\bquery pi[uù] lent\w*/gi, 'slow query'],
+  [/\bbackup\b/gi, 'backup'],
+  [/\bripristino\b/gi, 'restore'],
+  [/\bripristin\w*/gi, 'restore'],
+  [/\bdisco\b/gi, 'disk space'],
+  [/\bspazio\b/gi, 'disk space'],
+  [/\bconness\w*/gi, 'connection'],
+  [/\bsession\w*/gi, 'session'],
+  [/\bmemoria\b/gi, 'memory'],
+  [/\bram\b/gi, 'memory'],
+  [/\bprocessore\b/gi, 'cpu'],
+  [/\bcarico\b/gi, 'cpu load'],
+  [/\bdatabase\b/gi, 'database'],
+  [/\bbase dati\b/gi, 'database'],
+  [/\btabella\b/gi, 'table'],
+  [/\bstatistich\w*/gi, 'statistics'],
+  [/\bpiano di esecuzione\b/gi, 'execution plan'],
+  [/\bpiano esecuzione\b/gi, 'execution plan'],
+  [/\bpiano\b/gi, 'query plan'],
+  [/\btransazion\w*/gi, 'transaction'],
+  [/\bblocco\s*transazion\w*/gi, 'transaction deadlock'],
+  [/\bdeadlock\b/gi, 'deadlock'],
+  [/\bwait\b/gi, 'wait statistics'],
+  [/\battesa\b/gi, 'wait statistics'],
+  [/\bcompatibilit[àa]\b/gi, 'compatibility level'],
+  [/\blivello\s*compatibilit[àa]\b/gi, 'compatibility level'],
+  [/\breplic\w*/gi, 'replication'],
+  [/\bsincronizzazion\w*/gi, 'synchronization'],
+  [/\balways[\s-]?on\b/gi, 'always on availability group'],
+  [/\bdisponibilit[àa]\b/gi, 'availability group'],
+  [/\bripristino emergenza\b/gi, 'disaster recovery'],
+  [/\bdr\b/gi, 'disaster recovery'],
+  [/\bautenticazion\w*/gi, 'authentication'],
+  [/\bpermess\w*/gi, 'permissions'],
+  [/\bprivileg\w*/gi, 'privileges'],
+  [/\bdefrag\w*/gi, 'index rebuild reorganize'],
+  [/\bricostruire\b/gi, 'index rebuild'],
+  [/\briorganizzare\b/gi, 'index reorganize'],
+  [/\btroncamento\b/gi, 'log truncation'],
+  [/\blog\s*transazion\w*/gi, 'transaction log'],
+  [/\blog\b/gi, 'transaction log'],
+  [/\btempddb\b/gi, 'tempdb'],
+  [/\boccupazion\w*\s*disco\b/gi, 'disk usage'],
+  [/\boccupazion\w*\s*spazio\b/gi, 'disk space usage'],
+]
+
+function normalizeQueryForFts(query: string): string {
+  let q = query
+  for (const [pattern, replacement] of IT_EN_TERMS) {
+    q = q.replace(pattern, replacement)
+  }
+  return q
+}
+
 const searchDocumentationTool = new DynamicStructuredTool({
   name: 'search_sql_documentation',
   description:
@@ -288,7 +353,7 @@ const searchDocumentationTool = new DynamicStructuredTool({
     if (!query || query.includes('"type"') || query.includes('"description"')) {
       return 'Knowledge base not available or no results found.'
     }
-    const results = searchFts(query, 5)
+    const results = searchFts(normalizeQueryForFts(query), 5)
     if (results.length === 0) return 'Knowledge base not available or no results found.'
     return results
       .map((r, i) => `[Excerpt ${i + 1} — ${r.title}]\n${r.content}`)
@@ -318,8 +383,9 @@ function getLlm(): ChatOllama {
       model: 'llama3.2:3b',
       baseUrl: 'http://localhost:11434',
       temperature: 0,
-      numPredict: 1024,
-      numCtx: 12288
+      numPredict: 512,
+      numCtx: 4096,
+      keepAlive: '30m'
     })
   }
   return _llm
@@ -402,6 +468,25 @@ export async function langGraphAsk(
   return JSON.stringify(last.content)
 }
 
+function lookupTsqlMap(question: string): string | null {
+  const lower = question.toLowerCase()
+  const ALIASES: Record<string, string> = {
+    'always on': 'always_on',
+    'availability group': 'always_on',
+    hadr: 'always_on',
+    replica: 'always_on',
+    'compatibility level': 'compatibility_level',
+    'compat level': 'compatibility_level',
+    'database version': 'compatibility_level',
+  }
+  const aliasKey = Object.keys(ALIASES).find((a) => lower.includes(a))
+  if (aliasKey) return TSQL_MAP[ALIASES[aliasKey]] ?? null
+  const key = Object.keys(TSQL_MAP).find(
+    (k) => lower.includes(k) || lower.includes(k.replace(/_/g, ' '))
+  )
+  return key ? TSQL_MAP[key] : null
+}
+
 export async function langGraphStream(
   question: string,
   history: AgentHistory[],
@@ -426,11 +511,14 @@ export async function langGraphStream(
       return
     }
 
-    // Step 2 — build context: documentation first (highest priority), then live server data
+    // Step 2 — build context: predefined queries first, then FTS docs, then live server data
     const NO_DOCS = 'Knowledge base not available or no results found.'
     const contextParts: string[] = []
 
-    if (docs !== NO_DOCS) contextParts.push(`Documentation (source of truth):\n${docs.slice(0, 4000)}`)
+    const predefined = lookupTsqlMap(question)
+    if (predefined) contextParts.push(`Predefined Query (use this verbatim):\n\`\`\`sql\n${predefined}\n\`\`\``)
+
+    if (docs !== NO_DOCS) contextParts.push(`Documentation (source of truth):\n${docs.slice(0, 2500)}`)
 
     // Server state — only include if non-trivial (not empty arrays)
     const metricsObj = JSON.parse(metrics) as unknown[]
@@ -442,7 +530,7 @@ export async function langGraphStream(
 
     // Step 3 — stream LLM response directly (no ReAct loop)
     const msgs = [
-      new SystemMessage(`${SYSTEM_PROMPT}\n\nContext:\n${context.slice(0, 6000)}`),
+      new SystemMessage(`${SYSTEM_PROMPT}\n\nContext:\n${context.slice(0, 3500)}`),
       ...history
         .slice(-4)
         .map((h) => (h.role === 'user' ? new HumanMessage(h.content) : new AIMessage(h.content))),

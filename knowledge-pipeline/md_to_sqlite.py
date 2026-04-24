@@ -54,8 +54,9 @@ USING fts5(
 """
 
 # Structured DBA reference card table — stores T-SQL verbatim for accurate retrieval.
-# slug, tsql_query, when_to_use are UNINDEXED (stored but not searched);
-# title, tags, explanation are indexed for keyword search.
+# slug and tsql_query are UNINDEXED (stored but not tokenised for search);
+# title, tags, explanation, when_to_use are indexed for keyword search.
+# BM25 column order for bm25(): 0=slug, 1=title, 2=tags, 3=explanation, 4=tsql_query, 5=when_to_use
 _DDL_DBA_CARDS = """
 CREATE VIRTUAL TABLE IF NOT EXISTS dba_cards_fts
 USING fts5(
@@ -64,7 +65,7 @@ USING fts5(
     tags,
     explanation,
     tsql_query  UNINDEXED,
-    when_to_use UNINDEXED,
+    when_to_use,
     tokenize = 'porter unicode61'
 );
 """

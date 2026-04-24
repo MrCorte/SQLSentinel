@@ -21,11 +21,21 @@ function sanitize(q: string): string {
   return q.replace(/["()*:]/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
+// Build a prefix-search FTS5 query: each term gets a trailing * so "block" matches
+// "blocking", "blocked", etc. Terms shorter than 3 chars are dropped to avoid noise.
+function buildPrefixQuery(clean: string): string {
+  return clean
+    .split(/\s+/)
+    .filter((t) => t.length >= 3)
+    .map((t) => `${t}*`)
+    .join(' ')
+}
+
 // ---------------------------------------------------------------------------
 // Snippet extraction — sliding window, scored by total keyword hit density
 // ---------------------------------------------------------------------------
 
-function extractSnippet(content: string, query: string, snippetLen = 1500): string {
+function extractSnippet(content: string, query: string, snippetLen = 800): string {
   const terms = query
     .toLowerCase()
     .split(/\s+/)
@@ -86,38 +96,42 @@ export interface SearchResult {
 // Priority 1 — structured DBA reference cards (exact T-SQL, phrase-first)
 // ---------------------------------------------------------------------------
 
+// dba_cards_fts columns: slug(UNINDEXED=0), title(1), tags(2), explanation(3),
+//   tsql_query(UNINDEXED=4), when_to_use(5)
+// BM25 weights: title=10, tags=5, explanation=1, when_to_use=2
+const DBA_SQL =
+  'SELECT slug, title, tags, explanation, tsql_query, when_to_use ' +
+  'FROM dba_cards_fts WHERE dba_cards_fts MATCH ? ' +
+  'ORDER BY bm25(dba_cards_fts, 0, 10.0, 5.0, 1.0, 0, 2.0) LIMIT ?'
+
 function searchDbaCards(db: Database.Database, query: string, limit: number): SearchResult[] {
   const clean = sanitize(query)
   if (!clean) return []
 
-  const sql =
-    'SELECT slug, title, tags, explanation, tsql_query, when_to_use ' +
-    'FROM dba_cards_fts WHERE dba_cards_fts MATCH ? ORDER BY rank LIMIT ?'
-
+  const stmt = db.prepare<[string, number], DbaCardRow>(DBA_SQL)
   let rows: DbaCardRow[] = []
 
-  // Try phrase match first for multi-word queries (more precise)
+  // 1. Phrase match (most precise)
   if (clean.includes(' ')) {
-    try {
-      rows = db.prepare<[string, number], DbaCardRow>(sql).all(`"${clean}"`, limit)
-    } catch {
-      // phrase match failed — fall through to term match
-    }
+    try { rows = stmt.all(`"${clean}"`, limit) } catch { /* fall through */ }
   }
 
-  // Fall back to individual-term matching
+  // 2. Exact terms (porter-stemmed by FTS5)
   if (rows.length === 0) {
-    try {
-      rows = db.prepare<[string, number], DbaCardRow>(sql).all(clean, limit)
-    } catch {
-      return []
+    try { rows = stmt.all(clean, limit) } catch { /* fall through */ }
+  }
+
+  // 3. Prefix match — catches plurals and partial words missed by stemmer
+  if (rows.length === 0) {
+    const prefix = buildPrefixQuery(clean)
+    if (prefix) {
+      try { rows = stmt.all(prefix, limit) } catch { /* fall through */ }
     }
   }
 
   return rows.map((r) => ({
     title: r.title,
     tags: r.tags,
-    // Return structured content: explanation + T-SQL code block + when-to-use
     content: `${r.explanation}\n\n\`\`\`sql\n${r.tsql_query}\n\`\`\`\n\nWhen to use:\n${r.when_to_use}`,
   }))
 }
@@ -126,20 +140,30 @@ function searchDbaCards(db: Database.Database, query: string, limit: number): Se
 // Priority 2 — general knowledge (book chapters, scripts)
 // ---------------------------------------------------------------------------
 
+// knowledge_fts columns: title(0), content(1), tags(2), type(3), source_file(4)
+// BM25 weights: title=10, content=1, tags=5 — chapter title/tag hits rank first
+const KNOWLEDGE_SQL =
+  'SELECT title, content, tags FROM knowledge_fts WHERE knowledge_fts MATCH ? ' +
+  'ORDER BY bm25(knowledge_fts, 10.0, 1.0, 5.0, 0, 0) LIMIT ?'
+
 function searchKnowledgeFts(db: Database.Database, query: string, limit: number): SearchResult[] {
   const clean = sanitize(query)
   if (!clean) return []
 
-  try {
-    return db
-      .prepare<[string, number], FtsRow>(
-        'SELECT title, content, tags FROM knowledge_fts WHERE knowledge_fts MATCH ? ORDER BY rank LIMIT ?'
-      )
-      .all(clean, limit)
-      .map((r) => ({ title: r.title, content: extractSnippet(r.content, clean), tags: r.tags }))
-  } catch {
-    return []
+  const stmt = db.prepare<[string, number], FtsRow>(KNOWLEDGE_SQL)
+  let rows: FtsRow[] = []
+
+  try { rows = stmt.all(clean, limit) } catch { /* fall through */ }
+
+  // Prefix fallback for partial/plural terms
+  if (rows.length === 0) {
+    const prefix = buildPrefixQuery(clean)
+    if (prefix) {
+      try { rows = stmt.all(prefix, limit) } catch { return [] }
+    }
   }
+
+  return rows.map((r) => ({ title: r.title, content: extractSnippet(r.content, clean), tags: r.tags }))
 }
 
 // ---------------------------------------------------------------------------
@@ -153,11 +177,11 @@ export function searchFts(query: string, limit = 5): SearchResult[] {
   const clean = sanitize(query)
   if (!clean) return []
 
-  // Give up to 60% of slots to structured DBA cards, rest to book chapters
+  // DBA cards first (up to 60% of slots); unused slots flow to book chapters
   const dbaLimit = Math.ceil(limit * 0.6)
   const dbaResults = searchDbaCards(db, query, dbaLimit)
-  const remaining = limit - dbaResults.length
-  const bookResults = remaining > 0 ? searchKnowledgeFts(db, query, remaining) : []
+  const bookLimit = limit - dbaResults.length
+  const bookResults = bookLimit > 0 ? searchKnowledgeFts(db, query, bookLimit) : []
 
   return [...dbaResults, ...bookResults]
 }

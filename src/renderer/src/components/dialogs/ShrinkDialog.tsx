@@ -179,8 +179,8 @@ export function ShrinkDialog({
         {/* Estimate */}
         <Box
           sx={{
-            bgcolor: tokens.color.bgApp,
-            border: `1px solid ${tokens.color.border}`,
+            bgcolor: tokens.color.bgBase,
+            border: `1px solid ${tokens.color.bgBorder}`,
             borderRadius: 1,
             px: 2,
             py: 1.25
@@ -192,7 +192,7 @@ export function ShrinkDialog({
               fontWeight: 700,
               textTransform: 'uppercase',
               letterSpacing: '0.5px',
-              color: tokens.color.textSecondary,
+              color: tokens.color.textMuted,
               mb: 1
             }}
           >
@@ -201,12 +201,12 @@ export function ShrinkDialog({
           {estimateLoading ? (
             <Stack direction="row" spacing={1} alignItems="center">
               <CircularProgress size={12} />
-              <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>
+              <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
                 Calculating...
               </Typography>
             </Stack>
           ) : estimates.length === 0 ? (
-            <Typography variant="caption" sx={{ color: tokens.color.textSecondary }}>
+            <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
               No data available
             </Typography>
           ) : (
@@ -218,12 +218,12 @@ export function ShrinkDialog({
                   >
                     {e.file_name}
                   </Typography>
-                  <Typography sx={{ fontSize: 12, color: tokens.color.textSecondary }}>
+                  <Typography sx={{ fontSize: 12, color: tokens.color.textMuted }}>
                     {e.used_mb}/{e.current_mb} MB{' '}
                     <strong
                       style={{
                         color:
-                          e.reclaimable_mb > 0 ? tokens.color.success : tokens.color.textSecondary
+                          e.reclaimable_mb > 0 ? tokens.color.success : tokens.color.textMuted
                       }}
                     >
                       → {e.reclaimable_mb} MB reclaimable
@@ -324,7 +324,7 @@ export function ShrinkDialog({
                   Log only{' '}
                   <Typography
                     component="span"
-                    sx={{ fontSize: 11, color: tokens.color.textSecondary }}
+                    sx={{ fontSize: 11, color: tokens.color.textMuted }}
                   >
                     (includes BACKUP LOG TO NUL if recovery is FULL)
                   </Typography>
@@ -366,7 +366,7 @@ export function ShrinkDialog({
         {running && (
           <Stack direction="row" spacing={1.5} alignItems="center" sx={{ py: 1 }}>
             <CircularProgress size={18} />
-            <Typography sx={{ fontSize: 13, color: tokens.color.textSecondary }}>
+            <Typography sx={{ fontSize: 13, color: tokens.color.textMuted }}>
               Shrink in progress... (may take several minutes)
             </Typography>
           </Stack>
@@ -406,7 +406,7 @@ export function ShrinkDialog({
           <Box
             sx={{
               bgcolor: '#fde7e9',
-              border: `1px solid ${tokens.color.error}`,
+              border: `1px solid ${tokens.color.danger}`,
               borderRadius: 1,
               px: 2,
               py: 1.25,
@@ -416,9 +416,9 @@ export function ShrinkDialog({
             }}
           >
             <ErrorOutlineIcon
-              sx={{ fontSize: 16, color: tokens.color.error, mt: 0.25, flexShrink: 0 }}
+              sx={{ fontSize: 16, color: tokens.color.danger, mt: 0.25, flexShrink: 0 }}
             />
-            <Typography sx={{ fontSize: 12, color: tokens.color.error }}>{resultError}</Typography>
+            <Typography sx={{ fontSize: 12, color: tokens.color.danger }}>{resultError}</Typography>
           </Box>
         )}
       </DialogContent>

@@ -25,7 +25,7 @@ function maxSizeLabel(max_mb: number | null): string {
 }
 
 function volumeBadge(free_pct: number): { label: string; color: string } | null {
-  if (free_pct < 10) return { label: '⚠ Critical', color: tokens.color.error }
+  if (free_pct < 10) return { label: '⚠ Critical', color: tokens.color.danger }
   if (free_pct < 30) return { label: '⚠ Warning', color: tokens.color.warning }
   return null
 }
@@ -112,7 +112,7 @@ function DatabaseFileRow({ file }: { file: DatabaseFile }): React.JSX.Element {
             fontSize: 10,
             fontWeight: 700,
             height: 18,
-            bgcolor: file.type_desc === 'ROWS' ? tokens.color.infoLight : 'action.hover',
+            bgcolor: file.type_desc === 'ROWS' ? tokens.color.accentAlpha12 : 'action.hover',
             color: file.type_desc === 'ROWS' ? tokens.color.primary : 'text.secondary',
             border: '1px solid',
             borderColor: file.type_desc === 'ROWS' ? tokens.color.primary : 'divider'
@@ -140,7 +140,7 @@ function DatabaseFileRow({ file }: { file: DatabaseFile }): React.JSX.Element {
         <Typography
           variant="caption"
           sx={{
-            color: ag.isDisabled ? tokens.color.error : 'text.secondary',
+            color: ag.isDisabled ? tokens.color.danger : 'text.secondary',
             fontWeight: ag.isDisabled ? 600 : 400
           }}
         >

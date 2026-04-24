@@ -36,7 +36,7 @@ export const KpiCard = memo(function KpiCard({
         transition: 'all 0.18s ease',
         backgroundImage: `linear-gradient(135deg, transparent 55%, ${borderColor}0f 100%)`,
         '&:hover': onClick
-          ? { boxShadow: tokens.shadow.cardHover, transform: 'translateY(-2px)' }
+          ? { boxShadow: tokens.shadow.elevated, transform: 'translateY(-2px)' }
           : { boxShadow: tokens.shadow.elevated }
       }}
     >

@@ -42,7 +42,7 @@ export function ServerStatusChip({ reachable, responseTimeMs }: Props): React.JS
           px: 0.75,
           py: 0.125,
           borderRadius: '12px',
-          bgcolor: tokens.color.successLight,
+          bgcolor: tokens.color.successAlpha12,
           border: `1px solid ${tokens.color.success}`
         }}
       >
@@ -70,15 +70,15 @@ export function ServerStatusChip({ reachable, responseTimeMs }: Props): React.JS
         px: 0.75,
         py: 0.125,
         borderRadius: '12px',
-        bgcolor: tokens.color.errorLight,
-        border: `1px solid ${tokens.color.error}`
+        bgcolor: tokens.color.dangerAlpha12,
+        border: `1px solid ${tokens.color.danger}`
       }}
     >
       <Typography
         component="span"
         sx={{
           fontSize: tokens.font.sizeXs,
-          color: tokens.color.error,
+          color: tokens.color.danger,
           fontWeight: tokens.font.weightSemibold
         }}
       >

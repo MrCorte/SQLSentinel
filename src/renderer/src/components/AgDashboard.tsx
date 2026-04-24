@@ -33,25 +33,25 @@ import { useVisibilityPoll } from '../hooks/useVisibilityPoll'
 function healthColor(h: string): string {
   if (h === 'HEALTHY') return tokens.color.success
   if (h === 'PARTIALLY_HEALTHY') return '#d83b01'
-  return tokens.color.error
+  return tokens.color.danger
 }
 
 function healthBg(h: string): string {
-  if (h === 'HEALTHY') return tokens.color.successLight
+  if (h === 'HEALTHY') return tokens.color.successAlpha12
   if (h === 'PARTIALLY_HEALTHY') return '#fed9cc'
-  return tokens.color.errorLight
+  return tokens.color.dangerAlpha12
 }
 
 function syncStateColor(s: string): string {
   if (s === 'SYNCHRONIZED') return tokens.color.success
   if (s === 'SYNCHRONIZING') return '#d83b01'
-  return tokens.color.error
+  return tokens.color.danger
 }
 
 function syncStateBg(s: string): string {
-  if (s === 'SYNCHRONIZED') return tokens.color.successLight
+  if (s === 'SYNCHRONIZED') return tokens.color.successAlpha12
   if (s === 'SYNCHRONIZING') return '#fff4ce'
-  return tokens.color.errorLight
+  return tokens.color.dangerAlpha12
 }
 
 // ---------------------------------------------------------------------------
@@ -116,7 +116,7 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
               fontSize: 9,
               height: 18,
               fontWeight: 700,
-              bgcolor: isPrimary ? tokens.color.successLight : 'background.default',
+              bgcolor: isPrimary ? tokens.color.successAlpha12 : 'background.default',
               color: isPrimary ? tokens.color.success : 'text.secondary'
             }}
           />
@@ -143,7 +143,7 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
             <Typography
               variant="caption"
               sx={{
-                color: isConnected ? tokens.color.success : tokens.color.error,
+                color: isConnected ? tokens.color.success : tokens.color.danger,
                 fontWeight: 600
               }}
             >
@@ -227,7 +227,7 @@ const DB_GRID_SX = {
     bgcolor: (theme: { palette: { mode: string; warning: { main: string } } }) =>
       theme.palette.mode === 'dark' ? alpha(theme.palette.warning.main, 0.15) : '#fff4ce'
   },
-  '& .row-nosync': { bgcolor: tokens.color.errorLight }
+  '& .row-nosync': { bgcolor: tokens.color.dangerAlpha12 }
 }
 
 export function AgDashboard({ agName, connection }: Props): React.JSX.Element {

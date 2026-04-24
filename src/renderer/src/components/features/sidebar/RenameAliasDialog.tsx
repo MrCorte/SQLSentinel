@@ -55,7 +55,7 @@ export function RenameAliasDialog({
         />
         <Typography
           variant="caption"
-          sx={{ mt: 1, display: 'block', color: tokens.color.textSecondary }}
+          sx={{ mt: 1, display: 'block', color: tokens.color.textMuted }}
         >
           IP: {serverId}
         </Typography>

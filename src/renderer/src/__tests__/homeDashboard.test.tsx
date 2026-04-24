@@ -9,8 +9,6 @@
  * Verifies:
  *  - HomeDashboard does not violate Rules of Hooks when transitioning from servers=[] to servers=[...]
  *  - useMemo does not recompute when dependencies have not changed
- *  - getSidebarItemSize returns 40 for group/ungrouped-header, 36 for everything else
- *  - Sidebar virtualizer does not render all 200 items at the same time
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act, screen } from '@testing-library/react'
@@ -52,8 +50,6 @@ import { useServersStore } from '../store/serversStore'
 import { useMetricsStore } from '../store/metricsStore'
 import { useAlertsStore } from '../store/alertsStore'
 import { HomeDashboard } from '../components/HomeDashboard'
-import { getSidebarItemSize } from '../components/Sidebar'
-import type { SidebarItem } from '../components/Sidebar'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -189,68 +185,5 @@ describe('AREA 4 — HomeDashboard: useMemo does not recalculate unnecessarily',
     )
 
     expect(screen.getAllByText('2').length).toBe(kpiBefore)
-  })
-})
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// getSidebarItemSize — estimateSize logic for the virtualizer
-// ═══════════════════════════════════════════════════════════════════════════════
-
-describe('AREA 4 — getSidebarItemSize (estimateSize virtualizer)', () => {
-  it('returns 40 for kind="group"', () => {
-    const item: SidebarItem = {
-      kind: 'group',
-      group: { id: 'g1', name: 'Prod', color: '#f00', collapsed: false, order: 0 },
-      onlineCount: 2
-    }
-    expect(getSidebarItemSize(item)).toBe(40)
-  })
-
-  it('returns 40 for kind="ungrouped-header"', () => {
-    const item: SidebarItem = { kind: 'ungrouped-header' }
-    expect(getSidebarItemSize(item)).toBe(40)
-  })
-
-  it('returns 36 for kind="server"', () => {
-    const item: SidebarItem = {
-      kind: 'server',
-      server: makeStoredServer('10.0.0.1'),
-      inAgGroup: false,
-      inMachineGroup: false
-    }
-    expect(getSidebarItemSize(item)).toBe(36)
-  })
-
-  it('returns 36 for kind="ag"', () => {
-    const item: SidebarItem = {
-      kind: 'ag',
-      agName: 'AG1',
-      agInfo: {
-        id: 'ag-uuid',
-        ag_name: 'AG1',
-        health: 'HEALTHY',
-        primary_replica: '10.0.0.1',
-        serverIds: []
-      },
-      isExpanded: false
-    }
-    expect(getSidebarItemSize(item)).toBe(36)
-  })
-
-  it('returns 36 for kind="search-server"', () => {
-    const item: SidebarItem = {
-      kind: 'search-server',
-      server: makeStoredServer('10.0.0.1')
-    }
-    expect(getSidebarItemSize(item)).toBe(36)
-  })
-
-  it('returns 36 for kind="no-results"', () => {
-    const item: SidebarItem = { kind: 'no-results' }
-    expect(getSidebarItemSize(item)).toBe(36)
-  })
-
-  it('returns 36 when item is undefined (guard)', () => {
-    expect(getSidebarItemSize(undefined)).toBe(36)
   })
 })

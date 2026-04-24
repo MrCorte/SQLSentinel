@@ -114,7 +114,7 @@ export function GroupManagerDialog({ open, onClose }: GroupManagerDialogProps): 
                       removeGroup(g.id)
                       setLocalGroups((prev) => prev.filter((x) => x.id !== g.id))
                     }}
-                    sx={{ color: tokens.color.error }}
+                    sx={{ color: tokens.color.danger }}
                   >
                     <DeleteIcon fontSize="small" />
                   </IconButton>

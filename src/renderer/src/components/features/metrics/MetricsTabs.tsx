@@ -53,7 +53,7 @@ export const GRID_HEADER_SX = {
 
 function kpiAccent(type: 'blue' | 'health', value: number): string {
   if (type === 'blue') return tokens.color.primary
-  if (value > 80) return tokens.color.error
+  if (value > 80) return tokens.color.danger
   if (value > 60) return tokens.color.warning
   return tokens.color.success
 }
@@ -89,7 +89,7 @@ function KpiCard({
         transition: 'all 0.18s ease',
         backgroundImage: `linear-gradient(135deg, transparent 60%, ${accent}14 100%)`,
         '&:hover': {
-          boxShadow: tokens.shadow.cardHover,
+          boxShadow: tokens.shadow.elevated,
           transform: 'translateY(-2px)'
         }
       }}
@@ -289,12 +289,12 @@ const DB_SX = {
   border: 0,
   ...GRID_HEADER_SX,
   '& .row-db-offline': {
-    bgcolor: tokens.color.errorLight,
-    color: tokens.color.error,
+    bgcolor: tokens.color.dangerAlpha12,
+    color: tokens.color.danger,
     '&:hover': { bgcolor: '#fcc' }
   },
   '& .row-db-warning': {
-    bgcolor: tokens.color.warningLight,
+    bgcolor: tokens.color.warningAlpha12,
     color: tokens.color.warning,
     '&:hover': { bgcolor: '#fecba1' }
   }
@@ -306,17 +306,17 @@ function StatoCell({ stateDesc }: { stateDesc: string }): React.JSX.Element {
   let borderColor = 'divider'
 
   if (stateDesc === 'ONLINE') {
-    bgcolor = tokens.color.successLight
+    bgcolor = tokens.color.successAlpha12
     color = tokens.color.success
     borderColor = tokens.color.success
   } else if (stateDesc === 'OFFLINE') {
-    bgcolor = tokens.color.errorLight
-    color = tokens.color.error
-    borderColor = tokens.color.error
+    bgcolor = tokens.color.dangerAlpha12
+    color = tokens.color.danger
+    borderColor = tokens.color.danger
   } else if (
     ['RESTORING', 'RECOVERING', 'RECOVERY_PENDING', 'SUSPECT', 'EMERGENCY'].includes(stateDesc)
   ) {
-    bgcolor = tokens.color.warningLight
+    bgcolor = tokens.color.warningAlpha12
     color = tokens.color.warning
     borderColor = tokens.color.warning
   }
@@ -496,12 +496,12 @@ const SESSION_SX = {
   border: 0,
   ...GRID_HEADER_SX,
   '& .row-session-critical': {
-    bgcolor: tokens.color.errorLight,
-    color: tokens.color.error,
+    bgcolor: tokens.color.dangerAlpha12,
+    color: tokens.color.danger,
     '&:hover': { bgcolor: '#fcc' }
   },
   '& .row-session-blocked': {
-    bgcolor: tokens.color.warningLight,
+    bgcolor: tokens.color.warningAlpha12,
     color: tokens.color.warning,
     '&:hover': { bgcolor: '#fecba1' }
   }

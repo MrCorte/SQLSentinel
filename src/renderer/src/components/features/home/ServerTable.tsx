@@ -25,7 +25,7 @@ const COL_HEADERS = [
 ]
 
 const thStyle: React.CSSProperties = {
-  padding: '6px 8px',
+  padding: '8px 10px',
   textAlign: 'left',
   fontWeight: tokens.font.weightBold,
   fontSize: tokens.font.sizeXs,

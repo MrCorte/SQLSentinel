@@ -12,7 +12,7 @@ import type { ServerGroup } from '../../../types/index'
 // ---------------------------------------------------------------------------
 
 const tdBase: React.CSSProperties = {
-  padding: '5px 8px',
+  padding: '9px 10px',
   borderBottom: '1px solid rgba(128,128,128,0.2)'
 }
 
@@ -148,7 +148,7 @@ export const ServerRow = memo(function ServerRow({
         : 'AG RES'
     : 'Standalone'
   const uptime = m?.instanceInfo?.uptimeDays
-  const rowBg = s.unreachable ? '#fde7e9' : 'transparent'
+  const rowBg = s.unreachable ? tokens.color.dangerAlpha12 : 'transparent'
 
   const tdCpuStyle: React.CSSProperties = {
     ...tdBase,

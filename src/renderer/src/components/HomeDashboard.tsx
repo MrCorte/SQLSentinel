@@ -16,7 +16,6 @@ import type { StoredServer } from '../../../preload/index'
 interface Props {
   onNavigateToServer: (serverId: string) => void
   onNavigateToDiscovery: () => void
-  onOpenAlerts: () => void
 }
 
 // ---------------------------------------------------------------------------

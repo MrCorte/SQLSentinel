@@ -293,7 +293,6 @@ function AppInner(): React.JSX.Element {
                       setTab(3)
                     }}
                     onNavigateToDiscovery={() => setTab(1)}
-                    onOpenAlerts={() => setDrawerOpen(true)}
                   />
                 </Box>
               )}

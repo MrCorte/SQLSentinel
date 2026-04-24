@@ -26,6 +26,12 @@ export const tokens = {
     textMuted: '#8b949e',
     textOnAccent: '#0d1117',
 
+    // Sidebar selection / hover
+    bgSidebarSelected: '#1f6feb',
+    bgSidebarHover: 'rgba(255,255,255,0.06)',
+    primary: '#1f6feb',
+    primaryHover: '#388bfd',
+
     // Status dots
     dotOnline: '#3fb950',
     dotOffline: '#f78166',
@@ -69,6 +75,9 @@ export const tokens = {
   shadow: {
     card: '0 1px 3px rgba(0,0,0,0.3)',
     elevated: '0 4px 16px rgba(0,0,0,0.4)',
-    drawer: '0 8px 32px rgba(0,0,0,0.5)'
+    drawer: '0 8px 32px rgba(0,0,0,0.5)',
+    dotGlowSuccess: '0 0 4px rgba(63,185,80,0.8)',
+    dotGlowWarning: '0 0 4px rgba(210,153,34,0.8)',
+    dotGlowError: '0 0 4px rgba(247,129,102,0.8)'
   }
 }

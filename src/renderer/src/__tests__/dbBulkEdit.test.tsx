@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { DbBulkEditDialog } from '../components/features/metrics/DbBulkEditDialog'
 
@@ -14,6 +14,11 @@ const baseProps = {
   ownerSuggestions: ['Andrea C.', 'Mario R.'],
   saving: false
 }
+
+beforeEach(() => {
+  baseProps.onSave.mockClear()
+  baseProps.onClose.mockClear()
+})
 
 describe('DbBulkEditDialog', () => {
   it('renders title with db count', () => {

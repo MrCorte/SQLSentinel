@@ -43,8 +43,7 @@ export function DbBulkEditDialog({
   }, [open])
 
   const n = dbNames.length
-  const subtitle =
-    n <= 5 ? dbNames.join(', ') : `${dbNames.slice(0, 5).join(', ')} +${n - 5} more`
+  const subtitle = n <= 5 ? dbNames.join(', ') : `${dbNames.slice(0, 5).join(', ')} +${n - 5} more`
 
   const toValue = (s: string): string | undefined => s.trim() || undefined
 

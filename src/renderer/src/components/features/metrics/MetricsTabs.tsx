@@ -451,7 +451,7 @@ export const TabDatabase = memo(function TabDatabase({
         }
       }
     ],
-    [setEditingDb]
+    []
   )
 
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false)
@@ -530,9 +530,12 @@ export const TabDatabase = memo(function TabDatabase({
         onClose={() => setBulkDialogOpen(false)}
         onSave={async (fields) => {
           setSaving(true)
-          await handleBulkSaveDbFields(fields)
-          setSaving(false)
-          setBulkDialogOpen(false)
+          try {
+            await handleBulkSaveDbFields(fields)
+          } finally {
+            setSaving(false)
+            setBulkDialogOpen(false)
+          }
         }}
         aliasSuggestions={aliasSuggestions}
         ownerSuggestions={ownerSuggestions}
@@ -544,7 +547,11 @@ export const TabDatabase = memo(function TabDatabase({
         onClose={() => setSnackbar(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert severity={snackbar?.severity ?? 'success'} onClose={() => setSnackbar(null)} sx={{ width: '100%' }}>
+        <Alert
+          severity={snackbar?.severity ?? 'success'}
+          onClose={() => setSnackbar(null)}
+          sx={{ width: '100%' }}
+        >
           {snackbar?.message}
         </Alert>
       </Snackbar>

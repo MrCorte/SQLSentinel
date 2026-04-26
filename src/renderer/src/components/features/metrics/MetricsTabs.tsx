@@ -5,17 +5,17 @@ import {
   Stack,
   Chip,
   Tooltip,
-  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Button,
-  TextField
+  TextField,
+  Snackbar,
+  Alert
 } from '@mui/material'
-import EditIcon from '@mui/icons-material/Edit'
-import { DataGrid } from '@mui/x-data-grid'
-import type { GridColDef } from '@mui/x-data-grid'
+import { DataGrid, GRID_CHECKBOX_SELECTION_FIELD } from '@mui/x-data-grid'
+import type { GridColDef, GridCellParams } from '@mui/x-data-grid'
 import type {
   ServerMetrics,
   DatabaseInfo,
@@ -25,6 +25,7 @@ import type {
   DbCustomFields
 } from '../../../../../preload/index'
 import { NoteEditor } from '../../NoteEditor'
+import { DbBulkEditDialog } from './DbBulkEditDialog'
 import { compatLevelToSqlVersion } from '../../../utils/sqlVersionUtils'
 import { tokens } from '../../../styles/tokens'
 import type { MetricsData, QueryRow } from './useMetricsData'
@@ -347,12 +348,26 @@ export const TabDatabase = memo(function TabDatabase({
   databases,
   editingDb,
   setEditingDb,
-  handleSaveDbFields
+  handleSaveDbFields,
+  rowSelectionModel,
+  setRowSelectionModel,
+  handleBulkSaveDbFields,
+  aliasSuggestions,
+  ownerSuggestions,
+  snackbar,
+  setSnackbar
 }: {
   databases: DatabaseInfo[]
   editingDb: DatabaseInfo | null
   setEditingDb: (db: DatabaseInfo | null) => void
   handleSaveDbFields: MetricsData['handleSaveDbFields']
+  rowSelectionModel: MetricsData['rowSelectionModel']
+  setRowSelectionModel: MetricsData['setRowSelectionModel']
+  handleBulkSaveDbFields: MetricsData['handleBulkSaveDbFields']
+  aliasSuggestions: MetricsData['aliasSuggestions']
+  ownerSuggestions: MetricsData['ownerSuggestions']
+  snackbar: MetricsData['snackbar']
+  setSnackbar: MetricsData['setSnackbar']
 }): React.JSX.Element {
   const columns: GridColDef<DatabaseInfo>[] = useMemo(
     () => [
@@ -360,6 +375,7 @@ export const TabDatabase = memo(function TabDatabase({
         field: 'name',
         headerName: 'Database',
         flex: 1,
+        minWidth: 220,
         renderCell: (p) => <NameCell value={p.value as string} />
       },
       {
@@ -433,25 +449,49 @@ export const TabDatabase = memo(function TabDatabase({
             </Tooltip>
           )
         }
-      },
-      {
-        field: 'actions',
-        headerName: 'Actions',
-        width: 70,
-        sortable: false,
-        filterable: false,
-        renderCell: (p) => (
-          <IconButton size="small" onClick={() => setEditingDb(p.row as DatabaseInfo)}>
-            <EditIcon fontSize="small" />
-          </IconButton>
-        )
       }
     ],
     [setEditingDb]
   )
 
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  // GridRowSelectionModel.ids is Set<GridRowId> — cast safe since getRowId returns db.name (string)
+  const selectedNames = Array.from(rowSelectionModel.ids) as string[]
+  const selectionCount = rowSelectionModel.ids.size
+
   return (
     <>
+      {selectionCount >= 1 && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5,
+            px: 1.5,
+            py: 0.75,
+            bgcolor: 'primary.dark',
+            borderRadius: 1,
+            mb: 0.5
+          }}
+        >
+          <Typography variant="caption" sx={{ color: 'primary.contrastText', fontWeight: 600 }}>
+            {selectionCount} database{selectionCount !== 1 ? 's' : ''} selected
+          </Typography>
+          <Box sx={{ flex: 1 }} />
+          <Button size="small" variant="contained" onClick={() => setBulkDialogOpen(true)}>
+            ✏ Edit fields
+          </Button>
+          <Button
+            size="small"
+            variant="text"
+            sx={{ color: 'primary.contrastText' }}
+            onClick={() => setRowSelectionModel({ type: 'include', ids: new Set() })}
+          >
+            ✕ Clear
+          </Button>
+        </Box>
+      )}
       <DataGrid<DatabaseInfo>
         rows={databases}
         columns={columns}
@@ -459,7 +499,14 @@ export const TabDatabase = memo(function TabDatabase({
         density="compact"
         rowHeight={44}
         autoHeight
+        checkboxSelection
         disableRowSelectionOnClick
+        rowSelectionModel={rowSelectionModel}
+        onRowSelectionModelChange={setRowSelectionModel}
+        onCellClick={(params: GridCellParams) => {
+          if (params.field === GRID_CHECKBOX_SELECTION_FIELD) return
+          setEditingDb(params.row as DatabaseInfo)
+        }}
         pageSizeOptions={[25, 50]}
         initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
         getRowClassName={(p) => dbRowClass(p.row as DatabaseInfo)}
@@ -477,6 +524,30 @@ export const TabDatabase = memo(function TabDatabase({
           onSave={handleSaveDbFields}
         />
       )}
+      <DbBulkEditDialog
+        open={bulkDialogOpen}
+        dbNames={selectedNames}
+        onClose={() => setBulkDialogOpen(false)}
+        onSave={async (fields) => {
+          setSaving(true)
+          await handleBulkSaveDbFields(fields)
+          setSaving(false)
+          setBulkDialogOpen(false)
+        }}
+        aliasSuggestions={aliasSuggestions}
+        ownerSuggestions={ownerSuggestions}
+        saving={saving}
+      />
+      <Snackbar
+        open={snackbar !== null}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity={snackbar?.severity ?? 'success'} onClose={() => setSnackbar(null)} sx={{ width: '100%' }}>
+          {snackbar?.message}
+        </Alert>
+      </Snackbar>
     </>
   )
 })
@@ -583,6 +654,7 @@ const backupColumns: GridColDef<BackupInfo>[] = [
     field: 'databaseName',
     headerName: 'Database',
     flex: 1,
+    minWidth: 220,
     renderCell: (p) => <NameCell value={p.value as string} />
   },
   {

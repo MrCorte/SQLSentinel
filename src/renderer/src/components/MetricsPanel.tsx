@@ -29,8 +29,22 @@ export function MetricsPanel({
   serverNotes,
   connection
 }: Props): React.JSX.Element {
-  const { tab, setTab, databases, editingDb, setEditingDb, handleSaveDbFields, topQueriesRows } =
-    useMetricsData({ metrics, serverId })
+  const {
+    tab,
+    setTab,
+    databases,
+    editingDb,
+    setEditingDb,
+    handleSaveDbFields,
+    rowSelectionModel,
+    setRowSelectionModel,
+    handleBulkSaveDbFields,
+    aliasSuggestions,
+    ownerSuggestions,
+    snackbar,
+    setSnackbar,
+    topQueriesRows
+  } = useMetricsData({ metrics, serverId })
 
   const activeSessions = metrics?.activeSessions ?? []
   const backupStatus = metrics?.backupStatus ?? []
@@ -89,6 +103,13 @@ export function MetricsPanel({
             editingDb={editingDb}
             setEditingDb={setEditingDb}
             handleSaveDbFields={handleSaveDbFields}
+            rowSelectionModel={rowSelectionModel}
+            setRowSelectionModel={setRowSelectionModel}
+            handleBulkSaveDbFields={handleBulkSaveDbFields}
+            aliasSuggestions={aliasSuggestions}
+            ownerSuggestions={ownerSuggestions}
+            snackbar={snackbar}
+            setSnackbar={setSnackbar}
           />
         )}
 

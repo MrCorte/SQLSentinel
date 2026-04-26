@@ -161,4 +161,32 @@ describe('useMetricsData — bulk save', () => {
     })
     expect(result.current.snackbar?.severity).toBe('success')
   })
+
+  it('sets error snackbar when all saves fail', async () => {
+    vi.mocked(ipc.setDbCustomFields).mockResolvedValue({ ok: false, error: 'DB error' } as any)
+    const { result } = renderHook(() => useMetricsData({ metrics: METRICS, serverId: 'srv1' }))
+    await act(async () => {
+      result.current.setRowSelectionModel({ type: 'include', ids: new Set(['Alpha', 'Beta']) })
+    })
+    await act(async () => {
+      await result.current.handleBulkSaveDbFields({ alias: 'X', referente: undefined })
+    })
+    expect(result.current.snackbar?.severity).toBe('error')
+    expect(result.current.snackbar?.message).toMatch(/Failed to update/)
+  })
+
+  it('sets warning snackbar on partial failure', async () => {
+    vi.mocked(ipc.setDbCustomFields)
+      .mockResolvedValueOnce({ ok: true, data: null })
+      .mockResolvedValueOnce({ ok: false, error: 'DB error' } as any)
+    const { result } = renderHook(() => useMetricsData({ metrics: METRICS, serverId: 'srv1' }))
+    await act(async () => {
+      result.current.setRowSelectionModel({ type: 'include', ids: new Set(['Alpha', 'Beta']) })
+    })
+    await act(async () => {
+      await result.current.handleBulkSaveDbFields({ alias: 'X', referente: undefined })
+    })
+    expect(result.current.snackbar?.severity).toBe('warning')
+    expect(result.current.snackbar?.message).toMatch(/1 updated/)
+  })
 })

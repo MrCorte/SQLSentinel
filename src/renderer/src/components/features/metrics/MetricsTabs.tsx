@@ -25,6 +25,8 @@ import type {
   WaitStatInfo,
   DbCustomFields
 } from '../../../../../preload/index'
+import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
+import ClearIcon from '@mui/icons-material/Clear'
 import { NoteEditor } from '../../NoteEditor'
 import { DbBulkEditDialog } from './DbBulkEditDialog'
 import { compatLevelToSqlVersion } from '../../../utils/sqlVersionUtils'
@@ -498,16 +500,22 @@ export const TabDatabase = memo(function TabDatabase({
             {selectionCount} database{selectionCount !== 1 ? 's' : ''} selected
           </Typography>
           <Box sx={{ flex: 1 }} />
-          <Button size="small" variant="contained" onClick={() => setBulkDialogOpen(true)}>
-            ✏ Edit fields
+          <Button
+            size="small"
+            variant="contained"
+            startIcon={<EditOutlinedIcon fontSize="small" />}
+            onClick={() => setBulkDialogOpen(true)}
+          >
+            Edit fields
           </Button>
           <Button
             size="small"
             variant="text"
+            startIcon={<ClearIcon fontSize="small" />}
             sx={{ color: 'primary.contrastText' }}
             onClick={() => setRowSelectionModel({ type: 'include', ids: new Set() })}
           >
-            ✕ Clear
+            Clear
           </Button>
         </Box>
       )}

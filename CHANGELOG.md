@@ -5,6 +5,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — 2026-04-26 (DB bulk alias & owner edit)
+
+- **Checkbox selection in Databases tab**: multi-row checkbox selection via MUI X DataGrid `checkboxSelection`; row body click opens single-edit dialog; checkbox click toggles selection without opening dialog
+- **Bulk edit toolbar**: conditionally mounted above the DB grid when ≥1 rows selected; shows count, "Edit fields" button, and "Clear" button
+- **`DbBulkEditDialog`** (`src/renderer/src/components/features/metrics/DbBulkEditDialog.tsx`): dialog for bulk-setting alias and owner across all selected databases; two-step confirm when both fields are empty; shows saving spinner during IPC calls
+- **Autocomplete suggestions**: alias and owner fields in both single-edit (`DbEditDialog`) and bulk-edit (`DbBulkEditDialog`) dialogs show `freeSolo` Autocomplete with values drawn from all existing custom fields
+- **Bulk save logic** (`useMetricsData`): `handleBulkSaveDbFields` runs `Promise.allSettled` in parallel; partial failures shown with warning snackbar listing failed DB names; full failure uses error snackbar; success uses success snackbar
+- **Snackbar feedback**: inline `Snackbar`/`Alert` in `TabDatabase` for bulk and single-edit outcomes; severity is `success`, `warning` (partial failure), or `error`
+
 ### Refactored — 2026-04-21 (complete refactoring Phases A–G)
 
 #### Infrastructure & Logging (Phase A)

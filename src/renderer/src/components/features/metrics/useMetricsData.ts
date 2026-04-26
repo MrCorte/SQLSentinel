@@ -39,8 +39,8 @@ export interface MetricsData {
   aliasSuggestions: string[]
   ownerSuggestions: string[]
 
-  snackbar: { message: string; severity: 'success' | 'error' } | null
-  setSnackbar: (s: { message: string; severity: 'success' | 'error' } | null) => void
+  snackbar: { message: string; severity: 'success' | 'warning' | 'error' } | null
+  setSnackbar: (s: { message: string; severity: 'success' | 'warning' | 'error' } | null) => void
 
   topQueriesRows: QueryRow[]
 }
@@ -53,7 +53,7 @@ export function useMetricsData({ metrics, serverId }: UseMetricsDataParams): Met
     useState<GridRowSelectionModel>(EMPTY_SELECTION)
   const [snackbar, setSnackbar] = useState<{
     message: string
-    severity: 'success' | 'error'
+    severity: 'success' | 'warning' | 'error'
   } | null>(null)
 
   useEffect(() => {
@@ -151,8 +151,13 @@ export function useMetricsData({ metrics, serverId }: UseMetricsDataParams): Met
           message: `${selectedNames.length} database${selectedNames.length !== 1 ? 's' : ''} updated`,
           severity: 'success'
         })
-      } else {
+      } else if (succeeded.length === 0) {
         setSnackbar({ message: `Failed to update: ${failed.join(', ')}`, severity: 'error' })
+      } else {
+        setSnackbar({
+          message: `${succeeded.length} updated, ${failed.length} failed: ${failed.join(', ')}`,
+          severity: 'warning'
+        })
       }
       return { failed }
     },

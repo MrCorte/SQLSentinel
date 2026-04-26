@@ -1,5 +1,52 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { renderHook, act } from '@testing-library/react'
+import { useMetricsData } from '../components/features/metrics/useMetricsData'
+
+vi.mock('../api/ipc', () => ({
+  getAllDbCustomFields: vi.fn().mockResolvedValue({ ok: true, data: {} }),
+  setDbCustomFields: vi.fn().mockResolvedValue({ ok: true, data: null })
+}))
+import * as ipc from '../api/ipc'
+
+const METRICS = {
+  instanceInfo: {
+    cpuUsagePercent: 10,
+    memoryUsedMb: 1000,
+    memoryTotalMb: 4000,
+    sqlVersion: '15',
+    sqlEdition: 'Dev',
+    serverName: 'SRV',
+    loginMode: 'SQL'
+  },
+  databases: [
+    {
+      name: 'Alpha',
+      stateDesc: 'ONLINE',
+      recoveryModel: 'FULL',
+      sizeMb: 100,
+      logSizeMb: 10,
+      compatibilityLevel: 150
+    },
+    {
+      name: 'Beta',
+      stateDesc: 'ONLINE',
+      recoveryModel: 'FULL',
+      sizeMb: 200,
+      logSizeMb: 20,
+      compatibilityLevel: 150
+    }
+  ],
+  activeSessions: [],
+  backupStatus: [],
+  diskVolumes: [],
+  waitStats: [],
+  topQueries: [],
+  databaseFiles: [],
+  agGroups: [],
+  agReplicas: [],
+  agDatabases: []
+} as any
 import { render, screen, fireEvent, cleanup } from '@testing-library/react'
 import { DbBulkEditDialog } from '../components/features/metrics/DbBulkEditDialog'
 
@@ -64,5 +111,49 @@ describe('DbBulkEditDialog', () => {
     expect(screen.getByTestId('apply-btn').textContent).toMatch(/Confirm/i)
     fireEvent.change(screen.getByTestId('owner-input'), { target: { value: 'x' } })
     expect(screen.getByTestId('apply-btn').textContent).toMatch(/Apply to 3/i)
+  })
+})
+
+describe('useMetricsData — bulk save', () => {
+  it('handleBulkSaveDbFields calls setDbCustomFields for each selected DB', async () => {
+    const { result } = renderHook(() => useMetricsData({ metrics: METRICS, serverId: 'srv1' }))
+    await act(async () => {
+      result.current.setRowSelectionModel({ type: 'include', ids: new Set(['Alpha', 'Beta']) })
+    })
+    await act(async () => {
+      await result.current.handleBulkSaveDbFields({ alias: 'Bulk', referente: 'Owner' })
+    })
+    expect(ipc.setDbCustomFields).toHaveBeenCalledWith({
+      serverId: 'srv1',
+      dbName: 'Alpha',
+      fields: { alias: 'Bulk', referente: 'Owner' }
+    })
+    expect(ipc.setDbCustomFields).toHaveBeenCalledWith({
+      serverId: 'srv1',
+      dbName: 'Beta',
+      fields: { alias: 'Bulk', referente: 'Owner' }
+    })
+  })
+
+  it('resets rowSelectionModel after bulk save', async () => {
+    const { result } = renderHook(() => useMetricsData({ metrics: METRICS, serverId: 'srv1' }))
+    await act(async () => {
+      result.current.setRowSelectionModel({ type: 'include', ids: new Set(['Alpha']) })
+    })
+    await act(async () => {
+      await result.current.handleBulkSaveDbFields({ alias: undefined, referente: undefined })
+    })
+    expect(result.current.rowSelectionModel.ids.size).toBe(0)
+  })
+
+  it('sets success snackbar after all saves succeed', async () => {
+    const { result } = renderHook(() => useMetricsData({ metrics: METRICS, serverId: 'srv1' }))
+    await act(async () => {
+      result.current.setRowSelectionModel({ type: 'include', ids: new Set(['Alpha', 'Beta']) })
+    })
+    await act(async () => {
+      await result.current.handleBulkSaveDbFields({ alias: 'X', referente: undefined })
+    })
+    expect(result.current.snackbar?.severity).toBe('success')
   })
 })

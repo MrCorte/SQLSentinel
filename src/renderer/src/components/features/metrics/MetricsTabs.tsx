@@ -12,7 +12,8 @@ import {
   Button,
   TextField,
   Snackbar,
-  Alert
+  Alert,
+  Autocomplete
 } from '@mui/material'
 import { DataGrid, GRID_CHECKBOX_SELECTION_FIELD } from '@mui/x-data-grid'
 import type { GridColDef, GridCellParams } from '@mui/x-data-grid'
@@ -214,6 +215,8 @@ interface DbEditDialogProps {
   initial: DbCustomFields
   onClose: () => void
   onSave: (fields: DbCustomFields) => void
+  aliasSuggestions: string[]
+  ownerSuggestions: string[]
 }
 
 function DbEditDialog({
@@ -221,7 +224,9 @@ function DbEditDialog({
   dbName,
   initial,
   onClose,
-  onSave
+  onSave,
+  aliasSuggestions,
+  ownerSuggestions
 }: DbEditDialogProps): React.JSX.Element {
   const [alias, setAlias] = useState(initial.alias ?? '')
   const [referente, setReferente] = useState(initial.referente ?? '')
@@ -245,21 +250,35 @@ function DbEditDialog({
       <DialogContent
         sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '16px !important' }}
       >
-        <TextField
-          label="Alias"
-          placeholder="Alternative name (optional)"
+        <Autocomplete
+          freeSolo
+          options={aliasSuggestions}
           value={alias}
-          onChange={(e) => setAlias(e.target.value)}
-          size="small"
-          fullWidth
+          onInputChange={(_, v) => setAlias(typeof v === 'string' ? v : '')}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Alias"
+              placeholder="Alternative name (optional)"
+              size="small"
+              fullWidth
+            />
+          )}
         />
-        <TextField
-          label="Owner"
-          placeholder="Responsible person (optional)"
+        <Autocomplete
+          freeSolo
+          options={ownerSuggestions}
           value={referente}
-          onChange={(e) => setReferente(e.target.value)}
-          size="small"
-          fullWidth
+          onInputChange={(_, v) => setReferente(typeof v === 'string' ? v : '')}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              label="Owner"
+              placeholder="Responsible person (optional)"
+              size="small"
+              fullWidth
+            />
+          )}
         />
       </DialogContent>
       <DialogActions>
@@ -522,6 +541,8 @@ export const TabDatabase = memo(function TabDatabase({
           }}
           onClose={() => setEditingDb(null)}
           onSave={handleSaveDbFields}
+          aliasSuggestions={aliasSuggestions}
+          ownerSuggestions={ownerSuggestions}
         />
       )}
       <DbBulkEditDialog

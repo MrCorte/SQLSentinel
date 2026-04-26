@@ -478,8 +478,12 @@ export const TabDatabase = memo(function TabDatabase({
   const [bulkDialogOpen, setBulkDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   // GridRowSelectionModel.ids is Set<GridRowId> — cast safe since getRowId returns db.name (string)
-  const selectedNames = Array.from(rowSelectionModel.ids) as string[]
-  const selectionCount = rowSelectionModel.ids.size
+  // 'exclude' model = "all except ids" — happens when user clicks select-all header checkbox
+  const selectedNames =
+    rowSelectionModel.type === 'include'
+      ? (Array.from(rowSelectionModel.ids) as string[])
+      : databases.map((db) => db.name).filter((n) => !rowSelectionModel.ids.has(n))
+  const selectionCount = selectedNames.length
 
   return (
     <>

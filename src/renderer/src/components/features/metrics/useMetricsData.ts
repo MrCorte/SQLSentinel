@@ -119,8 +119,11 @@ export function useMetricsData({ metrics, serverId }: UseMetricsDataParams): Met
       alias: string | undefined
       referente: string | undefined
     }): Promise<{ failed: string[] }> => {
-      // GridRowSelectionModel.ids is Set<GridRowId>; cast to string[] since getRowId returns db.name
-      const selectedNames = Array.from(rowSelectionModel.ids) as string[]
+      // 'exclude' model = "all except ids" — happens when user clicks select-all header checkbox
+      const selectedNames =
+        rowSelectionModel.type === 'include'
+          ? (Array.from(rowSelectionModel.ids) as string[])
+          : databases.map((db) => db.name).filter((n) => !rowSelectionModel.ids.has(n))
       const dbFields: DbCustomFields = { alias: fields.alias, referente: fields.referente }
 
       const results = await Promise.allSettled(
@@ -161,7 +164,7 @@ export function useMetricsData({ metrics, serverId }: UseMetricsDataParams): Met
       }
       return { failed }
     },
-    [rowSelectionModel, serverId]
+    [rowSelectionModel, serverId, databases]
   )
 
   const topQueriesRows: QueryRow[] = useMemo(() => {

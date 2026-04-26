@@ -355,7 +355,7 @@ function StatoCell({ stateDesc }: { stateDesc: string }): React.JSX.Element {
         color,
         letterSpacing: '0.3px',
         whiteSpace: 'nowrap',
-        lineHeight: '16px',
+        lineHeight: '16px'
       }}
     >
       {stateDesc}

@@ -46,7 +46,7 @@ function buildContent(
 ): { subject: string; html: string } {
   const emoji = severity === 'CRITICAL' ? '🔴' : '🟡'
   const color = severity === 'CRITICAL' ? '#dc2626' : '#d97706'
-  const ts = new Date(timestamp).toLocaleString('it-IT')
+  const ts = new Date(timestamp).toLocaleString('en-US')
   const categoryLabel = category.replace(/_/g, ' ').toUpperCase()
   const subject = `${emoji} [SQL Sentinel] ${serverId} — ${categoryLabel} ${severity}`
   const footerStyle =
@@ -64,22 +64,22 @@ function buildContent(
         <td style="padding:6px;font-weight:bold">${ts}</td>
       </tr>
       <tr>
-        <td style="padding:6px;color:#6b7280">Categoria</td>
+        <td style="padding:6px;color:#6b7280">Category</td>
         <td style="padding:6px;font-weight:bold">${category}</td>
       </tr>
       <tr>
-        <td style="padding:6px;color:#6b7280">Livello</td>
+        <td style="padding:6px;color:#6b7280">Severity</td>
         <td style="padding:6px;font-weight:bold;color:${color}">${severity}</td>
       </tr>
       <tr>
         <td colspan="2" style="padding:6px;color:#6b7280;border-top:1px solid #e5e7eb">
-          <strong>Dettagli:</strong><br/>${message}
+          <strong>Details:</strong><br/>${message}
         </td>
       </tr>
     </table>
     <p style="${footerStyle}">
-      SQL Sentinel — Monitoring automatico SQL Server<br/>
-      Per disabilitare le notifiche email, vai in Impostazioni → Notifiche Email
+      SQL Sentinel — Automated SQL Server Monitoring<br/>
+      To disable email notifications, go to Settings → Email Notifications
     </p>
   </div>
 </div>`

@@ -1,0 +1,57 @@
+<h2>Design v2 — Bulk sempre sovrascrive</h2>
+<p class="subtitle">Campo vuoto = cancella il valore esistente. Nessun warning.</p>
+
+<div class="section">
+  <h3>Bulk Edit Dialog — comportamento finale</h3>
+  <div class="mockup">
+    <div class="mockup-header">Edit 3 databases</div>
+    <div class="mockup-body" style="padding:20px;max-width:360px">
+      <p style="color:#9ca3af;font-size:12px;margin-bottom:16px">
+        Fields applied to: <strong style="color:#f3f4f6">AdventureWorks, Northwind, ReportingDB</strong>
+      </p>
+
+      <div style="margin-bottom:12px">
+        <label style="font-size:11px;color:#9ca3af;display:block;margin-bottom:4px">ALIAS</label>
+        <input placeholder="Alias (leave blank to clear)" style="width:100%;background:#2d2d2d;border:1px solid #444;color:#f3f4f6;padding:8px;border-radius:6px;font-size:13px;box-sizing:border-box"/>
+        <p style="font-size:11px;color:#6b7280;margin-top:4px">Suggestions from existing values</p>
+      </div>
+
+      <div style="margin-bottom:20px">
+        <label style="font-size:11px;color:#9ca3af;display:block;margin-bottom:4px">OWNER</label>
+        <input placeholder="Owner (leave blank to clear)" style="width:100%;background:#2d2d2d;border:1px solid #444;color:#f3f4f6;padding:8px;border-radius:6px;font-size:13px;box-sizing:border-box"/>
+        <p style="font-size:11px;color:#6b7280;margin-top:4px">Suggestions from existing values</p>
+      </div>
+
+      <p style="font-size:11px;color:#6b7280;background:#2d2d2d;padding:8px;border-radius:6px;">
+        ℹ Values applied to all selected databases. Leave blank to clear.
+      </p>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button style="background:transparent;border:1px solid #444;color:#9ca3af;padding:6px 16px;border-radius:6px;font-size:13px">Cancel</button>
+        <button style="background:#2563eb;border:none;color:#fff;padding:6px 16px;border-radius:6px;font-size:13px">Apply to 3 databases</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Riepilogo comportamento</h3>
+  <table style="width:100%;font-size:13px;border-collapse:collapse">
+    <thead>
+      <tr style="color:#9ca3af;border-bottom:1px solid #2d2d2d">
+        <th style="padding:8px;text-align:left">Campo nel dialog</th>
+        <th style="padding:8px;text-align:left">Risultato su DB selezionati</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #2d2d2d">
+        <td style="padding:8px;color:#f3f4f6">"Andrea C."</td>
+        <td style="padding:8px;color:#4ade80">Tutti i DB → owner = "Andrea C."</td>
+      </tr>
+      <tr style="border-bottom:1px solid #2d2d2d">
+        <td style="padding:8px;color:#f3f4f6">(vuoto)</td>
+        <td style="padding:8px;color:#f87171">Tutti i DB → owner cancellato</td>
+      </tr>
+    </tbody>
+  </table>
+</div>

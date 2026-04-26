@@ -677,6 +677,15 @@ export function Settings(): React.JSX.Element {
           </CardContent>
         </Card>
       )}
+
+      <Typography
+        variant="caption"
+        sx={{ display: 'block', textAlign: 'center', mt: 4, mb: 1, color: 'text.disabled' }}
+      >
+        Made with ❤️ in Italy 🇮🇹
+        <br />
+        ac
+      </Typography>
     </Box>
   )
 }

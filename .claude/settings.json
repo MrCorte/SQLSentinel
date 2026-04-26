@@ -8,7 +8,9 @@
       "Edit(**)",
       "Write(**)"
     ],
-    "deny": ["Bash(rm -rf *)"]
+    "deny": [
+      "Bash(rm -rf *)"
+    ]
   },
   "hooks": {
     "PostToolUse": [
@@ -18,6 +20,26 @@
           {
             "type": "command",
             "command": "npm run typecheck 2>&1 | tail -5"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit(src/**/*.{ts,tsx})",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /Users/andreacortesi/Documents/Projects/DEV/SQLSentinel && npx prettier --write \"$CLAUDE_TOOL_INPUT_FILE_PATH\" 2>&1"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit(.env*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'ERROR: Direct .env edits blocked. Store credentials via electron-store.' && exit 1"
           }
         ]
       }

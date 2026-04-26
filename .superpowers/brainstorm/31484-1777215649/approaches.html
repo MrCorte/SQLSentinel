@@ -1,0 +1,63 @@
+<h2>3 Approaches — Bulk Alias & Owner Edit</h2>
+<p class="subtitle">Select the approach that fits best. You can pick one or mix ideas.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Checkbox + Floating Bulk Toolbar</h3>
+      <p>Checkbox column in the DB grid. Selecting 2+ rows shows a compact toolbar: <em>"Set alias / owner for 5 databases"</em>. Opens a small dialog with autocomplete fields. Single-row edit keeps existing dialog + autocomplete added.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>MUI DataGrid has built-in checkbox support</li>
+          <li>Minimal new UI surface</li>
+          <li>Familiar pattern (Gmail-style)</li>
+          <li>Works for 1 or N rows</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>Alias same for all selected (intentional, but unusual)</li>
+          <li>Toolbar needs careful placement</li>
+        </ul></div>
+      </div>
+      <p style="margin-top:8px;font-size:13px;color:#22c55e;font-weight:600">⭐ Recommended</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Inline Cell Editing</h3>
+      <p>Click directly on Alias or Owner cell → inline editable field with autocomplete. No dialog for single edits. Bulk still needs a separate mechanism (e.g. select + toolbar).</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>Fastest UX for single edits</li>
+          <li>No modal friction</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>MUI DataGrid inline edit with custom cells = complex</li>
+          <li>Doesn't fully solve bulk problem alone</li>
+          <li>More code, more edge cases</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>A + B: Checkbox bulk + Inline single edit</h3>
+      <p>Best of both: inline editing for quick single-row changes, checkbox + toolbar for bulk. Most powerful but most work to build.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul>
+          <li>Best UX overall</li>
+          <li>Single edit is instant, no dialog</li>
+          <li>Bulk edit for mass changes</li>
+        </ul></div>
+        <div class="cons"><h4>Cons</h4><ul>
+          <li>Highest implementation cost</li>
+          <li>Two editing modes = more to maintain</li>
+        </ul></div>
+      </div>
+    </div>
+  </div>
+</div>

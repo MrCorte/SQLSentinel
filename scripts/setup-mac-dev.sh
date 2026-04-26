@@ -2,6 +2,70 @@
 # SQLSentinel — Mac dev environment setup
 set -euo pipefail
 
+WITH_OLLAMA=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --with-ollama)
+      WITH_OLLAMA=1
+      ;;
+    *)
+      echo "Unknown option: $arg"
+      echo "Usage: $0 [--with-ollama]"
+      exit 1
+      ;;
+  esac
+done
+
+require_brew_formula() {
+  local formula="$1"
+
+  if brew list --formula "$formula" &>/dev/null; then
+    return 0
+  fi
+
+  echo "Installing $formula via Homebrew..."
+  brew install "$formula"
+}
+
+ensure_node_22() {
+  local current_major=""
+  if command -v node &>/dev/null; then
+    current_major="$(node -p "process.versions.node.split('.')[0]")"
+  fi
+
+  if [[ "$current_major" == "22" ]]; then
+    return 0
+  fi
+
+  require_brew_formula node@22
+  export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
+
+  local installed_major
+  installed_major="$(node -p "process.versions.node.split('.')[0]")"
+  if [[ "$installed_major" != "22" ]]; then
+    echo "ERROR: Node.js v22 is required. Current shell resolves to: $(node -v)"
+    echo 'Add /opt/homebrew/opt/node@22/bin to PATH, then rerun this script.'
+    exit 1
+  fi
+}
+
+ensure_docker_running() {
+  if docker info &>/dev/null; then
+    return 0
+  fi
+
+  echo "Starting Docker Desktop..."
+  open /Applications/Docker.app
+  echo "Waiting for Docker daemon..."
+
+  until docker info &>/dev/null; do
+    printf '.'
+    sleep 3
+  done
+
+  echo " ready."
+}
 echo "==> Checking prerequisites..."
 
 if ! command -v brew &>/dev/null; then
@@ -12,22 +76,14 @@ fi
 if ! command -v docker &>/dev/null; then
   echo "Installing Docker via Homebrew..."
   brew install --cask docker
-  echo "  Docker installed. Open Docker.app once before continuing."
-  open /Applications/Docker.app
-  echo "  Press Enter when Docker Desktop is running..."
-  read -r
 fi
 
-if ! command -v node &>/dev/null; then
-  echo "Installing Node.js via Homebrew..."
-  brew install node@22
-  echo 'export PATH="/opt/homebrew/opt/node@22/bin:$PATH"' >> ~/.zshrc
-  export PATH="/opt/homebrew/opt/node@22/bin:$PATH"
-fi
+ensure_docker_running
+ensure_node_22
 
-if ! command -v ollama &>/dev/null; then
+if [[ "$WITH_OLLAMA" == "1" ]] && ! command -v ollama &>/dev/null; then
   echo "Installing Ollama..."
-  brew install ollama
+  require_brew_formula ollama
 fi
 
 echo ""
@@ -42,11 +98,17 @@ until docker compose exec sqlserver \
 done
 echo " ready."
 
-echo ""
-echo "==> Pulling Ollama model (llama3.2:3b)..."
-ollama serve &>/dev/null &
-sleep 2
-ollama pull llama3.2:3b
+if [[ "$WITH_OLLAMA" == "1" ]]; then
+  echo ""
+  echo "==> Pulling Ollama model (llama3.2:3b)..."
+  ollama serve &>/dev/null &
+  sleep 2
+  ollama pull llama3.2:3b
+else
+  echo ""
+  echo "==> Skipping Ollama bootstrap."
+  echo "    Run '$0 --with-ollama' later if you want local AI features."
+fi
 
 echo ""
 echo "==> Installing npm dependencies..."
@@ -59,3 +121,6 @@ echo ""
 echo "    SQL Server credentials:"
 echo "      Host: localhost   Port: 1433"
 echo "      Auth: SQL Auth    User: sa    Password: SQLSentinel@Dev1"
+if [[ "$WITH_OLLAMA" == "1" ]]; then
+  echo "    Ollama model: llama3.2:3b"
+fi

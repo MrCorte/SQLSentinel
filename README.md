@@ -260,6 +260,39 @@ cd SQLSentinel
 npm install
 ```
 
+### macOS development setup
+
+For local development on macOS, the repository includes a bootstrap script that:
+
+- enforces Node.js 22
+- starts a local SQL Server 2022 container via Docker
+- installs npm dependencies
+- optionally installs and pulls Ollama for AI features
+
+```bash
+cd SQLSentinel
+./scripts/setup-mac-dev.sh
+```
+
+Optional AI bootstrap:
+
+```bash
+./scripts/setup-mac-dev.sh --with-ollama
+```
+
+Local SQL Server for development:
+
+| Field    | Value                |
+| -------- | -------------------- |
+| Host     | `localhost`          |
+| Port     | `1433`               |
+| User     | `sa`                 |
+| Password | `SQLSentinel@Dev1`   |
+| Image    | `mssql/server:2022`  |
+
+The script expects Homebrew and Docker Desktop to be available.
+If your shell resolves a different Node version, use `.nvmrc` (`22`) or put
+`/opt/homebrew/opt/node@22/bin` before other Node installations in `PATH`.
 ### Running in development
 
 ```bash

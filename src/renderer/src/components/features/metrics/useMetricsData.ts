@@ -107,6 +107,8 @@ export function useMetricsData({ metrics, serverId }: UseMetricsDataParams): Met
       if (result.ok) {
         setCustomFields((prev) => ({ ...prev, [`${serverId}/${editingDb.name}`]: fields }))
         setEditingDb(null)
+      } else {
+        setSnackbar({ message: `Failed to save ${editingDb.name}`, severity: 'error' })
       }
     },
     [editingDb, serverId]

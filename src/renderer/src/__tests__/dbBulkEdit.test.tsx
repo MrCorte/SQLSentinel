@@ -115,6 +115,11 @@ describe('DbBulkEditDialog', () => {
 })
 
 describe('useMetricsData — bulk save', () => {
+  beforeEach(() => {
+    vi.mocked(ipc.setDbCustomFields).mockClear()
+    vi.mocked(ipc.getAllDbCustomFields).mockClear()
+  })
+
   it('handleBulkSaveDbFields calls setDbCustomFields for each selected DB', async () => {
     const { result } = renderHook(() => useMetricsData({ metrics: METRICS, serverId: 'srv1' }))
     await act(async () => {

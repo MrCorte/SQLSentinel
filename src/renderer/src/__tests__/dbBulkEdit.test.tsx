@@ -52,4 +52,12 @@ describe('DbBulkEditDialog', () => {
     fireEvent.change(screen.getByTestId('alias-input'), { target: { value: 'x' } })
     expect(screen.getByTestId('apply-btn').textContent).toMatch(/Apply to 3/i)
   })
+
+  it('resets confirm state when owner field is edited after both-empty click', () => {
+    render(<DbBulkEditDialog {...baseProps} />)
+    fireEvent.click(screen.getByTestId('apply-btn'))
+    expect(screen.getByTestId('apply-btn').textContent).toMatch(/Confirm/i)
+    fireEvent.change(screen.getByTestId('owner-input'), { target: { value: 'x' } })
+    expect(screen.getByTestId('apply-btn').textContent).toMatch(/Apply to 3/i)
+  })
 })

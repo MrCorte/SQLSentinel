@@ -962,13 +962,14 @@ const mockApi = {
   },
 
   servers: {
-    getAll: (): Promise<StoredServer[]> => Promise.resolve([...mockStoredServers]),
+    getAll: (): Promise<IpcResult<StoredServer[]>> =>
+      Promise.resolve({ ok: true, data: [...mockStoredServers] }),
 
-    add: (params: Omit<StoredServer, 'id' | 'addedAt'>): Promise<ServerAddResult> => {
+    add: (params: Omit<StoredServer, 'id' | 'addedAt'>): Promise<IpcResult<ServerAddResult>> => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const addr = params.host ?? (params as any).ip ?? ''
       const dup = mockStoredServers.some((s) => s.host === addr && s.port === params.port)
-      if (dup) return Promise.resolve({ success: false, reason: 'duplicate' })
+      if (dup) return Promise.resolve({ ok: true, data: { success: false, reason: 'duplicate' } })
       const server: StoredServer = {
         ...params,
         host: addr,
@@ -976,17 +977,17 @@ const mockApi = {
         addedAt: new Date().toISOString()
       }
       mockStoredServers = [...mockStoredServers, server]
-      return Promise.resolve({ success: true, server })
+      return Promise.resolve({ ok: true, data: { success: true, server } })
     },
 
-    update: (id: string, patch: Partial<StoredServer>): Promise<{ success: boolean }> => {
+    update: (id: string, patch: Partial<StoredServer>): Promise<IpcResult<{ success: boolean }>> => {
       mockStoredServers = mockStoredServers.map((s) => (s.id === id ? { ...s, ...patch } : s))
-      return Promise.resolve({ success: true })
+      return Promise.resolve({ ok: true, data: { success: true } })
     },
 
-    remove: (id: string): Promise<{ success: boolean }> => {
+    remove: (id: string): Promise<IpcResult<{ success: boolean }>> => {
       mockStoredServers = mockStoredServers.filter((s) => s.id !== id)
-      return Promise.resolve({ success: true })
+      return Promise.resolve({ ok: true, data: { success: true } })
     },
 
     exportBackup: (): Promise<IpcResult<{ saved: boolean }>> =>

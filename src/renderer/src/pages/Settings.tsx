@@ -48,12 +48,13 @@ interface RetentionOption {
 }
 
 const RETENTION_OPTIONS: RetentionOption[] = [
-  { minutes: 15, label: '15 minutes', snapshots: 30 },
-  { minutes: 30, label: '30 minutes', snapshots: 60 },
-  { minutes: 60, label: '1 hour', snapshots: 120 },
   { minutes: 180, label: '3 hours', snapshots: 360 },
   { minutes: 360, label: '6 hours', snapshots: 720 },
-  { minutes: 720, label: '12 hours', snapshots: 1440 }
+  { minutes: 720, label: '12 hours', snapshots: 1440 },
+  { minutes: 1440, label: '1 day', snapshots: 2880 },
+  { minutes: 4320, label: '3 days', snapshots: 8640 },
+  { minutes: 10080, label: '7 days', snapshots: 20160 },
+  { minutes: 43200, label: '30 days', snapshots: 86400 }
 ]
 
 // ---------------------------------------------------------------------------

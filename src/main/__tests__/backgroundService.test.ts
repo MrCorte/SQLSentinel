@@ -54,6 +54,9 @@ vi.mock('../metricsWorker', () => ({
 vi.mock('../emailService', () => ({
   sendAlertEmail: vi.fn().mockResolvedValue(undefined)
 }))
+vi.mock('../serviceClient', () => ({
+  getStatus: vi.fn(() => 'disconnected')
+}))
 
 function makeMockWin() {
   const listeners: Record<string, Function[]> = {}

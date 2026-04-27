@@ -13,8 +13,7 @@ import { shouldSendDelta } from '../deltaUtils'
 
 // ── Mock electron / worker dependencies ─────────────────────────────────────
 vi.mock('electron', () => ({
-  app: { isPackaged: false, getPath: () => '/tmp' },
-  BrowserWindow: { getAllWindows: vi.fn(() => []) }
+  app: { isPackaged: false, getPath: () => '/tmp' }
 }))
 vi.mock('../collectors/sqlCollector', () => ({ collectMetrics: vi.fn() }))
 vi.mock('../store/dbCustomFields', () => ({ getAllCustomFields: vi.fn(() => ({})) }))
@@ -31,9 +30,8 @@ vi.mock('../collectors/agCollector', () => ({
   detectAndSyncReplicaRoles: vi.fn(() => Promise.resolve([]))
 }))
 
-import { BrowserWindow } from 'electron'
 import { collectMetrics } from '../collectors/sqlCollector'
-import { startWorker, __resetForTests } from '../metricsWorker'
+import { startWorker, __resetForTests, setPushHandler } from '../metricsWorker'
 import { useMetricsStore } from '../../renderer/src/store/metricsStore'
 import type { ServerMetrics } from '../collectors/types'
 
@@ -240,7 +238,7 @@ describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     __resetForTests()
-    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([])
+    setPushHandler(() => {})
     vi.mocked(collectMetrics).mockReset()
   })
 
@@ -251,13 +249,7 @@ describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
 
   it('removedDbs contiene esattamente i DB presenti in prev ma assenti in fresh', async () => {
     const pushed: { channel: string; data: unknown }[] = []
-    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
-      {
-        isDestroyed: () => false,
-        isVisible: () => true,
-        webContents: { send: (ch: string, d: unknown) => pushed.push({ channel: ch, data: d }) }
-      } as unknown as Electron.BrowserWindow
-    ])
+    setPushHandler((ch, d) => pushed.push({ channel: ch, data: d }))
 
     const prevMetrics = makeMetrics([
       { name: 'DB_KEEP' },
@@ -291,13 +283,7 @@ describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
 
   it('first collect always sends full (isDelta undefined or false)', async () => {
     const pushed: { channel: string; data: unknown }[] = []
-    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
-      {
-        isDestroyed: () => false,
-        isVisible: () => true,
-        webContents: { send: (ch: string, d: unknown) => pushed.push({ channel: ch, data: d }) }
-      } as unknown as Electron.BrowserWindow
-    ])
+    setPushHandler((ch, d) => pushed.push({ channel: ch, data: d }))
 
     vi.mocked(collectMetrics).mockResolvedValueOnce(makeMetrics([{ name: 'DB_A' }]))
     vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {})) // hang after first
@@ -315,13 +301,7 @@ describe('AREA 2 — computeDelta (via push eventi al renderer)', () => {
 
   it('no DB changed → isDelta:true with empty databases array', async () => {
     const pushed: { channel: string; data: unknown }[] = []
-    vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
-      {
-        isDestroyed: () => false,
-        isVisible: () => true,
-        webContents: { send: (ch: string, d: unknown) => pushed.push({ channel: ch, data: d }) }
-      } as unknown as Electron.BrowserWindow
-    ])
+    setPushHandler((ch, d) => pushed.push({ channel: ch, data: d }))
 
     const metrics = makeMetrics([{ name: 'DB_A', sizeMb: 100 }])
 

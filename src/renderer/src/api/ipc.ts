@@ -102,9 +102,10 @@ export const changePassword = (...args: Parameters<typeof api.changePassword>) =
 
 export const aiCheck = () => withTimeout(api.aiCheck())
 
-// aiAgentAsk is long-running — use a 30-second timeout
+// aiAgentAsk is long-running — backend enforces a 60 s AbortSignal; use 65 s here
+// so the backend has time to handle its own timeout before the renderer gives up.
 export const aiAgentAsk = (...args: Parameters<typeof api.aiAgentAsk>) =>
-  withTimeout(api.aiAgentAsk(...args), 30_000)
+  withTimeout(api.aiAgentAsk(...args), 65_000)
 
 // ---------------------------------------------------------------------------
 // Invoke methods — db namespace

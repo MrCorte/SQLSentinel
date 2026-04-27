@@ -15,7 +15,7 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Edit(src/**/*.ts)",
+        "matcher": "Edit(src/**/*.{ts,tsx})",
         "hooks": [
           {
             "type": "command",
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd /Users/andreacortesi/Documents/Projects/DEV/SQLSentinel && npx prettier --write \"$CLAUDE_TOOL_INPUT_FILE_PATH\" 2>&1"
+            "command": "npx prettier --write \"%CLAUDE_TOOL_INPUT_FILE_PATH%\" 2>&1"
           }
         ]
       }
@@ -40,6 +40,15 @@
           {
             "type": "command",
             "command": "echo 'ERROR: Direct .env edits blocked. Store credentials via electron-store.' && exit 1"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit(package-lock.json)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'ERROR: Do not edit package-lock.json directly. Use npm install.' && exit 1"
           }
         ]
       }

@@ -32,8 +32,9 @@ export function decrypt(stored: string): string {
   }
   try {
     return safeStorage.decryptString(Buffer.from(stored, 'base64'))
-  } catch {
-    return ''
+  } catch (err) {
+    log.error('[safeStorage] Decryption failed — OS keyring may have changed or credential is corrupt')
+    throw err
   }
 }
 

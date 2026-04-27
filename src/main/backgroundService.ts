@@ -69,7 +69,7 @@ export class BackgroundService {
     this.tray.setImage(hasAlert ? trayIconAlert : trayIconNormal)
     const menu = Menu.buildFromTemplate([
       {
-        label: 'Apri SQLSentinel',
+        label: 'Open SQLSentinel',
         click: () => {
           this.win.show()
           this.win.focus()
@@ -80,7 +80,7 @@ export class BackgroundService {
       { label: `✕  ${offline} server offline`, enabled: false },
       { type: 'separator' },
       {
-        label: `Polling background: ${settings.backgroundEnabled ? 'Attivo' : 'Disattivo'}`,
+        label: `Background polling: ${settings.backgroundEnabled ? 'Active' : 'Inactive'}`,
         click: () => {
           const next = !settings.backgroundEnabled
           saveSettings({ backgroundEnabled: next })
@@ -94,7 +94,7 @@ export class BackgroundService {
       },
       { type: 'separator' },
       {
-        label: 'Esci',
+        label: 'Quit',
         click: () => {
           this.quitting = true
           this.destroy()

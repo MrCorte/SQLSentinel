@@ -52,11 +52,14 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const mountedRef = useRef(true)
+  const unsubscribeRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
+      unsubscribeRef.current?.()
+      unsubscribeRef.current = null
     }
   }, [])
 
@@ -89,11 +92,13 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
       } else if (ev.type === 'tool_end') {
         completeToolStep(ev.name, ev.output)
       } else if (ev.type === 'done') {
-        unsubscribe()
+        unsubscribeRef.current?.()
+        unsubscribeRef.current = null
         finalizeStreaming()
         if (mountedRef.current) setLoading(false)
       } else if (ev.type === 'error') {
-        unsubscribe()
+        unsubscribeRef.current?.()
+        unsubscribeRef.current = null
         if (ev.message === 'Cancelled') {
           finalizeStreaming()
         } else {
@@ -102,17 +107,20 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
         if (mountedRef.current) setLoading(false)
       }
     })
+    unsubscribeRef.current = unsubscribe
 
     try {
       const result = await window.sqlSentinel.aiAgentStream(text, history)
       if (!result.ok) {
-        unsubscribe()
+        unsubscribeRef.current?.()
+        unsubscribeRef.current = null
         resetStreaming(result.error)
         if (mountedRef.current) setLoading(false)
       }
     } catch (err) {
       console.error('[AIPanel] aiAgentStream threw:', err)
-      unsubscribe()
+      unsubscribeRef.current?.()
+      unsubscribeRef.current = null
       resetStreaming(err instanceof Error ? err.message : String(err))
       if (mountedRef.current) setLoading(false)
     }

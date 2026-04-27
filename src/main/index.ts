@@ -265,10 +265,11 @@ function cleanupResources(): void {
 }
 
 app.on('window-all-closed', () => {
-  cleanupResources()
   if (process.platform !== 'darwin') {
+    cleanupResources()
     app.quit()
   }
+  // On macOS the app stays alive in the dock; cleanup runs on before-quit instead.
 })
 
 // Cleanup also when the process receives termination signals (taskkill,

@@ -4,7 +4,7 @@ import { getEmailSettings } from './store/emailSettings'
 import type { EmailSettings } from './store/emailSettings'
 
 // ---------------------------------------------------------------------------
-// Dedup — 15 min per (serverId, category) pair
+// Dedup — 15 min per (serverId, category, severity) triple
 // ---------------------------------------------------------------------------
 
 const emailDedup = new Map<string, number>()
@@ -13,17 +13,26 @@ export function __resetEmailDedupForTests(): void {
   emailDedup.clear()
 }
 
-function shouldSendEmail(serverId: string, category: string): boolean {
-  const key = `${serverId}::${category}`
+function dedupKey(serverId: string, category: string, severity: string): string {
+  return `${serverId}::${category}::${severity}`
+}
+
+function canSendEmail(key: string): boolean {
   const last = emailDedup.get(key) ?? 0
-  if (Date.now() - last < 15 * 60_000) return false
-  emailDedup.set(key, Date.now())
-  return true
+  return Date.now() - last >= 15 * 60_000
 }
 
 // ---------------------------------------------------------------------------
 // Transport + email content
 // ---------------------------------------------------------------------------
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
 
 function buildTransporter(s: EmailSettings) {
   return nodemailer.createTransport({
@@ -48,14 +57,17 @@ function buildContent(
   const color = severity === 'CRITICAL' ? '#dc2626' : '#d97706'
   const ts = new Date(timestamp).toLocaleString('en-US')
   const categoryLabel = category.replace(/_/g, ' ').toUpperCase()
+  const safeServerId = escapeHtml(serverId)
+  const safeCategory = escapeHtml(categoryLabel)
+  const safeMessage = escapeHtml(message)
   const subject = `${emoji} [SQL Sentinel] ${serverId} — ${categoryLabel} ${severity}`
   const footerStyle =
     'color:#9ca3af;font-size:12px;margin-top:16px;border-top:1px solid #e5e7eb;padding-top:12px'
   const html = `
 <div style="font-family:Arial,sans-serif;max-width:600px">
   <div style="background:${color};color:#fff;padding:16px;border-radius:8px 8px 0 0">
-    <h2 style="margin:0">${emoji} ${severity} — ${category.replace(/_/g, ' ').toUpperCase()}</h2>
-    <p style="margin:4px 0 0">Server: <strong>${serverId}</strong></p>
+    <h2 style="margin:0">${emoji} ${severity} — ${safeCategory}</h2>
+    <p style="margin:4px 0 0">Server: <strong>${safeServerId}</strong></p>
   </div>
   <div style="border:1px solid #e5e7eb;padding:20px;border-radius:0 0 8px 8px">
     <table style="width:100%;border-collapse:collapse">
@@ -65,7 +77,7 @@ function buildContent(
       </tr>
       <tr>
         <td style="padding:6px;color:#6b7280">Category</td>
-        <td style="padding:6px;font-weight:bold">${category}</td>
+        <td style="padding:6px;font-weight:bold">${safeCategory}</td>
       </tr>
       <tr>
         <td style="padding:6px;color:#6b7280">Severity</td>
@@ -73,7 +85,7 @@ function buildContent(
       </tr>
       <tr>
         <td colspan="2" style="padding:6px;color:#6b7280;border-top:1px solid #e5e7eb">
-          <strong>Details:</strong><br/>${message}
+          <strong>Details:</strong><br/>${safeMessage}
         </td>
       </tr>
     </table>
@@ -113,7 +125,8 @@ export async function sendAlertEmail(alert: Alert): Promise<void> {
   const settings = getEmailSettings()
   if (!settings.emailEnabled || !settings.smtpHost) return
   if (settings.emailRecipients.length === 0) return
-  if (!shouldSendEmail(alert.serverId, alert.category)) return
+  const key = dedupKey(alert.serverId, alert.category, alert.severity)
+  if (!canSendEmail(key)) return
   const { subject, html } = buildContent(
     alert.serverId,
     alert.category,
@@ -122,13 +135,14 @@ export async function sendAlertEmail(alert: Alert): Promise<void> {
     alert.detectedAt.getTime()
   )
   await sendEmail(settings, settings.emailRecipients, subject, html)
+  emailDedup.set(key, Date.now())
 }
 
 export async function sendTestEmail(): Promise<IpcResult<null>> {
   const settings = getEmailSettings()
-  if (!settings.smtpHost) return { ok: false, error: 'SMTP host non configurato' }
+  if (!settings.smtpHost) return { ok: false, error: 'SMTP host not configured' }
   if (settings.emailRecipients.length === 0)
-    return { ok: false, error: 'Nessun destinatario configurato' }
+    return { ok: false, error: 'No recipients configured' }
   try {
     const { subject, html } = buildContent(
       'TEST-SERVER',

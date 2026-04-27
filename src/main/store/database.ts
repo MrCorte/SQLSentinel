@@ -35,8 +35,7 @@ const DDL = `
     id            TEXT PRIMARY KEY,
     server_id     TEXT NOT NULL,
     collected_at  TEXT NOT NULL,
-    metrics_json  TEXT NOT NULL,
-    FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE
+    metrics_json  TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS users (
@@ -111,6 +110,25 @@ export function initDb(dbPath: string): Database.Database {
   if (schemaVersion < 1) {
     _db.exec('DROP TABLE IF EXISTS rag_chunks; DROP TABLE IF EXISTS rag_documents;')
     _db.pragma('user_version = 1')
+  }
+  // v2: remove FK on metrics_snapshots — serverStore uses electron-store, so the
+  // SQLite servers table is always empty, causing every metrics write to fail.
+  if (schemaVersion < 2) {
+    _db.pragma('foreign_keys = OFF')
+    _db.exec(`
+      CREATE TABLE IF NOT EXISTS metrics_snapshots_new (
+        id            TEXT PRIMARY KEY,
+        server_id     TEXT NOT NULL,
+        collected_at  TEXT NOT NULL,
+        metrics_json  TEXT NOT NULL
+      );
+      INSERT OR IGNORE INTO metrics_snapshots_new
+        SELECT id, server_id, collected_at, metrics_json FROM metrics_snapshots;
+      DROP TABLE IF EXISTS metrics_snapshots;
+      ALTER TABLE metrics_snapshots_new RENAME TO metrics_snapshots;
+    `)
+    _db.pragma('foreign_keys = ON')
+    _db.pragma('user_version = 2')
   }
 
   _db.exec(DDL)

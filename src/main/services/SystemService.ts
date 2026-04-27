@@ -47,14 +47,14 @@ export function exportCustomFieldsCsv(): string {
 /** Generates a CSV string of the full server inventory with DB counts. */
 export function exportInventoryCsv(): string {
   const all = getAllCustomFields()
-  const header = 'ip,porta,raggiungibile,aggiunto_il,database'
+  const header = 'ip,port,reachable,added_at,databases'
   const rows = serverStore.getAll().map((s) => {
     const sid = serverKey(s.host, s.port)
     const dbEntries = Object.entries(all)
       .filter(([key]) => key.startsWith(sid + '/'))
       .map(([key]) => key.slice(sid.length + 1))
       .join('; ')
-    return [s.host, String(s.port), s.unreachable ? 'NO' : 'SI', s.addedAt, dbEntries]
+    return [s.host, String(s.port), s.unreachable ? 'NO' : 'YES', s.addedAt, dbEntries]
       .map(csvEscape)
       .join(',')
   })
@@ -64,7 +64,7 @@ export function exportInventoryCsv(): string {
 /** Generates a CSV string of all historical alerts. */
 export function exportAlertsCsv(): string {
   const alerts = getAlerts()
-  const header = 'id,serverId,categoria,severita,messaggio,rilevato_il,acknowledged_il'
+  const header = 'id,serverId,category,severity,message,detected_at,acknowledged_at'
   const rows = alerts.map((a) =>
     [
       a.id,

@@ -101,12 +101,12 @@ export async function login(
   if (!user) {
     // Constant-time dummy compare to resist timing attacks
     await bcrypt.compare(password, '$2a$12$dummyhashfortimingresistancexx')
-    return { success: false, error: 'Credenziali non valide' }
+    return { success: false, error: 'Invalid credentials' }
   }
 
   const valid = await bcrypt.compare(password, user.password)
   if (!valid) {
-    return { success: false, error: 'Credenziali non valide' }
+    return { success: false, error: 'Invalid credentials' }
   }
 
   const token = randomUUID()

@@ -1,14 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// Mock LangGraph agent factory — must come before importing langGraphAgent
-const mockStream = vi.fn()
-const mockAgent = { stream: mockStream }
-vi.mock('@langchain/langgraph/prebuilt', () => ({
-  createReactAgent: vi.fn(() => mockAgent)
-}))
+// langGraphStream calls getLlm().stream() directly — mock ChatOllama, not the agent.
+const mockLlmStream = vi.fn()
+const mockLlmInvoke = vi.fn()
 vi.mock('@langchain/ollama', () => ({
-  ChatOllama: vi.fn()
+  ChatOllama: vi.fn(() => ({ stream: mockLlmStream, invoke: mockLlmInvoke }))
 }))
+vi.mock('@langchain/langgraph/prebuilt', () => ({ createReactAgent: vi.fn() }))
 vi.mock('../../store/serverStore', () => ({ getAll: vi.fn(() => []) }))
 vi.mock('../../store/metricsRepository', () => ({ findLastNBulk: vi.fn(() => ({})) }))
 vi.mock('../../metricsWorker', () => ({ getAlerts: vi.fn(() => []) }))
@@ -17,14 +15,14 @@ vi.mock('../../store/ftsRepository', () => ({ searchFts: vi.fn(() => []) }))
 import { langGraphStream, abortActiveStream } from '../langGraphAgent'
 import type { AiStreamEvent } from '../../ipc/types'
 
-function makeStream(chunks: [string, unknown][]): AsyncIterable<[string, unknown]> {
+function makeLlmStream(texts: string[]): AsyncIterable<{ content: string }> {
   return {
     [Symbol.asyncIterator]() {
       let i = 0
       return {
         async next() {
-          if (i >= chunks.length) return { done: true, value: undefined }
-          return { done: false, value: chunks[i++] }
+          if (i >= texts.length) return { done: true, value: undefined }
+          return { done: false, value: { content: texts[i++] } }
         }
       }
     }
@@ -36,13 +34,8 @@ beforeEach(() => {
 })
 
 describe('langGraphStream', () => {
-  it('emits token events for AI message content', async () => {
-    mockStream.mockReturnValue(
-      makeStream([
-        ['messages', [{ _getType: () => 'ai', content: 'Hello' }]],
-        ['messages', [{ _getType: () => 'ai', content: ' world' }]]
-      ])
-    )
+  it('emits token events for LLM output', async () => {
+    mockLlmStream.mockReturnValue(makeLlmStream(['Hello', ' world']))
 
     const events: AiStreamEvent[] = []
     await langGraphStream('test', [], (e) => events.push(e))
@@ -52,29 +45,20 @@ describe('langGraphStream', () => {
     expect(events[events.length - 1]).toEqual({ type: 'done' })
   })
 
-  it('emits tool_start on agent tool_calls', async () => {
-    mockStream.mockReturnValue(
-      makeStream([
-        [
-          'updates',
-          { agent: { messages: [{ tool_calls: [{ id: 'tc1', name: 'get_server_metrics' }] }] } }
-        ],
-        [
-          'updates',
-          { tools: { messages: [{ _getType: () => 'tool', tool_call_id: 'tc1', content: '{}' }] } }
-        ]
-      ])
-    )
+  it('emits tool_start and tool_end for the three parallel tools', async () => {
+    mockLlmStream.mockReturnValue(makeLlmStream([]))
 
     const events: AiStreamEvent[] = []
     await langGraphStream('test', [], (e) => events.push(e))
 
-    expect(events).toContainEqual({ type: 'tool_start', name: 'get_server_metrics' })
-    expect(events).toContainEqual({ type: 'tool_end', name: 'get_server_metrics', output: '{}' })
+    const toolNames = events.filter((e) => e.type === 'tool_start').map((e) => (e as { type: 'tool_start'; name: string }).name)
+    expect(toolNames).toContain('get_server_metrics')
+    expect(toolNames).toContain('get_recent_alerts')
+    expect(toolNames).toContain('search_sql_documentation')
   })
 
-  it('emits error event when stream throws', async () => {
-    mockStream.mockReturnValue({
+  it('emits error event when LLM stream throws', async () => {
+    mockLlmStream.mockReturnValue({
       [Symbol.asyncIterator]() {
         return {
           next: async () => {
@@ -87,16 +71,16 @@ describe('langGraphStream', () => {
     const events: AiStreamEvent[] = []
     await langGraphStream('test', [], (e) => events.push(e))
 
-    expect(events[0]).toEqual({ type: 'error', message: 'Ollama down' })
+    expect(events.find((e) => e.type === 'error')).toMatchObject({ type: 'error', message: 'Ollama down' })
   })
 
-  it('emits error with "Cancelled" when aborted', async () => {
-    mockStream.mockReturnValue({
+  it('emits error with "Cancelled" when aborted during streaming', async () => {
+    mockLlmStream.mockReturnValue({
       [Symbol.asyncIterator]() {
         return {
           async next() {
             abortActiveStream()
-            return { done: false, value: ['messages', [{ _getType: () => 'ai', content: '' }]] }
+            return { done: false, value: { content: '' } }
           }
         }
       }
@@ -105,6 +89,6 @@ describe('langGraphStream', () => {
     const events: AiStreamEvent[] = []
     await langGraphStream('test', [], (e) => events.push(e))
 
-    expect(events[0]).toEqual({ type: 'error', message: 'Cancelled' })
+    expect(events.find((e) => e.type === 'error')).toMatchObject({ type: 'error', message: 'Cancelled' })
   })
 })

@@ -9,9 +9,6 @@ import * as metricsRepository from '../store/metricsRepository'
 import { getAlerts } from '../metricsWorker'
 import { searchFts } from '../store/ftsRepository'
 
-// Per-request event emitter — set in langGraphStream, null otherwise
-let _onEvent: ((ev: AiStreamEvent) => void) | null = null
-
 function extractText(content: unknown): string {
   if (typeof content === 'string') return content
   if (Array.isArray(content))
@@ -20,18 +17,6 @@ function extractText(content: unknown): string {
       .map((b) => b.text ?? '')
       .join('')
   return ''
-}
-
-async function withToolEvents<T>(name: string, fn: () => Promise<T>): Promise<T> {
-  _onEvent?.({ type: 'tool_start', name })
-  try {
-    const result = await fn()
-    _onEvent?.({ type: 'tool_end', name, output: String(result).slice(0, 2000) })
-    return result
-  } catch (err) {
-    _onEvent?.({ type: 'tool_end', name, output: String(err) })
-    throw err
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -60,7 +45,75 @@ export interface AgentHistory {
 }
 
 // ---------------------------------------------------------------------------
-// Tools (LangChain format)
+// Tool implementations (standalone — no side-effects, no module-level state)
+// ---------------------------------------------------------------------------
+
+async function getServerMetricsImpl(): Promise<string> {
+  const servers = serverStore.getAll()
+  const ids = servers.map((s) => s.id)
+  const bulk = metricsRepository.findLastNBulk(ids, 1)
+  const result = servers.map((s) => {
+    const snaps = bulk[s.id]
+    const snap = snaps && snaps.length > 0 ? snaps[0] : undefined
+    return {
+      server: `${s.host ?? s.ip}:${s.port}`,
+      unreachable: s.unreachable ?? false,
+      cpu: snap?.instanceInfo.cpuUsagePercent ?? null,
+      memUsedMb: snap?.instanceInfo.memoryUsedMb ?? null,
+      memTargetMb: snap?.instanceInfo.memoryTargetMb ?? null,
+      blockingSessions: snap?.activeSessions.filter((se) => se.blockingSessionId > 0).length ?? 0,
+      offlineDbs: snap?.databases.filter((d) => d.stateDesc !== 'ONLINE').map((d) => d.name) ?? []
+    }
+  })
+  return JSON.stringify(result)
+}
+
+async function getRecentAlertsImpl(): Promise<string> {
+  const cutoff = Date.now() - 86400000
+  const alerts = getAlerts()
+    .filter((a) => new Date(a.detectedAt).getTime() >= cutoff)
+    .slice(-20)
+    .map((a) => ({
+      server: a.serverId,
+      category: a.category,
+      severity: a.severity,
+      message: a.message,
+      at: new Date(a.detectedAt).toISOString()
+    }))
+  return JSON.stringify(alerts)
+}
+
+async function getSlowQueriesImpl(): Promise<string> {
+  const servers = serverStore.getAll()
+  const ids = servers.map((s) => s.id)
+  const bulk = metricsRepository.findLastNBulk(ids, 1)
+  const queries = Object.entries(bulk).flatMap(([serverId, snaps]) => {
+    const snap = snaps && snaps.length > 0 ? snaps[0] : undefined
+    const srv = servers.find((s) => s.id === serverId)
+    const label = srv ? `${srv.host ?? srv.ip}:${srv.port}` : serverId
+    return (snap?.topQueries ?? []).map((q) => ({
+      server: label,
+      queryText: q.queryText.slice(0, 150),
+      executionCount: q.executionCount,
+      totalElapsedTimeMs: q.totalElapsedTimeMs,
+      avgCpuTimeMs: q.avgCpuTimeMs
+    }))
+  })
+  queries.sort((a, b) => b.totalElapsedTimeMs - a.totalElapsedTimeMs)
+  return JSON.stringify(queries.slice(0, 10))
+}
+
+async function getServerNotesImpl(): Promise<string> {
+  return JSON.stringify(
+    serverStore
+      .getAll()
+      .filter((s) => s.notes)
+      .map((s) => ({ host: s.host ?? s.ip, notes: s.notes }))
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Tools (LangChain format — func delegates to impl, no event emission)
 // ---------------------------------------------------------------------------
 
 const getServerMetricsTool = new DynamicStructuredTool({
@@ -68,69 +121,21 @@ const getServerMetricsTool = new DynamicStructuredTool({
   description:
     'Current metrics for all monitored servers: CPU %, RAM, blocking sessions, offline databases.',
   schema: z.object({}),
-  func: () => withToolEvents('get_server_metrics', async () => {
-    const servers = serverStore.getAll()
-    const ids = servers.map((s) => `${s.host ?? s.ip}:${s.port}`)
-    const bulk = metricsRepository.findLastNBulk(ids, 1)
-    const result = servers.map((s) => {
-      const key = `${s.host ?? s.ip}:${s.port}`
-      const snaps = bulk[key]
-      const snap = snaps && snaps.length > 0 ? snaps[0] : undefined
-      return {
-        server: key,
-        unreachable: s.unreachable ?? false,
-        cpu: snap?.instanceInfo.cpuUsagePercent ?? null,
-        memUsedMb: snap?.instanceInfo.memoryUsedMb ?? null,
-        memTargetMb: snap?.instanceInfo.memoryTargetMb ?? null,
-        blockingSessions: snap?.activeSessions.filter((se) => se.blockingSessionId > 0).length ?? 0,
-        offlineDbs: snap?.databases.filter((d) => d.stateDesc !== 'ONLINE').map((d) => d.name) ?? []
-      }
-    })
-    return JSON.stringify(result)
-  })
+  func: async () => getServerMetricsImpl()
 })
 
 const getRecentAlertsTool = new DynamicStructuredTool({
   name: 'get_recent_alerts',
   description: 'Active alerts (CRITICAL and WARNING) from the last 24 hours.',
   schema: z.object({}),
-  func: () => withToolEvents('get_recent_alerts', async () => {
-    const cutoff = Date.now() - 86400000
-    const alerts = getAlerts()
-      .filter((a) => new Date(a.detectedAt).getTime() >= cutoff)
-      .slice(-20)
-      .map((a) => ({
-        server: a.serverId,
-        category: a.category,
-        severity: a.severity,
-        message: a.message,
-        at: new Date(a.detectedAt).toISOString()
-      }))
-    return JSON.stringify(alerts)
-  })
+  func: async () => getRecentAlertsImpl()
 })
 
 const getSlowQueriesTool = new DynamicStructuredTool({
   name: 'get_slow_queries',
   description: 'Top 10 slowest queries (by total elapsed time) across all monitored instances.',
   schema: z.object({}),
-  func: () => withToolEvents('get_slow_queries', async () => {
-    const servers = serverStore.getAll()
-    const ids = servers.map((s) => `${s.host ?? s.ip}:${s.port}`)
-    const bulk = metricsRepository.findLastNBulk(ids, 1)
-    const queries = Object.entries(bulk).flatMap(([serverId, snaps]) => {
-      const snap = snaps && snaps.length > 0 ? snaps[0] : undefined
-      return (snap?.topQueries ?? []).map((q) => ({
-        server: serverId,
-        queryText: q.queryText.slice(0, 150),
-        executionCount: q.executionCount,
-        totalElapsedTimeMs: q.totalElapsedTimeMs,
-        avgCpuTimeMs: q.avgCpuTimeMs
-      }))
-    })
-    queries.sort((a, b) => b.totalElapsedTimeMs - a.totalElapsedTimeMs)
-    return JSON.stringify(queries.slice(0, 10))
-  })
+  func: async () => getSlowQueriesImpl()
 })
 
 const getServerNotesTool = new DynamicStructuredTool({
@@ -138,14 +143,7 @@ const getServerNotesTool = new DynamicStructuredTool({
   description:
     'DBA notes associated with servers: environment, application, criticality, contacts.',
   schema: z.object({}),
-  func: () => withToolEvents('get_server_notes', async () =>
-    JSON.stringify(
-      serverStore
-        .getAll()
-        .filter((s) => s.notes)
-        .map((s) => ({ host: s.host ?? s.ip, notes: s.notes }))
-    )
-  )
+  func: async () => getServerNotesImpl()
 })
 
 const TSQL_MAP: Record<string, string> = {
@@ -242,6 +240,28 @@ LEFT JOIN sys.dm_hadr_database_replica_states drs
 ORDER BY ag.name, ars.role_desc, ar.replica_server_name`
 }
 
+function suggestTSQLImpl(problema: string): string {
+  const lower = problema.toLowerCase()
+  const ALIASES: Record<string, string> = {
+    'always on': 'always_on',
+    'availability group': 'always_on',
+    hadr: 'always_on',
+    ag_health: 'always_on',
+    replica: 'always_on',
+    'compatibility level': 'compatibility_level',
+    compat: 'compatibility_level',
+    dbcompat: 'compatibility_level'
+  }
+  const aliasKey = Object.keys(ALIASES).find((a) => lower.includes(a))
+  if (aliasKey) return TSQL_MAP[ALIASES[aliasKey]]
+  const key = Object.keys(TSQL_MAP).find(
+    (k) => lower.includes(k) || lower.includes(k.replace(/_/g, ' '))
+  )
+  return key
+    ? TSQL_MAP[key]
+    : 'No predefined query for this topic. Use search_sql_documentation to find a relevant query from the indexed books.'
+}
+
 const suggestTSQLTool = new DynamicStructuredTool({
   name: 'suggest_tsql',
   description:
@@ -249,27 +269,7 @@ const suggestTSQLTool = new DynamicStructuredTool({
   schema: z.object({
     problema: z.string()
   }),
-  func: ({ problema }: { problema: string }) => withToolEvents('suggest_tsql', async () => {
-    const lower = problema.toLowerCase()
-    const ALIASES: Record<string, string> = {
-      'always on': 'always_on',
-      'availability group': 'always_on',
-      hadr: 'always_on',
-      ag_health: 'always_on',
-      replica: 'always_on',
-      'compatibility level': 'compatibility_level',
-      compat: 'compatibility_level',
-      dbcompat: 'compatibility_level'
-    }
-    const aliasKey = Object.keys(ALIASES).find((a) => lower.includes(a))
-    if (aliasKey) return TSQL_MAP[ALIASES[aliasKey]]
-    const key = Object.keys(TSQL_MAP).find(
-      (k) => lower.includes(k) || lower.includes(k.replace(/_/g, ' '))
-    )
-    return key
-      ? TSQL_MAP[key]
-      : 'No predefined query for this topic. Use search_sql_documentation to find a relevant query from the indexed books.'
-  })
+  func: async ({ problema }: { problema: string }) => suggestTSQLImpl(problema)
 })
 
 // ---------------------------------------------------------------------------
@@ -279,59 +279,72 @@ const suggestTSQLTool = new DynamicStructuredTool({
 // Maps Italian (and common shorthand) DBA terms to English equivalents so that
 // FTS searches against the English knowledge base return relevant results even
 // when the user writes in Italian.
+// Rules: multi-word patterns MUST appear before their constituent single-word patterns
+// so that sequential replacement doesn't clobber the longer match first.
 const IT_EN_TERMS: [RegExp, string][] = [
+  // --- blocking ---
+  [/\bblocco\s*transazion\w*/gi, 'transaction deadlock'],  // before blocco, transazion
   [/\bblocch\w*/gi, 'blocking'],
   [/\bblocco\b/gi, 'blocking'],
+  // --- indexes ---
   [/\bindic[ie]\b/gi, 'index'],
   [/\bframmentazion\w*/gi, 'fragmentation'],
   [/\bframmentato\b/gi, 'fragmented'],
+  // --- performance / queries ---
   [/\bprestazion\w*/gi, 'performance'],
-  [/\blento|lenta\b/gi, 'slow query'],
-  [/\bquery lent\w*/gi, 'slow query'],
-  [/\bquery pi[uù] lent\w*/gi, 'slow query'],
-  [/\bbackup\b/gi, 'backup'],
+  [/\bquery\s+pi[uù]\s+lent\w*/gi, 'slow query'],         // before query lent
+  [/\bquery\s+lent\w*/gi, 'slow query'],
+  [/\b(lento|lenta)\b/gi, 'slow query'],                   // fixed operator precedence
+  // --- backup / restore ---
+  [/\bripristino\s+emergenza\b/gi, 'disaster recovery'],   // before ripristino
   [/\bripristino\b/gi, 'restore'],
   [/\bripristin\w*/gi, 'restore'],
+  // --- disk ---
+  [/\boccupazion\w*\s+disco\b/gi, 'disk usage'],           // before disco/spazio
+  [/\boccupazion\w*\s+spazio\b/gi, 'disk space usage'],
   [/\bdisco\b/gi, 'disk space'],
   [/\bspazio\b/gi, 'disk space'],
+  // --- connections / sessions ---
   [/\bconness\w*/gi, 'connection'],
   [/\bsession\w*/gi, 'session'],
+  // --- memory / cpu ---
   [/\bmemoria\b/gi, 'memory'],
   [/\bram\b/gi, 'memory'],
   [/\bprocessore\b/gi, 'cpu'],
   [/\bcarico\b/gi, 'cpu load'],
+  // --- databases / tables ---
+  [/\bbase\s+dati\b/gi, 'database'],                       // before database
   [/\bdatabase\b/gi, 'database'],
-  [/\bbase dati\b/gi, 'database'],
   [/\btabella\b/gi, 'table'],
+  // --- statistics / execution plans ---
   [/\bstatistich\w*/gi, 'statistics'],
-  [/\bpiano di esecuzione\b/gi, 'execution plan'],
-  [/\bpiano esecuzione\b/gi, 'execution plan'],
+  [/\bpiano\s+di\s+esecuzione\b/gi, 'execution plan'],     // before piano
+  [/\bpiano\s+esecuzione\b/gi, 'execution plan'],
   [/\bpiano\b/gi, 'query plan'],
+  // --- transactions / logs (log transazion must precede transazion AND log) ---
+  [/\blog\s*transazion\w*/gi, 'transaction log'],           // before transazion, no bare \blog
   [/\btransazion\w*/gi, 'transaction'],
-  [/\bblocco\s*transazion\w*/gi, 'transaction deadlock'],
   [/\bdeadlock\b/gi, 'deadlock'],
-  [/\bwait\b/gi, 'wait statistics'],
   [/\battesa\b/gi, 'wait statistics'],
+  [/\btroncamento\b/gi, 'log truncation'],
+  // --- compatibility ---
+  [/\blivello\s*compatibilit[àa]\b/gi, 'compatibility level'],  // before compatibilità
   [/\bcompatibilit[àa]\b/gi, 'compatibility level'],
-  [/\blivello\s*compatibilit[àa]\b/gi, 'compatibility level'],
+  // --- replication / HA ---
   [/\breplic\w*/gi, 'replication'],
   [/\bsincronizzazion\w*/gi, 'synchronization'],
   [/\balways[\s-]?on\b/gi, 'always on availability group'],
   [/\bdisponibilit[àa]\b/gi, 'availability group'],
-  [/\bripristino emergenza\b/gi, 'disaster recovery'],
-  [/\bdr\b/gi, 'disaster recovery'],
+  // --- auth / permissions ---
   [/\bautenticazion\w*/gi, 'authentication'],
   [/\bpermess\w*/gi, 'permissions'],
   [/\bprivileg\w*/gi, 'privileges'],
+  // --- index maintenance ---
   [/\bdefrag\w*/gi, 'index rebuild reorganize'],
   [/\bricostruire\b/gi, 'index rebuild'],
   [/\briorganizzare\b/gi, 'index reorganize'],
-  [/\btroncamento\b/gi, 'log truncation'],
-  [/\blog\s*transazion\w*/gi, 'transaction log'],
-  [/\blog\b/gi, 'transaction log'],
+  // --- misc ---
   [/\btempddb\b/gi, 'tempdb'],
-  [/\boccupazion\w*\s*disco\b/gi, 'disk usage'],
-  [/\boccupazion\w*\s*spazio\b/gi, 'disk space usage'],
 ]
 
 function normalizeQueryForFts(query: string): string {
@@ -342,6 +355,17 @@ function normalizeQueryForFts(query: string): string {
   return q
 }
 
+async function searchDocumentationImpl(query: string): Promise<string> {
+  if (!query || query.includes('"type"') || query.includes('"description"')) {
+    return 'Knowledge base not available or no results found.'
+  }
+  const results = searchFts(normalizeQueryForFts(query), 5)
+  if (results.length === 0) return 'Knowledge base not available or no results found.'
+  return results
+    .map((r, i) => `[Excerpt ${i + 1} — ${r.title}]\n${r.content}`)
+    .join('\n\n---\n\n')
+}
+
 const searchDocumentationTool = new DynamicStructuredTool({
   name: 'search_sql_documentation',
   description:
@@ -349,16 +373,7 @@ const searchDocumentationTool = new DynamicStructuredTool({
   schema: z.object({
     query: z.string()
   }),
-  func: ({ query }: { query: string }) => withToolEvents('search_sql_documentation', async () => {
-    if (!query || query.includes('"type"') || query.includes('"description"')) {
-      return 'Knowledge base not available or no results found.'
-    }
-    const results = searchFts(normalizeQueryForFts(query), 5)
-    if (results.length === 0) return 'Knowledge base not available or no results found.'
-    return results
-      .map((r, i) => `[Excerpt ${i + 1} — ${r.title}]\n${r.content}`)
-      .join('\n\n---\n\n')
-  })
+  func: async ({ query }: { query: string }) => searchDocumentationImpl(query)
 })
 
 const agentTools = [
@@ -487,6 +502,22 @@ function lookupTsqlMap(question: string): string | null {
   return key ? TSQL_MAP[key] : null
 }
 
+async function invokeWithEvent<T>(
+  name: string,
+  fn: () => Promise<T>,
+  onEvent: (ev: AiStreamEvent) => void
+): Promise<T> {
+  onEvent({ type: 'tool_start', name })
+  try {
+    const result = await fn()
+    onEvent({ type: 'tool_end', name, output: String(result).slice(0, 2000) })
+    return result
+  } catch (err) {
+    onEvent({ type: 'tool_end', name, output: String(err) })
+    throw err
+  }
+}
+
 export async function langGraphStream(
   question: string,
   history: AgentHistory[],
@@ -494,7 +525,6 @@ export async function langGraphStream(
 ): Promise<void> {
   const controller = new AbortController()
   _activeAbortController = controller
-  _onEvent = onEvent
 
   const timeoutId = setTimeout(() => controller.abort(), 300_000)
 
@@ -503,9 +533,9 @@ export async function langGraphStream(
     // still gets useful context from the tools that succeeded
     const NO_DOCS = 'Knowledge base not available or no results found.'
     const [metricsResult, alertsResult, docsResult] = await Promise.allSettled([
-      getServerMetricsTool.invoke({}),
-      getRecentAlertsTool.invoke({}),
-      searchDocumentationTool.invoke({ query: question })
+      invokeWithEvent('get_server_metrics', getServerMetricsImpl, onEvent),
+      invokeWithEvent('get_recent_alerts', getRecentAlertsImpl, onEvent),
+      invokeWithEvent('search_sql_documentation', () => searchDocumentationImpl(question), onEvent)
     ])
     const metrics = metricsResult.status === 'fulfilled' ? metricsResult.value : '[]'
     const alerts  = alertsResult.status  === 'fulfilled' ? alertsResult.value  : '[]'
@@ -555,7 +585,6 @@ export async function langGraphStream(
     onEvent({ type: 'error', message: msg })
   } finally {
     clearTimeout(timeoutId)
-    _onEvent = null
     if (_activeAbortController === controller) _activeAbortController = null
   }
 }

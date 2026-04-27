@@ -35,7 +35,7 @@ import type {
   Alert
 } from '../../preload/index'
 import { createLogger } from './utils/logger'
-import { migrateAliasKeys } from './store/groupsStore'
+import { migrateAliasKeys, migrateServerGroupKeys } from './store/groupsStore'
 import { useGroupsStore } from './store/groupsStore'
 import { getServerDisplayName } from './types/index'
 
@@ -100,6 +100,7 @@ function AppInner(): React.JSX.Element {
         const { servers: srvs } = useServersStore.getState()
         log.info('loadServers completato, servers:', srvs.length)
         migrateAliasKeys(srvs)
+        migrateServerGroupKeys(srvs)
         if (srvs.length > 0) {
           window.sqlSentinel
             .workerStart({

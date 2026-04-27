@@ -49,9 +49,32 @@ export function migrateAliasKeys(servers: StoredServer[]): void {
   useGroupsStore.setState({ serverAliases: next })
 }
 
+/**
+ * One-time migration: remap any serverGroups keys that look like "ip:port"
+ * to the corresponding server UUID. Mirrors migrateAliasKeys for the group-assignment map.
+ */
+export function migrateServerGroupKeys(servers: StoredServer[]): void {
+  const { serverGroups } = useGroupsStore.getState()
+  const legacyEntries = Object.entries(serverGroups).filter(([k]) => looksLikeIpPort(k))
+  if (legacyEntries.length === 0) return
+
+  const next: Record<string, string> = { ...serverGroups }
+  for (const [key, groupId] of legacyEntries) {
+    const colonIdx = key.lastIndexOf(':')
+    const host = key.slice(0, colonIdx)
+    const port = parseInt(key.slice(colonIdx + 1), 10)
+    const match = servers.find((s) => (s.host === host || s.ip === host) && s.port === port)
+    if (match) {
+      next[match.id] = groupId
+      delete next[key]
+    }
+  }
+  useGroupsStore.setState({ serverGroups: next })
+}
+
 interface GroupsState {
   groups: ServerGroup[]
-  serverGroups: Record<string, string> // serverId (ip:port) → groupId
+  serverGroups: Record<string, string> // server UUID → groupId
   serverAliases: Record<string, string> // server.id (UUID) → display alias
   expandedAGs: string[] // ag_names that are expanded (empty = all collapsed)
   expandedMachines: string[] // machine names that are expanded in sidebar (empty = all collapsed)

@@ -51,6 +51,7 @@ let _stmts: {
   findHistoryDays: Statement<[string, number], SnapshotRow>
   cleanup: Statement<[number]>
   findLastN: Statement<[string, number], SnapshotRow>
+  findLastNBulk: Statement<[string, number], SnapshotRow>
 } | null = null
 
 function stmts() {
@@ -86,6 +87,17 @@ function stmts() {
       WHERE server_id = ?
       ORDER BY collected_at DESC
       LIMIT ?
+    `),
+    findLastNBulk: db.prepare<[string, number], SnapshotRow>(`
+      SELECT id, server_id, collected_at, metrics_json
+      FROM (
+        SELECT *,
+               ROW_NUMBER() OVER (PARTITION BY server_id ORDER BY collected_at DESC) AS rn
+        FROM metrics_snapshots
+        WHERE server_id IN (SELECT value FROM json_each(?))
+      ) AS ranked
+      WHERE ranked.rn <= ?
+      ORDER BY server_id, collected_at ASC
     `)
   }
   return _stmts
@@ -154,22 +166,7 @@ export function findLastN(serverId: string, n: number): ServerMetrics[] {
  */
 export function findLastNBulk(serverIds: string[], n: number): Record<string, ServerMetrics[]> {
   if (serverIds.length === 0) return {}
-  const placeholders = serverIds.map(() => '?').join(',')
-  const rows = getDb()
-    .prepare<unknown[], SnapshotRow>(
-      `
-      SELECT id, server_id, collected_at, metrics_json
-      FROM (
-        SELECT *,
-               ROW_NUMBER() OVER (PARTITION BY server_id ORDER BY collected_at DESC) AS rn
-        FROM metrics_snapshots
-        WHERE server_id IN (${placeholders})
-      ) AS ranked
-      WHERE ranked.rn <= ?
-      ORDER BY server_id, collected_at ASC
-    `
-    )
-    .all(...serverIds, n)
+  const rows = stmts().findLastNBulk.all(JSON.stringify(serverIds), n)
 
   const result: Record<string, ServerMetrics[]> = {}
   for (const row of rows) {

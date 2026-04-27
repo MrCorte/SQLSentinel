@@ -1,0 +1,133 @@
+# SQLSentinel — Test Environment
+# 4x Azure SQL Edge instances (ARM64 native, ~500MB each)
+# Total RAM: ~2GB containers + 4GB SQL data buffers
+#
+# Usage:
+#   docker compose up -d          — start all containers
+#   docker compose up -d sql-init — run DB init (after first start)
+#   docker compose down           — stop
+#   docker compose down -v        — stop + wipe all data
+#
+# SQLSentinel connections (all use: sa / <password below>):
+#   Production   localhost:1433
+#   Development  localhost:1434
+#   Staging      localhost:1435
+#   DR / Replica localhost:1436
+
+services:
+
+  # ── Production ─────────────────────────────────────────────────────────────
+  sql-prod:
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    platform: linux/arm64
+    container_name: sqlsentinel-prod
+    hostname: sql-prod
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Prod@SQLSentinel1"
+      MSSQL_MEMORY_LIMIT_MB: "1024"
+    volumes:
+      - sql-prod-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'Prod@SQLSentinel1' -Q 'SELECT 1' -b 2>/dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+
+  # ── Development ────────────────────────────────────────────────────────────
+  sql-dev:
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    platform: linux/arm64
+    container_name: sqlsentinel-dev
+    hostname: sql-dev
+    ports:
+      - "1434:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Dev@SQLSentinel1"
+      MSSQL_MEMORY_LIMIT_MB: "768"
+    volumes:
+      - sql-dev-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'Dev@SQLSentinel1' -Q 'SELECT 1' -b 2>/dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+
+  # ── Staging ────────────────────────────────────────────────────────────────
+  sql-staging:
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    platform: linux/arm64
+    container_name: sqlsentinel-staging
+    hostname: sql-staging
+    ports:
+      - "1435:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Staging@SQLSentinel1"
+      MSSQL_MEMORY_LIMIT_MB: "768"
+    volumes:
+      - sql-staging-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'Staging@SQLSentinel1' -Q 'SELECT 1' -b 2>/dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+
+  # ── DR / Replica ───────────────────────────────────────────────────────────
+  sql-dr:
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    platform: linux/arm64
+    container_name: sqlsentinel-dr
+    hostname: sql-dr
+    ports:
+      - "1436:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "DR@SQLSentinel1"
+      MSSQL_MEMORY_LIMIT_MB: "768"
+    volumes:
+      - sql-dr-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'DR@SQLSentinel1' -Q 'SELECT 1' -b 2>/dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+
+  # ── Init (one-shot — runs once then exits) ─────────────────────────────────
+  sql-init:
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    platform: linux/arm64
+    container_name: sqlsentinel-init
+    depends_on:
+      sql-prod:    { condition: service_healthy }
+      sql-dev:     { condition: service_healthy }
+      sql-staging: { condition: service_healthy }
+      sql-dr:      { condition: service_healthy }
+    volumes:
+      - ./init:/init:ro
+    command: >
+      bash -c "
+        echo '→ Initializing sql-prod...'  && /opt/mssql-tools/bin/sqlcmd -S sql-prod,1433    -U sa -P 'Prod@SQLSentinel1'    -i /init/prod.sql    -b &&
+        echo '→ Initializing sql-dev...'   && /opt/mssql-tools/bin/sqlcmd -S sql-dev,1433     -U sa -P 'Dev@SQLSentinel1'     -i /init/dev.sql     -b &&
+        echo '→ Initializing sql-staging...'&& /opt/mssql-tools/bin/sqlcmd -S sql-staging,1433 -U sa -P 'Staging@SQLSentinel1' -i /init/staging.sql -b &&
+        echo '→ Initializing sql-dr...'    && /opt/mssql-tools/bin/sqlcmd -S sql-dr,1433      -U sa -P 'DR@SQLSentinel1'      -i /init/dr.sql      -b &&
+        echo '✓ All databases initialized.'
+      "
+    restart: "no"
+
+volumes:
+  sql-prod-data:
+  sql-dev-data:
+  sql-staging-data:
+  sql-dr-data:

@@ -1,11 +1,11 @@
 import { dialog, app, BrowserWindow } from 'electron'
+import { serviceApi } from '../../serviceClient'
 import { writeFileSync, promises as fsPromises } from 'node:fs'
 import path from 'node:path'
 import type { IpcMainInvokeEvent } from 'electron'
 import { handle, safeError, log } from '../handleWrapper'
 import { login, logout, getSession, isAuthenticated, changePassword } from '../../authService'
 import { buildCsvContent } from '../../csvUtils'
-import { getSettings, saveSettings } from '../../store/settings'
 import { getEmailSettings, saveEmailSettings } from '../../store/emailSettings'
 import { sendTestEmail } from '../../emailService'
 import { getCustomFields, setCustomFields, getAllCustomFields } from '../../store/dbCustomFields'
@@ -98,26 +98,38 @@ export function registerSystemHandlers(): void {
     }
   )
 
-  // SETTINGS_GET — returns saved settings + OS autostart state
+  // SETTINGS_GET — proxied to service HTTP (autostart state merged locally)
   handle(IpcChannel.SETTINGS_GET, async (): Promise<IpcResult<AppSettings>> => {
-    return {
-      ok: true,
-      data: {
-        ...getSettings(),
-        autostartEnabled: app.getLoginItemSettings().openAtLogin
+    try {
+      const res = await serviceApi.getSettings()
+      const data = (res as { ok: true; data: AppSettings }).data
+      return {
+        ok: true,
+        data: {
+          ...data,
+          autostartEnabled: app.getLoginItemSettings().openAtLogin
+        }
       }
+    } catch (err) {
+      log.error('[IPC] SETTINGS_GET:', safeError(err))
+      return { ok: false, error: safeError(err) }
     }
   })
 
-  // SETTINGS_SET — saves settings; updates OS autostart registry entry if requested
+  // SETTINGS_SET — proxied to service HTTP; OS autostart handled locally
   handle(
     IpcChannel.SETTINGS_SET,
     async (_event: IpcMainInvokeEvent, req: SaveSettingsRequest): Promise<IpcResult<null>> => {
-      saveSettings(req)
-      if (req.autostartEnabled !== undefined) {
-        app.setLoginItemSettings({ openAtLogin: req.autostartEnabled })
+      try {
+        await serviceApi.updateSettings(req)
+        if (req.autostartEnabled !== undefined) {
+          app.setLoginItemSettings({ openAtLogin: req.autostartEnabled })
+        }
+        return { ok: true, data: null }
+      } catch (err) {
+        log.error('[IPC] SETTINGS_SET:', safeError(err))
+        return { ok: false, error: safeError(err) }
       }
-      return { ok: true, data: null }
     }
   )
 

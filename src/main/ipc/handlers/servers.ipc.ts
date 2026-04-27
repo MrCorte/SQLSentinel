@@ -3,17 +3,14 @@ import { handle, safeError, log } from '../handleWrapper'
 import { scanSubnet } from '../../discovery/tcpScanner'
 import {
   resolveConnection,
-  listServers,
   listServersLegacy,
   addServerManual,
   removeServer,
-  addServer,
-  updateServer,
-  removeServerById,
   clearMockServers,
   detectServer,
   collectMetricsWithCustomFields
 } from '../../services/ServerService'
+import { serviceApi } from '../../serviceClient'
 import {
   IpcChannel,
   type ManualServerRequest,
@@ -93,25 +90,27 @@ export function registerServerHandlers(): void {
     }
   )
 
-  // SERVERS_GET_ALL — returns IpcResult<StoredServer[]> with credentials removed (C2).
-  handle(IpcChannel.SERVERS_GET_ALL, (): IpcResult<StoredServer[]> => {
+  // SERVERS_GET_ALL — proxied to service HTTP
+  handle(IpcChannel.SERVERS_GET_ALL, async (): Promise<IpcResult<StoredServer[]>> => {
     try {
-      return { ok: true, data: listServers() }
+      const res = await serviceApi.getServers()
+      return res as IpcResult<StoredServer[]>
     } catch (err) {
       log.error('[IPC] SERVERS_GET_ALL:', safeError(err))
       return { ok: false, error: safeError(err) }
     }
   })
 
-  // SERVERS_ADD — returns IpcResult<ServerAddResult>
+  // SERVERS_ADD — proxied to service HTTP
   handle(
     IpcChannel.SERVERS_ADD,
-    (
+    async (
       _event: IpcMainInvokeEvent,
       params: Omit<StoredServer, 'id' | 'addedAt'>
-    ): IpcResult<ServerAddResult> => {
+    ): Promise<IpcResult<ServerAddResult>> => {
       try {
-        return { ok: true, data: addServer(params) }
+        const res = await serviceApi.addServer(params)
+        return res as IpcResult<ServerAddResult>
       } catch (err) {
         log.error('[IPC] SERVERS_ADD:', safeError(err))
         return { ok: false, error: safeError(err) }
@@ -119,16 +118,17 @@ export function registerServerHandlers(): void {
     }
   )
 
-  // SERVERS_UPDATE — takes (id, patch) as separate args
+  // SERVERS_UPDATE — proxied to service HTTP
   handle(
     IpcChannel.SERVERS_UPDATE,
-    (
+    async (
       _event: IpcMainInvokeEvent,
       id: string,
       patch: Partial<StoredServer>
-    ): IpcResult<{ success: boolean }> => {
+    ): Promise<IpcResult<{ success: boolean }>> => {
       try {
-        return { ok: true, data: updateServer(id, patch) }
+        await serviceApi.updateServer(id, patch)
+        return { ok: true, data: { success: true } }
       } catch (err) {
         log.error('[IPC] SERVERS_UPDATE:', safeError(err))
         return { ok: false, error: safeError(err) }
@@ -136,12 +136,12 @@ export function registerServerHandlers(): void {
     }
   )
 
-  // SERVERS_REMOVE_BY_ID — removes a server from electron-store by UUID
+  // SERVERS_REMOVE_BY_ID — proxied to service HTTP
   handle(
     IpcChannel.SERVERS_REMOVE_BY_ID,
-    (_event: IpcMainInvokeEvent, id: string): IpcResult<{ success: boolean }> => {
+    async (_event: IpcMainInvokeEvent, id: string): Promise<IpcResult<{ success: boolean }>> => {
       try {
-        removeServerById(id)
+        await serviceApi.removeServer(id)
         return { ok: true, data: { success: true } }
       } catch (err) {
         log.error('[IPC] SERVERS_REMOVE_BY_ID:', safeError(err))

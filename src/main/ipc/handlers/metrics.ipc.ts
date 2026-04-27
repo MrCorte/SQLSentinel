@@ -5,9 +5,9 @@ import {
   stopWorker,
   setActiveServer,
   syncServers,
-  getHistory,
-  getHistoryAll
+  getHistory
 } from '../../metricsWorker'
+import { serviceApi } from '../../serviceClient'
 import {
   IpcChannel,
   type WorkerStartRequest,
@@ -79,11 +79,17 @@ export function registerMetricsHandlers(): void {
     }
   )
 
-  // METRICS_HISTORY_BULK — restituisce tutta la history in-memory al boot (pre-popolata da SQLite)
+  // METRICS_HISTORY_BULK — proxied to service HTTP
   handle(
     IpcChannel.METRICS_HISTORY_BULK,
     async (): Promise<IpcResult<Record<string, ServerMetrics[]>>> => {
-      return { ok: true, data: getHistoryAll() }
+      try {
+        const res = await serviceApi.getMetricsHistoryBulk()
+        return res as IpcResult<Record<string, ServerMetrics[]>>
+      } catch (err) {
+        log.error('[IPC] METRICS_HISTORY_BULK:', safeError(err))
+        return { ok: false, error: safeError(err) }
+      }
     }
   )
 }

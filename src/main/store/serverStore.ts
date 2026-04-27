@@ -1,5 +1,7 @@
 import Store from 'electron-store'
 import { randomUUID } from 'node:crypto'
+import { writeFileSync, readFileSync } from 'node:fs'
+import { join, dirname } from 'node:path'
 import { encrypt, decrypt, isAvailable as safeStorageAvailable } from './safeStorageUtil'
 import { createLogger } from '../utils/logger'
 const log = createLogger('server-store')
@@ -213,6 +215,130 @@ export function upsertByIpPort(params: any): StoredServer {
   }
   store.set('servers', [...servers, server])
   return withDecryptedPassword(server)
+}
+
+// ---------------------------------------------------------------------------
+// Backup / restore helpers
+// ---------------------------------------------------------------------------
+
+/** Safe export shape — no credentials, used for backup files */
+export interface ServerBackupEntry {
+  host: string
+  port: number
+  instanceName?: string
+  useWindowsAuth: boolean
+  username?: string
+  machineName?: string
+  hostingType?: ServerHostingType
+  notes?: string
+  alias?: string
+}
+
+export interface ServerBackupFile {
+  version: 1
+  exportedAt: string
+  servers: ServerBackupEntry[]
+}
+
+export interface ImportResult {
+  imported: number
+  skipped: number
+  errors: string[]
+}
+
+/** Strips credentials and runtime-only fields for safe export */
+function toBackupEntry(s: StoredServer): ServerBackupEntry {
+  return {
+    host: s.host,
+    port: s.port,
+    ...(s.instanceName !== undefined && { instanceName: s.instanceName }),
+    useWindowsAuth: s.useWindowsAuth,
+    ...(s.username !== undefined && { username: s.username }),
+    ...(s.machineName !== undefined && { machineName: s.machineName }),
+    ...(s.hostingType !== undefined && { hostingType: s.hostingType }),
+    ...(s.notes !== undefined && { notes: s.notes })
+  }
+}
+
+/**
+ * Writes a password-free JSON backup next to the electron-store file.
+ * Called automatically after each mutation so the backup is always current.
+ */
+export function writeAutoBackup(): void {
+  try {
+    const servers = store.get('servers', [])
+    const payload: ServerBackupFile = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      servers: servers.map(toBackupEntry)
+    }
+    const backupPath = join(dirname(store.path), 'sql-sentinel-backup.json')
+    writeFileSync(backupPath, JSON.stringify(payload, null, 2), 'utf8')
+  } catch (err) {
+    log.error('[serverStore] writeAutoBackup error:', err)
+  }
+}
+
+/** Returns a JSON string suitable for a user-triggered backup export */
+export function exportForBackup(): string {
+  const servers = store.get('servers', [])
+  const payload: ServerBackupFile = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    servers: servers.map(toBackupEntry)
+  }
+  return JSON.stringify(payload, null, 2)
+}
+
+/** Parses a backup JSON file and imports missing servers. Returns counts. */
+export function importFromBackup(json: string): ImportResult {
+  const result: ImportResult = { imported: 0, skipped: 0, errors: [] }
+  let parsed: ServerBackupFile
+  try {
+    parsed = JSON.parse(json) as ServerBackupFile
+  } catch {
+    result.errors.push('Invalid JSON file')
+    return result
+  }
+  if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.servers)) {
+    result.errors.push('Unrecognized backup format')
+    return result
+  }
+  for (const entry of parsed.servers) {
+    try {
+      if (!entry.host || !entry.port) {
+        result.errors.push(`Skipped invalid entry: ${JSON.stringify(entry)}`)
+        continue
+      }
+      const existing = getByIpPort(entry.host, entry.port)
+      if (existing) {
+        result.skipped++
+        continue
+      }
+      const addResult = add(entry)
+      if (addResult.success) {
+        result.imported++
+      } else {
+        result.skipped++
+      }
+    } catch (err) {
+      result.errors.push(`Error importing ${entry.host}:${entry.port}: ${String(err)}`)
+    }
+  }
+  return result
+}
+
+/**
+ * Reads the auto-backup file and returns its content, or null if it doesn't exist.
+ * Used for disaster recovery when the main store is lost.
+ */
+export function readAutoBackup(): string | null {
+  try {
+    const backupPath = join(dirname(store.path), 'sql-sentinel-backup.json')
+    return readFileSync(backupPath, 'utf8')
+  } catch {
+    return null
+  }
 }
 
 /**

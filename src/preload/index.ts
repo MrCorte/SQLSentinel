@@ -84,7 +84,8 @@ export type {
   SaveCsvRequest,
   ServerAddResult,
   UpdateServerRequest,
-  ServerUnreachableEvent
+  ServerUnreachableEvent,
+  ServerBackupImportResult
 } from '../main/ipc/types'
 export type {
   ShrinkDatabaseParams,
@@ -493,6 +494,9 @@ const realApi = {
   removeServer: (req: RemoveServerRequest): Promise<IpcResult<null>> =>
     ipcRenderer.invoke(IpcChannel.REMOVE_SERVER, req),
 
+  resolveHostname: (ip: string): Promise<IpcResult<string>> =>
+    ipcRenderer.invoke(IpcChannel.RESOLVE_HOSTNAME, ip),
+
   detectServerInfo: (req: CollectMetricsRequest): Promise<IpcResult<ServerInfo>> =>
     ipcRenderer.invoke(IpcChannel.DETECT_SERVER_INFO, req),
 
@@ -619,7 +623,9 @@ const realApi = {
     update: (id: string, patch: Partial<StoredServer>): Promise<{ success: boolean }> =>
       ipcRenderer.invoke(IpcChannel.SERVERS_UPDATE, id, patch),
     remove: (id: string): Promise<{ success: boolean }> =>
-      ipcRenderer.invoke(IpcChannel.SERVERS_REMOVE_BY_ID, id)
+      ipcRenderer.invoke(IpcChannel.SERVERS_REMOVE_BY_ID, id),
+    exportBackup: () => ipcRenderer.invoke(IpcChannel.SERVERS_EXPORT_BACKUP),
+    importBackup: () => ipcRenderer.invoke(IpcChannel.SERVERS_IMPORT_BACKUP)
   },
 
   // Push events — unreachability
@@ -727,6 +733,9 @@ const mockApi = {
 
   removeServer: (_req: RemoveServerRequest): Promise<IpcResult<null>> =>
     Promise.resolve({ ok: true, data: null }),
+
+  resolveHostname: (ip: string): Promise<IpcResult<string>> =>
+    Promise.resolve({ ok: true, data: `SQLSRV-${ip.split('.').pop()}` }),
 
   detectServerInfo: (req: CollectMetricsRequest): Promise<IpcResult<ServerInfo>> =>
     new Promise((resolve) =>
@@ -978,7 +987,13 @@ const mockApi = {
     remove: (id: string): Promise<{ success: boolean }> => {
       mockStoredServers = mockStoredServers.filter((s) => s.id !== id)
       return Promise.resolve({ success: true })
-    }
+    },
+
+    exportBackup: (): Promise<IpcResult<{ saved: boolean }>> =>
+      Promise.resolve({ ok: true, data: { saved: true } }),
+
+    importBackup: (): Promise<IpcResult<{ imported: number; skipped: number; errors: string[] }>> =>
+      Promise.resolve({ ok: true, data: { imported: 0, skipped: 0, errors: [] } })
   },
 
   onServerUnreachable: (callback: (data: ServerUnreachableEvent) => void): (() => void) => {
@@ -1075,6 +1090,7 @@ const bridgeApi = {
   addServerManual: (r: ManualServerRequest) => api.addServerManual(r),
   getServers: () => api.getServers(),
   removeServer: (r: RemoveServerRequest) => api.removeServer(r),
+  resolveHostname: (ip: string) => api.resolveHostname(ip),
   detectServerInfo: (r: CollectMetricsRequest) => api.detectServerInfo(r),
   collectMetrics: (r: CollectMetricsRequest) => api.collectMetrics(r),
   workerStart: (r: WorkerStartRequest) => api.workerStart(r),
@@ -1134,7 +1150,9 @@ const bridgeApi = {
     update: (id: string, patch: Partial<StoredServer>) => api.servers.update(id, patch),
     remove: (id: string) => api.servers.remove(id),
     clearMocks: (): Promise<{ success: boolean; removed: number; remaining: number }> =>
-      ipcRenderer.invoke(IpcChannel.SERVERS_CLEAR_MOCKS)
+      ipcRenderer.invoke(IpcChannel.SERVERS_CLEAR_MOCKS),
+    exportBackup: () => api.servers.exportBackup(),
+    importBackup: () => api.servers.importBackup()
   },
   onServerUnreachable: (cb: (d: ServerUnreachableEvent) => void) => api.onServerUnreachable(cb),
   onServerRecovered: (cb: (id: string) => void) => api.onServerRecovered(cb),

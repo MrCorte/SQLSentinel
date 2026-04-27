@@ -36,7 +36,7 @@ function parsePorts(input: string): number[] {
 // -----------------------------------------------------------------------
 
 export function Discovery(): React.JSX.Element {
-  const { servers, isScanning, progress, error, scan } = useDiscovery()
+  const { servers, isScanning, progress, error, scan, addServer } = useDiscovery()
   const { setServerGroup, setServerAlias } = useGroupsStore()
   const savedServers = useServersStore((s) => s.servers)
 
@@ -86,6 +86,14 @@ export function Discovery(): React.JSX.Element {
   }
 
   const handleDialogSave = async (data: AddServerFormData): Promise<void> => {
+    await addServer({
+      ip: data.ip,
+      port: data.port,
+      instanceName: data.instanceName || undefined,
+      useWindowsAuth: data.useWindowsAuth,
+      username: data.username || undefined,
+      password: data.password || undefined
+    })
     const result = await useServersStore.getState().addServer({
       host: data.ip,
       port: data.port,
@@ -168,10 +176,10 @@ export function Discovery(): React.JSX.Element {
       sortable: false,
       renderCell: (params) =>
         isAlreadySaved(params.row) ? (
-          <Chip label="Already monitored" size="small" variant="outlined" sx={{ fontSize: 11 }} />
+          <Chip label="Monitoring" size="small" color="success" variant="outlined" sx={{ fontSize: 11 }} />
         ) : (
-          <Button size="small" variant="outlined" onClick={() => openDialogFromRow(params.row)}>
-            + Monitora
+          <Button size="small" variant="contained" onClick={() => openDialogFromRow(params.row)}>
+            Add
           </Button>
         )
     }
@@ -280,7 +288,11 @@ export function Discovery(): React.JSX.Element {
               ? 'Scan in progress...'
               : 'No servers found. Start a scan or add manually.'
           }}
-          sx={{ border: 0, '& .row-already-saved': { opacity: 0.45 } }}
+          sx={{
+            border: 0,
+            '& .row-already-saved': { opacity: 0.45 },
+            '& .MuiDataGrid-cell': { display: 'flex', alignItems: 'center' }
+          }}
         />
       </Box>
 

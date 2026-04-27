@@ -59,6 +59,11 @@ export enum IpcChannel {
   SERVICE_STATUS_GET = 'service:statusGet',
   // Server detection — MachineName + InstanceName via SERVERPROPERTY
   DETECT_SERVER_INFO = 'servers:detectInfo',
+  // Hostname resolution — DNS reverse lookup (PTR record)
+  RESOLVE_HOSTNAME = 'servers:resolveHostname',
+  // Server configuration backup / restore (file dialogs)
+  SERVERS_EXPORT_BACKUP = 'servers:exportBackup',
+  SERVERS_IMPORT_BACKUP = 'servers:importBackup',
   // Email alerting
   EMAIL_SETTINGS_GET = 'email:getSettings',
   EMAIL_SETTINGS_SET = 'email:setSettings',
@@ -317,6 +322,12 @@ export interface LoginResult {
 export interface ChangePasswordResult {
   success: boolean
   error?: string
+}
+
+export interface ServerBackupImportResult {
+  imported: number
+  skipped: number
+  errors: string[]
 }
 
 // Re-export types so consumers have a single import point

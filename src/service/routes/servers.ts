@@ -42,6 +42,7 @@ export function createServersRouter(): Router {
     const result = serverStore.add(body)
     if (result.success && result.server) {
       refreshWorker()
+      serverStore.writeAutoBackup()
       res.status(201).json({ ok: true, data: serverStore.stripCredentials(result.server) })
     } else {
       res.status(409).json({ ok: false, error: result.reason ?? 'add failed' })
@@ -53,6 +54,7 @@ export function createServersRouter(): Router {
     const patch = req.body as UpdateServerBody
     serverStore.update(req.params['id'] as string, patch)
     refreshWorker()
+    serverStore.writeAutoBackup()
     res.json({ ok: true, data: { success: true } })
   })
 
@@ -60,6 +62,7 @@ export function createServersRouter(): Router {
   router.delete('/:id', (req: Request, res: Response) => {
     serverStore.remove(req.params['id'] as string)
     refreshWorker()
+    serverStore.writeAutoBackup()
     res.json({ ok: true, data: { success: true } })
   })
 
@@ -74,7 +77,10 @@ export function createServersRouter(): Router {
         imported++
       }
     }
-    if (imported > 0) refreshWorker()
+    if (imported > 0) {
+      refreshWorker()
+      serverStore.writeAutoBackup()
+    }
     res.json({ ok: true, data: { imported } })
   })
 

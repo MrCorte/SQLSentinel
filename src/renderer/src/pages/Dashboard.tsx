@@ -56,11 +56,12 @@ function toCollectRequest(server: StoredServer): CollectMetricsRequest {
 // -----------------------------------------------------------------------
 
 export function Dashboard(): React.JSX.Element {
-  const { servers, initialized, updateServer } = useServersStore(
+  const { servers, initialized, updateServer, removeServer } = useServersStore(
     useShallow((s) => ({
       servers: s.servers,
       initialized: s.initialized,
-      updateServer: s.updateServer
+      updateServer: s.updateServer,
+      removeServer: s.removeServer
     }))
   )
   const { detectAgsForServer } = useAgStore()
@@ -94,6 +95,12 @@ export function Dashboard(): React.JSX.Element {
   const { metrics, isLoading, error, refresh, receiveMetrics } = useMetrics(connection, {
     onReceived: pushSnapshot
   })
+
+  const handleRemoveServer = useCallback(async () => {
+    if (!selectedServer) return
+    await removeServer(selectedServer.id)
+    // selectedServer disappears from servers[] → selectedServerId no longer matches → Dashboard shows empty state
+  }, [removeServer, selectedServer])
 
   useEffect(() => {
     setConnection(connection)
@@ -395,6 +402,7 @@ export function Dashboard(): React.JSX.Element {
                   server={selectedServer}
                   metrics={displayMetrics}
                   connection={connection!}
+                  onRemove={handleRemoveServer}
                 />
               </Box>
             ) : null

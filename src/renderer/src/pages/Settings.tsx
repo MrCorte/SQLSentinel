@@ -25,6 +25,7 @@ import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import SettingsIcon from '@mui/icons-material/Settings'
 import DownloadIcon from '@mui/icons-material/Download'
+import UploadFileIcon from '@mui/icons-material/UploadFile'
 import DeleteIcon from '@mui/icons-material/Delete'
 import WbSunnyOutlinedIcon from '@mui/icons-material/WbSunnyOutlined'
 import DarkModeOutlinedIcon from '@mui/icons-material/DarkModeOutlined'
@@ -142,6 +143,12 @@ export function Settings(): React.JSX.Element {
   const { retentionMinutes, setRetentionMinutes, intervalSeconds } = useWorker()
   const [exportLoading, setExportLoading] = useState<ExportKey | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
+
+  const [backupState, setBackupState] = useState<'idle' | 'busy'>('idle')
+  const [backupFeedback, setBackupFeedback] = useState<{
+    severity: 'success' | 'error' | 'info'
+    message: string
+  } | null>(null)
 
   const [bgEnabled, setBgEnabled] = useState(true)
   const [bgMode, setBgMode] = useState<'light' | 'full'>('light')
@@ -272,6 +279,50 @@ export function Settings(): React.JSX.Element {
       setExportError(err instanceof Error ? err.message : String(err))
     } finally {
       setExportLoading(null)
+    }
+  }
+
+  async function handleExportBackup(): Promise<void> {
+    setBackupState('busy')
+    setBackupFeedback(null)
+    try {
+      const result = await window.sqlSentinel.servers.exportBackup()
+      if (!result.ok) {
+        setBackupFeedback({ severity: 'error', message: result.error })
+      } else if (result.data.saved) {
+        setBackupFeedback({ severity: 'success', message: 'Backup saved successfully.' })
+      }
+    } catch (err) {
+      setBackupFeedback({ severity: 'error', message: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setBackupState('idle')
+    }
+  }
+
+  async function handleImportBackup(): Promise<void> {
+    setBackupState('busy')
+    setBackupFeedback(null)
+    try {
+      const result = await window.sqlSentinel.servers.importBackup()
+      if (!result.ok) {
+        setBackupFeedback({ severity: 'error', message: result.error })
+      } else {
+        const { imported, skipped, errors } = result.data
+        if (errors.length > 0) {
+          setBackupFeedback({ severity: 'error', message: `Import completed with errors: ${errors.join('; ')}` })
+        } else if (imported === 0 && skipped === 0) {
+          setBackupFeedback({ severity: 'info', message: 'No file selected.' })
+        } else {
+          setBackupFeedback({
+            severity: 'success',
+            message: `Imported ${imported} server${imported !== 1 ? 's' : ''}${skipped > 0 ? `, ${skipped} already present` : ''}.`
+          })
+        }
+      }
+    } catch (err) {
+      setBackupFeedback({ severity: 'error', message: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setBackupState('idle')
     }
   }
 
@@ -450,6 +501,60 @@ export function Settings(): React.JSX.Element {
                 All detected alerts, with category, severity and date
               </Typography>
             </Box>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      {/* Card — Server configuration backup */}
+      <Card variant="outlined">
+        <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box>
+            <Typography variant="subtitle1" fontWeight={700}>
+              Server configuration backup
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              Export and import the list of monitored servers. Passwords are not included in backups.
+              An automatic backup is also written next to the configuration file after every change.
+            </Typography>
+          </Box>
+
+          {backupFeedback && (
+            <Alert severity={backupFeedback.severity} onClose={() => setBackupFeedback(null)}>
+              {backupFeedback.message}
+            </Alert>
+          )}
+
+          <Stack direction="row" spacing={2}>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={
+                backupState === 'busy' ? (
+                  <CircularProgress size={14} color="inherit" />
+                ) : (
+                  <DownloadIcon />
+                )
+              }
+              disabled={backupState === 'busy'}
+              onClick={handleExportBackup}
+            >
+              Export backup
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={
+                backupState === 'busy' ? (
+                  <CircularProgress size={14} color="inherit" />
+                ) : (
+                  <UploadFileIcon />
+                )
+              }
+              disabled={backupState === 'busy'}
+              onClick={handleImportBackup}
+            >
+              Import backup
+            </Button>
           </Stack>
         </CardContent>
       </Card>

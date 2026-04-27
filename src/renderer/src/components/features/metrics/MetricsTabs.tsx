@@ -28,6 +28,7 @@ import type {
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import ClearIcon from '@mui/icons-material/Clear'
 import { NoteEditor } from '../../NoteEditor'
+import { RemoveServerDialog } from '../../dialogs/RemoveServerDialog'
 import { DbBulkEditDialog } from './DbBulkEditDialog'
 import { compatLevelToSqlVersion } from '../../../utils/sqlVersionUtils'
 import { tokens } from '../../../styles/tokens'
@@ -139,12 +140,17 @@ function KpiCard({
 export const TabPanoramica = memo(function TabPanoramica({
   metrics,
   serverDbId,
-  serverNotes
+  serverNotes,
+  serverDisplayName,
+  onRemove
 }: {
   metrics: ServerMetrics
   serverDbId: string
   serverNotes?: string
+  serverDisplayName?: string
+  onRemove?: () => void
 }): React.JSX.Element {
+  const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
   const info = metrics.instanceInfo
   const memPercent = info.memoryTargetMb > 0 ? (info.memoryUsedMb / info.memoryTargetMb) * 100 : 0
 
@@ -189,6 +195,50 @@ export const TabPanoramica = memo(function TabPanoramica({
       >
         <NoteEditor key={serverDbId} serverId={serverDbId} initialNote={serverNotes ?? ''} />
       </Box>
+
+      {onRemove && (
+        <>
+          <RemoveServerDialog
+            open={removeDialogOpen}
+            serverName={serverDisplayName ?? serverDbId}
+            onConfirm={() => {
+              setRemoveDialogOpen(false)
+              onRemove()
+            }}
+            onClose={() => setRemoveDialogOpen(false)}
+          />
+          <Box
+            sx={{
+              p: 2,
+              border: '1px solid',
+              borderColor: 'error.main',
+              borderRadius: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 2
+            }}
+          >
+            <Box>
+              <Typography variant="subtitle2" color="error.main">
+                Remove from monitoring
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Removes this server and deletes all collected metrics and alerts.
+              </Typography>
+            </Box>
+            <Button
+              variant="outlined"
+              color="error"
+              size="small"
+              sx={{ flexShrink: 0 }}
+              onClick={() => setRemoveDialogOpen(true)}
+            >
+              Remove
+            </Button>
+          </Box>
+        </>
+      )}
     </Stack>
   )
 })

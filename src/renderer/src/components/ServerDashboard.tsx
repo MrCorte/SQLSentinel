@@ -6,11 +6,13 @@ import { ServerHistorySection } from './ServerHistoryChart'
 import { useServersStore } from '../store/serversStore'
 import { HOSTING_OPTIONS, HOSTING_BADGE } from '../constants/hosting'
 import type { ServerHostingType } from '../constants/hosting'
+import { getServerDisplayName } from '../types'
 
 interface Props {
   server: StoredServer
   metrics: ServerMetrics
   connection: CollectMetricsRequest
+  onRemove?: () => void
 }
 
 /**
@@ -21,7 +23,7 @@ interface Props {
  *  3. Tabella database        — MetricsPanel → Tab Database
  *  4. Sessioni / Blocchi / Job — MetricsPanel → tabs
  */
-export function ServerDashboard({ server, metrics, connection }: Props): React.JSX.Element {
+export function ServerDashboard({ server, metrics, connection, onRemove }: Props): React.JSX.Element {
   // serverId matches the "ip:port" key used throughout metricsStore / workerStore
   const serverId = `${server.ip ?? server.host}:${server.port}`
   const updateServer = useServersStore((s) => s.updateServer)
@@ -103,7 +105,9 @@ export function ServerDashboard({ server, metrics, connection }: Props): React.J
         serverId={serverId}
         serverDbId={server.id}
         serverNotes={server.notes}
+        serverDisplayName={getServerDisplayName({ ip: server.ip ?? server.host, port: server.port })}
         connection={connection}
+        onRemove={onRemove}
       />
     </>
   )

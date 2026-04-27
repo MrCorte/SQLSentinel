@@ -19,7 +19,9 @@ interface Props {
   serverId: string
   serverDbId: string // UUID from StoredServer.id — used for persistence (≠ serverId ip:port key)
   serverNotes?: string
+  serverDisplayName?: string
   connection: CollectMetricsRequest
+  onRemove?: () => void
 }
 
 export function MetricsPanel({
@@ -27,7 +29,9 @@ export function MetricsPanel({
   serverId,
   serverDbId,
   serverNotes,
-  connection
+  serverDisplayName,
+  connection,
+  onRemove
 }: Props): React.JSX.Element {
   const {
     tab,
@@ -54,7 +58,7 @@ export function MetricsPanel({
   const waitStats = metrics?.waitStats ?? []
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
       <Box
         sx={{
           bgcolor: tokens.color.bgSurface,
@@ -92,9 +96,15 @@ export function MetricsPanel({
         </Tabs>
       </Box>
 
-      <Box sx={{ flex: 1, overflow: 'auto', pt: 2 }}>
+      <Box sx={{ pt: 2 }}>
         {tab === 0 && (
-          <TabPanoramica metrics={metrics} serverDbId={serverDbId} serverNotes={serverNotes} />
+          <TabPanoramica
+            metrics={metrics}
+            serverDbId={serverDbId}
+            serverNotes={serverNotes}
+            serverDisplayName={serverDisplayName}
+            onRemove={onRemove}
+          />
         )}
 
         {tab === 1 && (

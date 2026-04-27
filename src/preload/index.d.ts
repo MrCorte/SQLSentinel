@@ -318,6 +318,12 @@ export interface SaveCsvRequest {
   content: string
 }
 
+export interface ServerBackupImportResult {
+  imported: number
+  skipped: number
+  errors: string[]
+}
+
 export interface ShrinkDatabaseParams {
   connection: CollectMetricsRequest
   dbName: string
@@ -422,6 +428,7 @@ export interface SqlSentinelAPI {
   addServerManual(req: ManualServerRequest): Promise<IpcResult<DiscoveredServer>>
   getServers(): Promise<IpcResult<DiscoveredServer[]>>
   removeServer(req: RemoveServerRequest): Promise<IpcResult<null>>
+  resolveHostname(ip: string): Promise<IpcResult<string>>
   detectServerInfo(req: CollectMetricsRequest): Promise<IpcResult<ServerInfo>>
   collectMetrics(req: CollectMetricsRequest): Promise<IpcResult<ServerMetrics>>
   workerStart(req: WorkerStartRequest): Promise<IpcResult<null>>
@@ -473,6 +480,8 @@ export interface SqlSentinelAPI {
     update(id: string, patch: Partial<StoredServer>): Promise<IpcResult<{ success: boolean }>>
     remove(id: string): Promise<IpcResult<{ success: boolean }>>
     clearMocks(): Promise<IpcResult<{ success: boolean; removed: number; remaining: number }>>
+    exportBackup(): Promise<IpcResult<{ saved: boolean }>>
+    importBackup(): Promise<IpcResult<ServerBackupImportResult>>
   }
   onServerUnreachable(callback: (data: ServerUnreachableEvent) => void): () => void
   onServerRecovered(callback: (serverId: string) => void): () => void

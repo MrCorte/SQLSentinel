@@ -16,14 +16,104 @@ import {
   FormControl,
   InputLabel,
   CircularProgress,
-  Chip
+  Chip,
+  Alert
 } from '@mui/material'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-import ErrorIcon from '@mui/icons-material/Error'
 import { useGroupsStore } from '../store/groupsStore'
 import { HOSTING_OPTIONS } from '../constants/hosting'
 import type { ServerHostingType } from '../constants/hosting'
 import { tokens } from '../styles/tokens'
+
+interface ParsedError {
+  title: string
+  hints: string[]
+}
+
+function parseConnectionError(raw: string): ParsedError {
+  const r = raw.toLowerCase()
+
+  if (r.includes('untrusted domain') || r.includes('cannot be used with integrated')) {
+    return {
+      title: 'Windows Authentication rejected',
+      hints: [
+        'The server is in a different domain or workgroup.',
+        'Switch to SQL Server Authentication and use a SQL login.',
+      ]
+    }
+  }
+  if (r.includes('login failed')) {
+    if (r.includes("login failed for user ''") || r.includes('windows')) {
+      return {
+        title: 'Windows Authentication failed',
+        hints: [
+          'The current Windows account has no SQL Server access.',
+          "Ask the DBA to run: CREATE LOGIN [DOMAIN\\\\user] FROM WINDOWS; GRANT CONNECT SQL TO [DOMAIN\\\\user]",
+          'Or switch to SQL Server Authentication.',
+        ]
+      }
+    }
+    return {
+      title: 'Authentication failed',
+      hints: [
+        'Wrong username or password.',
+        'The SQL login may be disabled or locked.',
+      ]
+    }
+  }
+  if (r.includes('econnrefused') || r.includes('connection refused')) {
+    return {
+      title: 'Connection refused',
+      hints: [
+        'SQL Server is not listening on this port.',
+        'Enable TCP/IP in SQL Server Configuration Manager → Protocols → TCP/IP.',
+        'Verify the port under TCP/IP → IP Addresses → IPAll → TCP Port.',
+      ]
+    }
+  }
+  if (
+    r.includes('etimedout') ||
+    r.includes('timed out') ||
+    r.includes('failed to connect') ||
+    r.includes('could not connect')
+  ) {
+    return {
+      title: 'Connection timed out — server unreachable',
+      hints: [
+        'Verify the SQL Server service is running (services.msc → SQL Server).',
+        'Check that the firewall allows the port (Windows Firewall + network firewall).',
+        'Confirm the IP address and port are correct.',
+      ]
+    }
+  }
+  if (r.includes('enotfound') || r.includes('getaddrinfo')) {
+    return {
+      title: 'Hostname not found',
+      hints: [
+        'DNS cannot resolve this hostname.',
+        'Use the IP address instead, or check the spelling.',
+      ]
+    }
+  }
+  if (r.includes('ssl') || r.includes('tls') || r.includes('certificate') || r.includes('wrong version')) {
+    return {
+      title: 'SSL / TLS error',
+      hints: [
+        'SQL Server certificate issue.',
+        'In SQL Server Configuration Manager set "Force Encryption" to No.',
+      ]
+    }
+  }
+  if (r.includes('cannot open database')) {
+    return {
+      title: 'Default database not accessible',
+      hints: [
+        "Run: ALTER LOGIN [loginname] WITH DEFAULT_DATABASE = master",
+      ]
+    }
+  }
+  return { title: 'Connection failed', hints: [raw] }
+}
 
 export interface AddServerFormData {
   ip: string
@@ -90,6 +180,30 @@ export function AddServerDialog({
       setErrors({})
       setTestState('idle')
       setTestLabel('')
+      if (initialIp && /^\d{1,3}(\.\d{1,3}){3}$/.test(initialIp.trim())) {
+        const ip = initialIp.trim()
+        const port = initialPort ?? 1433
+        // DNS — fast, no credentials
+        window.sqlSentinel.resolveHostname(ip).then((result) => {
+          if (result.ok) {
+            setForm((prev) => ({ ...prev, alias: prev.alias?.trim() ? prev.alias : result.data }))
+          }
+        })
+        // SQL detection — fills instanceName and overrides alias with machineName if available
+        window.sqlSentinel
+          .detectServerInfo({ ip, port, useWindowsAuth: true })
+          .then((result) => {
+            if (!result.ok) return
+            const { machineName, instanceName } = result.data
+            setForm((prev) => ({
+              ...prev,
+              machineName,
+              instanceName: prev.instanceName?.trim() ? prev.instanceName : (instanceName ?? ''),
+              alias: prev.alias?.trim() ? prev.alias : machineName
+            }))
+          })
+          .catch(() => {})
+      }
     }
   }, [open, initialIp, initialPort]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -127,11 +241,10 @@ export function AddServerDialog({
         return
       }
       const { machineName, instanceName } = result.data
-      // Auto-fill alias only if the field is empty; always capture machineName
       setForm((prev) => ({
         ...prev,
         machineName,
-        instanceName: instanceName ?? '',
+        instanceName: prev.instanceName?.trim() ? prev.instanceName : (instanceName ?? ''),
         alias: prev.alias?.trim() ? prev.alias : machineName
       }))
       const label = instanceName ? `${machineName}\\${instanceName}` : machineName
@@ -162,6 +275,18 @@ export function AddServerDialog({
               label="IP / Hostname"
               value={form.ip}
               onChange={(e) => set('ip', e.target.value)}
+              onBlur={(e) => {
+                const ip = e.target.value.trim()
+                if (!ip || !/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return
+                window.sqlSentinel.resolveHostname(ip).then((result) => {
+                  if (result.ok) {
+                    setForm((prev) => ({
+                      ...prev,
+                      alias: prev.alias?.trim() ? prev.alias : result.data
+                    }))
+                  }
+                })
+              }}
               error={!!errors.ip}
               helperText={errors.ip}
               fullWidth
@@ -188,39 +313,53 @@ export function AddServerDialog({
             value={form.instanceName}
             onChange={(e) => set('instanceName', e.target.value)}
             placeholder="e.g. SQLEXPRESS"
+            helperText={
+              testState === 'success'
+                ? form.instanceName
+                  ? 'Auto-filled from server — editable'
+                  : 'Default instance (no named instance on this server)'
+                : undefined
+            }
             fullWidth
           />
 
           {/* Test connection status */}
-          {testState !== 'idle' && (
+          {testState === 'loading' && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              {testState === 'loading' && (
-                <>
-                  <CircularProgress size={16} />
-                  <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
-                    Connecting…
-                  </Typography>
-                </>
-              )}
-              {testState === 'success' && (
-                <Chip
-                  icon={<CheckCircleIcon />}
-                  label={`Connected — ${testLabel}`}
-                  size="small"
-                  color="success"
-                  variant="outlined"
-                />
-              )}
-              {testState === 'error' && (
-                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
-                  <ErrorIcon fontSize="small" color="error" sx={{ mt: '2px', flexShrink: 0 }} />
-                  <Typography variant="caption" color="error.main">
-                    {testLabel}
-                  </Typography>
-                </Box>
-              )}
+              <CircularProgress size={16} />
+              <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
+                Connecting…
+              </Typography>
             </Box>
           )}
+          {testState === 'success' && (
+            <Chip
+              icon={<CheckCircleIcon />}
+              label={`Connected — ${testLabel}`}
+              size="small"
+              color="success"
+              variant="outlined"
+            />
+          )}
+          {testState === 'error' && (() => {
+            const { title, hints } = parseConnectionError(testLabel)
+            return (
+              <Alert severity="error" sx={{ py: 0.5 }}>
+                <Typography variant="caption" fontWeight={600} display="block">
+                  {title}
+                </Typography>
+                {hints.length > 0 && (
+                  <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2 }}>
+                    {hints.map((h, i) => (
+                      <Typography component="li" variant="caption" key={i}>
+                        {h}
+                      </Typography>
+                    ))}
+                  </Box>
+                )}
+              </Alert>
+            )
+          })()}
 
           <TextField
             label="Name (optional)"

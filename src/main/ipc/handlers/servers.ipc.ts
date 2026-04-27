@@ -1,4 +1,7 @@
 import type { IpcMainInvokeEvent } from 'electron'
+import { dialog } from 'electron'
+import { promises as dns } from 'dns'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { handle, safeError, log } from '../handleWrapper'
 import { scanSubnet } from '../../discovery/tcpScanner'
 import {
@@ -23,9 +26,15 @@ import {
   type CollectMetricsResponse,
   type IpcResult,
   type ServerAddResult,
-  type ServerInfo
+  type ServerInfo,
+  type ServerBackupImportResult
 } from '../types'
 import type { StoredServer } from '../../store/serverStore'
+import {
+  exportForBackup,
+  importFromBackup,
+  writeAutoBackup
+} from '../../store/serverStore'
 import type { ScanOptions } from '../../discovery/types'
 
 // Re-export resolveConnection so metrics.ipc.ts and system.ipc.ts can import it
@@ -164,6 +173,21 @@ export function registerServerHandlers(): void {
     }
   )
 
+  // RESOLVE_HOSTNAME — DNS reverse lookup (PTR) for an IPv4 address
+  handle(
+    IpcChannel.RESOLVE_HOSTNAME,
+    async (_event: IpcMainInvokeEvent, ip: string): Promise<IpcResult<string>> => {
+      try {
+        const hostnames = await dns.reverse(ip)
+        const hostname = (hostnames[0] ?? '').replace(/\.$/, '')
+        return hostname ? { ok: true, data: hostname } : { ok: false, error: 'No PTR record' }
+      } catch (err) {
+        log.error('[IPC] RESOLVE_HOSTNAME:', safeError(err))
+        return { ok: false, error: 'No PTR record' }
+      }
+    }
+  )
+
   // DETECT_SERVER_INFO — test connection + retrieve MachineName / InstanceName
   handle(
     IpcChannel.DETECT_SERVER_INFO,
@@ -193,6 +217,50 @@ export function registerServerHandlers(): void {
         return { ok: true, data: enriched }
       } catch (err) {
         log.error('[IPC] COLLECT_METRICS:', safeError(err))
+        return { ok: false, error: safeError(err) }
+      }
+    }
+  )
+
+  // SERVERS_EXPORT_BACKUP — shows Save dialog, writes JSON backup sans passwords
+  handle(
+    IpcChannel.SERVERS_EXPORT_BACKUP,
+    async (): Promise<IpcResult<{ saved: boolean }>> => {
+      try {
+        const { canceled, filePath } = await dialog.showSaveDialog({
+          title: 'Export server backup',
+          defaultPath: `sqlsentinel-backup-${new Date().toISOString().slice(0, 10)}.json`,
+          filters: [{ name: 'JSON backup', extensions: ['json'] }]
+        })
+        if (canceled || !filePath) return { ok: true, data: { saved: false } }
+        const json = exportForBackup()
+        writeFileSync(filePath, json, 'utf8')
+        return { ok: true, data: { saved: true } }
+      } catch (err) {
+        log.error('[IPC] SERVERS_EXPORT_BACKUP:', safeError(err))
+        return { ok: false, error: safeError(err) }
+      }
+    }
+  )
+
+  // SERVERS_IMPORT_BACKUP — shows Open dialog, imports servers from JSON backup
+  handle(
+    IpcChannel.SERVERS_IMPORT_BACKUP,
+    async (): Promise<IpcResult<ServerBackupImportResult>> => {
+      try {
+        const { canceled, filePaths } = await dialog.showOpenDialog({
+          title: 'Import server backup',
+          filters: [{ name: 'JSON backup', extensions: ['json'] }],
+          properties: ['openFile']
+        })
+        if (canceled || filePaths.length === 0)
+          return { ok: true, data: { imported: 0, skipped: 0, errors: [] } }
+        const json = readFileSync(filePaths[0], 'utf8')
+        const result = importFromBackup(json)
+        if (result.imported > 0) writeAutoBackup()
+        return { ok: true, data: result }
+      } catch (err) {
+        log.error('[IPC] SERVERS_IMPORT_BACKUP:', safeError(err))
         return { ok: false, error: safeError(err) }
       }
     }

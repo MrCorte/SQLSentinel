@@ -21,6 +21,7 @@ import { scanHost } from './discovery/tcpScanner'
 import { abortActiveStream, warmupModel } from './ai/langGraphAgent'
 import { safeError as redactError } from './utils/safeLog'
 import { createLogger } from './utils/logger'
+import { connect, onStatusChange, serviceApi } from './serviceClient'
 const log = createLogger('main')
 
 const isDev = !app.isPackaged
@@ -201,6 +202,34 @@ app.whenReady().then(() => {
   ipcMain.on('ping', () => log.info('pong'))
 
   registerIpcHandlers()
+
+  // Connect to Windows Service and migrate servers on first connect
+  connect()
+  onStatusChange(async (status) => {
+    if (status !== 'connected') return
+    try {
+      const serviceServers = await serviceApi.getServers()
+      const localServers = serverStore.getAll()
+      if ((serviceServers.data as unknown[]).length === 0 && localServers.length > 0) {
+        await serviceApi.migrateServers(
+          localServers.map((s) => ({
+            id: s.id,
+            host: s.host,
+            port: s.port,
+            instanceName: s.instanceName,
+            useWindowsAuth: s.useWindowsAuth,
+            username: s.username,
+            password: s.password,
+            addedAt: s.addedAt,
+            hostingType: s.hostingType,
+            notes: s.notes
+          }))
+        )
+      }
+    } catch (err) {
+      log.error('[index] Migration error:', err)
+    }
+  })
 
   // Pre-load the LLM into Ollama memory so the first AI query is fast
   warmupModel()

@@ -7,6 +7,7 @@ import { getSettings, saveSettings } from './store/settings'
 import * as serverStore from './store/serverStore'
 import { getAlerts } from './metricsWorker'
 import { sendAlertEmail } from './emailService'
+import { getStatus } from './serviceClient'
 import { createLogger } from './utils/logger'
 const log = createLogger('background')
 
@@ -78,6 +79,10 @@ export class BackgroundService {
       { type: 'separator' },
       { label: `● ${online} server online`, enabled: false },
       { label: `✕  ${offline} server offline`, enabled: false },
+      {
+        label: `Service: ${getStatus() === 'connected' ? '● Connected' : '○ Disconnected'}`,
+        enabled: false
+      },
       { type: 'separator' },
       {
         label: `Background polling: ${settings.backgroundEnabled ? 'Active' : 'Inactive'}`,

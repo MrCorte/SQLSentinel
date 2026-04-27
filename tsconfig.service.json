@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "noEmit": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": [
+    "src/service/**/*",
+    "src/shared/**/*",
+    "src/main/collectors/**/*",
+    "src/main/store/**/*",
+    "src/main/metricsWorker.ts",
+    "src/main/deltaUtils.ts",
+    "src/main/emailService.ts",
+    "src/main/utils/**/*"
+  ],
+  "exclude": ["node_modules", "out"]
+}

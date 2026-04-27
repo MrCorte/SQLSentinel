@@ -1153,7 +1153,8 @@ const bridgeApi = {
   aiAgentStream: (q: string, h: Array<{ role: 'user' | 'assistant'; content: string }>) =>
     realApi.aiAgentStream(q, h),
   aiAgentCancel: () => realApi.aiAgentCancel(),
-  onAiStreamEvent: (cb: (e: AiStreamEvent) => void) => realApi.onAiStreamEvent(cb)
+  onAiStreamEvent: (cb: (e: AiStreamEvent) => void) => realApi.onAiStreamEvent(cb),
+  getServiceStatus: () => ipcRenderer.invoke(IpcChannel.SERVICE_STATUS_GET)
 }
 
 if (process.contextIsolated) {

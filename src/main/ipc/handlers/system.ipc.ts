@@ -1,5 +1,5 @@
 import { dialog, app, BrowserWindow } from 'electron'
-import { serviceApi } from '../../serviceClient'
+import { serviceApi, getStatus } from '../../serviceClient'
 import { writeFileSync, promises as fsPromises } from 'node:fs'
 import path from 'node:path'
 import type { IpcMainInvokeEvent } from 'electron'
@@ -368,4 +368,9 @@ export function registerSystemHandlers(): void {
       }
     }
   )
+
+  // SERVICE_STATUS_GET
+  handle(IpcChannel.SERVICE_STATUS_GET, (): IpcResult<{ status: string }> => {
+    return { ok: true, data: { status: getStatus() } }
+  })
 }

@@ -56,6 +56,7 @@ export enum IpcChannel {
   // App visibility — pushed from main to renderer on window blur/focus
   APP_BACKGROUND = 'app:background',
   APP_FOREGROUND = 'app:foreground',
+  SERVICE_STATUS_GET = 'service:statusGet',
   // Server detection — MachineName + InstanceName via SERVERPROPERTY
   DETECT_SERVER_INFO = 'servers:detectInfo',
   // Email alerting

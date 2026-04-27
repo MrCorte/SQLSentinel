@@ -18,7 +18,8 @@ import {
   Radio,
   TextField,
   Tooltip,
-  IconButton
+  IconButton,
+  Chip
 } from '@mui/material'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
@@ -90,6 +91,46 @@ async function runExport(key: ExportKey): Promise<void> {
   }
   if (!result.ok) throw new Error((result as { error: string }).error)
   await window.sqlSentinel.saveCsv({ filename, content: result.data! })
+}
+
+// ---------------------------------------------------------------------------
+// Service Status card
+// ---------------------------------------------------------------------------
+
+function ServiceStatusCard(): React.JSX.Element {
+  const [serviceStatus, setServiceStatus] = useState<string>('unknown')
+
+  useEffect(() => {
+    window.sqlSentinel.getServiceStatus().then((res) => {
+      if (res.ok) setServiceStatus(res.data.status)
+    })
+  }, [])
+
+  return (
+    <Card variant="outlined">
+      <CardContent>
+        <Typography variant="subtitle1" fontWeight={700} gutterBottom>
+          Background Service
+        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            Status:
+          </Typography>
+          <Chip
+            size="small"
+            label={serviceStatus}
+            color={
+              serviceStatus === 'connected'
+                ? 'success'
+                : serviceStatus === 'connecting'
+                  ? 'warning'
+                  : 'error'
+            }
+          />
+        </Box>
+      </CardContent>
+    </Card>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -517,6 +558,9 @@ export function Settings(): React.JSX.Element {
           </CardContent>
         </Card>
       )}
+
+      {/* Card — Service Status */}
+      <ServiceStatusCard />
 
       {/* Card — Notifiche Email */}
       {emailLoaded && (

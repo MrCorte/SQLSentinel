@@ -499,6 +499,7 @@ export interface SqlSentinelAPI {
   ): Promise<IpcResult<void>>
   aiAgentCancel(): Promise<void>
   onAiStreamEvent(callback: (event: AiStreamEvent) => void): () => void
+  getServiceStatus(): Promise<IpcResult<{ status: 'connected' | 'connecting' | 'disconnected' }>>
 }
 
 declare global {

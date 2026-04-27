@@ -21,13 +21,13 @@ vi.mock('../store/settings', () => ({
 }))
 vi.mock('../store/serverStore')
 
-import { BrowserWindow } from 'electron'
 import { collectMetrics } from '../collectors/sqlCollector'
 import {
   startWorker,
   stopWorker,
   setActiveServer,
   syncServers,
+  setPushHandler,
   __resetForTests,
   __getJobForTest
 } from '../metricsWorker'
@@ -65,13 +65,7 @@ function makeMetrics(): ServerMetrics {
 
 function captureRendererMessages(): { channel: string; data: unknown }[] {
   const messages: { channel: string; data: unknown }[] = []
-  vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([
-    {
-      isDestroyed: () => false,
-      isVisible: () => true,
-      webContents: { send: (ch: string, d: unknown) => messages.push({ channel: ch, data: d }) }
-    } as unknown as Electron.BrowserWindow
-  ])
+  setPushHandler((ch, d) => messages.push({ channel: ch, data: d }))
   return messages
 }
 
@@ -86,7 +80,7 @@ async function drainJobCycle(): Promise<void> {
 beforeEach(() => {
   vi.useFakeTimers()
   __resetForTests()
-  vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([])
+  setPushHandler(() => {})
   vi.mocked(collectMetrics).mockReset()
 })
 

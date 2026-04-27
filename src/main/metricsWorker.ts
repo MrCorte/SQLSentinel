@@ -1,4 +1,3 @@
-import { BrowserWindow } from 'electron'
 import { createLogger } from './utils/logger'
 const log = createLogger('metrics-worker')
 import { IpcChannel } from './ipc/types'
@@ -106,10 +105,15 @@ function nextAlertId(): string {
   return `alert-${Date.now()}-${++alertCounter}`
 }
 
+// Injectable push handler — set by the host process (Electron or service)
+let _pushHandler: ((channel: string, data: unknown) => void) = () => {}
+
+export function setPushHandler(fn: (channel: string, data: unknown) => void): void {
+  _pushHandler = fn
+}
+
 function pushToRenderer(channel: string, data: unknown): void {
-  BrowserWindow.getAllWindows().forEach((w) => {
-    if (!w.isDestroyed()) w.webContents.send(channel, data)
-  })
+  _pushHandler(channel, data)
 }
 
 function flushMetricsBatch(): void {
@@ -339,9 +343,7 @@ function processAlerts(sid: string, metrics: ServerMetrics): void {
 
 async function runJob(sid: string, job: PollJob): Promise<void> {
   const allCustomFields = getAllCustomFields()
-  const hasVisibleWindow = BrowserWindow.getAllWindows().some(
-    (w) => !w.isDestroyed() && w.isVisible()
-  )
+
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined
   // AbortController propagated to the collector: on timeout we close the pool immediately
   // instead of letting the TDS connection dangle until GC.
@@ -391,9 +393,7 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     metricsHistory.set(sid, hist)
 
     const delta = computeDelta(sid, enrichedMetrics)
-    if (hasVisibleWindow) {
-      enqueueBatchPush(sid, delta)
-    }
+    enqueueBatchPush(sid, delta)
     processAlerts(sid, enrichedMetrics)
 
     // CPU count persistence — save logicalCpus/physicalCpus to electron-store if changed.
@@ -470,9 +470,7 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
       nextRetry: job.nextRun,
       lastSuccess: job.lastSuccess
     }
-    if (hasVisibleWindow) {
-      pushToRenderer(IpcChannel.SERVER_HEALTH_UPDATE, health)
-    }
+    pushToRenderer(IpcChannel.SERVER_HEALTH_UPDATE, health)
     // ALERT_NEW is always sent — feeds alertCallback in BackgroundService
   }
 }

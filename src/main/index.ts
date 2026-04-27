@@ -9,7 +9,7 @@ import { registerIpcHandlers } from './ipc'
 import { initDefaultAdmin } from './authService'
 import { BackgroundService } from './backgroundService'
 import type { WorkerApi } from './backgroundService'
-import { syncServers, stopWorker, setIntervalOverrides, onAlert } from './metricsWorker'
+import { syncServers, stopWorker, setIntervalOverrides, onAlert, setPushHandler } from './metricsWorker'
 import { initDb, closeDb, defaultDbPath } from './store/database'
 import { cleanup as purgeOldSnapshots } from './store/metricsRepository'
 import { getSettings } from './store/settings'
@@ -204,6 +204,12 @@ app.whenReady().then(() => {
 
   // Pre-load the LLM into Ollama memory so the first AI query is fast
   warmupModel()
+
+  setPushHandler((channel, data) => {
+    BrowserWindow.getAllWindows().forEach((w) => {
+      if (!w.isDestroyed() && w.isVisible()) w.webContents.send(channel, data)
+    })
+  })
 
   createWindow()
 

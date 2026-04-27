@@ -5,6 +5,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added — 2026-04-27 (Windows Service)
+
+- **Service**: standalone Node.js Windows Service for headless metrics collection (metricsWorker, collectors, SQLite) — survives daily reboots without user login
+- **Service**: HTTP REST + WebSocket on localhost:57432, self-contained bundle via `ELECTRON_RUN_AS_NODE=1` (no separate Node.js install required)
+- **Service**: AES-256-GCM credential encryption independent of `safeStorage`/DPAPI — works as LocalSystem
+- **Service**: install/uninstall scripts included in package (`resources/scripts/install-service.cjs`)
+- **Electron**: service client with auto-reconnect (5s) and WS→IPC push bridge
+- **Electron**: one-time credential migration from electron-store to service on first connect
+- **Settings**: service connection status indicator (connected / connecting / disconnected)
+
 ### Added — 2026-04-26 (DB bulk alias & owner edit)
 
 - **Checkbox selection in Databases tab**: multi-row checkbox selection via MUI X DataGrid `checkboxSelection`; row body click opens single-edit dialog; checkbox click toggles selection without opening dialog

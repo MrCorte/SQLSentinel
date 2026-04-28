@@ -426,6 +426,20 @@ function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
+    // Fallback query: se l'evento è già arrivato prima che l'effect si registrasse,
+    // interroga lo stato corrente per uscire subito da 'loading'
+    window.sqlSentinel.storage
+      .getConfig()
+      .then((r) => {
+        setStorageState((prev) => {
+          if (prev !== 'loading') return prev // evento già gestito dai listener
+          return r.ok && r.data !== null ? 'ready' : 'setup'
+        })
+      })
+      .catch(() => {
+        setStorageState((prev) => (prev === 'loading' ? 'setup' : prev))
+      })
+
     const unsubNotConfigured = window.sqlSentinel.storage.onNotConfigured((err) => {
       setStorageError(err)
       setStorageState('setup')
@@ -433,7 +447,14 @@ function App(): React.JSX.Element {
     const unsubConfigured = window.sqlSentinel.storage.onConfigured(() => {
       setStorageState('ready')
     })
+
+    // Timeout di sicurezza: se dopo 10s non arriva nessun segnale, mostra il setup
+    const timer = setTimeout(() => {
+      setStorageState((prev) => (prev === 'loading' ? 'setup' : prev))
+    }, 10_000)
+
     return () => {
+      clearTimeout(timer)
       unsubNotConfigured()
       unsubConfigured()
     }

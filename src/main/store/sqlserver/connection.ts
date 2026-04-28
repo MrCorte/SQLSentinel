@@ -66,14 +66,11 @@ export async function testConnection(params: {
   username: string
   password: string
 }): Promise<void> {
+  const cfg = buildConfig(params)
   const pool = await mssql.connect({
-    ...buildConfig(params),
+    ...cfg,
     requestTimeout: 10000,
-    options: {
-      encrypt: false,
-      trustServerCertificate: true,
-      connectTimeout: 10000
-    }
+    options: { ...cfg.options, connectTimeout: 10000 }
   })
   await pool.close()
 }

@@ -1,13 +1,13 @@
 import { getPool } from './connection'
 
 const DDL_STATEMENTS = [
-  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'settings')
+  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'settings' AND schema_id = SCHEMA_ID(N'dbo'))
    CREATE TABLE dbo.settings ([key] NVARCHAR(200) NOT NULL PRIMARY KEY, value NVARCHAR(MAX) NOT NULL)`,
 
-  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'db_custom_fields')
+  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'db_custom_fields' AND schema_id = SCHEMA_ID(N'dbo'))
    CREATE TABLE dbo.db_custom_fields (id NVARCHAR(400) NOT NULL PRIMARY KEY, alias NVARCHAR(200) NULL, referente NVARCHAR(200) NULL)`,
 
-  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'metrics_snapshots')
+  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'metrics_snapshots' AND schema_id = SCHEMA_ID(N'dbo'))
    CREATE TABLE dbo.metrics_snapshots (
      id           NVARCHAR(36)  NOT NULL PRIMARY KEY,
      server_id    NVARCHAR(36)  NOT NULL,
@@ -21,7 +21,7 @@ const DDL_STATEMENTS = [
   `IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.metrics_snapshots') AND name = N'IX_metrics_cleanup')
    CREATE INDEX IX_metrics_cleanup ON dbo.metrics_snapshots(collected_at)`,
 
-  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'users')
+  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'users' AND schema_id = SCHEMA_ID(N'dbo'))
    CREATE TABLE dbo.users (
      id                   NVARCHAR(36)  NOT NULL PRIMARY KEY DEFAULT LOWER(CONVERT(NVARCHAR(36), NEWID())),
      username             NVARCHAR(200) NOT NULL UNIQUE,
@@ -32,7 +32,7 @@ const DDL_STATEMENTS = [
      must_change_password BIT           NOT NULL DEFAULT 0
    )`,
 
-  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'sessions')
+  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'sessions' AND schema_id = SCHEMA_ID(N'dbo'))
    CREATE TABLE dbo.sessions (
      token      NVARCHAR(500) NOT NULL PRIMARY KEY,
      user_id    NVARCHAR(36)  NOT NULL,
@@ -44,7 +44,7 @@ const DDL_STATEMENTS = [
   `IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.sessions') AND name = N'IX_sessions_expires')
    CREATE INDEX IX_sessions_expires ON dbo.sessions(expires_at)`,
 
-  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'rag_documents')
+  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'rag_documents' AND schema_id = SCHEMA_ID(N'dbo'))
    CREATE TABLE dbo.rag_documents (
      id          NVARCHAR(36)  NOT NULL PRIMARY KEY,
      filename    NVARCHAR(500) NOT NULL UNIQUE,
@@ -53,7 +53,7 @@ const DDL_STATEMENTS = [
      chunk_count INT           NOT NULL DEFAULT 0
    )`,
 
-  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'rag_chunks')
+  `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'rag_chunks' AND schema_id = SCHEMA_ID(N'dbo'))
    CREATE TABLE dbo.rag_chunks (
      id          NVARCHAR(36)  NOT NULL PRIMARY KEY,
      document_id NVARCHAR(36)  NOT NULL REFERENCES dbo.rag_documents(id) ON DELETE CASCADE,
@@ -68,7 +68,11 @@ const DDL_STATEMENTS = [
 
 export async function initSchema(): Promise<void> {
   const pool = getPool()
-  for (const stmt of DDL_STATEMENTS) {
-    await pool.request().query(stmt)
+  for (const [i, stmt] of DDL_STATEMENTS.entries()) {
+    try {
+      await pool.request().query(stmt)
+    } catch (err) {
+      throw new Error(`initSchema: DDL statement ${i} failed: ${(err as Error).message}`)
+    }
   }
 }

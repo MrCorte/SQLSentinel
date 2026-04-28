@@ -5,6 +5,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- Persistence layer migrated from SQLite (better-sqlite3) to SQL Server 2025 (mssql)
+- RAG chunk embeddings stored as native `vector(1536)` — SQL Server 2025 required
+- First-boot wizard for SQL Server connection string configuration
+- Storage connection editable in Settings page
+
 ### Added — 2026-04-27 (Windows Service)
 
 - **Service**: standalone Node.js Windows Service for headless metrics collection (metricsWorker, collectors, SQLite) — survives daily reboots without user login

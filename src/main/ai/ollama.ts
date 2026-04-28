@@ -5,7 +5,9 @@ export interface ChatMessage {
   content: string
 }
 
-const client = new Ollama({ host: 'http://127.0.0.1:11434' })
+export const OLLAMA_HOST = 'http://127.0.0.1:11434'
+
+const client = new Ollama({ host: OLLAMA_HOST })
 
 export async function ollamaChat(
   messages: ChatMessage[],

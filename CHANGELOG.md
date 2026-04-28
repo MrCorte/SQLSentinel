@@ -3,13 +3,22 @@
 All relevant changes are documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [Unreleased]
+## [1.0.0] - 2026-04-28
 
 ### Changed
 - Persistence layer migrated from SQLite (better-sqlite3) to SQL Server 2025 (mssql)
 - RAG chunk embeddings stored as native `vector(1536)` — SQL Server 2025 required
-- First-boot wizard for SQL Server connection string configuration
+- First-boot wizard for SQL Server connection string configuration; TLS configurable per connection
 - Storage connection editable in Settings page
+
+### Fixed
+- `electron-builder.yml`: corrected `appId` from placeholder `com.electron.app` to `com.sqlsentinel.app`; `productName` set to `SQL Sentinel`
+- AI Assistant: Ollama host unified to `http://127.0.0.1:11434` across all modules; user-friendly error emitted if Ollama is not running instead of raw `ECONNREFUSED`
+- Docker test environment: `docker/init/prod.sql` used invalid MySQL-syntax `CREATE INDEX IF NOT EXISTS`; replaced with correct T-SQL `IF NOT EXISTS … CREATE INDEX`
+- Docker test environment: `docker/init/sentinel.sql` `sessions.token` column resized to `NVARCHAR(64)` (SHA-256 hex is exactly 64 chars); DiskANN vector index added on `rag_chunks.embedding`
+- `scripts/setup-mac-dev.sh`: pointed at `docker/docker-compose.yml` (full 5-container test environment), correct SA password and port (1437), waits for `sql-init` to finish schema setup
+- `metricsRepository.cleanup()`: guard added for `retentionDays ≤ 0` (was deleting all rows); `findHistory(0)` capped at `TOP 10000` to prevent unbounded scans
+- `batchSave`: replaced N individual INSERTs with a single multi-row INSERT — one SQL round-trip per polling cycle regardless of server count
 
 ### Added — 2026-04-27 (Windows Service)
 

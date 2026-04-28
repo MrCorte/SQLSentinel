@@ -8,6 +8,10 @@ import * as serverStore from '../store/serverStore'
 import * as metricsRepository from '../store/metricsRepository'
 import { getAlerts } from '../metricsWorker'
 import { searchFts } from '../store/ftsRepository'
+import { OLLAMA_HOST, checkOllamaHealth } from './ollama'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('ai')
 
 function extractText(content: unknown): string {
   if (typeof content === 'string') return content
@@ -396,7 +400,7 @@ function getLlm(): ChatOllama {
   if (!_llm) {
     _llm = new ChatOllama({
       model: 'llama3.2:3b',
-      baseUrl: 'http://localhost:11434',
+      baseUrl: OLLAMA_HOST,
       temperature: 0,
       numPredict: 512,
       numCtx: 4096,
@@ -429,12 +433,10 @@ let _warmedUp = false
 export async function warmupModel(): Promise<void> {
   if (_warmedUp) return
   try {
-    console.log('[AI] warming up llama3.2:3b via /api/chat...')
-    // Use /api/chat (same endpoint as LangChain ChatOllama) to ensure the model
-    // is fully loaded into memory before the first real request.
+    log.info('warming up llama3.2:3b...')
     await getLlm().invoke([new HumanMessage('hi')], { signal: AbortSignal.timeout(180_000) })
     _warmedUp = true
-    console.log('[AI] model warm-up complete')
+    log.info('model warm-up complete')
   } catch {
     // best-effort — ignore if Ollama isn't running yet
   }
@@ -523,6 +525,16 @@ export async function langGraphStream(
   history: AgentHistory[],
   onEvent: (event: AiStreamEvent) => void
 ): Promise<void> {
+  const ollamaReady = await checkOllamaHealth()
+  if (!ollamaReady) {
+    onEvent({
+      type: 'error',
+      message:
+        'Ollama is not running. Start it with `ollama serve` and make sure the llama3.2:3b model is available (`ollama pull llama3.2:3b`).'
+    })
+    return
+  }
+
   const controller = new AbortController()
   _activeAbortController = controller
 

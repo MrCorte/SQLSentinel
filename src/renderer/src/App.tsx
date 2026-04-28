@@ -87,7 +87,6 @@ function AppInner(): React.JSX.Element {
   // Load persisted servers on mount — runs in both real and mock mode so that
   // servers added manually while VITE_USE_MOCK=true are preserved across restarts
   useEffect(() => {
-    log.info('init — chiamata loadServers')
     const { loadServers } = useServersStore.getState()
 
     if (!window.sqlSentinel?.servers?.getAll) {
@@ -99,7 +98,6 @@ function AppInner(): React.JSX.Element {
     loadServers()
       .then(() => {
         const { servers: srvs } = useServersStore.getState()
-        log.info('loadServers completato, servers:', srvs.length)
         migrateAliasKeys(srvs)
         migrateServerGroupKeys(srvs)
         if (srvs.length > 0) {

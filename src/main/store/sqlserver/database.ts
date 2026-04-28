@@ -34,7 +34,7 @@ const DDL_STATEMENTS = [
 
   `IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'sessions' AND schema_id = SCHEMA_ID(N'dbo'))
    CREATE TABLE dbo.sessions (
-     token      NVARCHAR(500) NOT NULL PRIMARY KEY,
+     token      NVARCHAR(64) NOT NULL PRIMARY KEY,
      user_id    NVARCHAR(36)  NOT NULL,
      username   NVARCHAR(200) NOT NULL,
      role       NVARCHAR(50)  NOT NULL,
@@ -63,16 +63,20 @@ const DDL_STATEMENTS = [
    )`,
 
   `IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.rag_chunks') AND name = N'IX_rag_chunks_doc')
-   CREATE INDEX IX_rag_chunks_doc ON dbo.rag_chunks(document_id)`
+   CREATE INDEX IX_rag_chunks_doc ON dbo.rag_chunks(document_id)`,
+
+  `IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.rag_chunks') AND name = N'IX_rag_chunks_vec')
+ CREATE VECTOR INDEX IX_rag_chunks_vec ON dbo.rag_chunks (embedding)
+ USING DISKANN
+ WITH (VECTOR_DISTANCE_FUNCTION = 'cosine')`
 ]
 
 export async function initSchema(): Promise<void> {
   const pool = getPool()
-  for (const [i, stmt] of DDL_STATEMENTS.entries()) {
-    try {
-      await pool.request().query(stmt)
-    } catch (err) {
-      throw new Error(`initSchema: DDL statement ${i} failed: ${(err as Error).message}`)
-    }
+  const batch = DDL_STATEMENTS.join('\n')
+  try {
+    await pool.request().query(batch)
+  } catch (err) {
+    throw new Error(`initSchema failed: ${(err as Error).message}`)
   }
 }

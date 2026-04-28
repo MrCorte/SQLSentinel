@@ -36,19 +36,9 @@ import { useThemeContext } from '../context/ThemeContext'
 import type { ThemeMode } from '../context/ThemeContext'
 import { createLogger } from '../utils/logger'
 import { StorageSetupPage } from './StorageSetupPage'
+import type { StorageConfigInfo } from '../../../preload/index'
 
 const log = createLogger('settings')
-
-// ---------------------------------------------------------------------------
-// Local types
-// ---------------------------------------------------------------------------
-
-interface StorageConfigInfo {
-  host: string
-  port: number
-  database: string
-  username: string
-}
 
 // ---------------------------------------------------------------------------
 // Opzioni retention
@@ -223,7 +213,7 @@ export function Settings(): React.JSX.Element {
   useEffect(() => {
     window.sqlSentinel.storage.getConfig().then((r) => {
       if (r.ok) setStorageConfig(r.data)
-    })
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -895,7 +885,7 @@ export function Settings(): React.JSX.Element {
             setStorageDialogOpen(false)
             window.sqlSentinel.storage.getConfig().then((r) => {
               if (r.ok) setStorageConfig(r.data)
-            })
+            }).catch(() => {})
           }}
         />
       </Dialog>

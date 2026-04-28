@@ -106,6 +106,7 @@ export type {
 } from '../main/ipc/types'
 export type { EmailSettings, SaveEmailSettingsRequest } from '../main/ipc/types'
 export type { AuthSession, LoginResult, ChangePasswordResult } from '../main/ipc/types'
+export type { StorageConnectionParams, StorageConfigInfo } from '../main/ipc/types'
 export type { ServerMetrics } from '../main/collectors/types'
 export type { ServerInfo } from '../main/collectors/types'
 export type {

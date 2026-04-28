@@ -1,8 +1,13 @@
-import { app } from 'electron'
+let _app: { isPackaged?: boolean } | undefined
+try {
+  _app = require('electron').app
+} catch {
+  _app = undefined
+}
 
 type Level = 'debug' | 'info' | 'warn' | 'error'
 
-const isDev = !app.isPackaged
+const isDev = !_app?.isPackaged
 
 function stamp(): string {
   return new Date().toISOString()

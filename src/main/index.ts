@@ -10,6 +10,9 @@ import { initDefaultAdmin } from './authService'
 import { BackgroundService } from './backgroundService'
 import type { WorkerApi } from './backgroundService'
 import { syncServers, stopWorker, setIntervalOverrides, onAlert, setPushHandler } from './metricsWorker'
+import { app as electronApp } from 'electron'
+import { join as pathJoin } from 'node:path'
+import { initDb } from './store/database'
 import { getStorageConfig } from './store/storageConfig'
 import { initStoragePool, closeStoragePool, getPool } from './store/sqlserver/connection'
 import { initSchema } from './store/sqlserver/database'
@@ -156,6 +159,13 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
+  // Initialize SQLite (server registry)
+  const sqliteDir = electronApp.getPath('userData')
+  const sqliteDbPath = pathJoin(sqliteDir, 'data.db')
+  initDb(sqliteDbPath)
+  serverStore.migrateHostField()
+  serverStore.migrateEncryptCredentials()
+
   // Initialize SQL Server storage pool
   const storageCfg = getStorageConfig()
   if (storageCfg) {
@@ -221,6 +231,18 @@ app.whenReady().then(async () => {
   ipcMain.on('ping', () => log.info('pong'))
 
   registerIpcHandlers()
+
+  // On non-Windows (dev/macOS), spawn service as child process using Electron's Node
+  if (process.platform !== 'win32') {
+    const { fork } = await import('node:child_process')
+    const servicePath = join(__dirname, '../../out/service/index.js')
+    const svc = fork(servicePath, [], { silent: true, execPath: process.execPath, execArgv: [] })
+    svc.stdout?.on('data', (d: Buffer) => process.stdout.write(d))
+    svc.stderr?.on('data', (d: Buffer) => process.stderr.write(d))
+    svc.on('exit', (code) => log.warn(`[main] service exited with code ${code}`))
+    // Wait for service to start before connecting WebSocket
+    await new Promise<void>((resolve) => setTimeout(resolve, 2000))
+  }
 
   // Connect to Windows Service and migrate servers on first connect
   connect()

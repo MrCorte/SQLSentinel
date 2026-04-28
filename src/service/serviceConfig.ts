@@ -7,10 +7,17 @@ export interface ServiceConfig {
   secret: string
 }
 
-export const CONFIG_DIR = join(
-  process.env['ProgramData'] ?? 'C:\\ProgramData',
-  'sqlsentinel'
-)
+function getConfigDir(): string {
+  if (process.platform === 'win32') {
+    return join(process.env['ProgramData'] ?? 'C:\\ProgramData', 'sqlsentinel')
+  }
+  if (process.platform === 'darwin') {
+    return join(process.env['HOME'] ?? '.', 'Library', 'Application Support', 'sqlsentinel')
+  }
+  return join(process.env['HOME'] ?? '.', '.config', 'sqlsentinel')
+}
+
+export const CONFIG_DIR = getConfigDir()
 export const CONFIG_PATH = join(CONFIG_DIR, 'service.json')
 
 export function loadOrCreateConfig(): ServiceConfig {

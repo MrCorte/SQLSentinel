@@ -84,7 +84,6 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
       encrypt: form.encrypt,
       trustServerCertificate: form.trustServerCertificate
     })
-    if (!alive.current) return
     setTesting(false)
     if (result.ok) {
       setTested(true)
@@ -111,7 +110,6 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
       encrypt: form.encrypt,
       trustServerCertificate: form.trustServerCertificate
     })
-    if (!alive.current) return
     setSaving(false)
     if (result.ok) {
       onConfigured()

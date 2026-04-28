@@ -73,10 +73,11 @@ const DDL_STATEMENTS = [
 
 export async function initSchema(): Promise<void> {
   const pool = getPool()
-  const batch = DDL_STATEMENTS.join('\n')
-  try {
-    await pool.request().query(batch)
-  } catch (err) {
-    throw new Error(`initSchema failed: ${(err as Error).message}`)
+  for (const stmt of DDL_STATEMENTS) {
+    try {
+      await pool.request().query(stmt)
+    } catch (err) {
+      throw new Error(`initSchema failed: ${(err as Error).message}`)
+    }
   }
 }

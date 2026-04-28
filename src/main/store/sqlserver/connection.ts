@@ -73,14 +73,23 @@ export async function testConnection(params: {
   trustServerCertificate?: boolean
 }): Promise<void> {
   const cfg = buildConfig(params)
-  const pool = await mssql.connect({
+  const TIMEOUT_MS = 10000
+
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Connection timed out after 10s')), TIMEOUT_MS)
+  )
+
+  const connect = mssql.connect({
     ...cfg,
-    requestTimeout: 10000,
-    options: { ...cfg.options, connectTimeout: 10000 }
+    connectionTimeout: TIMEOUT_MS,
+    requestTimeout: TIMEOUT_MS,
+    options: { ...cfg.options, connectTimeout: TIMEOUT_MS }
   })
+
+  const pool = await Promise.race([connect, timeout])
   try {
     await pool.close()
   } catch {
-    // best-effort close — pool will be GC'd eventually
+    // best-effort close
   }
 }

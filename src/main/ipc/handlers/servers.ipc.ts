@@ -13,6 +13,7 @@ import {
   detectServer,
   collectMetricsWithCustomFields
 } from '../../services/ServerService'
+import * as serverStore from '../../store/serverStore'
 import { serviceApi } from '../../serviceClient'
 import {
   IpcChannel,
@@ -99,18 +100,23 @@ export function registerServerHandlers(): void {
     }
   )
 
-  // SERVERS_GET_ALL — proxied to service HTTP
+  const isWin = process.platform === 'win32'
+
+  // SERVERS_GET_ALL — Windows: proxied to service HTTP; macOS/Linux: direct SQLite
   handle(IpcChannel.SERVERS_GET_ALL, async (): Promise<IpcResult<StoredServer[]>> => {
     try {
-      const res = await serviceApi.getServers()
-      return res as IpcResult<StoredServer[]>
+      if (isWin) {
+        const res = await serviceApi.getServers()
+        return res as IpcResult<StoredServer[]>
+      }
+      return { ok: true, data: serverStore.getAll() }
     } catch (err) {
       log.error('[IPC] SERVERS_GET_ALL:', safeError(err))
       return { ok: false, error: safeError(err) }
     }
   })
 
-  // SERVERS_ADD — proxied to service HTTP
+  // SERVERS_ADD — Windows: proxied to service HTTP; macOS/Linux: direct SQLite
   handle(
     IpcChannel.SERVERS_ADD,
     async (
@@ -118,8 +124,12 @@ export function registerServerHandlers(): void {
       params: Omit<StoredServer, 'id' | 'addedAt'>
     ): Promise<IpcResult<ServerAddResult>> => {
       try {
-        const res = await serviceApi.addServer(params)
-        return res as IpcResult<ServerAddResult>
+        if (isWin) {
+          const res = await serviceApi.addServer(params)
+          return res as IpcResult<ServerAddResult>
+        }
+        const result = serverStore.add(params)
+        return { ok: true, data: result }
       } catch (err) {
         log.error('[IPC] SERVERS_ADD:', safeError(err))
         return { ok: false, error: safeError(err) }
@@ -127,7 +137,7 @@ export function registerServerHandlers(): void {
     }
   )
 
-  // SERVERS_UPDATE — proxied to service HTTP
+  // SERVERS_UPDATE — Windows: proxied to service HTTP; macOS/Linux: direct SQLite
   handle(
     IpcChannel.SERVERS_UPDATE,
     async (
@@ -136,7 +146,11 @@ export function registerServerHandlers(): void {
       patch: Partial<StoredServer>
     ): Promise<IpcResult<{ success: boolean }>> => {
       try {
-        await serviceApi.updateServer(id, patch)
+        if (isWin) {
+          await serviceApi.updateServer(id, patch)
+          return { ok: true, data: { success: true } }
+        }
+        serverStore.update(id, patch)
         return { ok: true, data: { success: true } }
       } catch (err) {
         log.error('[IPC] SERVERS_UPDATE:', safeError(err))
@@ -145,12 +159,16 @@ export function registerServerHandlers(): void {
     }
   )
 
-  // SERVERS_REMOVE_BY_ID — proxied to service HTTP
+  // SERVERS_REMOVE_BY_ID — Windows: proxied to service HTTP; macOS/Linux: direct SQLite
   handle(
     IpcChannel.SERVERS_REMOVE_BY_ID,
     async (_event: IpcMainInvokeEvent, id: string): Promise<IpcResult<{ success: boolean }>> => {
       try {
-        await serviceApi.removeServer(id)
+        if (isWin) {
+          await serviceApi.removeServer(id)
+          return { ok: true, data: { success: true } }
+        }
+        serverStore.remove(id)
         return { ok: true, data: { success: true } }
       } catch (err) {
         log.error('[IPC] SERVERS_REMOVE_BY_ID:', safeError(err))

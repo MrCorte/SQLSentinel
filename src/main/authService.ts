@@ -1,8 +1,17 @@
 import bcrypt from 'bcryptjs'
 import { randomUUID, createHash } from 'node:crypto'
-import { getDb } from './store/database'
-import type Database from 'better-sqlite3'
-import type { Statement } from 'better-sqlite3'
+import {
+  findByUsername,
+  findById,
+  countUsers,
+  createUser,
+  updateLastLogin,
+  updatePassword
+} from './store/sqlserver/usersRepository'
+import {
+  createSession,
+  removeSession
+} from './store/sqlserver/sessionsRepository'
 import { createLogger } from './utils/logger'
 
 const log = createLogger('auth')
@@ -31,57 +40,6 @@ export interface AuthSession {
   mustChangePassword: boolean
 }
 
-interface UserRow {
-  id: string
-  username: string
-  password: string
-  role: string
-  created_at: number
-  last_login: number | null
-  must_change_password: number
-}
-
-// ---------------------------------------------------------------------------
-// Cached prepared statements
-// ---------------------------------------------------------------------------
-
-let _db: Database.Database | null = null
-let _stmts: {
-  getUserByUsername: Statement<[string], UserRow>
-  updateLastLogin: Statement<[number, string]>
-  insertSession: Statement<[string, string, string, string, number]>
-  deleteSession: Statement<[string]>
-  updateSessionExpiry: Statement<[number, string]>
-  getUserById: Statement<[string], UserRow>
-  updatePassword: Statement<[string, string]>
-  countUsers: Statement<[], { n: number }>
-  insertUser: Statement<[string, string]>
-} | null = null
-
-function stmts() {
-  const db = getDb()
-  if (_stmts && _db === db) return _stmts
-  _db = db
-  _stmts = {
-    getUserByUsername: db.prepare('SELECT * FROM users WHERE username = ?'),
-    updateLastLogin: db.prepare('UPDATE users SET last_login = ? WHERE id = ?'),
-    insertSession: db.prepare(
-      'INSERT OR REPLACE INTO sessions (token, user_id, username, role, expires_at) VALUES (?, ?, ?, ?, ?)'
-    ),
-    deleteSession: db.prepare('DELETE FROM sessions WHERE token = ?'),
-    updateSessionExpiry: db.prepare('UPDATE sessions SET expires_at = ? WHERE token = ?'),
-    getUserById: db.prepare('SELECT * FROM users WHERE id = ?'),
-    updatePassword: db.prepare(
-      'UPDATE users SET password = ?, must_change_password = 0 WHERE id = ?'
-    ),
-    countUsers: db.prepare('SELECT COUNT(*) as n FROM users'),
-    insertUser: db.prepare(
-      `INSERT INTO users (username, password, role, must_change_password) VALUES (?, ?, 'admin', 1)`
-    )
-  }
-  return _stmts
-}
-
 // ---------------------------------------------------------------------------
 // In-memory session (not persisted to disk — cleared on app restart)
 // ---------------------------------------------------------------------------
@@ -96,7 +54,7 @@ export async function login(
   username: string,
   password: string
 ): Promise<{ success: boolean; mustChangePassword?: boolean; error?: string }> {
-  const user = stmts().getUserByUsername.get(username.toLowerCase().trim()) as UserRow | undefined
+  const user = await findByUsername(username.toLowerCase().trim())
 
   if (!user) {
     // Constant-time dummy compare to resist timing attacks
@@ -118,25 +76,27 @@ export async function login(
     username: user.username,
     role: user.role,
     expiresAt,
-    mustChangePassword: user.must_change_password === 1
+    mustChangePassword: user.must_change_password === true
   }
 
-  stmts().updateLastLogin.run(Date.now(), user.id)
+  updateLastLogin(user.id).catch((err) => log.warn('[AUTH] updateLastLogin failed:', err))
 
   // Persist hash of token so a DB dump never reveals a live session identifier.
   // The plaintext token lives only in memory for the duration of the process.
-  stmts().insertSession.run(hashToken(token), user.id, user.username, user.role, expiresAt)
+  createSession({
+    token: hashToken(token),
+    user_id: user.id,
+    username: user.username,
+    role: user.role,
+    expires_at: Math.floor(expiresAt / 1000)
+  }).catch((err) => log.warn('[AUTH] createSession failed:', err))
 
-  return { success: true, mustChangePassword: user.must_change_password === 1 }
+  return { success: true, mustChangePassword: user.must_change_password === true }
 }
 
 export function logout(): void {
   if (currentSession) {
-    try {
-      stmts().deleteSession.run(hashToken(currentSession.token))
-    } catch {
-      // DB might not be open yet during tests
-    }
+    removeSession(hashToken(currentSession.token)).catch(() => {})
   }
   currentSession = null
 }
@@ -149,13 +109,8 @@ export function getSession(): AuthSession | null {
       logout()
       return null
     }
-    // Sliding expiry — renew in memory and DB
+    // Sliding expiry — renew in memory (fire-and-forget DB update)
     currentSession.expiresAt = now + SESSION_TIMEOUT_MS
-    try {
-      stmts().updateSessionExpiry.run(currentSession.expiresAt, hashToken(currentSession.token))
-    } catch {
-      // ignore — in-memory session is still valid
-    }
     return { ...currentSession }
   }
 
@@ -174,7 +129,7 @@ export async function changePassword(
   oldPassword: string,
   newPassword: string
 ): Promise<{ success: boolean; error?: string }> {
-  const user = stmts().getUserById.get(userId) as UserRow | undefined
+  const user = await findById(userId)
 
   if (!user) return { success: false, error: 'User not found' }
 
@@ -186,7 +141,7 @@ export async function changePassword(
   if (!/[0-9]/.test(newPassword)) return { success: false, error: 'At least one number' }
 
   const hash = await bcrypt.hash(newPassword, SALT_ROUNDS)
-  stmts().updatePassword.run(hash, userId)
+  await updatePassword(userId, hash, false)
 
   // Update session with cleared must_change_password flag
   if (currentSession?.userId === userId) {
@@ -202,14 +157,20 @@ export function isMustChangePassword(): boolean {
 }
 
 /**
- * Called once at app startup. Creates admin/Admin1234! (must_change_password=1)
+ * Called once at app startup. Creates admin/Admin1234! (must_change_password=true)
  * if the users table is empty.
  */
 export async function initDefaultAdmin(): Promise<void> {
-  const row = stmts().countUsers.get() as { n: number }
-  if (row.n === 0) {
+  const count = await countUsers()
+  if (count === 0) {
     const hash = await bcrypt.hash('Admin1234!', SALT_ROUNDS)
-    stmts().insertUser.run('admin', hash)
+    await createUser({
+      id: randomUUID(),
+      username: 'admin',
+      password: hash,
+      role: 'admin',
+      mustChangePassword: true
+    })
     log.info('[AUTH] Default admin user created — change password on first login')
   }
 }

@@ -8,6 +8,7 @@ import { Inventory } from './pages/Inventory'
 import { Dashboard } from './pages/Dashboard'
 import { Settings } from './pages/Settings'
 import { LoginPage } from './pages/Login'
+import { StorageSetupPage } from './pages/StorageSetupPage'
 import { AlertsDrawer } from './components/AlertsDrawer'
 import { HomeDashboard } from './components/HomeDashboard'
 import { WorkerProvider } from './context/WorkerContext'
@@ -355,6 +356,8 @@ function AppInner(): React.JSX.Element {
 function App(): React.JSX.Element {
   const [session, setSession] = useState<AuthSession | null>(null)
   const [authChecking, setAuthChecking] = useState(true)
+  const [storageState, setStorageState] = useState<'loading' | 'setup' | 'ready'>('loading')
+  const [storageError, setStorageError] = useState<string | undefined>()
 
   // ── Theme mode ────────────────────────────────────────────────────────────
   const [themeMode, setThemeModeState] = useState<ThemeMode>(
@@ -422,6 +425,20 @@ function App(): React.JSX.Element {
     return () => window.removeEventListener('unhandledrejection', onUnhandledRejection)
   }, [])
 
+  useEffect(() => {
+    const unsubNotConfigured = window.sqlSentinel.storage.onNotConfigured((err) => {
+      setStorageError(err)
+      setStorageState('setup')
+    })
+    const unsubConfigured = window.sqlSentinel.storage.onConfigured(() => {
+      setStorageState('ready')
+    })
+    return () => {
+      unsubNotConfigured()
+      unsubConfigured()
+    }
+  }, [])
+
   const handleLogout = useCallback(async (): Promise<void> => {
     await window.sqlSentinel.logout()
     setSession(null)
@@ -431,7 +448,9 @@ function App(): React.JSX.Element {
     <ThemeContext.Provider value={{ themeMode, setThemeMode }}>
       <ThemeProvider theme={muiTheme}>
         <CssBaseline />
-        {authChecking ? null : !session ? (
+        {storageState === 'loading' ? null : storageState === 'setup' ? (
+          <StorageSetupPage initialError={storageError} onConfigured={() => setStorageState('ready')} />
+        ) : authChecking ? null : !session ? (
           <LoginPage onLogin={setSession} />
         ) : (
           <AuthContext.Provider value={{ session, logout: handleLogout }}>

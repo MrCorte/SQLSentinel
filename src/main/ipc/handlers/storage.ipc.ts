@@ -5,6 +5,7 @@ import type { StorageConnectionParams, StorageConfigInfo, IpcResult } from '../t
 import { getStorageConfig, saveStorageConfig } from '../../store/storageConfig'
 import { testConnection, initStoragePool } from '../../store/sqlserver/connection'
 import { initSchema } from '../../store/sqlserver/database'
+import { initDefaultAdmin } from '../../authService'
 
 export function registerStorageHandlers(): void {
   handle(
@@ -40,6 +41,7 @@ export function registerStorageHandlers(): void {
         saveStorageConfig(params)
         await initStoragePool(getStorageConfig()!)
         await initSchema()
+        await initDefaultAdmin()
         return { ok: true, data: null }
       } catch (err) {
         log.error('[IPC] STORAGE_SAVE_CONFIG:', safeError(err))

@@ -101,20 +101,25 @@ export async function findLastN(serverId: string, n: number): Promise<ServerMetr
     .map((row) => JSON.parse(row.metrics_json, dateReviver) as ServerMetrics)
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function findLastNBulk(
   serverIds: string[],
   n: number
 ): Promise<Record<string, ServerMetrics[]>> {
   if (serverIds.length === 0) return {}
+  const safe = serverIds.filter((id) => UUID_RE.test(id))
+  if (safe.length === 0) return {}
   const pool = getPool()
   const r = await pool
     .request()
-    .input('serverIds', sql.NVarChar(sql.MAX), serverIds.join(','))
+    .input('serverIds', sql.NVarChar(sql.MAX), safe.join(','))
     .input('n', sql.Int, n)
     .query<SnapshotRow>(`
       SELECT id, server_id, collected_at, metrics_json
       FROM (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY server_id ORDER BY collected_at DESC) AS rn
+        SELECT id, server_id, collected_at, metrics_json,
+               ROW_NUMBER() OVER (PARTITION BY server_id ORDER BY collected_at DESC) AS rn
         FROM dbo.metrics_snapshots
         WHERE server_id IN (SELECT value FROM STRING_SPLIT(@serverIds, ','))
       ) ranked

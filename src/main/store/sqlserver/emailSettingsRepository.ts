@@ -49,12 +49,20 @@ export async function getEmailSettings(): Promise<EmailSettings> {
     }
   }
   const storedPwd = map['smtp_password'] ?? ''
+  let smtpPassword = ''
+  if (storedPwd) {
+    try {
+      smtpPassword = decrypt(storedPwd)
+    } catch {
+      log.error('[emailSettings] failed to decrypt smtp_password — clearing cached value')
+    }
+  }
   return {
     emailEnabled: map['email_enabled'] != null ? map['email_enabled'] === 'true' : false,
     smtpHost: map['smtp_host'] ?? '',
     smtpPort: map['smtp_port'] != null ? parseInt(map['smtp_port'], 10) : 587,
     smtpUser: map['smtp_user'] ?? '',
-    smtpPassword: storedPwd ? decrypt(storedPwd) : '',
+    smtpPassword,
     smtpTls: map['smtp_tls'] != null ? map['smtp_tls'] === 'true' : true,
     emailRecipients: recipients
   }
@@ -62,7 +70,8 @@ export async function getEmailSettings(): Promise<EmailSettings> {
 
 export async function saveEmailSettings(settings: Partial<EmailSettings>): Promise<void> {
   const pool = getPool()
-  if (settings.emailEnabled != null) await upsertKey(pool, 'email_enabled', String(settings.emailEnabled))
+  if (settings.emailEnabled != null)
+    await upsertKey(pool, 'email_enabled', String(settings.emailEnabled))
   if (settings.smtpHost != null) await upsertKey(pool, 'smtp_host', settings.smtpHost)
   if (settings.smtpPort != null) await upsertKey(pool, 'smtp_port', String(settings.smtpPort))
   if (settings.smtpUser != null) await upsertKey(pool, 'smtp_user', settings.smtpUser)

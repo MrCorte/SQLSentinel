@@ -104,7 +104,8 @@ export function Dashboard(): React.JSX.Element {
 
   useEffect(() => {
     setConnection(connection)
-  }, [connection])
+    // Only re-notify worker when actual connection params change, not on metadata patches
+  }, [connection?.ip, connection?.port, connection?.instanceName, connection?.useWindowsAuth, connection?.username, connection?.password]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!serverMetricsKey) return

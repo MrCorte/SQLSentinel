@@ -109,7 +109,7 @@ export function registerServerHandlers(): void {
         const res = await serviceApi.getServers()
         return res as IpcResult<StoredServer[]>
       }
-      return { ok: true, data: serverStore.getAll() }
+      return { ok: true, data: serverStore.getAll().map(serverStore.stripCredentials) }
     } catch (err) {
       log.error('[IPC] SERVERS_GET_ALL:', safeError(err))
       return { ok: false, error: safeError(err) }
@@ -129,6 +129,7 @@ export function registerServerHandlers(): void {
           return res as IpcResult<ServerAddResult>
         }
         const result = serverStore.add(params)
+        if (result.server) result.server = serverStore.stripCredentials(result.server)
         return { ok: true, data: result }
       } catch (err) {
         log.error('[IPC] SERVERS_ADD:', safeError(err))

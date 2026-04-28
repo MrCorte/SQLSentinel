@@ -112,7 +112,9 @@ export function getById(id: string): StoredServer | undefined {
 
 export function getByIpPort(host: string, port: number): StoredServer | undefined {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return getAll().find((s) => ((s as any).host ?? (s as any).ip) === host && s.port === port)
+  const raw = store.get('servers', []) as any[]
+  const match = raw.find((s) => (s.host ?? s.ip) === host && s.port === port)
+  return match ? withDecryptedPassword(match) : undefined
 }
 
 export function add(

@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { CollectMetricsRequest, ServerMetrics } from '../../../preload/index'
+import { useMetricsStore } from '../store/metricsStore'
 
 export interface MetricsHistoryPoint {
   timestamp: number // ms epoch
@@ -49,6 +50,7 @@ export function useMetrics(connection: CollectMetricsRequest | null, options?: U
       if (result.ok) {
         setMetrics(result.data)
         const serverId = `${conn.ip}:${conn.port}`
+        useMetricsStore.getState().setMetrics(serverId, result.data)
         onReceivedRef.current?.(serverId, result.data)
       } else {
         setError(result.error)

@@ -291,7 +291,6 @@ function AppInner(): React.JSX.Element {
                   setTab(3)
                 }}
                 onRemoveServer={(server) => {
-                  window.sqlSentinel.servers.remove(server.id).catch(() => {})
                   useServersStore.getState().removeServer(server.id)
                   if (selectedServerId === server.id) setSelectedServerId(null)
                 }}

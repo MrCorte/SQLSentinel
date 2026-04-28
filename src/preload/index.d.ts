@@ -314,6 +314,8 @@ export interface StorageConnectionParams {
   database: string
   username: string
   password: string
+  encrypt?: boolean
+  trustServerCertificate?: boolean
 }
 
 export interface StorageConfigInfo {
@@ -321,6 +323,8 @@ export interface StorageConfigInfo {
   port: number
   database: string
   username: string
+  encrypt: boolean
+  trustServerCertificate: boolean
 }
 
 export interface DbCustomFields {

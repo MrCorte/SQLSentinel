@@ -7,6 +7,8 @@ export interface StorageConfig {
   database: string
   username: string
   encryptedPassword: string
+  encrypt: boolean
+  trustServerCertificate: boolean
 }
 
 interface StorageConfigStore {
@@ -23,10 +25,19 @@ export function getStorageConfig(): StorageConfig | null {
 }
 
 export function saveStorageConfig(
-  params: Omit<StorageConfig, 'encryptedPassword'> & { password: string }
+  params: Omit<StorageConfig, 'encryptedPassword' | 'encrypt' | 'trustServerCertificate'> & {
+    password: string
+    encrypt?: boolean
+    trustServerCertificate?: boolean
+  }
 ): void {
   const { password, ...rest } = params
-  store.set('config', { ...rest, encryptedPassword: encrypt(password) })
+  store.set('config', {
+    ...rest,
+    encrypt: rest.encrypt ?? false,
+    trustServerCertificate: rest.trustServerCertificate ?? true,
+    encryptedPassword: encrypt(password)
+  })
 }
 
 export function clearStorageConfig(): void {

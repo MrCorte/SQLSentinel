@@ -10,6 +10,8 @@ function buildConfig(params: {
   database: string
   username: string
   password: string
+  encrypt?: boolean
+  trustServerCertificate?: boolean
 }): mssql.config {
   return {
     server: params.host,
@@ -17,8 +19,8 @@ function buildConfig(params: {
     database: params.database,
     requestTimeout: 30000,
     options: {
-      encrypt: false,
-      trustServerCertificate: true,
+      encrypt: params.encrypt ?? false,
+      trustServerCertificate: params.trustServerCertificate ?? true,
       connectTimeout: 15000
     },
     authentication: {
@@ -38,7 +40,9 @@ export async function initStoragePool(config: StorageConfig): Promise<void> {
       port: config.port,
       database: config.database,
       username: config.username,
-      password: getDecryptedPassword(config)
+      password: getDecryptedPassword(config),
+      encrypt: config.encrypt,
+      trustServerCertificate: config.trustServerCertificate
     })
   )
 }
@@ -65,6 +69,8 @@ export async function testConnection(params: {
   database: string
   username: string
   password: string
+  encrypt?: boolean
+  trustServerCertificate?: boolean
 }): Promise<void> {
   const cfg = buildConfig(params)
   const pool = await mssql.connect({

@@ -854,8 +854,8 @@ export function Settings(): React.JSX.Element {
           {storageConfig ? (
             <Stack direction="row" alignItems="center" spacing={2}>
               <Typography variant="body2" color="text.secondary">
-                {storageConfig.host}:{storageConfig.port} / {storageConfig.database} (
-                {storageConfig.username})
+                {storageConfig.host}:{storageConfig.port} / {storageConfig.database} ({storageConfig.username}){' '}
+                {storageConfig.encrypt ? '· TLS' : '· no TLS'}
               </Typography>
               <Button size="small" onClick={() => setStorageDialogOpen(true)}>
                 Edit

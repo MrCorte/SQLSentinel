@@ -13,9 +13,19 @@ export function registerStorageHandlers(): void {
     async (): Promise<IpcResult<StorageConfigInfo | null>> => {
       const cfg = getStorageConfig()
       if (!cfg) return { ok: true, data: null }
+      // backward compat: older config may not have encrypt/trustServerCertificate
+      const encrypt = cfg.encrypt ?? false
+      const trustServerCertificate = cfg.trustServerCertificate ?? true
       return {
         ok: true,
-        data: { host: cfg.host, port: cfg.port, database: cfg.database, username: cfg.username }
+        data: {
+          host: cfg.host,
+          port: cfg.port,
+          database: cfg.database,
+          username: cfg.username,
+          encrypt,
+          trustServerCertificate
+        }
       }
     }
   )

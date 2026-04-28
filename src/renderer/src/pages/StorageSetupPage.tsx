@@ -1,6 +1,16 @@
 // src/renderer/src/pages/StorageSetupPage.tsx
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Box, Button, CircularProgress, TextField, Typography, Alert, Stack } from '@mui/material'
+import {
+  Box,
+  Button,
+  Checkbox,
+  CircularProgress,
+  FormControlLabel,
+  TextField,
+  Typography,
+  Alert,
+  Stack
+} from '@mui/material'
 
 interface FormState {
   host: string
@@ -8,6 +18,8 @@ interface FormState {
   database: string
   username: string
   password: string
+  encrypt: boolean
+  trustServerCertificate: boolean
 }
 
 interface Props {
@@ -21,7 +33,9 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
     port: '1437', // non-default port — avoids collision with monitored SQL Server instances
     database: 'SQLSentinelDB',
     username: 'sqlsentinel_app',
-    password: ''
+    password: '',
+    encrypt: false,
+    trustServerCertificate: true
   })
   const [testing, setTesting] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -31,13 +45,23 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
   const alive = useRef(true)
   useEffect(() => () => { alive.current = false }, [])
 
-  function field(key: keyof FormState) {
+  function field(key: 'host' | 'port' | 'database' | 'username' | 'password') {
     return {
       value: form[key],
       onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
         setForm((f) => ({ ...f, [key]: e.target.value }))
         setTested(false)
         setError(null)
+      }
+    }
+  }
+
+  function checkField(key: 'encrypt' | 'trustServerCertificate') {
+    return {
+      checked: form[key],
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
+        setForm((f) => ({ ...f, [key]: e.target.checked }))
+        setTested(false)
       }
     }
   }
@@ -56,7 +80,9 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
       port,
       database: form.database,
       username: form.username,
-      password: form.password
+      password: form.password,
+      encrypt: form.encrypt,
+      trustServerCertificate: form.trustServerCertificate
     })
     if (!alive.current) return
     setTesting(false)
@@ -81,7 +107,9 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
       port,
       database: form.database,
       username: form.username,
-      password: form.password
+      password: form.password,
+      encrypt: form.encrypt,
+      trustServerCertificate: form.trustServerCertificate
     })
     if (!alive.current) return
     setSaving(false)
@@ -124,6 +152,15 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
           <TextField label="Database" fullWidth {...field('database')} />
           <TextField label="Username" fullWidth {...field('username')} />
           <TextField label="Password" type="password" fullWidth {...field('password')} />
+
+          <FormControlLabel
+            control={<Checkbox {...checkField('encrypt')} size="small" />}
+            label={<Typography variant="body2">Encrypt connection (TLS)</Typography>}
+          />
+          <FormControlLabel
+            control={<Checkbox {...checkField('trustServerCertificate')} size="small" />}
+            label={<Typography variant="body2">Trust self-signed certificate</Typography>}
+          />
 
           <Stack direction="row" spacing={1} justifyContent="flex-end">
             <Button variant="outlined" onClick={handleTest} disabled={testing || saving}>

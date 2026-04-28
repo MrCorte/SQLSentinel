@@ -1,6 +1,8 @@
 # SQLSentinel — Test Environment
-# 4x Azure SQL Edge instances (ARM64 native, ~500MB each)
-# Total RAM: ~2GB containers + 4GB SQL data buffers
+#
+# sql-prod/dev/staging/dr  — Azure SQL Edge (ARM64), monitored targets
+# sql-sentinel             — SQL Server 2025 (amd64), SQLSentinel persistence backend
+#                            vector(1536) support required for RAG chunks
 #
 # Usage:
 #   docker compose up -d          — start all containers
@@ -13,6 +15,7 @@
 #   Development  localhost:1434
 #   Staging      localhost:1435
 #   DR / Replica localhost:1436
+#   Storage DB   localhost:1437  (SQL Server 2025 — app persistence backend)
 
 services:
 
@@ -104,24 +107,53 @@ services:
       start_period: 40s
     restart: unless-stopped
 
+  # ── SQLSentinel persistence backend (SQL Server 2025) ─────────────────────
+  # Requires SQL Server 2025 for native vector(1536) type (RAG embeddings).
+  # Platform: linux/amd64 — SQL Server 2025 does not ship an ARM64 image.
+  sql-sentinel:
+    image: mcr.microsoft.com/mssql/server:2025-latest
+    platform: linux/amd64
+    container_name: sqlsentinel-sentinel
+    hostname: sql-sentinel
+    ports:
+      - "1437:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Sentinel@SQLSentinel1"
+      MSSQL_MEMORY_LIMIT_MB: "1536"
+    volumes:
+      - sql-sentinel-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Sentinel@SQLSentinel1' -Q 'SELECT 1' -b -C 2>/dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
+    restart: unless-stopped
+
   # ── Init (one-shot — runs once then exits) ─────────────────────────────────
+  # Uses SQL Server 2025 image so sqlcmd18 is available for the sentinel target.
+  # Azure SQL Edge targets are reachable from the same container via sqlcmd18 too.
   sql-init:
-    image: mcr.microsoft.com/azure-sql-edge:latest
-    platform: linux/arm64
+    image: mcr.microsoft.com/mssql/server:2025-latest
+    platform: linux/amd64
     container_name: sqlsentinel-init
     depends_on:
-      sql-prod:    { condition: service_healthy }
-      sql-dev:     { condition: service_healthy }
-      sql-staging: { condition: service_healthy }
-      sql-dr:      { condition: service_healthy }
+      sql-prod:     { condition: service_healthy }
+      sql-dev:      { condition: service_healthy }
+      sql-staging:  { condition: service_healthy }
+      sql-dr:       { condition: service_healthy }
+      sql-sentinel: { condition: service_healthy }
     volumes:
       - ./init:/init:ro
     command: >
       bash -c "
-        echo '→ Initializing sql-prod...'  && /opt/mssql-tools/bin/sqlcmd -S sql-prod,1433    -U sa -P 'Prod@SQLSentinel1'    -i /init/prod.sql    -b &&
-        echo '→ Initializing sql-dev...'   && /opt/mssql-tools/bin/sqlcmd -S sql-dev,1433     -U sa -P 'Dev@SQLSentinel1'     -i /init/dev.sql     -b &&
-        echo '→ Initializing sql-staging...'&& /opt/mssql-tools/bin/sqlcmd -S sql-staging,1433 -U sa -P 'Staging@SQLSentinel1' -i /init/staging.sql -b &&
-        echo '→ Initializing sql-dr...'    && /opt/mssql-tools/bin/sqlcmd -S sql-dr,1433      -U sa -P 'DR@SQLSentinel1'      -i /init/dr.sql      -b &&
+        SQLCMD=/opt/mssql-tools18/bin/sqlcmd
+        echo '→ Initializing sql-prod...'     && $$SQLCMD -S sql-prod,1433     -U sa -P 'Prod@SQLSentinel1'     -i /init/prod.sql     -b -C &&
+        echo '→ Initializing sql-dev...'      && $$SQLCMD -S sql-dev,1433      -U sa -P 'Dev@SQLSentinel1'      -i /init/dev.sql      -b -C &&
+        echo '→ Initializing sql-staging...'  && $$SQLCMD -S sql-staging,1433  -U sa -P 'Staging@SQLSentinel1'  -i /init/staging.sql  -b -C &&
+        echo '→ Initializing sql-dr...'       && $$SQLCMD -S sql-dr,1433       -U sa -P 'DR@SQLSentinel1'       -i /init/dr.sql       -b -C &&
+        echo '→ Initializing sql-sentinel...' && $$SQLCMD -S sql-sentinel,1433 -U sa -P 'Sentinel@SQLSentinel1' -i /init/sentinel.sql -b -C &&
         echo '✓ All databases initialized.'
       "
     restart: "no"
@@ -131,3 +163,4 @@ volumes:
   sql-dev-data:
   sql-staging-data:
   sql-dr-data:
+  sql-sentinel-data:

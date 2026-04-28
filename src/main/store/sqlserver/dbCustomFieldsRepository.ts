@@ -26,17 +26,21 @@ export async function setCustomFields(
   dbName: string,
   fields: DbCustomFields
 ): Promise<void> {
-  cachedFields = null
+  const key = `${serverId}/${dbName}`
   const pool = getPool()
   await pool
     .request()
-    .input('id', sql.NVarChar(400), `${serverId}/${dbName}`)
+    .input('id', sql.NVarChar(400), key)
     .input('alias', sql.NVarChar(200), fields.alias ?? null)
     .input('referente', sql.NVarChar(200), fields.referente ?? null)
     .query(`MERGE dbo.db_custom_fields AS t
             USING (SELECT @id AS id, @alias AS alias, @referente AS referente) AS s ON t.id = s.id
             WHEN MATCHED THEN UPDATE SET t.alias = s.alias, t.referente = s.referente
             WHEN NOT MATCHED THEN INSERT (id, alias, referente) VALUES (s.id, s.alias, s.referente);`)
+  // Update cache in-place instead of invalidating the whole cache
+  if (cachedFields !== null) {
+    cachedFields[key] = fields
+  }
 }
 
 export async function getAllCustomFields(): Promise<Record<string, DbCustomFields>> {

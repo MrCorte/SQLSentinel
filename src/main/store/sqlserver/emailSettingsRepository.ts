@@ -38,7 +38,11 @@ export async function getEmailSettings(): Promise<EmailSettings> {
   const pool = getPool()
   const result = await pool
     .request()
-    .query<{ key: string; value: string }>(`SELECT [key], value FROM dbo.settings`)
+    .query<{ key: string; value: string }>(
+      `SELECT [key], value FROM dbo.settings
+       WHERE [key] IN (N'email_enabled', N'smtp_host', N'smtp_port',
+                       N'smtp_user', N'smtp_password', N'smtp_tls', N'email_recipients')`
+    )
   const map = Object.fromEntries(result.recordset.map((r) => [r.key, r.value]))
   let recipients: string[] = []
   if (map['email_recipients']) {

@@ -16,6 +16,7 @@ import { initSchema } from './store/sqlserver/database'
 import { cleanup as purgeOldSnapshots } from './store/sqlserver/metricsRepository'
 import { getSettings } from './store/sqlserver/settingsRepository'
 import { migrateEncryptEmailPassword } from './store/sqlserver/emailSettingsRepository'
+import { removeExpiredSessions } from './store/sqlserver/sessionsRepository'
 import { isAvailable as safeStorageAvailable } from './store/safeStorageUtil'
 import { IpcChannel } from './ipc/types'
 import * as serverStore from './store/serverStore'
@@ -183,6 +184,11 @@ app.whenReady().then(async () => {
         await purgeOldSnapshots(await retentionDays())
       } catch (err) {
         log.warn('[main] purgeOldSnapshots:', err)
+      }
+      try {
+        await removeExpiredSessions()
+      } catch (err) {
+        log.warn('[main] removeExpiredSessions:', err)
       }
     })
   }

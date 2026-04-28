@@ -1,10 +1,17 @@
-# SQL Sentinel
+<p align="center">
+  <img src="img/sql-sentinel-glyph.svg" alt="SQL Sentinel" width="88" />
+</p>
 
-**SQL Sentinel** is a monitoring tool for **Microsoft SQL Server** environments,
-designed for DBAs and Data Engineers managing infrastructures with tens
-or hundreds of SQL Server instances.
+<h1 align="center">SQL Sentinel</h1>
 
-It provides a centralized dashboard for real-time visibility into the health
+<p align="center">
+  Real-time monitoring for Microsoft SQL Server environments.<br/>
+  Built for DBAs and Data Engineers managing tens or hundreds of instances.
+</p>
+
+---
+
+**SQL Sentinel** provides a centralized dashboard for real-time visibility into the health
 of servers, databases, sessions, backups, and Always On clusters — without
 having to open SSMS on every individual server.
 
@@ -21,8 +28,8 @@ having to open SSMS on every individual server.
 - **Always On AG** — cluster monitoring with PRIMARY/SECONDARY replica status,
   sync health, and real-time connectivity; clicking a replica navigates directly
   to that server's dashboard; AG header with dual-click zones (expand/collapse separate from navigation)
-- **Persistent metrics history** — the last 20 snapshots per server are saved to
-  SQLite and automatically restored on startup; charts and KPIs are available without waiting
+- **Persistent metrics history** — snapshots per server saved to SQL Server 2025 and
+  automatically restored on startup; charts and KPIs are available without waiting
   for the first polling cycle
 - **Stale-while-revalidate** — when switching servers the UI immediately shows cached data
   while a silent background fetch completes; non-blocking `LinearProgress`
@@ -38,7 +45,7 @@ having to open SSMS on every individual server.
 - **Multi-instance** — multiple SQL Server instances on the same physical machine grouped
   under a collapsible "🖥 MACHINE (N instances)" header in the Sidebar and Inventory
 - **Custom DB fields** — owner field and other per-database custom metadata,
-  persisted in SQLite; visible in Inventory, Dashboard, and CSV export
+  persisted in SQL Server; visible in Inventory, Dashboard, and CSV export
 - **Server notes** — free-text field (max 1000 characters) with 1s autosave per server;
   visible in the Overview tab and as a column in Inventory
 
@@ -64,8 +71,12 @@ having to open SSMS on every individual server.
 
 - **Integrated AI chat** — LangGraph agent with access to the live context of all servers
   (metrics, alarms, databases); answers questions about infrastructure status
-- **RAG Knowledge Base** — indexing of technical documentation (PDF/Markdown)
-  in SQLite with full-text search; the agent incorporates indexed knowledge in its responses
+- **RAG Knowledge Base** — indexing of technical documentation (PDF/Markdown) stored in
+  SQL Server 2025 with native `vector(1536)` embeddings and DiskANN approximate nearest
+  neighbour index; the agent incorporates indexed knowledge in its responses
+
+![SQL Sentinel Knowledge Base](img/wiki.jpg)
+
 - **Ollama support** — local models via Ollama (no data sent to the cloud)
 
 ### Background and tray
@@ -80,19 +91,25 @@ having to open SSMS on every individual server.
 
 ### Security and authentication
 
-- **Local login** — authentication with credentials stored in SQLite; bcrypt 12 rounds;
-  in-memory session 8h with sliding expiry; mandatory password change on first login
-- **Credentials encrypted at rest** — SQL Server passwords encrypted with `safeStorage`
-  (Windows DPAPI / macOS Keychain / Linux Secret Service); automatic migration
-  from plaintext on first launch
+- **Local login** — bcrypt 12 rounds, in-memory session 8h with sliding expiry;
+  mandatory password change on first login; session tokens stored as SHA-256 hash
+  in SQL Server (DB dump never reveals a live token)
+- **Credentials encrypted at rest** — SQL Server connection passwords encrypted with
+  `safeStorage` (Windows DPAPI / macOS Keychain / Linux Secret Service);
+  automatic migration from plaintext on first launch
+- **TLS configurable** — per-connection `encrypt` and `trustServerCertificate` options
+  for both the storage database and monitored servers
 - **IPC auth guard** — all sensitive IPC channels require a valid session;
-  exempt channels declared explicitly
+  exempt channels declared explicitly (storage setup wizard runs before login)
 
 ### Settings
 
 - **Dark / Light / System theme** — follows the OS preference in real time;
   dark mode with slate palette and accent tinted border on KpiCard
-- **Metrics retention** — configurable from Settings; automatic cleanup on startup
+- **Metrics retention** — configurable from Settings; automatic cleanup every 24h
+  (value `0` = keep forever)
+- **Storage database** — SQL Server 2025 connection editable from Settings with
+  live test before saving
 - **SMTP configuration** — host, port, TLS/STARTTLS, recipient list up to 20 addresses
 - **Background & Tray** — polling intervals, background mode, system notifications
 
@@ -115,12 +132,17 @@ Electron (main process)
 ├── Delta IPC        batch coalescing 50ms (setTimeout macrotask)
 │                    sends only changed DBs to the renderer
 │                    threshold: ≤5 changed DBs or ≤20% of total
-├── IPC Layer        handlers split by domain (servers/metrics/alarms/knowledge/system)
+├── IPC Layer        handlers split by domain (servers/metrics/alarms/knowledge/system/storage)
 │                    authenticated handleWrapper on all channels
 │                    Service layer (ServerService, SystemService) for business logic
-├── SQLite           servers, metrics, alarms, sessions, settings, RAG chunks
-│                    WAL mode, cached prepared statements, PRAGMA optimize on close
-│                    automatic retention via setImmediate; deferred VACUUM on startup
+├── SQL Server 2025  application storage database (separate from monitored servers)
+│   ├── metrics_snapshots   server metrics history, indexed (server_id, collected_at)
+│   ├── settings            key/value app configuration
+│   ├── db_custom_fields    per-database alias and owner metadata (in-memory cache)
+│   ├── users / sessions    bcrypt auth; tokens stored as SHA-256 hash
+│   ├── rag_documents       indexed document registry
+│   └── rag_chunks          vector(1536) embeddings with DiskANN ANN index
+├── electron-store   serverStore.ts — server list (JSON, DPAPI-encrypted passwords)
 └── Logger           structured logger [TIMESTAMP][LEVEL][scope] — main + renderer
                      debug suppressed in production
 
@@ -146,16 +168,17 @@ React Renderer
 
 ## Security
 
-| Area             | Mechanism                                                                      |
-| ---------------- | ------------------------------------------------------------------------------ |
-| Local auth       | Credentials in SQLite, bcrypt 12 rounds, in-memory session 8h                  |
-| IPC auth         | Every IPC channel requires authentication; exempt channels declared explicitly |
-| Credentials      | Encrypted at rest with `safeStorage` (Windows DPAPI / macOS Keychain)          |
-| SQL errors       | `sanitizeSqlError()` strips host, port, and credentials before logging         |
-| Path traversal   | PDF filenames validated with `SAFE_PDF_NAME` regex before `path.join()`        |
-| TCP scan         | Explicit handshake timer (500 ms) — avoids pending sockets on filtered ports   |
-| Parameterization | All T-SQL queries use parameters — no SQL string concatenation                 |
-| Sandbox          | `contextIsolation: true`, `nodeIntegration: false`, `sandbox: false` main only |
+| Area                | Mechanism                                                                          |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| Local auth          | bcrypt 12 rounds, in-memory session 8h, token stored as SHA-256 hash in SQL Server |
+| IPC auth            | Every IPC channel requires authentication; exempt channels declared explicitly     |
+| Credentials         | Encrypted at rest with `safeStorage` (Windows DPAPI / macOS Keychain)             |
+| TLS                 | `encrypt` and `trustServerCertificate` configurable per connection                 |
+| SQL errors          | `sanitizeSqlError()` strips host, port, and credentials before logging             |
+| Path traversal      | PDF filenames validated with `SAFE_PDF_NAME` regex before `path.join()`            |
+| TCP scan            | Explicit handshake timer (500 ms) — avoids pending sockets on filtered ports       |
+| Parameterization    | All T-SQL queries use parameters — no SQL string concatenation                     |
+| Sandbox             | `contextIsolation: true`, `nodeIntegration: false`, `sandbox: false` main only     |
 
 ---
 
@@ -163,14 +186,32 @@ React Renderer
 
 ### Requirements
 
+#### Monitored servers
+
 | Requirement       | Detail                                                    |
 | ----------------- | --------------------------------------------------------- |
-| Operating system  | Windows 10 / 11 x64                                       |
 | SQL Server        | 2014 or later                                             |
 | Authentication    | Windows Auth or SQL Auth                                  |
 | Network           | Configured TCP port reachable from the monitoring machine |
-| Dependencies      | None — SQL Sentinel is self-contained                     |
 | Agents on servers | Not required                                              |
+
+#### Storage database (SQL Sentinel's own data)
+
+| Requirement      | Detail                                                                         |
+| ---------------- | ------------------------------------------------------------------------------ |
+| SQL Server       | **2025** (required for native `vector(1536)` and DiskANN — AI features)        |
+| Authentication   | SQL Auth recommended (`sqlsentinel_app` user with `db_owner` on the target DB) |
+| Network          | Reachable from the machine running SQL Sentinel                                |
+
+> The storage database can be a separate SQL Server 2025 instance from the servers
+> being monitored. A local Docker container works well for development.
+
+#### Application host
+
+| Requirement      | Detail                              |
+| ---------------- | ----------------------------------- |
+| Operating system | Windows 10 / 11 x64                 |
+| Dependencies     | None — SQL Sentinel is self-contained |
 
 ### Installer-based installation
 
@@ -190,9 +231,29 @@ React Renderer
 
 ## First Launch
 
-### 1. Login
+### 1. Storage database setup
 
-On first launch, sign in with the default credentials:
+On first launch, SQL Sentinel shows a **Storage Database** wizard before the login screen.
+Fill in the connection details for your SQL Server 2025 instance:
+
+| Field          | Default           | Description                                  |
+| -------------- | ----------------- | -------------------------------------------- |
+| Host           | `localhost`       | SQL Server hostname or IP                    |
+| Port           | `1437`            | TCP port (non-default to avoid collision)    |
+| Database       | `SQLSentinelDB`   | Target database (created automatically)      |
+| Username       | `sqlsentinel_app` | SQL Auth user with `db_owner` role           |
+| Password       |                   | SQL Auth password                            |
+| Encrypt (TLS)  | off               | Enable for remote/production deployments     |
+| Trust cert     | on                | Allow self-signed certificates               |
+
+Click **Test Connection** first, then **Save & Continue** (enabled only after a successful test).
+SQL Sentinel creates all required tables automatically on first run.
+
+> To change the connection later, go to **Settings → Storage Database → Edit**.
+
+### 2. Login
+
+After storage is configured, sign in with the default credentials:
 
 | Field    | Value        |
 | -------- | ------------ |
@@ -201,7 +262,7 @@ On first launch, sign in with the default credentials:
 
 You will be immediately prompted to change your password (minimum 8 characters, 1 uppercase, 1 number).
 
-### 2. Adding a server
+### 3. Adding a server
 
 1. Go to the **Discovery** tab
 2. Click **Add server manually**
@@ -220,7 +281,7 @@ You will be immediately prompted to change your password (minimum 8 characters, 
 4. Click **Test connection** to verify connectivity
 5. Click **Add** — the server appears in the sidebar and polling starts automatically
 
-### 3. Verifying SQL Server Configuration
+### 4. Verifying SQL Server configuration on monitored servers
 
 If the connection fails, verify the following on each monitored server:
 
@@ -251,6 +312,7 @@ sqlcmd -S localhost,1433 -E -Q "SELECT @@SERVERNAME, @@VERSION"
 - Node.js v22+ (LTS)
 - npm v10+
 - Windows 10/11 x64
+- SQL Server 2025 instance for the storage database (see Docker setup below)
 
 ### Setup
 
@@ -265,7 +327,7 @@ npm install
 For local development on macOS, the repository includes a bootstrap script that:
 
 - enforces Node.js 22
-- starts a local SQL Server 2022 container via Docker
+- starts a local **SQL Server 2025** container via Docker (port 1437, `SQLSentinelDB`)
 - installs npm dependencies
 - optionally installs and pulls Ollama for AI features
 
@@ -280,19 +342,21 @@ Optional AI bootstrap:
 ./scripts/setup-mac-dev.sh --with-ollama
 ```
 
-Local SQL Server for development:
+Local storage database for development:
 
-| Field    | Value                |
-| -------- | -------------------- |
-| Host     | `localhost`          |
-| Port     | `1433`               |
-| User     | `sa`                 |
-| Password | `SQLSentinel@Dev1`   |
-| Image    | `mssql/server:2022`  |
+| Field    | Value                                       |
+| -------- | ------------------------------------------- |
+| Host     | `localhost`                                 |
+| Port     | `1437`                                      |
+| Database | `SQLSentinelDB`                             |
+| User     | `sqlsentinel_app`                           |
+| Password | `App@Sentinel2025`                          |
+| Image    | `mcr.microsoft.com/mssql/server:2025-latest` |
 
 The script expects Homebrew and Docker Desktop to be available.
 If your shell resolves a different Node version, use `.nvmrc` (`22`) or put
 `/opt/homebrew/opt/node@22/bin` before other Node installations in `PATH`.
+
 ### Running in development
 
 ```bash
@@ -302,11 +366,16 @@ npm run dev
 ### Tests
 
 ```bash
-npm test          # run all tests (179 tests / 15 suites)
+npm test
 ```
 
-Coverage: PollingManager, delta computation, memory bounds, HomeDashboard hooks,
-CSV export, SQLite store, metrics repository, offline timestamps, background service.
+Integration tests for the SQL Server storage layer require a running SQL Server 2025 instance:
+
+```bash
+STORAGE_TEST_HOST=localhost STORAGE_TEST_PORT=1437 npm test
+```
+
+Tests are skipped automatically when `STORAGE_TEST_HOST` is not set.
 
 ### Production build
 
@@ -335,13 +404,29 @@ dist\
 src\
 ├── main\                          Electron main process
 │   ├── ipc\
-│   │   ├── handlers\              IPC handlers by domain (servers / metrics / alarms / knowledge / system)
-│   │   ├── handleWrapper.ts       Shared auth guard for all IPC channels
+│   │   ├── handlers\              IPC handlers by domain
+│   │   │   ├── servers.ipc.ts
+│   │   │   ├── metrics.ipc.ts
+│   │   │   ├── system.ipc.ts
+│   │   │   ├── storage.ipc.ts     Storage DB setup wizard + config IPC
+│   │   │   └── knowledge.ipc.ts
+│   │   ├── handleWrapper.ts       Auth guard; storage channels are auth-exempt
 │   │   └── index.ts               Handler registration
 │   ├── services\                  Pure business logic (ServerService, SystemService)
-│   ├── collectors\                T-SQL queries against SQL Server + sanitizeSqlError
-│   ├── store\                     SQLite — servers, metrics, alarms, settings, RAG
-│   │   └── repositories\          Module-level cached statements (authService, metricsRepository…)
+│   ├── collectors\                T-SQL queries against monitored SQL Server instances
+│   ├── store\
+│   │   ├── sqlserver\             SQL Server 2025 repositories
+│   │   │   ├── connection.ts      Connection pool — initStoragePool / getPool / testConnection
+│   │   │   ├── database.ts        Schema DDL — idempotent IF NOT EXISTS, batched on startup
+│   │   │   ├── metricsRepository.ts    Snapshots — batchSave (single INSERT), findLastNBulk
+│   │   │   ├── settingsRepository.ts   Key/value app settings
+│   │   │   ├── emailSettingsRepository.ts  SMTP config; password DPAPI-encrypted
+│   │   │   ├── dbCustomFieldsRepository.ts  Per-DB metadata; warm in-memory cache
+│   │   │   ├── usersRepository.ts      bcrypt users
+│   │   │   ├── sessionsRepository.ts   SHA-256 token sessions; auto-expired by scheduler
+│   │   │   └── ragRepository.ts        vector(1536) chunks; DiskANN similarity search
+│   │   ├── storageConfig.ts       electron-store — SQL Server connection string (DPAPI)
+│   │   └── serverStore.ts         electron-store — monitored server list (unchanged)
 │   ├── ai\                        LangGraph agent, RAG indexer, Ollama client
 │   ├── discovery\                 TCP scanner (explicit handshake timeout)
 │   ├── utils\                     logger.ts (structured, levels, scope prefix)
@@ -360,6 +445,14 @@ src\
 │   ├── hooks\                     useDebouncedValue · useIpcEvent · useVisibilityPoll · useRefreshAllServers
 │   ├── store\                     Zustand: servers, metrics (applyDelta), alerts, groups, ag, ai, app
 │   ├── utils\                     logger.ts, csvExportUtils, inventoryUtils, formatters
-│   └── pages\                     Inventory, Dashboard, Discovery, Settings, Login
+│   └── pages\
+│       ├── StorageSetupPage.tsx   First-boot SQL Server wizard (shown before login)
+│       ├── Login.tsx
+│       ├── Settings.tsx           Includes Storage Database section with edit dialog
+│       ├── Inventory.tsx
+│       ├── Dashboard.tsx
+│       └── Discovery.tsx
 └── preload\                       Secure IPC bridge main ↔ renderer
+    ├── index.ts                   contextBridge typed API as window.sqlSentinel
+    └── index.d.ts                 Shared types (StoredServer, StorageConnectionParams…)
 ```

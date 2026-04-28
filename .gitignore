@@ -9,5 +9,10 @@ out
 .env.local
 
 CLAUDE.local.md
-.claude/settings.local.json
+.claude/
+.superpowers/
+.vscode/
+docs/
+REFACTORING_PLAN.md
+documentazione.md
 data/*.pdf

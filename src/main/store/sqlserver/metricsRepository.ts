@@ -63,7 +63,10 @@ export async function findHistory(serverId: string, limitDays: number): Promise<
       .request()
       .input('server_id', sql.NVarChar(36), serverId)
       .query<SnapshotRow>(
-        `SELECT id, server_id, collected_at, metrics_json FROM dbo.metrics_snapshots WHERE server_id = @server_id ORDER BY collected_at DESC`
+        `SELECT TOP 10000 id, server_id, collected_at, metrics_json
+       FROM dbo.metrics_snapshots
+       WHERE server_id = @server_id
+       ORDER BY collected_at DESC`
       )
     return r.recordset.map(rowToSnapshot)
   }
@@ -134,25 +137,24 @@ export async function findLastNBulk(
   return result
 }
 
+// Single multi-row INSERT instead of a loop — N round-trips → 1 round-trip.
+// SQL Server allows max 2100 params; at 4 params/row this supports up to 525 rows per batch,
+// well above the expected server count.
 export async function batchSave(items: SaveItem[]): Promise<void> {
   if (items.length === 0) return
   const pool = getPool()
-  const tx = new sql.Transaction(pool)
-  await tx.begin()
-  try {
-    for (const item of items) {
-      await new sql.Request(tx)
-        .input('id', sql.NVarChar(36), randomUUID())
-        .input('server_id', sql.NVarChar(36), item.serverId)
-        .input('collected_at', sql.DateTime2, item.metrics.collectedAt)
-        .input('metrics_json', sql.NVarChar(sql.MAX), JSON.stringify(item.metrics))
-        .query(
-          `INSERT INTO dbo.metrics_snapshots (id, server_id, collected_at, metrics_json) VALUES (@id, @server_id, @collected_at, @metrics_json)`
-        )
-    }
-    await tx.commit()
-  } catch (err) {
-    await tx.rollback()
-    throw err
+
+  // Build a single multi-row INSERT for all items
+  const rows = items.map((_, i) => `(@id${i}, @sid${i}, @cat${i}, @json${i})`).join(', ')
+  const req = pool.request()
+  for (let i = 0; i < items.length; i++) {
+    req
+      .input(`id${i}`, sql.NVarChar(36), randomUUID())
+      .input(`sid${i}`, sql.NVarChar(36), items[i].serverId)
+      .input(`cat${i}`, sql.DateTime2, items[i].metrics.collectedAt)
+      .input(`json${i}`, sql.NVarChar(sql.MAX), JSON.stringify(items[i].metrics))
   }
+  await req.query(
+    `INSERT INTO dbo.metrics_snapshots (id, server_id, collected_at, metrics_json) VALUES ${rows}`
+  )
 }

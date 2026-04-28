@@ -6,9 +6,9 @@ import type { IpcMainInvokeEvent } from 'electron'
 import { handle, safeError, log } from '../handleWrapper'
 import { login, logout, getSession, isAuthenticated, changePassword } from '../../authService'
 import { buildCsvContent } from '../../csvUtils'
-import { getEmailSettings, saveEmailSettings } from '../../store/emailSettings'
+import { getEmailSettings, saveEmailSettings } from '../../store/sqlserver/emailSettingsRepository'
 import { sendTestEmail } from '../../emailService'
-import { getCustomFields, setCustomFields, getAllCustomFields } from '../../store/dbCustomFields'
+import { getCustomFields, setCustomFields, getAllCustomFields } from '../../store/sqlserver/dbCustomFieldsRepository'
 import { getShrinkEstimate, shrinkDatabase, shrinkFile } from '../../collectors/dbAdmin'
 import {
   getAvailabilityGroups,
@@ -136,7 +136,7 @@ export function registerSystemHandlers(): void {
   // EMAIL_SETTINGS_GET
   handle(IpcChannel.EMAIL_SETTINGS_GET, async (): Promise<IpcResult<EmailSettings>> => {
     try {
-      return { ok: true, data: getEmailSettings() }
+      return { ok: true, data: await getEmailSettings() }
     } catch (err) {
       log.error('[IPC] EMAIL_SETTINGS_GET:', safeError(err))
       return { ok: false, error: safeError(err) }
@@ -148,7 +148,7 @@ export function registerSystemHandlers(): void {
     IpcChannel.EMAIL_SETTINGS_SET,
     async (_event: IpcMainInvokeEvent, req: SaveEmailSettingsRequest): Promise<IpcResult<null>> => {
       try {
-        saveEmailSettings(req)
+        await saveEmailSettings(req)
         return { ok: true, data: null }
       } catch (err) {
         log.error('[IPC] EMAIL_SETTINGS_SET:', safeError(err))
@@ -174,7 +174,7 @@ export function registerSystemHandlers(): void {
       _event: IpcMainInvokeEvent,
       req: DbCustomFieldsGetRequest
     ): Promise<IpcResult<DbCustomFields>> => {
-      return { ok: true, data: getCustomFields(req.serverId, req.dbName) }
+      return { ok: true, data: await getCustomFields(req.serverId, req.dbName) }
     }
   )
 
@@ -182,7 +182,7 @@ export function registerSystemHandlers(): void {
   handle(
     IpcChannel.DB_SET_CUSTOM_FIELDS,
     async (_event: IpcMainInvokeEvent, req: DbCustomFieldsSetRequest): Promise<IpcResult<null>> => {
-      setCustomFields(req.serverId, req.dbName, req.fields)
+      await setCustomFields(req.serverId, req.dbName, req.fields)
       return { ok: true, data: null }
     }
   )
@@ -191,7 +191,7 @@ export function registerSystemHandlers(): void {
   handle(
     IpcChannel.DB_GET_ALL_CUSTOM_FIELDS,
     async (): Promise<IpcResult<Record<string, DbCustomFields>>> => {
-      return { ok: true, data: getAllCustomFields() }
+      return { ok: true, data: await getAllCustomFields() }
     }
   )
 

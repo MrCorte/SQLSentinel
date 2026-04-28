@@ -182,7 +182,7 @@ export function Dashboard(): React.JSX.Element {
   return (
     <Box
       sx={{
-        flex: 1,
+        height: '100%',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',

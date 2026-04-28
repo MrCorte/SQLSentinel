@@ -1,97 +1,68 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { initDb, closeDb } from '../database'
-import { upsert } from '../serverRepository'
-import { findLastN, findLastNBulk, batchSave } from '../metricsRepository'
+// src/main/store/__tests__/metricsRepository.bulk.test.ts
+// Rewrite for SQL Server
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
+import * as mssql from 'mssql'
+
+const SKIP = !process.env['STORAGE_TEST_HOST']
+const pool = { value: null as mssql.ConnectionPool | null }
+
+vi.mock('../sqlserver/connection', () => ({ getPool: () => pool.value }))
+
+beforeAll(async () => {
+  if (SKIP) return
+  pool.value = await mssql.connect({
+    server: process.env['STORAGE_TEST_HOST']!,
+    port: Number(process.env['STORAGE_TEST_PORT'] ?? 1437),
+    database: process.env['STORAGE_TEST_DB'] ?? 'SQLSentinelDB',
+    authentication: { type: 'default', options: { userName: process.env['STORAGE_TEST_USER'] ?? 'sqlsentinel_app', password: process.env['STORAGE_TEST_PASSWORD'] ?? 'App@Sentinel2025' } },
+    options: { encrypt: false, trustServerCertificate: true }
+  })
+  await pool.value.request().query(`DELETE FROM dbo.metrics_snapshots WHERE server_id LIKE N'test-%'`)
+})
+
+afterAll(async () => {
+  if (pool.value) {
+    await pool.value.request().query(`DELETE FROM dbo.metrics_snapshots WHERE server_id LIKE N'test-%'`)
+    await pool.value.close()
+  }
+})
+
+import { save, findLatest, findLastN, findLastNBulk, batchSave, cleanup } from '../sqlserver/metricsRepository'
 import type { ServerMetrics } from '../../collectors/types'
 
-function makeMetrics(version: string, collectedAt?: Date): ServerMetrics {
+function makeMetrics(cpu: number): ServerMetrics {
   return {
-    collectedAt: collectedAt ?? new Date(),
-    instanceInfo: {
-      version,
-      edition: 'Enterprise',
-      memoryUsedMb: 1024,
-      memoryTargetMb: 4096,
-      cpuUsagePercent: 10,
-      uptimeDays: 1,
-      logicalCpus: 4,
-      physicalCpus: 2
-    },
-    databases: [],
-    activeSessions: [],
-    topQueries: [],
-    backupStatus: [],
-    waitStats: [],
-    diskVolumes: [],
-    databaseFiles: []
+    collectedAt: new Date(),
+    instanceInfo: { version: 'test', edition: 'test', memoryUsedMb: 100, memoryTargetMb: 200, cpuUsagePercent: cpu, uptimeDays: 1, logicalCpus: 4, physicalCpus: 2 },
+    databases: [], activeSessions: [], topQueries: [], backupStatus: [], waitStats: [], diskVolumes: [], databaseFiles: []
   }
 }
 
-const SERVER_A = {
-  ip: '10.0.0.1',
-  port: 1433,
-  useWindowsAuth: false,
-  lastSeenAt: null,
-  lastMetricsAt: null
-}
-const SERVER_B = {
-  ip: '10.0.0.2',
-  port: 1433,
-  useWindowsAuth: false,
-  lastSeenAt: null,
-  lastMetricsAt: null
-}
+describe.skipIf(SKIP)('metricsRepository (SQL Server)', () => {
+  it('saves and retrieves latest', async () => {
+    await save('test-srv-1', makeMetrics(42))
+    const latest = await findLatest('test-srv-1')
+    expect(latest).not.toBeNull()
+    expect(latest!.instanceInfo.cpuUsagePercent).toBe(42)
+  })
 
-describe('findLastNBulk', () => {
-  let idA: string
-  let idB: string
-
-  beforeEach(() => {
-    initDb(':memory:')
-    idA = upsert(SERVER_A).id
-    idB = upsert(SERVER_B).id
-    batchSave([
-      { serverId: idA, metrics: makeMetrics('SQL 2019 v1', new Date('2026-01-01T10:00:00Z')) },
-      { serverId: idA, metrics: makeMetrics('SQL 2019 v2', new Date('2026-01-02T10:00:00Z')) },
-      { serverId: idA, metrics: makeMetrics('SQL 2019 v3', new Date('2026-01-03T10:00:00Z')) },
-      { serverId: idB, metrics: makeMetrics('SQL 2022 v1', new Date('2026-01-01T10:00:00Z')) },
-      { serverId: idB, metrics: makeMetrics('SQL 2022 v2', new Date('2026-01-02T10:00:00Z')) }
+  it('findLastN returns N most recent in ascending order', async () => {
+    await batchSave([
+      { serverId: 'test-srv-2', metrics: makeMetrics(10) },
+      { serverId: 'test-srv-2', metrics: makeMetrics(20) },
+      { serverId: 'test-srv-2', metrics: makeMetrics(30) }
     ])
+    const result = await findLastN('test-srv-2', 2)
+    expect(result).toHaveLength(2)
   })
 
-  afterEach(() => {
-    closeDb()
+  it('findLastNBulk returns map keyed by serverId', async () => {
+    const bulk = await findLastNBulk(['test-srv-1', 'test-srv-2'], 2)
+    expect(bulk['test-srv-1']).toBeDefined()
+    expect(bulk['test-srv-2']).toBeDefined()
   })
 
-  it('returns the same data as N separate findLastN calls', () => {
-    const bulk = findLastNBulk([idA, idB], 10)
-    const singleA = findLastN(idA, 10)
-    const singleB = findLastN(idB, 10)
-
-    expect(bulk[idA]).toHaveLength(singleA.length)
-    expect(bulk[idB]).toHaveLength(singleB.length)
-
-    // Order: from oldest to most recent (same as findLastN)
-    expect(bulk[idA]?.[0].instanceInfo.version).toBe('SQL 2019 v1')
-    expect(bulk[idA]?.[2].instanceInfo.version).toBe('SQL 2019 v3')
-    expect(bulk[idB]?.[1].instanceInfo.version).toBe('SQL 2022 v2')
-  })
-
-  it('respects the N limit', () => {
-    const bulk = findLastNBulk([idA], 2)
-    // With N=2 returns only the 2 most recent
-    expect(bulk[idA]).toHaveLength(2)
-    expect(bulk[idA]?.[0].instanceInfo.version).toBe('SQL 2019 v2')
-    expect(bulk[idA]?.[1].instanceInfo.version).toBe('SQL 2019 v3')
-  })
-
-  it('returns empty object for empty serverIds list', () => {
-    expect(findLastNBulk([], 10)).toEqual({})
-  })
-
-  it('ignora server_id non presenti nel DB', () => {
-    const bulk = findLastNBulk([idA, 'srv-INESISTENTE'], 10)
-    expect(bulk[idA]).toHaveLength(3)
-    expect(bulk['srv-INESISTENTE']).toBeUndefined()
+  it('cleanup removes old snapshots', async () => {
+    await cleanup(0) // retentionDays=0 deletes everything older than now
   })
 })

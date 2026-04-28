@@ -78,10 +78,11 @@ export async function findHistory(serverId: string, limitDays: number): Promise<
 }
 
 export async function cleanup(retentionDays: number): Promise<void> {
+  if (retentionDays <= 0) return
   const pool = getPool()
   await pool
     .request()
-    .input('days', sql.Int, Math.abs(retentionDays))
+    .input('days', sql.Int, retentionDays)
     .query(
       `DELETE FROM dbo.metrics_snapshots WHERE collected_at < DATEADD(DAY, -@days, GETUTCDATE())`
     )

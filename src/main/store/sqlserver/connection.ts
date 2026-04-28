@@ -78,5 +78,9 @@ export async function testConnection(params: {
     requestTimeout: 10000,
     options: { ...cfg.options, connectTimeout: 10000 }
   })
-  await pool.close()
+  try {
+    await pool.close()
+  } catch {
+    // best-effort close — pool will be GC'd eventually
+  }
 }

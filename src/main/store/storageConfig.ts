@@ -1,5 +1,8 @@
 import Store from 'electron-store'
-import { encrypt, decrypt } from './safeStorageUtil'
+import { encrypt, decrypt, isAvailable } from './safeStorageUtil'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('storage-config')
 
 export interface StorageConfig {
   host: string
@@ -32,11 +35,18 @@ export function saveStorageConfig(
   }
 ): void {
   const { password, ...rest } = params
+  let encryptedPassword: string
+  if (isAvailable()) {
+    encryptedPassword = encrypt(password)
+  } else {
+    log.warn('[storageConfig] safeStorage not available — password stored in plain text')
+    encryptedPassword = password
+  }
   store.set('config', {
     ...rest,
     encrypt: rest.encrypt ?? false,
     trustServerCertificate: rest.trustServerCertificate ?? true,
-    encryptedPassword: encrypt(password)
+    encryptedPassword
   })
 }
 

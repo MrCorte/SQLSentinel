@@ -19,7 +19,8 @@ import {
   TextField,
   Tooltip,
   IconButton,
-  Chip
+  Chip,
+  Dialog
 } from '@mui/material'
 import ToggleButton from '@mui/material/ToggleButton'
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
@@ -34,8 +35,20 @@ import { useWorker } from '../context/useWorker'
 import { useThemeContext } from '../context/ThemeContext'
 import type { ThemeMode } from '../context/ThemeContext'
 import { createLogger } from '../utils/logger'
+import { StorageSetupPage } from './StorageSetupPage'
 
 const log = createLogger('settings')
+
+// ---------------------------------------------------------------------------
+// Local types
+// ---------------------------------------------------------------------------
+
+interface StorageConfigInfo {
+  host: string
+  port: number
+  database: string
+  username: string
+}
 
 // ---------------------------------------------------------------------------
 // Opzioni retention
@@ -203,6 +216,15 @@ export function Settings(): React.JSX.Element {
     'idle'
   )
   const [testEmailError, setTestEmailError] = useState('')
+
+  const [storageConfig, setStorageConfig] = useState<StorageConfigInfo | null>(null)
+  const [storageDialogOpen, setStorageDialogOpen] = useState(false)
+
+  useEffect(() => {
+    window.sqlSentinel.storage.getConfig().then((r) => {
+      if (r.ok) setStorageConfig(r.data)
+    })
+  }, [])
 
   useEffect(() => {
     window.sqlSentinel.getEmailSettings().then((res) => {
@@ -827,6 +849,56 @@ export function Settings(): React.JSX.Element {
           </CardContent>
         </Card>
       )}
+
+      {/* Card — Storage Database */}
+      <Card variant="outlined">
+        <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box>
+            <Typography variant="subtitle1" fontWeight={700}>
+              Storage Database
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              SQL Server instance used to persist metrics, alerts, and configuration.
+            </Typography>
+          </Box>
+          {storageConfig ? (
+            <Stack direction="row" alignItems="center" spacing={2}>
+              <Typography variant="body2" color="text.secondary">
+                {storageConfig.host}:{storageConfig.port} / {storageConfig.database} (
+                {storageConfig.username})
+              </Typography>
+              <Button size="small" onClick={() => setStorageDialogOpen(true)}>
+                Edit
+              </Button>
+            </Stack>
+          ) : (
+            <Stack direction="row" alignItems="center" spacing={2}>
+              <Typography variant="body2" color="error">
+                Not configured
+              </Typography>
+              <Button size="small" onClick={() => setStorageDialogOpen(true)}>
+                Configure
+              </Button>
+            </Stack>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={storageDialogOpen}
+        onClose={() => setStorageDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <StorageSetupPage
+          onConfigured={() => {
+            setStorageDialogOpen(false)
+            window.sqlSentinel.storage.getConfig().then((r) => {
+              if (r.ok) setStorageConfig(r.data)
+            })
+          }}
+        />
+      </Dialog>
 
       <Typography
         variant="caption"

@@ -439,6 +439,8 @@ function App(): React.JSX.Element {
     }
   }, [])
 
+  const handleStorageConfigured = useCallback(() => setStorageState('ready'), [])
+
   const handleLogout = useCallback(async (): Promise<void> => {
     await window.sqlSentinel.logout()
     setSession(null)
@@ -449,7 +451,7 @@ function App(): React.JSX.Element {
       <ThemeProvider theme={muiTheme}>
         <CssBaseline />
         {storageState === 'loading' ? null : storageState === 'setup' ? (
-          <StorageSetupPage initialError={storageError} onConfigured={() => setStorageState('ready')} />
+          <StorageSetupPage initialError={storageError} onConfigured={handleStorageConfigured} />
         ) : authChecking ? null : !session ? (
           <LoginPage onLogin={setSession} />
         ) : (

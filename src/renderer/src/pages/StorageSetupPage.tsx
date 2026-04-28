@@ -1,5 +1,5 @@
 // src/renderer/src/pages/StorageSetupPage.tsx
-import { useState } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Box, Button, CircularProgress, TextField, Typography, Alert, Stack } from '@mui/material'
 
 interface FormState {
@@ -18,7 +18,7 @@ interface Props {
 export function StorageSetupPage({ initialError, onConfigured }: Props): React.JSX.Element {
   const [form, setForm] = useState<FormState>({
     host: 'localhost',
-    port: '1437',
+    port: '1437', // non-default port — avoids collision with monitored SQL Server instances
     database: 'SQLSentinelDB',
     username: 'sqlsentinel_app',
     password: ''
@@ -27,6 +27,9 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(initialError ?? null)
   const [tested, setTested] = useState(false)
+
+  const alive = useRef(true)
+  useEffect(() => () => { alive.current = false }, [])
 
   function field(key: keyof FormState) {
     return {
@@ -39,41 +42,55 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
     }
   }
 
-  async function handleTest() {
+  const handleTest = useCallback(async () => {
     setTesting(true)
     setError(null)
+    const port = Number(form.port)
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      setError('Port must be a number between 1 and 65535')
+      setTesting(false)
+      return
+    }
     const result = await window.sqlSentinel.storage.testConnection({
       host: form.host,
-      port: Number(form.port),
+      port,
       database: form.database,
       username: form.username,
       password: form.password
     })
+    if (!alive.current) return
     setTesting(false)
     if (result.ok) {
       setTested(true)
     } else {
       setError(result.error ?? 'Connection failed')
     }
-  }
+  }, [form])
 
-  async function handleSave() {
+  const handleSave = useCallback(async () => {
     setSaving(true)
     setError(null)
+    const port = Number(form.port)
+    if (!Number.isInteger(port) || port < 1 || port > 65535) {
+      setError('Port must be a number between 1 and 65535')
+      setSaving(false)
+      return
+    }
     const result = await window.sqlSentinel.storage.saveConfig({
       host: form.host,
-      port: Number(form.port),
+      port,
       database: form.database,
       username: form.username,
       password: form.password
     })
+    if (!alive.current) return
     setSaving(false)
     if (result.ok) {
       onConfigured()
     } else {
       setError(result.error ?? 'Save failed')
     }
-  }
+  }, [form, onConfigured])
 
   return (
     <Box

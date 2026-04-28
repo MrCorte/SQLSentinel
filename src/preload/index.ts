@@ -38,7 +38,9 @@ import type {
   AuthSession,
   LoginResult,
   ChangePasswordResult,
-  AiStreamEvent
+  AiStreamEvent,
+  StorageConnectionParams,
+  StorageConfigInfo
 } from '../main/ipc/types'
 import type { ServerMetrics, ServerInfo } from '../main/collectors/types'
 import type { StoredServer } from '../main/store/serverStore'
@@ -1173,7 +1175,24 @@ const bridgeApi = {
     realApi.aiAgentStream(q, h),
   aiAgentCancel: () => realApi.aiAgentCancel(),
   onAiStreamEvent: (cb: (e: AiStreamEvent) => void) => realApi.onAiStreamEvent(cb),
-  getServiceStatus: () => ipcRenderer.invoke(IpcChannel.SERVICE_STATUS_GET)
+  getServiceStatus: () => ipcRenderer.invoke(IpcChannel.SERVICE_STATUS_GET),
+  storage: {
+    getConfig: (): Promise<IpcResult<StorageConfigInfo | null>> =>
+      ipcRenderer.invoke(IpcChannel.STORAGE_GET_CONFIG),
+    testConnection: (params: StorageConnectionParams): Promise<IpcResult<null>> =>
+      ipcRenderer.invoke(IpcChannel.STORAGE_TEST_CONNECTION, params),
+    saveConfig: (params: StorageConnectionParams): Promise<IpcResult<null>> =>
+      ipcRenderer.invoke(IpcChannel.STORAGE_SAVE_CONFIG, params),
+    onNotConfigured: (cb: (err?: string) => void): (() => void) => {
+      const handler = (_e: IpcRendererEvent, payload: { error?: string }) => cb(payload?.error)
+      ipcRenderer.on('storage:not-configured', handler)
+      return () => ipcRenderer.removeListener('storage:not-configured', handler)
+    },
+    onConfigured: (cb: () => void): (() => void) => {
+      ipcRenderer.on('storage:configured', cb)
+      return () => ipcRenderer.removeListener('storage:configured', cb)
+    }
+  }
 }
 
 if (process.contextIsolated) {

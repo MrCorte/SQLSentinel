@@ -3,6 +3,7 @@ import { registerMetricsHandlers } from './handlers/metrics.ipc'
 import { registerAlarmHandlers } from './handlers/alarms.ipc'
 import { registerKnowledgeHandlers } from './handlers/knowledge.ipc'
 import { registerSystemHandlers } from './handlers/system.ipc'
+import { registerStorageHandlers } from './handlers/storage.ipc'
 
 export function registerIpcHandlers(): void {
   registerServerHandlers()
@@ -10,4 +11,5 @@ export function registerIpcHandlers(): void {
   registerAlarmHandlers()
   registerKnowledgeHandlers()
   registerSystemHandlers()
+  registerStorageHandlers()
 }

@@ -80,7 +80,11 @@ export enum IpcChannel {
   AI_AGENT_ASK = 'ai:agentAsk',
   AI_AGENT_STREAM = 'ai:agentStream', // invoke: starts stream, returns IpcResult<void> immediately
   AI_AGENT_CANCEL = 'ai:agentCancel', // invoke: aborts active stream
-  AI_STREAM_EVENT = 'ai:streamEvent' // push-only: main → renderer
+  AI_STREAM_EVENT = 'ai:streamEvent', // push-only: main → renderer
+  // Storage connection management
+  STORAGE_GET_CONFIG      = 'storage:get-config',
+  STORAGE_TEST_CONNECTION = 'storage:test-connection',
+  STORAGE_SAVE_CONFIG     = 'storage:save-config'
 }
 
 /** Unified result envelope — never throw raw errors to the renderer. */
@@ -334,6 +338,21 @@ export interface ServerBackupImportResult {
 export type { DiscoveredServer, ScanOptions, ScanProgress }
 export type { ServerMetrics }
 export type { ServerInfo } from '../collectors/types'
+
+export interface StorageConnectionParams {
+  host: string
+  port: number
+  database: string
+  username: string
+  password: string
+}
+
+export interface StorageConfigInfo {
+  host: string
+  port: number
+  database: string
+  username: string
+}
 export type {
   AvailabilityGroup,
   AvailabilityReplica,

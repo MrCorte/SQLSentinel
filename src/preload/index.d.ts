@@ -308,6 +308,21 @@ export interface SaveEmailSettingsRequest {
   emailRecipients?: string[]
 }
 
+export interface StorageConnectionParams {
+  host: string
+  port: number
+  database: string
+  username: string
+  password: string
+}
+
+export interface StorageConfigInfo {
+  host: string
+  port: number
+  database: string
+  username: string
+}
+
 export interface DbCustomFields {
   alias?: string
   referente?: string
@@ -509,6 +524,13 @@ export interface SqlSentinelAPI {
   aiAgentCancel(): Promise<void>
   onAiStreamEvent(callback: (event: AiStreamEvent) => void): () => void
   getServiceStatus(): Promise<IpcResult<{ status: 'connected' | 'connecting' | 'disconnected' }>>
+  storage: {
+    getConfig(): Promise<IpcResult<StorageConfigInfo | null>>
+    testConnection(params: StorageConnectionParams): Promise<IpcResult<null>>
+    saveConfig(params: StorageConnectionParams): Promise<IpcResult<null>>
+    onNotConfigured(cb: (err?: string) => void): () => void
+    onConfigured(cb: () => void): () => void
+  }
 }
 
 declare global {

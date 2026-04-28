@@ -84,7 +84,7 @@ GO
 -- sessions
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'sessions')
 CREATE TABLE dbo.sessions (
-    token      NVARCHAR(500) NOT NULL PRIMARY KEY,
+    token      NVARCHAR(64)  NOT NULL PRIMARY KEY,
     user_id    NVARCHAR(36)  NOT NULL,
     username   NVARCHAR(200) NOT NULL,
     role       NVARCHAR(50)  NOT NULL,
@@ -118,6 +118,9 @@ CREATE TABLE dbo.rag_chunks (
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.rag_chunks') AND name = N'IX_rag_chunks_doc')
     CREATE INDEX IX_rag_chunks_doc ON dbo.rag_chunks(document_id);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.rag_chunks') AND name = N'IX_rag_chunks_vec')
+    CREATE VECTOR INDEX IX_rag_chunks_vec ON dbo.rag_chunks (embedding) USING DISKANN WITH (VECTOR_DISTANCE_FUNCTION = 'cosine');
 GO
 
 -- Default app settings (mirrors SQLite defaults in settings.ts)

@@ -87,16 +87,23 @@ if [[ "$WITH_OLLAMA" == "1" ]] && ! command -v ollama &>/dev/null; then
 fi
 
 echo ""
-echo "==> Starting SQL Server container..."
-docker compose up -d
+echo "==> Starting test environment (4 monitored servers + 1 storage server)..."
+docker compose -f docker/docker-compose.yml up -d
 
-echo "  Waiting for SQL Server to be healthy..."
-until docker compose exec sqlserver \
-  /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'SQLSentinel@Dev1' -Q 'SELECT 1' -No &>/dev/null; do
+echo "  Waiting for SQL Server 2025 (storage) to be healthy..."
+until docker compose -f docker/docker-compose.yml exec sql-sentinel \
+  /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Sentinel@SQLSentinel1' -Q 'SELECT 1' -b -C &>/dev/null; do
   printf '.'
   sleep 3
 done
 echo " ready."
+
+echo "  Waiting for sql-init to finish schema setup..."
+until [[ "$(docker compose -f docker/docker-compose.yml ps sql-init --format '{{.Status}}' 2>/dev/null)" == *"Exited (0)"* ]]; do
+  printf '.'
+  sleep 3
+done
+echo " done."
 
 if [[ "$WITH_OLLAMA" == "1" ]]; then
   echo ""
@@ -118,9 +125,17 @@ echo ""
 echo "==> Done! To start SQLSentinel:"
 echo "    npm run dev"
 echo ""
-echo "    SQL Server credentials:"
-echo "      Host: localhost   Port: 1433"
-echo "      Auth: SQL Auth    User: sa    Password: SQLSentinel@Dev1"
+echo "    Storage database (SQL Server 2025):"
+echo "      Host: localhost   Port: 1437"
+echo "      App user:  sqlsentinel_app / App@Sentinel2025"
+echo "      SA:        sa              / Sentinel@SQLSentinel1"
+echo ""
+echo "    Monitored test servers (Azure SQL Edge):"
+echo "      prod-sql     localhost:1433"
+echo "      dev-sql      localhost:1434"
+echo "      staging-sql  localhost:1435"
+echo "      dr-sql       localhost:1436"
 if [[ "$WITH_OLLAMA" == "1" ]]; then
+  echo ""
   echo "    Ollama model: llama3.2:3b"
 fi

@@ -1,35 +1,41 @@
+# SQLSentinel — storage database only (quickstart)
+#
+# Starts the SQL Server 2025 instance that SQLSentinel uses for its own data
+# (metrics, settings, users, sessions, RAG embeddings).
+#
+# For the full test environment with monitored target servers, use:
+#   docker compose -f docker/docker-compose.yml up -d
+#
+# App connection (storage wizard defaults):
+#   Host: localhost  Port: 1437  Database: SQLSentinelDB
+#   User: sqlsentinel_app        Password: App@Sentinel2025
+#   sa:   Sentinel@SQLSentinel1
+
 services:
-  sqlserver:
-    image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: sqlsentinel-sqlserver
+  sql-sentinel:
+    image: mcr.microsoft.com/mssql/server:2025-latest
+    platform: linux/amd64
+    container_name: sqlsentinel-storage
     environment:
       ACCEPT_EULA: 'Y'
-      MSSQL_SA_PASSWORD: 'SQLSentinel@Dev1'
+      MSSQL_SA_PASSWORD: 'Sentinel@SQLSentinel1'
       MSSQL_PID: 'Developer'
+      MSSQL_MEMORY_LIMIT_MB: '1536'
     ports:
-      - '1433:1433'
+      - '1437:1433'
     volumes:
-      - sqlserver-data:/var/opt/mssql
+      - sqlsentinel-data:/var/opt/mssql
     restart: unless-stopped
     healthcheck:
       test:
         [
-          'CMD',
-          '/opt/mssql-tools18/bin/sqlcmd',
-          '-S',
-          'localhost',
-          '-U',
-          'sa',
-          '-P',
-          'SQLSentinel@Dev1',
-          '-Q',
-          'SELECT 1',
-          '-No'
+          'CMD-SHELL',
+          "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Sentinel@SQLSentinel1' -Q 'SELECT 1' -b -C 2>/dev/null"
         ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
 
 volumes:
-  sqlserver-data:
+  sqlsentinel-data:

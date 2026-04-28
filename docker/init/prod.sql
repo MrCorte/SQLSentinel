@@ -107,9 +107,12 @@ END
 GO
 
 -- Index to generate realistic index stats
-CREATE INDEX IF NOT EXISTS IX_Orders_CustomerId ON Orders(CustomerId);
-CREATE INDEX IF NOT EXISTS IX_Orders_Status     ON Orders(Status, OrderDate DESC);
-CREATE INDEX IF NOT EXISTS IX_Products_SKU      ON Products(SKU);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.Orders') AND name = N'IX_Orders_CustomerId')
+    CREATE INDEX IX_Orders_CustomerId ON dbo.Orders(CustomerId);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.Orders') AND name = N'IX_Orders_Status')
+    CREATE INDEX IX_Orders_Status ON dbo.Orders(Status, OrderDate DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.Products') AND name = N'IX_Products_SKU')
+    CREATE INDEX IX_Products_SKU ON dbo.Products(SKU);
 GO
 
 -- ── ReportingDB ────────────────────────────────────────────────────────────

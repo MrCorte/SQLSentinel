@@ -10,10 +10,12 @@ import { initDefaultAdmin } from './authService'
 import { BackgroundService } from './backgroundService'
 import type { WorkerApi } from './backgroundService'
 import { syncServers, stopWorker, setIntervalOverrides, onAlert, setPushHandler } from './metricsWorker'
-import { initDb, closeDb, defaultDbPath } from './store/database'
-import { cleanup as purgeOldSnapshots } from './store/metricsRepository'
-import { getSettings } from './store/settings'
-import { migrateEncryptEmailPassword } from './store/emailSettings'
+import { getStorageConfig } from './store/storageConfig'
+import { initStoragePool, closeStoragePool, getPool } from './store/sqlserver/connection'
+import { initSchema } from './store/sqlserver/database'
+import { cleanup as purgeOldSnapshots } from './store/sqlserver/metricsRepository'
+import { getSettings } from './store/sqlserver/settingsRepository'
+import { migrateEncryptEmailPassword } from './store/sqlserver/emailSettingsRepository'
 import { isAvailable as safeStorageAvailable } from './store/safeStorageUtil'
 import { IpcChannel } from './ipc/types'
 import * as serverStore from './store/serverStore'
@@ -152,21 +154,33 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
-  // Initialize SQLite — before any IPC handler
-  initDb(defaultDbPath(app.getPath('appData')))
-
-  // Create default admin user if no users exist
-  initDefaultAdmin().catch((err) => log.error('[AUTH] initDefaultAdmin failed:', err))
+app.whenReady().then(async () => {
+  // Initialize SQL Server storage pool
+  const storageCfg = getStorageConfig()
+  if (storageCfg) {
+    try {
+      await initStoragePool(storageCfg)
+      await initSchema()
+      await initDefaultAdmin()
+      await migrateEncryptEmailPassword()
+    } catch (err) {
+      log.error('[main] Storage pool init failed:', redactError(err))
+    }
+  }
 
   // Purge snapshots older than the configured retention: once at boot, then every 24 h.
-  // Synchronous DELETE on large DBs can block for 1-3s: defer with setImmediate to avoid
-  // slowing startup or freezing the main loop once every 24 h.
-  const retentionDays = (): number => getSettings().retentionMinutes / (60 * 24)
+  const retentionDays = async (): Promise<number> => {
+    try {
+      const s = await getSettings()
+      return s.retentionMinutes / (60 * 24)
+    } catch {
+      return 1
+    }
+  }
   const deferredPurge = (): void => {
-    setImmediate(() => {
+    setImmediate(async () => {
       try {
-        purgeOldSnapshots(retentionDays())
+        await purgeOldSnapshots(await retentionDays())
       } catch (err) {
         log.warn('[main] purgeOldSnapshots:', err)
       }
@@ -178,7 +192,6 @@ app.whenReady().then(() => {
   // One-shot migrations
   serverStore.migrateHostField()
   serverStore.migrateEncryptCredentials()
-  migrateEncryptEmailPassword()
 
   // M4: fail loud if OS-level encryption is unavailable — users must know that
   // credentials are falling back to plaintext storage. See safeStorageUtil.warnOnce()
@@ -242,6 +255,22 @@ app.whenReady().then(() => {
 
   createWindow()
 
+  // Notify renderer of storage readiness after the window loads
+  mainWindow?.webContents.on('did-finish-load', () => {
+    if (!storageCfg) {
+      mainWindow?.webContents.send('storage:not-configured', {})
+    } else {
+      try {
+        getPool()
+        mainWindow?.webContents.send('storage:configured', {})
+      } catch {
+        mainWindow?.webContents.send('storage:not-configured', {
+          error: 'Could not connect to storage database'
+        })
+      }
+    }
+  })
+
   const workerApi: WorkerApi = { syncServers, stopWorker, setIntervalOverrides, onAlert }
   if (mainWindow) {
     backgroundService = new BackgroundService(mainWindow, workerApi)
@@ -296,7 +325,7 @@ function cleanupResources(): void {
   }
   backgroundService?.destroy()
   backgroundService = null
-  closeDb()
+  closeStoragePool().catch(() => {})
 }
 
 app.on('window-all-closed', () => {

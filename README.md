@@ -9,6 +9,10 @@
   Built for DBAs managing tens or hundreds of instances.
 </p>
 
+<p align="center">
+  <img src="img/screenshots/dashboard.png" alt="SQL Sentinel dashboard" width="800" />
+</p>
+
 ---
 
 ## Features

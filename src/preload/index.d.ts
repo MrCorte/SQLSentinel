@@ -327,6 +327,13 @@ export interface StorageConfigInfo {
   trustServerCertificate: boolean
 }
 
+export interface SchemaInitResult {
+  tables: string[]
+  indexes: string[]
+  statistics: string[]
+  warnings: string[]
+}
+
 export interface DbCustomFields {
   alias?: string
   referente?: string
@@ -531,7 +538,7 @@ export interface SqlSentinelAPI {
   storage: {
     getConfig(): Promise<IpcResult<StorageConfigInfo | null>>
     testConnection(params: StorageConnectionParams): Promise<IpcResult<null>>
-    saveConfig(params: StorageConnectionParams): Promise<IpcResult<null>>
+    saveConfig(params: StorageConnectionParams): Promise<IpcResult<SchemaInitResult>>
     onNotConfigured(cb: (err?: string) => void): () => void
     onConfigured(cb: () => void): () => void
   }

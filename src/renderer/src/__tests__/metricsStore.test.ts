@@ -132,7 +132,7 @@ describe('deleteServerData', () => {
 
   it('removes all data for a server', () => {
     useMetricsStore.getState().setMetrics(SID, makeMetrics())
-    useMetricsStore.getState().setServerHealth({ serverId: SID, failCount: 1, lastFailed: false })
+    useMetricsStore.getState().setServerHealth({ serverId: SID, failCount: 1, nextRetry: 0, lastSuccess: null })
     useMetricsStore.getState().deleteServerData(SID)
     const s = useMetricsStore.getState()
     expect(s.metricsMap[SID]).toBeUndefined()
@@ -170,7 +170,8 @@ describe('setServerHealth', () => {
     const health: ServerHealthPayload = {
       serverId: '10.0.0.7:1433',
       failCount: 3,
-      lastFailed: true
+      nextRetry: Date.now() + 5000,
+      lastSuccess: null
     }
     useMetricsStore.getState().setServerHealth(health)
     expect(useMetricsStore.getState().serverHealth['10.0.0.7:1433']).toEqual(health)
@@ -180,10 +181,10 @@ describe('setServerHealth', () => {
     const SID = '10.0.0.8:1433'
     useMetricsStore
       .getState()
-      .setServerHealth({ serverId: SID, failCount: 1, lastFailed: true })
+      .setServerHealth({ serverId: SID, failCount: 1, nextRetry: 0, lastSuccess: null })
     useMetricsStore
       .getState()
-      .setServerHealth({ serverId: SID, failCount: 0, lastFailed: false })
+      .setServerHealth({ serverId: SID, failCount: 0, nextRetry: 0, lastSuccess: Date.now() })
     expect(useMetricsStore.getState().serverHealth[SID].failCount).toBe(0)
   })
 })

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { useAlertsStore } from '../store/alertsStore'
 import type { Alert } from '../../../preload/index'
 

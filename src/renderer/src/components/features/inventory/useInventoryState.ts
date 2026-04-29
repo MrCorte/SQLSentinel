@@ -72,8 +72,11 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
   const [filterDbOffline, setFilterDbOffline] = useState(false)
   const [filterDbNoBackup, setFilterDbNoBackup] = useState(false)
 
+  const [filterDbName, setFilterDbName] = useState('')
+
   // Debounce search to avoid recomputing filteredRows on every keystroke
   const debouncedSearch = useDebouncedValue(search, 300)
+  const debouncedFilterDbName = useDebouncedValue(filterDbName, 300)
 
   // Store subscriptions
   const servers = useServersStore((s) => s.servers)
@@ -252,7 +255,7 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
   }, [filteredDbRows])
 
   // ── Server View rows ─────────────────────────────────────────────────────
-  const needsFullExpand = filterAlias !== 'all' || filterReferente !== 'all'
+  const needsFullExpand = filterAlias !== 'all' || filterReferente !== 'all' || debouncedFilterDbName !== ''
 
   const effectiveExpanded = useMemo(() => {
     if (filterType === 'ag-primary' || filterType === 'ag-secondary' || needsFullExpand) {
@@ -310,6 +313,13 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
         const dbs = metricsMap[key]?.databases ?? []
         if (!dbs.some((db) => db.referente === filterReferente)) return false
       }
+      if (debouncedFilterDbName !== '') {
+        if (row.type !== 'standalone' && row.type !== 'ag-replica') return false
+        const key = `${row.host}:${row.port}`
+        const dbs = metricsMap[key]?.databases ?? []
+        const q = debouncedFilterDbName.toLowerCase()
+        if (!dbs.some((db) => db.name?.toLowerCase().includes(q))) return false
+      }
       if (filterVersion !== 'all' && getSqlServerVersion(row.version) !== filterVersion)
         return false
       return true
@@ -324,6 +334,7 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
     filterAlias,
     filterReferente,
     filterVersion,
+    debouncedFilterDbName,
     serverAliases,
     metricsMap
   ])
@@ -359,6 +370,7 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
 
   const hasActiveFilters =
     search !== '' ||
+    filterDbName !== '' ||
     filterEnv !== 'all' ||
     filterType !== 'all' ||
     filterState !== 'all' ||
@@ -525,6 +537,11 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
           const dbs = mm[`${row.host}:${row.port}`]?.databases ?? []
           if (!dbs.some((db) => db.referente === filterReferente)) return false
         }
+        if (filterDbName !== '') {
+          const dbs = mm[`${row.host}:${row.port}`]?.databases ?? []
+          const q = filterDbName.toLowerCase()
+          if (!dbs.some((db) => db.name?.toLowerCase().includes(q))) return false
+        }
         if (filterVersion !== 'all' && getSqlServerVersion(row.version) !== filterVersion)
           return false
         return true
@@ -568,6 +585,7 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
     inventory,
     hasActiveFilters,
     search,
+    filterDbName,
     filterEnv,
     filterType,
     filterState,
@@ -593,6 +611,7 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
 
   const handleResetFilters = useCallback(() => {
     setSearch('')
+    setFilterDbName('')
     setFilterEnv('all')
     setFilterType('all')
     setFilterState('all')
@@ -641,6 +660,8 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
     // server view filters
     search,
     setSearch,
+    filterDbName,
+    setFilterDbName,
     filterEnv,
     setFilterEnv,
     filterType,

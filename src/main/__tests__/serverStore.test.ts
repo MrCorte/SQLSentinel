@@ -315,7 +315,7 @@ describe('migrateHostField', () => {
     migrateHostField()
     const saved = hoisted.storeState.data['servers'] as StoredServer[]
     expect(saved[0].host).toBe('10.0.0.1')
-    expect((saved[0] as Record<string, unknown>)['ip']).toBeUndefined()
+    expect((saved[0] as unknown as Record<string, unknown>)['ip']).toBeUndefined()
   })
 
   it('is a no-op when all records already have host', () => {

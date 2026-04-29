@@ -23,7 +23,15 @@ import { useAlertsStore } from '../store/alertsStore'
 import type { StoredServer } from '../../../preload/index'
 import * as ipcMod from '../api/ipc'
 
-const mockIpc = vi.mocked(ipcMod)
+// vi.mocked(module) doesn't deep-type nested plain objects; wrap each function individually
+const mockIpc = {
+  servers: {
+    getAll: vi.mocked(ipcMod.servers.getAll),
+    add: vi.mocked(ipcMod.servers.add),
+    remove: vi.mocked(ipcMod.servers.remove),
+    update: vi.mocked(ipcMod.servers.update)
+  }
+}
 
 function makeServer(id: string, host = '10.0.0.1', port = 1433): StoredServer {
   return {
@@ -62,7 +70,7 @@ describe('loadServers', () => {
   })
 
   it('normalizes legacy "ip" field to "host"', async () => {
-    const raw = [{ id: 'srv1', ip: '10.0.0.2', port: 1433, useWindowsAuth: true, addedAt: '' }]
+    const raw = [{ id: 'srv1', ip: '10.0.0.2', host: '10.0.0.2', port: 1433, useWindowsAuth: true, addedAt: '' }]
     mockIpc.servers.getAll.mockResolvedValue(raw)
     await useServersStore.getState().loadServers()
     const servers = useServersStore.getState().servers
@@ -123,7 +131,7 @@ describe('addServer', () => {
 describe('removeServer', () => {
   it('removes server from the list', async () => {
     useServersStore.setState({ servers: [makeServer('srv1')], initialized: true })
-    mockIpc.servers.remove.mockResolvedValue(undefined)
+    mockIpc.servers.remove.mockResolvedValue({ success: true })
     await useServersStore.getState().removeServer('srv1')
     expect(useServersStore.getState().servers).toHaveLength(0)
   })
@@ -139,7 +147,7 @@ describe('removeServer', () => {
       activeServerId: null,
       lastUpdate: null
     })
-    mockIpc.servers.remove.mockResolvedValue(undefined)
+    mockIpc.servers.remove.mockResolvedValue({ success: true })
     await useServersStore.getState().removeServer('srv1')
     expect(useMetricsStore.getState().metricsMap['10.0.0.1:1433']).toBeUndefined()
   })
@@ -156,7 +164,7 @@ describe('removeServer', () => {
 describe('updateServer', () => {
   it('merges the patch into the matching server', async () => {
     useServersStore.setState({ servers: [makeServer('srv1')], initialized: true })
-    mockIpc.servers.update.mockResolvedValue(undefined)
+    mockIpc.servers.update.mockResolvedValue({ success: true })
     await useServersStore.getState().updateServer('srv1', { notes: 'updated note' })
     const srv = useServersStore.getState().servers.find((s) => s.id === 'srv1')
     expect(srv?.notes).toBe('updated note')
@@ -167,7 +175,7 @@ describe('updateServer', () => {
       servers: [makeServer('srv1', '10.0.0.1'), makeServer('srv2', '10.0.0.2')],
       initialized: true
     })
-    mockIpc.servers.update.mockResolvedValue(undefined)
+    mockIpc.servers.update.mockResolvedValue({ success: true })
     await useServersStore.getState().updateServer('srv1', { notes: 'note' })
     const srv2 = useServersStore.getState().servers.find((s) => s.id === 'srv2')
     expect(srv2?.notes).toBeUndefined()

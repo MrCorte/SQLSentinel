@@ -30,6 +30,8 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
     // server view
     search,
     setSearch,
+    filterDbName,
+    setFilterDbName,
     filterEnv,
     setFilterEnv,
     filterType,
@@ -152,6 +154,8 @@ export function Inventory({ onNavigateToDashboard }: InventoryProps): React.JSX.
             <InventoryFilters
               search={search}
               onSearchChange={setSearch}
+              filterDbName={filterDbName}
+              onFilterDbNameChange={setFilterDbName}
               filterEnv={filterEnv}
               onFilterEnvChange={setFilterEnv}
               filterType={filterType}

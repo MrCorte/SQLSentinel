@@ -1,7 +1,7 @@
 import type { IpcMainInvokeEvent } from 'electron'
 import { handle, safeError, log } from '../handleWrapper'
 import { IpcChannel } from '../types'
-import type { StorageConnectionParams, StorageConfigInfo, IpcResult } from '../types'
+import type { StorageConnectionParams, StorageConfigInfo, IpcResult, SchemaInitResult } from '../types'
 import { getStorageConfig, saveStorageConfig } from '../../store/storageConfig'
 import { testConnection, initStoragePool } from '../../store/sqlserver/connection'
 import { initSchema } from '../../store/sqlserver/database'
@@ -45,14 +45,17 @@ export function registerStorageHandlers(): void {
 
   handle(
     IpcChannel.STORAGE_SAVE_CONFIG,
-    async (_e: IpcMainInvokeEvent, params: StorageConnectionParams): Promise<IpcResult<null>> => {
+    async (
+      _e: IpcMainInvokeEvent,
+      params: StorageConnectionParams
+    ): Promise<IpcResult<SchemaInitResult>> => {
       try {
         await testConnection(params)
         saveStorageConfig(params)
         await initStoragePool(getStorageConfig()!)
-        await initSchema()
+        const schemaResult = await initSchema()
         await initDefaultAdmin()
-        return { ok: true, data: null }
+        return { ok: true, data: schemaResult }
       } catch (err) {
         log.error('[IPC] STORAGE_SAVE_CONFIG:', safeError(err))
         return { ok: false, error: safeError(err) }

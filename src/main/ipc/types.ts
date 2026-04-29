@@ -357,6 +357,8 @@ export interface StorageConfigInfo {
   encrypt: boolean
   trustServerCertificate: boolean
 }
+
+export type { SchemaInitResult } from '../store/sqlserver/database'
 export type {
   AvailabilityGroup,
   AvailabilityReplica,

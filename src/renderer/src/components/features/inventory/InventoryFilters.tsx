@@ -11,6 +11,8 @@ interface InventoryFiltersProps {
   // search
   search: string
   onSearchChange: (v: string) => void
+  filterDbName: string
+  onFilterDbNameChange: (v: string) => void
   // filter values
   filterEnv: string
   onFilterEnvChange: (v: string) => void
@@ -45,6 +47,8 @@ interface InventoryFiltersProps {
 export const InventoryFilters = memo(function InventoryFilters({
   search,
   onSearchChange,
+  filterDbName,
+  onFilterDbNameChange,
   filterEnv,
   onFilterEnvChange,
   filterType,
@@ -86,6 +90,21 @@ export const InventoryFilters = memo(function InventoryFilters({
           )
         }}
         sx={{ minWidth: 220 }}
+      />
+
+      <TextField
+        size="small"
+        placeholder="Search database..."
+        value={filterDbName}
+        onChange={(e) => onFilterDbNameChange(e.target.value)}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" sx={{ color: tokens.color.textMuted }} />
+            </InputAdornment>
+          )
+        }}
+        sx={{ minWidth: 200 }}
       />
 
       <Select

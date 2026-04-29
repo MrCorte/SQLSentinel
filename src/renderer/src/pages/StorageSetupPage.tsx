@@ -1,4 +1,3 @@
-// src/renderer/src/pages/StorageSetupPage.tsx
 import { useState, useRef, useEffect, useCallback } from 'react'
 import {
   Box,
@@ -9,8 +8,12 @@ import {
   TextField,
   Typography,
   Alert,
-  Stack
+  Stack,
+  Chip
 } from '@mui/material'
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import WarningAmberIcon from '@mui/icons-material/WarningAmber'
+import type { SchemaInitResult } from '../../../preload/index'
 
 interface FormState {
   host: string
@@ -41,9 +44,17 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(initialError ?? null)
   const [tested, setTested] = useState(false)
+  const [setupResult, setSetupResult] = useState<SchemaInitResult | null>(null)
 
   const alive = useRef(true)
   useEffect(() => () => { alive.current = false }, [])
+
+  // Auto-navigate 2 seconds after successful setup
+  useEffect(() => {
+    if (!setupResult) return
+    const t = setTimeout(() => { if (alive.current) onConfigured() }, 2000)
+    return () => clearTimeout(t)
+  }, [setupResult, onConfigured])
 
   function field(key: 'host' | 'port' | 'database' | 'username' | 'password') {
     return {
@@ -112,12 +123,86 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
     })
     setSaving(false)
     if (result.ok) {
-      onConfigured()
+      setSetupResult(result.data)
     } else {
       setError(result.error ?? 'Save failed')
     }
-  }, [form, onConfigured])
+  }, [form])
 
+  // ── Setup complete screen ────────────────────────────────────────────────
+  if (setupResult) {
+    return (
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: 'background.default'
+        }}
+      >
+        <Box sx={{ width: 460, p: 4 }}>
+          <Stack direction="row" alignItems="center" spacing={1} mb={1}>
+            <CheckCircleOutlineIcon color="success" />
+            <Typography variant="h5" fontWeight={700}>
+              Database configured
+            </Typography>
+          </Stack>
+          <Typography variant="body2" color="text.secondary" mb={3}>
+            {form.host}:{form.port} / {form.database} — navigating in a moment…
+          </Typography>
+
+          <Stack spacing={1.5}>
+            <SetupRow
+              label="Tables"
+              items={setupResult.tables}
+              color="default"
+            />
+            <SetupRow
+              label="Indexes"
+              items={setupResult.indexes}
+              color="default"
+            />
+            <SetupRow
+              label="Statistics"
+              items={setupResult.statistics}
+              color="default"
+            />
+            <SetupRow
+              label="Admin account"
+              items={['admin (must change password on first login)']}
+              color="default"
+            />
+            {setupResult.warnings.length > 0 && (
+              <Box>
+                <Stack direction="row" alignItems="center" spacing={0.5} mb={0.5}>
+                  <WarningAmberIcon fontSize="small" color="warning" />
+                  <Typography variant="caption" color="warning.main">
+                    {setupResult.warnings.length} optional step(s) skipped
+                  </Typography>
+                </Stack>
+                {setupResult.warnings.map((w: string, i: number) => (
+                  <Typography key={i} variant="caption" color="text.secondary" display="block" sx={{ pl: 3 }}>
+                    {w}
+                  </Typography>
+                ))}
+              </Box>
+            )}
+          </Stack>
+
+          <Button
+            variant="contained"
+            sx={{ mt: 3 }}
+            onClick={onConfigured}
+          >
+            Continue
+          </Button>
+        </Box>
+      </Box>
+    )
+  }
+
+  // ── Setup form ────────────────────────────────────────────────────────────
   return (
     <Box
       sx={{
@@ -169,6 +254,31 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
             </Button>
           </Stack>
         </Stack>
+      </Box>
+    </Box>
+  )
+}
+
+// ── Helper: labelled chip-list row ──────────────────────────────────────────
+
+function SetupRow({
+  label,
+  items,
+  color
+}: {
+  label: string
+  items: string[]
+  color: 'default' | 'success' | 'warning'
+}) {
+  return (
+    <Box>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+        {label} ({items.length})
+      </Typography>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+        {items.map((item) => (
+          <Chip key={item} label={item} size="small" color={color} variant="outlined" />
+        ))}
       </Box>
     </Box>
   )

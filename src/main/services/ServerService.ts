@@ -70,7 +70,7 @@ export function listServersLegacy(): DiscoveredServer[] {
 
 /** Returns all persisted servers stripped of credentials (C2). */
 export function listServers(): StoredServer[] {
-  return serverStore.getAll().map(serverStore.stripCredentials)
+  return serverStore.getAllStripped()
 }
 
 /** TCP-probes the given host:port and persists the server to the store. */
@@ -116,10 +116,11 @@ export function removeServerById(id: string): void {
  * Returns counts for diagnostic logging.
  */
 export function clearMockServers(): { removed: number; remaining: number } {
-  const before = serverStore.getAll()
+  // No need to decrypt passwords just to inspect ids — use stripped view
+  const before = serverStore.getAllStripped()
   const mocks = before.filter((s) => s.id.startsWith('mock-'))
   mocks.forEach((s) => serverStore.remove(s.id))
-  const after = serverStore.getAll()
+  const after = serverStore.getAllStripped()
   log.info(`[clearMocks] rimossi ${mocks.length} mock, rimasti: ${after.length}`)
   return { removed: mocks.length, remaining: after.length }
 }

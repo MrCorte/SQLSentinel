@@ -539,6 +539,7 @@ export interface SqlSentinelAPI {
     getConfig(): Promise<IpcResult<StorageConfigInfo | null>>
     testConnection(params: StorageConnectionParams): Promise<IpcResult<null>>
     saveConfig(params: StorageConnectionParams): Promise<IpcResult<SchemaInitResult>>
+    getSafeStorageStatus(): Promise<IpcResult<{ available: boolean }>>
     onNotConfigured(cb: (err?: string) => void): () => void
     onConfigured(cb: () => void): () => void
   }

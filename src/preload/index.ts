@@ -1184,6 +1184,8 @@ const bridgeApi = {
       ipcRenderer.invoke(IpcChannel.STORAGE_TEST_CONNECTION, params),
     saveConfig: (params: StorageConnectionParams): Promise<IpcResult<null>> =>
       ipcRenderer.invoke(IpcChannel.STORAGE_SAVE_CONFIG, params),
+    getSafeStorageStatus: (): Promise<IpcResult<{ available: boolean }>> =>
+      ipcRenderer.invoke(IpcChannel.STORAGE_SAFE_STORAGE_STATUS),
     onNotConfigured: (cb: (err?: string) => void): (() => void) => {
       const handler = (_e: IpcRendererEvent, payload: { error?: string }) => cb(payload?.error)
       ipcRenderer.on('storage:not-configured', handler)

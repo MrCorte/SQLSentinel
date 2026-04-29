@@ -29,7 +29,7 @@ export interface AiContext {
 }
 
 export async function gatherContext(): Promise<AiContext> {
-  const servers = serverStore.getAll().map((s) => ({
+  const servers = serverStore.getAllStripped().map((s) => ({
     id: s.id,
     host: s.host,
     port: s.port,

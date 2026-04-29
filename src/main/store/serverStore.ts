@@ -106,8 +106,25 @@ export function getAll(): StoredServer[] {
   return (store.get('servers', []) as any[]).map(withDecryptedPassword)
 }
 
+/**
+ * Returns servers with credentials stripped — never decrypts.
+ * Use from IPC handlers / UI paths that don't need the plaintext password,
+ * to avoid N synchronous DPAPI calls per query.
+ */
+export function getAllStripped(): StoredServer[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (store.get('servers', []) as any[]).map((s) => stripCredentials(normalizeServer(s)))
+}
+
+/**
+ * Lookup-by-id without decrypting every other server's password.
+ * Decrypts only the matching record.
+ */
 export function getById(id: string): StoredServer | undefined {
-  return getAll().find((s) => s.id === id)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const raw = store.get('servers', []) as any[]
+  const match = raw.find((s) => s.id === id)
+  return match ? withDecryptedPassword(match) : undefined
 }
 
 export function getByIpPort(host: string, port: number): StoredServer | undefined {

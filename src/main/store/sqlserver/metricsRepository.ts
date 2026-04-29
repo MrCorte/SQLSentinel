@@ -9,7 +9,10 @@ export interface SaveItem {
   metrics: ServerMetrics
 }
 
-const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
+// Strict ISO 8601 with timezone: required to be a full timestamp ending in Z or
+// ±HH:MM. Prevents user data resembling a partial timestamp from being silently
+// coerced into a Date object.
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
 function dateReviver(_key: string, value: unknown): unknown {
   if (typeof value === 'string' && ISO_DATE_RE.test(value)) return new Date(value)
   return value
@@ -137,24 +140,29 @@ export async function findLastNBulk(
   return result
 }
 
-// Single multi-row INSERT instead of a loop — N round-trips → 1 round-trip.
-// SQL Server allows max 2100 params; at 4 params/row this supports up to 525 rows per batch,
-// well above the expected server count.
-export async function batchSave(items: SaveItem[]): Promise<void> {
-  if (items.length === 0) return
-  const pool = getPool()
+// Single multi-row INSERT — chunked to stay under SQL Server's 2100-param cap.
+// At 4 params/row, 500 rows/chunk leaves headroom for any future column additions.
+const BATCH_CHUNK_SIZE = 500
 
-  // Build a single multi-row INSERT for all items
-  const rows = items.map((_, i) => `(@id${i}, @sid${i}, @cat${i}, @json${i})`).join(', ')
+async function insertChunk(chunk: SaveItem[]): Promise<void> {
+  const pool = getPool()
+  const rows = chunk.map((_, i) => `(@id${i}, @sid${i}, @cat${i}, @json${i})`).join(', ')
   const req = pool.request()
-  for (let i = 0; i < items.length; i++) {
+  for (let i = 0; i < chunk.length; i++) {
     req
       .input(`id${i}`, sql.NVarChar(36), randomUUID())
-      .input(`sid${i}`, sql.NVarChar(36), items[i].serverId)
-      .input(`cat${i}`, sql.DateTime2, items[i].metrics.collectedAt)
-      .input(`json${i}`, sql.NVarChar(sql.MAX), JSON.stringify(items[i].metrics))
+      .input(`sid${i}`, sql.NVarChar(36), chunk[i].serverId)
+      .input(`cat${i}`, sql.DateTime2, chunk[i].metrics.collectedAt)
+      .input(`json${i}`, sql.NVarChar(sql.MAX), JSON.stringify(chunk[i].metrics))
   }
   await req.query(
     `INSERT INTO dbo.metrics_snapshots (id, server_id, collected_at, metrics_json) VALUES ${rows}`
   )
+}
+
+export async function batchSave(items: SaveItem[]): Promise<void> {
+  if (items.length === 0) return
+  for (let i = 0; i < items.length; i += BATCH_CHUNK_SIZE) {
+    await insertChunk(items.slice(i, i + BATCH_CHUNK_SIZE))
+  }
 }

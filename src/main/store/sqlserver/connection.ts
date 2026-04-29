@@ -31,20 +31,35 @@ function buildConfig(params: {
 }
 
 export async function initStoragePool(config: StorageConfig): Promise<void> {
+  await initStoragePoolFromParams({
+    host: config.host,
+    port: config.port,
+    database: config.database,
+    username: config.username,
+    password: getDecryptedPassword(config),
+    encrypt: config.encrypt,
+    trustServerCertificate: config.trustServerCertificate
+  })
+}
+
+/**
+ * Initialise the module-level pool from raw params (plaintext password).
+ * Use during the storage setup wizard where credentials haven't been persisted yet.
+ */
+export async function initStoragePoolFromParams(params: {
+  host: string
+  port: number
+  database: string
+  username: string
+  password: string
+  encrypt?: boolean
+  trustServerCertificate?: boolean
+}): Promise<void> {
   if (_pool) {
     await _pool.close().catch(() => {})
+    _pool = null
   }
-  _pool = await mssql.connect(
-    buildConfig({
-      host: config.host,
-      port: config.port,
-      database: config.database,
-      username: config.username,
-      password: getDecryptedPassword(config),
-      encrypt: config.encrypt,
-      trustServerCertificate: config.trustServerCertificate
-    })
-  )
+  _pool = await mssql.connect(buildConfig(params))
 }
 
 export function getPool(): mssql.ConnectionPool {
@@ -75,9 +90,13 @@ export async function testConnection(params: {
   const cfg = buildConfig(params)
   const TIMEOUT_MS = 10000
 
-  const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error('Connection timed out after 10s')), TIMEOUT_MS)
-  )
+  let timeoutHandle: NodeJS.Timeout | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(
+      () => reject(new Error('Connection timed out after 10s')),
+      TIMEOUT_MS
+    )
+  })
 
   const connect = mssql.connect({
     ...cfg,
@@ -86,10 +105,29 @@ export async function testConnection(params: {
     options: { ...cfg.options, connectTimeout: TIMEOUT_MS }
   })
 
-  const pool = await Promise.race([connect, timeout])
+  // If timeout wins the race, the connect promise is still in flight.
+  // When it eventually resolves, close the pool so the TCP connection
+  // doesn't leak. If connect rejects later, swallow it.
+  let timedOut = false
+  connect
+    .then((p) => {
+      if (timedOut) p.close().catch(() => {})
+    })
+    .catch(() => {
+      /* connect failed after timeout — already reported via thrown timeout */
+    })
+
   try {
-    await pool.close()
-  } catch {
-    // best-effort close
+    const pool = await Promise.race([connect, timeout])
+    if (timeoutHandle) clearTimeout(timeoutHandle)
+    try {
+      await pool.close()
+    } catch {
+      // best-effort close
+    }
+  } catch (err) {
+    timedOut = true
+    if (timeoutHandle) clearTimeout(timeoutHandle)
+    throw err
   }
 }

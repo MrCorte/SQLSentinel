@@ -84,7 +84,8 @@ export enum IpcChannel {
   // Storage connection management
   STORAGE_GET_CONFIG      = 'storage:get-config',
   STORAGE_TEST_CONNECTION = 'storage:test-connection',
-  STORAGE_SAVE_CONFIG     = 'storage:save-config'
+  STORAGE_SAVE_CONFIG     = 'storage:save-config',
+  STORAGE_SAFE_STORAGE_STATUS = 'storage:safeStorageStatus'
 }
 
 /** Unified result envelope — never throw raw errors to the renderer. */

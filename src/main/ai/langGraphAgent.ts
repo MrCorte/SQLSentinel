@@ -53,7 +53,7 @@ export interface AgentHistory {
 // ---------------------------------------------------------------------------
 
 async function getServerMetricsImpl(): Promise<string> {
-  const servers = serverStore.getAll()
+  const servers = serverStore.getAllStripped()
   const ids = servers.map((s) => s.id)
   const bulk = metricsRepository.findLastNBulk(ids, 1)
   const result = servers.map((s) => {
@@ -88,7 +88,7 @@ async function getRecentAlertsImpl(): Promise<string> {
 }
 
 async function getSlowQueriesImpl(): Promise<string> {
-  const servers = serverStore.getAll()
+  const servers = serverStore.getAllStripped()
   const ids = servers.map((s) => s.id)
   const bulk = metricsRepository.findLastNBulk(ids, 1)
   const queries = Object.entries(bulk).flatMap(([serverId, snaps]) => {
@@ -110,7 +110,7 @@ async function getSlowQueriesImpl(): Promise<string> {
 async function getServerNotesImpl(): Promise<string> {
   return JSON.stringify(
     serverStore
-      .getAll()
+      .getAllStripped()
       .filter((s) => s.notes)
       .map((s) => ({ host: s.host ?? s.ip, notes: s.notes }))
   )

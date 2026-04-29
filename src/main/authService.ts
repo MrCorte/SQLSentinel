@@ -27,6 +27,11 @@ function hashToken(plain: string): string {
 const SALT_ROUNDS = 12
 const SESSION_TIMEOUT_MS = 8 * 60 * 60 * 1000 // 8 hours
 
+// Real bcrypt hash used for constant-time compare when the lookup misses.
+// Computed once at startup so bcrypt.compare doesn't throw on a malformed hash
+// (which would leak user-existence via timing). The plaintext is never used.
+const DUMMY_HASH = bcrypt.hashSync('not-a-valid-password-placeholder', SALT_ROUNDS)
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -58,7 +63,7 @@ export async function login(
 
   if (!user) {
     // Constant-time dummy compare to resist timing attacks
-    await bcrypt.compare(password, '$2a$12$dummyhashfortimingresistancexx')
+    await bcrypt.compare(password, DUMMY_HASH)
     return { success: false, error: 'Invalid credentials' }
   }
 

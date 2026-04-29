@@ -504,7 +504,10 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
         new Set(allClusterKeys),
         new Set(allMachineKeys)
       )
-      const q = search.toLowerCase()
+      // Use debounced values so the export and the visible rows stay aligned
+      // (filteredRows uses debouncedSearch / debouncedFilterDbName).
+      const q = debouncedSearch.toLowerCase()
+      const dbq = debouncedFilterDbName.toLowerCase()
       const matched = fullyExpanded.filter((row) => {
         if (row.type !== 'standalone' && row.type !== 'ag-replica') return false
         if (filterType !== 'all') {
@@ -537,10 +540,9 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
           const dbs = mm[`${row.host}:${row.port}`]?.databases ?? []
           if (!dbs.some((db) => db.referente === filterReferente)) return false
         }
-        if (filterDbName !== '') {
+        if (dbq !== '') {
           const dbs = mm[`${row.host}:${row.port}`]?.databases ?? []
-          const q = filterDbName.toLowerCase()
-          if (!dbs.some((db) => db.name?.toLowerCase().includes(q))) return false
+          if (!dbs.some((db) => db.name?.toLowerCase().includes(dbq))) return false
         }
         if (filterVersion !== 'all' && getSqlServerVersion(row.version) !== filterVersion)
           return false
@@ -584,8 +586,8 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
     filteredDbRows,
     inventory,
     hasActiveFilters,
-    search,
-    filterDbName,
+    debouncedSearch,
+    debouncedFilterDbName,
     filterEnv,
     filterType,
     filterState,

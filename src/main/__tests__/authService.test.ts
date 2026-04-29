@@ -26,10 +26,12 @@ vi.mock('../store/sqlserver/sessionsRepository', () => ({
 
 const mockBcryptCompare = vi.fn()
 const mockBcryptHash = vi.fn()
+const mockBcryptHashSync = vi.fn(() => '$2a$12$dummy.hash.computed.at.module.load.for.timing.defense.AB')
 vi.mock('bcryptjs', () => ({
   default: {
     compare: mockBcryptCompare,
-    hash: mockBcryptHash
+    hash: mockBcryptHash,
+    hashSync: mockBcryptHashSync
   }
 }))
 

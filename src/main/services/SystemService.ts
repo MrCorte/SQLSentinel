@@ -48,7 +48,7 @@ export function exportCustomFieldsCsv(): string {
 export function exportInventoryCsv(): string {
   const all = getAllCustomFields()
   const header = 'ip,port,reachable,added_at,databases'
-  const rows = serverStore.getAll().map((s) => {
+  const rows = serverStore.getAllStripped().map((s) => {
     const sid = serverKey(s.host, s.port)
     const dbEntries = Object.entries(all)
       .filter(([key]) => key.startsWith(sid + '/'))

@@ -40,8 +40,10 @@ const MAX_HISTORY_ACTIVE = 60
 const MAX_HISTORY_IDLE = 10
 
 function pushCapped(buf: HistoryPoint[], point: HistoryPoint, cap: number): HistoryPoint[] {
-  const next = [...buf, point]
-  return next.length > cap ? next.slice(next.length - cap) : next
+  // Avoid the [...buf, point] then-slice double allocation when at/over cap.
+  if (buf.length < cap) return [...buf, point]
+  // At cap: drop oldest in a single allocation
+  return [...buf.slice(buf.length - cap + 1), point]
 }
 
 function memPercent(info: ServerMetrics['instanceInfo']): number {
@@ -161,18 +163,7 @@ export const useMetricsStore = create<MetricsStore>()(
 
     setMetrics: (serverId, m) =>
       set((state) => {
-        state.metricsMap[serverId] = m
-        state.summaries[serverId] = buildSummary(m)
-
-        const isActive = state.activeServerId === serverId
-        const cap = isActive ? MAX_HISTORY_ACTIVE : MAX_HISTORY_IDLE
-        const hist = state.historyMap[serverId] ?? { cpu: [], memory: [] }
-        const ts = m.collectedAt.getTime()
-        state.historyMap[serverId] = {
-          cpu: pushCapped(hist.cpu, { ts, value: m.instanceInfo.cpuUsagePercent }, cap),
-          memory: pushCapped(hist.memory, { ts, value: memPercent(m.instanceInfo) }, cap)
-        }
-
+        applyFullSnapshot(state, serverId, m)
         state.lastUpdate = new Date()
       }),
 
@@ -183,114 +174,73 @@ export const useMetricsStore = create<MetricsStore>()(
 
     applyDelta: (serverId, delta) =>
       set((state) => {
-        if (!delta.isDelta) {
-          state.metricsMap[serverId] = delta
-          state.summaries[serverId] = buildSummary(delta)
-
-          const isActive = state.activeServerId === serverId
-          const cap = isActive ? MAX_HISTORY_ACTIVE : MAX_HISTORY_IDLE
-          const hist = state.historyMap[serverId] ?? { cpu: [], memory: [] }
-          const ts = delta.collectedAt.getTime()
-          state.historyMap[serverId] = {
-            cpu: pushCapped(hist.cpu, { ts, value: delta.instanceInfo.cpuUsagePercent }, cap),
-            memory: pushCapped(hist.memory, { ts, value: memPercent(delta.instanceInfo) }, cap)
-          }
-
-          state.lastUpdate = new Date()
-          return
-        }
-        const existing = state.metricsMap[serverId]
-        if (!existing) {
-          state.metricsMap[serverId] = delta
-          state.summaries[serverId] = buildSummary(delta)
-          state.lastUpdate = new Date()
-          return
-        }
-        // Remove dropped databases first (FIX: ghost DB prevention)
-        if (delta.removedDbs?.length) {
-          const removed = new Set(delta.removedDbs)
-          existing.databases = existing.databases.filter((d) => !removed.has(d.name))
-        }
-        // Merge: update only changed databases
-        delta.databases.forEach((changedDb) => {
-          const idx = existing.databases.findIndex((d) => d.name === changedDb.name)
-          if (idx >= 0) existing.databases[idx] = changedDb
-          else existing.databases.push(changedDb)
-        })
-        // Update instance-level fields
-        Object.assign(existing.instanceInfo, delta.instanceInfo)
-        existing.activeSessions = delta.activeSessions
-        existing.backupStatus = delta.backupStatus
-        existing.collectedAt = delta.collectedAt
-        // Clean transient delta flags so the store never accumulates stale metadata
-        delete existing.isDelta
-        delete existing.removedDbs
-
-        state.summaries[serverId] = buildSummary(existing)
-
-        const isActive = state.activeServerId === serverId
-        const cap = isActive ? MAX_HISTORY_ACTIVE : MAX_HISTORY_IDLE
-        const hist = state.historyMap[serverId] ?? { cpu: [], memory: [] }
-        const ts = existing.collectedAt.getTime()
-        state.historyMap[serverId] = {
-          cpu: pushCapped(hist.cpu, { ts, value: existing.instanceInfo.cpuUsagePercent }, cap),
-          memory: pushCapped(hist.memory, { ts, value: memPercent(existing.instanceInfo) }, cap)
-        }
-
+        applyOne(state, serverId, delta)
         state.lastUpdate = new Date()
       }),
 
     applyDeltaBatch: (batch) =>
       set((state) => {
         for (const { serverId, metrics: delta } of batch) {
-          if (!delta.isDelta) {
-            state.metricsMap[serverId] = delta
-            state.summaries[serverId] = buildSummary(delta)
-
-            const isActive = state.activeServerId === serverId
-            const cap = isActive ? MAX_HISTORY_ACTIVE : MAX_HISTORY_IDLE
-            const hist = state.historyMap[serverId] ?? { cpu: [], memory: [] }
-            const ts = delta.collectedAt.getTime()
-            state.historyMap[serverId] = {
-              cpu: pushCapped(hist.cpu, { ts, value: delta.instanceInfo.cpuUsagePercent }, cap),
-              memory: pushCapped(hist.memory, { ts, value: memPercent(delta.instanceInfo) }, cap)
-            }
-            continue
-          }
-          const existing = state.metricsMap[serverId]
-          if (!existing) {
-            state.metricsMap[serverId] = delta
-            state.summaries[serverId] = buildSummary(delta)
-            continue
-          }
-          if (delta.removedDbs?.length) {
-            const removed = new Set(delta.removedDbs)
-            existing.databases = existing.databases.filter((d) => !removed.has(d.name))
-          }
-          delta.databases.forEach((changedDb) => {
-            const idx = existing.databases.findIndex((d) => d.name === changedDb.name)
-            if (idx >= 0) existing.databases[idx] = changedDb
-            else existing.databases.push(changedDb)
-          })
-          Object.assign(existing.instanceInfo, delta.instanceInfo)
-          existing.activeSessions = delta.activeSessions
-          existing.backupStatus = delta.backupStatus
-          existing.collectedAt = delta.collectedAt
-          delete existing.isDelta
-          delete existing.removedDbs
-
-          state.summaries[serverId] = buildSummary(existing)
-
-          const isActive = state.activeServerId === serverId
-          const cap = isActive ? MAX_HISTORY_ACTIVE : MAX_HISTORY_IDLE
-          const hist = state.historyMap[serverId] ?? { cpu: [], memory: [] }
-          const ts = existing.collectedAt.getTime()
-          state.historyMap[serverId] = {
-            cpu: pushCapped(hist.cpu, { ts, value: existing.instanceInfo.cpuUsagePercent }, cap),
-            memory: pushCapped(hist.memory, { ts, value: memPercent(existing.instanceInfo) }, cap)
-          }
+          applyOne(state, serverId, delta)
         }
         state.lastUpdate = new Date()
       })
   }))
 )
+
+// ── Internal mutators (operate on Immer draft) ─────────────────────────────
+
+type Draft = MetricsStore
+
+function pushHistoryPoint(state: Draft, serverId: string, m: ServerMetrics): void {
+  const isActive = state.activeServerId === serverId
+  const cap = isActive ? MAX_HISTORY_ACTIVE : MAX_HISTORY_IDLE
+  const hist = state.historyMap[serverId] ?? { cpu: [], memory: [] }
+  const ts = m.collectedAt.getTime()
+  state.historyMap[serverId] = {
+    cpu: pushCapped(hist.cpu, { ts, value: m.instanceInfo.cpuUsagePercent }, cap),
+    memory: pushCapped(hist.memory, { ts, value: memPercent(m.instanceInfo) }, cap)
+  }
+}
+
+function applyFullSnapshot(state: Draft, serverId: string, m: ServerMetrics): void {
+  state.metricsMap[serverId] = m
+  state.summaries[serverId] = buildSummary(m)
+  pushHistoryPoint(state, serverId, m)
+}
+
+/** Unified delta-or-full mutator used by both applyDelta and applyDeltaBatch. */
+function applyOne(state: Draft, serverId: string, delta: DeltaMetrics): void {
+  if (!delta.isDelta) {
+    applyFullSnapshot(state, serverId, delta)
+    return
+  }
+  const existing = state.metricsMap[serverId]
+  if (!existing) {
+    state.metricsMap[serverId] = delta
+    state.summaries[serverId] = buildSummary(delta)
+    return
+  }
+  // Remove dropped databases (ghost-DB prevention)
+  if (delta.removedDbs?.length) {
+    const removed = new Set(delta.removedDbs)
+    existing.databases = existing.databases.filter((d) => !removed.has(d.name))
+  }
+  // Merge: update or insert changed databases
+  delta.databases.forEach((changedDb) => {
+    const idx = existing.databases.findIndex((d) => d.name === changedDb.name)
+    if (idx >= 0) existing.databases[idx] = changedDb
+    else existing.databases.push(changedDb)
+  })
+  // Instance-level fields
+  Object.assign(existing.instanceInfo, delta.instanceInfo)
+  existing.activeSessions = delta.activeSessions
+  existing.backupStatus = delta.backupStatus
+  existing.collectedAt = delta.collectedAt
+  // Strip transient delta metadata so it never persists in the store
+  delete existing.isDelta
+  delete existing.removedDbs
+
+  state.summaries[serverId] = buildSummary(existing)
+  pushHistoryPoint(state, serverId, existing)
+}

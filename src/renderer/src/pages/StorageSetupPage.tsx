@@ -30,6 +30,8 @@ interface Props {
   onConfigured: () => void
 }
 
+const AUTO_NAVIGATE_MS = 5000
+
 export function StorageSetupPage({ initialError, onConfigured }: Props): React.JSX.Element {
   const [form, setForm] = useState<FormState>({
     host: 'localhost',
@@ -45,16 +47,43 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
   const [error, setError] = useState<string | null>(initialError ?? null)
   const [tested, setTested] = useState(false)
   const [setupResult, setSetupResult] = useState<SchemaInitResult | null>(null)
+  const [safeStorageWarning, setSafeStorageWarning] = useState(false)
 
   const alive = useRef(true)
-  useEffect(() => () => { alive.current = false }, [])
+  // Stable ref for onConfigured so the auto-navigate effect doesn't re-fire
+  // when the parent passes a fresh callback reference on each render.
+  const onConfiguredRef = useRef(onConfigured)
+  useEffect(() => {
+    onConfiguredRef.current = onConfigured
+  })
 
-  // Auto-navigate 2 seconds after successful setup
+  useEffect(() => {
+    return () => {
+      alive.current = false
+    }
+  }, [])
+
+  // Probe safeStorage availability once at mount — surface plaintext-fallback risk to user.
+  useEffect(() => {
+    let cancelled = false
+    void window.sqlSentinel.storage.getSafeStorageStatus().then((res) => {
+      if (cancelled) return
+      if (res.ok && !res.data.available) setSafeStorageWarning(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Auto-navigate after successful setup. Depends only on setupResult so it
+  // fires exactly once even if onConfigured identity changes.
   useEffect(() => {
     if (!setupResult) return
-    const t = setTimeout(() => { if (alive.current) onConfigured() }, 2000)
+    const t = setTimeout(() => {
+      if (alive.current) onConfiguredRef.current()
+    }, AUTO_NAVIGATE_MS)
     return () => clearTimeout(t)
-  }, [setupResult, onConfigured])
+  }, [setupResult])
 
   function field(key: 'host' | 'port' | 'database' | 'username' | 'password') {
     return {
@@ -95,6 +124,7 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
       encrypt: form.encrypt,
       trustServerCertificate: form.trustServerCertificate
     })
+    if (!alive.current) return
     setTesting(false)
     if (result.ok) {
       setTested(true)
@@ -121,6 +151,7 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
       encrypt: form.encrypt,
       trustServerCertificate: form.trustServerCertificate
     })
+    if (!alive.current) return
     setSaving(false)
     if (result.ok) {
       setSetupResult(result.data)
@@ -149,29 +180,16 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
             </Typography>
           </Stack>
           <Typography variant="body2" color="text.secondary" mb={3}>
-            {form.host}:{form.port} / {form.database} — navigating in a moment…
+            {form.host}:{form.port} / {form.database}
           </Typography>
 
           <Stack spacing={1.5}>
-            <SetupRow
-              label="Tables"
-              items={setupResult.tables}
-              color="default"
-            />
-            <SetupRow
-              label="Indexes"
-              items={setupResult.indexes}
-              color="default"
-            />
-            <SetupRow
-              label="Statistics"
-              items={setupResult.statistics}
-              color="default"
-            />
+            <SetupRow label="Tables" items={setupResult.tables} />
+            <SetupRow label="Indexes" items={setupResult.indexes} />
+            <SetupRow label="Statistics" items={setupResult.statistics} />
             <SetupRow
               label="Admin account"
               items={['admin (must change password on first login)']}
-              color="default"
             />
             {setupResult.warnings.length > 0 && (
               <Box>
@@ -182,7 +200,13 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
                   </Typography>
                 </Stack>
                 {setupResult.warnings.map((w: string, i: number) => (
-                  <Typography key={i} variant="caption" color="text.secondary" display="block" sx={{ pl: 3 }}>
+                  <Typography
+                    key={i}
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                    sx={{ pl: 3 }}
+                  >
                     {w}
                   </Typography>
                 ))}
@@ -190,11 +214,7 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
             )}
           </Stack>
 
-          <Button
-            variant="contained"
-            sx={{ mt: 3 }}
-            onClick={onConfigured}
-          >
+          <Button variant="contained" sx={{ mt: 3 }} onClick={onConfigured}>
             Continue
           </Button>
         </Box>
@@ -218,12 +238,21 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
           Storage Database
         </Typography>
         <Typography variant="body2" color="text.secondary" mb={3}>
-          SQLSentinel needs a SQL Server 2025 database to store metrics, settings, and user data.
+          SQLSentinel needs a SQL Server database (2025 recommended) to store metrics, settings,
+          and user data.
         </Typography>
 
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}
+          </Alert>
+        )}
+
+        {safeStorageWarning && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            OS keyring (DPAPI / Keychain / Secret Service) is not available on this machine.
+            The storage password will be saved in plaintext to the local config file. Continue
+            only if you understand the risk.
           </Alert>
         )}
 
@@ -261,15 +290,7 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
 
 // ── Helper: labelled chip-list row ──────────────────────────────────────────
 
-function SetupRow({
-  label,
-  items,
-  color
-}: {
-  label: string
-  items: string[]
-  color: 'default' | 'success' | 'warning'
-}) {
+function SetupRow({ label, items }: { label: string; items: string[] }) {
   return (
     <Box>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
@@ -277,7 +298,7 @@ function SetupRow({
       </Typography>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
         {items.map((item) => (
-          <Chip key={item} label={item} size="small" color={color} variant="outlined" />
+          <Chip key={item} label={item} size="small" variant="outlined" />
         ))}
       </Box>
     </Box>

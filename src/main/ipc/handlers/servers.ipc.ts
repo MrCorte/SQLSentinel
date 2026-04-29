@@ -109,7 +109,8 @@ export function registerServerHandlers(): void {
         const res = await serviceApi.getServers()
         return res as IpcResult<StoredServer[]>
       }
-      return { ok: true, data: serverStore.getAll().map(serverStore.stripCredentials) }
+      // Skip decryption entirely — credentials are stripped before crossing the IPC boundary anyway
+      return { ok: true, data: serverStore.getAllStripped() }
     } catch (err) {
       log.error('[IPC] SERVERS_GET_ALL:', safeError(err))
       return { ok: false, error: safeError(err) }

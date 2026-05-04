@@ -2,7 +2,7 @@
  * AREA 3 — Memory leaks and bounds
  *
  * Verifies:
- *  - metricsHistory capped at MAX_HISTORY (20 entries)
+ *  - metricsHistory capped at MAX_HISTORY (5 entries)
  *  - the oldest record is evicted via shift() when the cap is exceeded
  *  - after stopWorker() no new jobs are scheduled
  *  - syncServers([]) empties the jobMap
@@ -40,7 +40,7 @@ import type { CollectMetricsRequest } from '../ipc/types'
 import { initDb as _initDb, closeDb as _closeDb } from '../store/database'
 
 // ── Costante da metricsWorker (deve coincidere) ───────────────────────────────
-const MAX_HISTORY = 20
+const MAX_HISTORY = 5
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

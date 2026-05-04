@@ -98,6 +98,75 @@ const store = new Store<Schema>({
 })
 
 // ---------------------------------------------------------------------------
+// lastSeen write-coalescing buffer
+// ---------------------------------------------------------------------------
+// Health check writes lastSeen for every reachable server every 60s. Each
+// store.set() rewrites the entire JSON file (~50KB) synchronously — with
+// AV-scan on Windows that can be 100-300ms blocked I/O each. At 200 servers,
+// the cost was ~33% of every minute spent in disk-write storm.
+//
+// We now buffer lastSeen updates in memory and flush to disk every 5 minutes
+// (or on shutdown). Callers should use markLastSeen() instead of
+// update(id, { lastSeen }) for this specific field.
+const lastSeenBuffer = new Map<string, string>()
+const LAST_SEEN_FLUSH_INTERVAL_MS = 5 * 60 * 1000
+let lastSeenFlushTimer: ReturnType<typeof setInterval> | null = null
+
+export function markLastSeen(id: string, isoTimestamp: string): void {
+  lastSeenBuffer.set(id, isoTimestamp)
+  if (!lastSeenFlushTimer) {
+    lastSeenFlushTimer = setInterval(flushLastSeenBuffer, LAST_SEEN_FLUSH_INTERVAL_MS)
+    lastSeenFlushTimer.unref?.()
+  }
+}
+
+export function flushLastSeenBuffer(): void {
+  if (lastSeenBuffer.size === 0) return
+  const updates = Array.from(lastSeenBuffer.entries())
+  lastSeenBuffer.clear()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const servers = store.get('servers', []) as any[]
+  let dirty = false
+  for (const [id, ts] of updates) {
+    const idx = servers.findIndex((s) => s.id === id)
+    if (idx < 0) continue
+    if (servers[idx].lastSeen === ts) continue
+    servers[idx] = { ...servers[idx], lastSeen: ts }
+    dirty = true
+  }
+  if (dirty) {
+    store.set('servers', servers)
+    invalidateStrippedCache()
+  }
+}
+
+/** Read the in-memory lastSeen value (overrides on-disk if newer). */
+export function getBufferedLastSeen(id: string): string | undefined {
+  return lastSeenBuffer.get(id)
+}
+
+/** Stop the flush timer — called on shutdown after a final flush. */
+export function stopLastSeenFlushTimer(): void {
+  if (lastSeenFlushTimer) {
+    clearInterval(lastSeenFlushTimer)
+    lastSeenFlushTimer = null
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Stripped-snapshot cache
+// ---------------------------------------------------------------------------
+// getAllStripped() is on a hot path (called by worker save, AG sync, tray menu
+// rebuild — ~40+ times/min on a 200-server fleet). electron-store has NO
+// in-memory cache: every store.get() re-parses the JSON file from disk. We
+// memoize the stripped result and invalidate it from the mutating functions
+// below. ~50KB JSON parse × 40/min = 40-80ms/min CPU recovered.
+let _strippedCache: StoredServer[] | null = null
+function invalidateStrippedCache(): void {
+  _strippedCache = null
+}
+
+// ---------------------------------------------------------------------------
 // CRUD helpers
 // ---------------------------------------------------------------------------
 
@@ -108,12 +177,15 @@ export function getAll(): StoredServer[] {
 
 /**
  * Returns servers with credentials stripped — never decrypts.
- * Use from IPC handlers / UI paths that don't need the plaintext password,
- * to avoid N synchronous DPAPI calls per query.
+ * Memoized; cache is invalidated on every mutation (add/update/upsert/remove).
  */
 export function getAllStripped(): StoredServer[] {
+  if (_strippedCache) return _strippedCache
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (store.get('servers', []) as any[]).map((s) => stripCredentials(normalizeServer(s)))
+  _strippedCache = (store.get('servers', []) as any[]).map((s) =>
+    stripCredentials(normalizeServer(s))
+  )
+  return _strippedCache
 }
 
 /**
@@ -171,6 +243,7 @@ export function add(
     delete server.password
   }
   store.set('servers', [...servers, server])
+  invalidateStrippedCache()
   return { success: true, server: withDecryptedPassword(server) }
 }
 
@@ -185,6 +258,7 @@ export function migrateHostField(): void {
     const needsMigration = raw.some((s) => !s.host)
     if (!needsMigration) return
     store.set('servers', raw.map(normalizeServer))
+    invalidateStrippedCache()
     log.info('[serverStore] migrated', raw.length, 'servers ip→host')
   } catch (err) {
     log.error('[serverStore] migration error:', err)
@@ -223,6 +297,7 @@ export function update(id: string, patch: Partial<StoredServer>): void {
 
   servers[idx] = { ...servers[idx], ...safePatch }
   store.set('servers', servers)
+  invalidateStrippedCache()
 }
 
 export function remove(id: string): void {
@@ -230,6 +305,7 @@ export function remove(id: string): void {
     'servers',
     store.get('servers', []).filter((s) => s.id !== id)
   )
+  invalidateStrippedCache()
 }
 
 // Defence-in-depth: only fields in this allow-list are accepted from any
@@ -289,6 +365,7 @@ export function upsertByIpPort(params: any): StoredServer {
     }
     servers[idx] = { ...servers[idx], ...safePatch }
     store.set('servers', servers)
+    invalidateStrippedCache()
     return withDecryptedPassword(servers[idx])
   }
   const server: StoredServer = {
@@ -301,6 +378,7 @@ export function upsertByIpPort(params: any): StoredServer {
     delete server.password
   }
   store.set('servers', [...servers, server])
+  invalidateStrippedCache()
   return withDecryptedPassword(server)
 }
 
@@ -445,6 +523,7 @@ export function migrateEncryptCredentials(): void {
       return { ...rest, encryptedPassword: encryptPwd(password) }
     })
     store.set('servers', migrated)
+    invalidateStrippedCache()
     log.info('[serverStore] migrated', toMigrate.length, 'server(s) to encrypted credentials')
   } catch (err) {
     log.error('[serverStore] migrateEncryptCredentials error:', err)

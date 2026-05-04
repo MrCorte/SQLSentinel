@@ -9,7 +9,14 @@ import { registerIpcHandlers } from './ipc'
 import { initDefaultAdmin } from './authService'
 import { BackgroundService } from './backgroundService'
 import type { WorkerApi } from './backgroundService'
-import { syncServers, stopWorker, setIntervalOverrides, onAlert, setPushHandler } from './metricsWorker'
+import {
+  syncServers,
+  stopWorker,
+  setIntervalOverrides,
+  onAlert,
+  setPushHandler,
+  restaggerAll
+} from './metricsWorker'
 import { app as electronApp } from 'electron'
 import { join as pathJoin } from 'node:path'
 import { initDbWithRecovery, closeDb } from './store/database'
@@ -17,6 +24,7 @@ import { getStorageConfig } from './store/storageConfig'
 import { initStoragePool, closeStoragePool, getPool } from './store/sqlserver/connection'
 import { initSchema } from './store/sqlserver/database'
 import { cleanup as purgeOldSnapshots } from './store/sqlserver/metricsRepository'
+import { cleanup as purgeSqliteSnapshots } from './store/metricsRepository'
 import { getSettings } from './store/sqlserver/settingsRepository'
 import { migrateEncryptEmailPassword } from './store/sqlserver/emailSettingsRepository'
 import { removeExpiredSessions } from './store/sqlserver/sessionsRepository'
@@ -92,17 +100,23 @@ async function healthCheckAll(): Promise<void> {
         try {
           // TCP probe with 5 s timeout — no SQL credentials needed
           await scanHost(addr, server.port, 5000)
+          const now = new Date().toISOString()
           if (server.unreachable) {
-            // Was marked unreachable — now back online
+            // Was marked unreachable — now back online. The transition is
+            // operationally significant, so we WRITE the unreachable flag
+            // synchronously and only buffer the lastSeen.
             serverStore.update(server.id, {
               unreachable: false,
-              unreachableSince: undefined,
-              lastSeen: new Date().toISOString()
+              unreachableSince: undefined
             })
+            serverStore.markLastSeen(server.id, now)
             mainWindow?.webContents.send(IpcChannel.SERVER_RECOVERED, server.id)
             log.info('[HealthCheck] RECOVERED:', `${addr}:${server.port}`)
           } else {
-            serverStore.update(server.id, { lastSeen: new Date().toISOString() })
+            // Hot path: lastSeen-only update goes to the in-memory buffer.
+            // Flushed every 5 min to electron-store. Cuts ~200 disk writes/min
+            // (50KB each + AV scan on Windows) down to 1 every 5 min.
+            serverStore.markLastSeen(server.id, now)
           }
         } catch {
           if (!server.unreachable) {
@@ -261,10 +275,19 @@ app.whenReady().then(async () => {
   }
   const deferredPurge = (): void => {
     setImmediate(async () => {
+      const days = await retentionDays()
       try {
-        await purgeOldSnapshots(await retentionDays())
+        await purgeOldSnapshots(days)
       } catch (err) {
-        log.warn('[main] purgeOldSnapshots:', err)
+        log.warn('[main] purgeOldSnapshots (mssql):', err)
+      }
+      // Local SQLite cache also needs the same retention applied — previously
+      // it was only invoked at worker startup, leaving the local table to grow
+      // unbounded across long-running deployments.
+      try {
+        await purgeSqliteSnapshots(days)
+      } catch (err) {
+        log.warn('[main] purgeSqliteSnapshots:', err)
       }
       try {
         await removeExpiredSessions()
@@ -386,19 +409,14 @@ app.whenReady().then(async () => {
     } catch (err) {
       log.warn('[main] closeAllPools on resume:', err)
     }
-    // The metrics worker has its own restagger logic via syncServers. Trigger
-    // a soft restart by pushing the existing server list back through it.
+    // restaggerAll() actively spreads every existing job's nextRun across
+    // the polling interval. The previous implementation called syncServers()
+    // expecting it to re-stagger, but syncServers only handles add/remove —
+    // existing jobs kept their stale nextRun and fired in 30-job waves.
     try {
-      const servers = serverStore.getAllStripped().map((s) => ({
-        ip: s.host ?? s.ip ?? '',
-        port: s.port,
-        instanceName: s.instanceName,
-        useWindowsAuth: s.useWindowsAuth ?? false,
-        username: s.username
-      }))
-      if (servers.length > 0) syncServers(servers)
+      restaggerAll()
     } catch (err) {
-      log.warn('[main] resume re-stagger:', err)
+      log.warn('[main] restaggerAll on resume:', err)
     }
   })
 
@@ -461,6 +479,14 @@ function cleanupResources(): void {
     stopWorker()
   } catch (err) {
     log.warn('[main] stopWorker on shutdown:', err)
+  }
+  // Final flush of buffered lastSeen updates so the server registry on disk
+  // reflects reality post-shutdown (within the last health-check cycle).
+  try {
+    serverStore.flushLastSeenBuffer()
+    serverStore.stopLastSeenFlushTimer()
+  } catch (err) {
+    log.warn('[main] flushLastSeenBuffer:', err)
   }
   // H6: graceful SQLite shutdown — checkpoint(TRUNCATE) + optimize + close.
   // Must happen BEFORE the storage / monitored pools close because some store

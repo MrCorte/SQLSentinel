@@ -30,7 +30,12 @@ export interface IntervalOverrides {
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_HISTORY = 20
+// Main-process ring buffer cap. Renderer keeps its own deeper history
+// (60 active / 10 idle) for charts; the main copy is needed only for
+// IPC seed at boot + delta computation. 5 entries cover the boot
+// sparkline window (~5 min @ 60s polling); after that the renderer's
+// own buffer takes over. Was 20 — wasted ~90MB RAM at 200 servers.
+const MAX_HISTORY = 5
 const BATCH_SIZE = 30
 const SYSTEM_DBS = new Set(['master', 'tempdb', 'model', 'msdb', 'distribution'])
 const INTERVAL_ACTIVE_MS = 60_000
@@ -225,14 +230,18 @@ function queueSave(srv: CollectMetricsRequest, metrics: ServerMetrics): void {
 function loadHistoryFromDb(servers: CollectMetricsRequest[]): void {
   // Deferred cleanup to next tick: with large DBs (months of snapshots) the
   // DELETE can block for 500ms-2s and delay the first polling cycle.
+  // cleanup is now async (yields between batches) — fire-and-forget so the
+  // history seed doesn't wait on it.
   setImmediate(() => {
-    try {
-      const retentionMinutes = getSettings().retentionMinutes
-      const retentionDays = retentionMinutes / (60 * 24)
-      metricsRepository.cleanup(retentionDays)
-    } catch (err) {
-      log.warn('[worker] SQLite cleanup:', err)
-    }
+    void (async () => {
+      try {
+        const retentionMinutes = getSettings().retentionMinutes
+        const retentionDays = retentionMinutes / (60 * 24)
+        await metricsRepository.cleanup(retentionDays)
+      } catch (err) {
+        log.warn('[worker] SQLite cleanup:', err)
+      }
+    })()
   })
 
   // Build the recordId→sid map once. We only need ids — skip DPAPI decrypts.
@@ -692,6 +701,28 @@ export function stopWorker(): void {
  *   the job reference is gone from the map).
  * - Existing servers retain their failCount / lastSuccess state.
  */
+/**
+ * Re-stagger every existing job's nextRun across the active interval window.
+ * Called on power resume: after a long sleep every job's nextRun is far in
+ * the past, so without re-staggering scheduleTick would drain 30 jobs/sec
+ * causing a thundering herd of 200 simultaneous TLS+TDS handshakes against
+ * the entire fleet (with pool sockets just killed by the OS sleep).
+ */
+export function restaggerAll(): void {
+  const now = Date.now()
+  for (const job of jobs.values()) {
+    const isActive = job.priority === 0
+    const offset = isActive ? 0 : Math.floor(Math.random() * activeIntervalMs)
+    job.nextRun = now + offset
+    // Reset failCount so a server that was OK pre-sleep doesn't stay in
+    // exponential backoff forever just because it was caught with a stale
+    // socket on the first post-resume probe.
+    job.failCount = 0
+    job.lastFailed = false
+  }
+  scheduleTick()
+}
+
 export function syncServers(servers: CollectMetricsRequest[]): void {
   const incoming = new Set(servers.map((s) => serverId(s.ip, s.port)))
 

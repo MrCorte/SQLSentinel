@@ -86,6 +86,163 @@ function KpiCard({
 }
 
 // ---------------------------------------------------------------------------
+// Columns are stable (only reference module-level constants) — defined once
+// ---------------------------------------------------------------------------
+
+const COLUMNS: GridColDef[] = [
+  {
+    field: 'statusColor',
+    headerName: '',
+    width: 28,
+    sortable: false,
+    renderCell: (params) => <StatusDot color={params.value as string} />
+  },
+  {
+    field: 'serverName',
+    headerName: 'Server',
+    flex: 2,
+    renderCell: (params) => (
+      <Typography
+        sx={{
+          fontSize: tokens.font.sizeSm,
+          color: tokens.color.textPrimary,
+          fontWeight: tokens.font.weightMedium
+        }}
+      >
+        {params.value as string}
+      </Typography>
+    )
+  },
+  {
+    field: 'cpu',
+    headerName: 'CPU %',
+    width: 72,
+    type: 'number',
+    renderCell: (params) => {
+      const v = params.value as number | null
+      const color =
+        v != null && v > 80
+          ? tokens.color.danger
+          : v != null && v > 60
+            ? tokens.color.warning
+            : tokens.color.accent
+      return (
+        <Typography
+          sx={{ fontSize: tokens.font.sizeSm, color, fontVariantNumeric: 'tabular-nums' }}
+        >
+          {v != null ? `${v}%` : '—'}
+        </Typography>
+      )
+    }
+  },
+  {
+    field: 'ramGb',
+    headerName: 'RAM GB',
+    width: 80,
+    renderCell: (params) => (
+      <Typography
+        sx={{
+          fontSize: tokens.font.sizeSm,
+          color: tokens.color.textPrimary,
+          fontVariantNumeric: 'tabular-nums'
+        }}
+      >
+        {params.value != null ? (params.value as string) : '—'}
+      </Typography>
+    )
+  },
+  {
+    field: 'blocking',
+    headerName: 'Blocking',
+    width: 80,
+    type: 'number',
+    renderCell: (params) => {
+      const v = params.value as number
+      return (
+        <Typography
+          sx={{
+            fontSize: tokens.font.sizeSm,
+            color: v > 0 ? tokens.color.danger : tokens.color.textMuted,
+            fontVariantNumeric: 'tabular-nums'
+          }}
+        >
+          {v}
+        </Typography>
+      )
+    }
+  },
+  {
+    field: 'dbOffline',
+    headerName: 'DB Offline',
+    width: 90,
+    type: 'number',
+    renderCell: (params) => {
+      const v = params.value as number
+      return (
+        <Typography
+          sx={{
+            fontSize: tokens.font.sizeSm,
+            color: v > 0 ? tokens.color.danger : tokens.color.textMuted,
+            fontVariantNumeric: 'tabular-nums'
+          }}
+        >
+          {v}
+        </Typography>
+      )
+    }
+  },
+  {
+    field: 'alertCount',
+    headerName: 'Alerts',
+    width: 68,
+    type: 'number',
+    renderCell: (params) => {
+      const v = params.value as number
+      return (
+        <Typography
+          sx={{
+            fontSize: tokens.font.sizeSm,
+            color: v > 0 ? tokens.color.warning : tokens.color.textMuted,
+            fontVariantNumeric: 'tabular-nums'
+          }}
+        >
+          {v > 0 ? v : '—'}
+        </Typography>
+      )
+    }
+  },
+  {
+    field: 'lastSeen',
+    headerName: 'Last seen',
+    flex: 1,
+    renderCell: (params) => {
+      const d = params.value as Date | null
+      if (!d)
+        return (
+          <Typography sx={{ fontSize: tokens.font.sizeSm, color: tokens.color.textMuted }}>
+            —
+          </Typography>
+        )
+      const minAgo = Math.floor((Date.now() - d.getTime()) / 60_000)
+      const label = minAgo < 2 ? 'just now' : `${minAgo}m ago`
+      const color =
+        minAgo < 5
+          ? tokens.color.success
+          : minAgo < 15
+            ? tokens.color.textMuted
+            : tokens.color.danger
+      return (
+        <Typography
+          sx={{ fontSize: tokens.font.sizeSm, color, fontVariantNumeric: 'tabular-nums' }}
+        >
+          {label}
+        </Typography>
+      )
+    }
+  }
+]
+
+// ---------------------------------------------------------------------------
 // HomeDashboard — KPI cards + DataGrid (32 px rows, scales to 200+ servers)
 // ---------------------------------------------------------------------------
 
@@ -147,158 +304,6 @@ export function HomeDashboard({
     [servers, metricsMap, summaries, alertCountByServer, serverAliases]
   )
 
-  const columns: GridColDef[] = [
-    {
-      field: 'statusColor',
-      headerName: '',
-      width: 28,
-      sortable: false,
-      renderCell: (params) => <StatusDot color={params.value as string} />
-    },
-    {
-      field: 'serverName',
-      headerName: 'Server',
-      flex: 2,
-      renderCell: (params) => (
-        <Typography
-          sx={{
-            fontSize: tokens.font.sizeSm,
-            color: tokens.color.textPrimary,
-            fontWeight: tokens.font.weightMedium
-          }}
-        >
-          {params.value as string}
-        </Typography>
-      )
-    },
-    {
-      field: 'cpu',
-      headerName: 'CPU %',
-      width: 72,
-      type: 'number',
-      renderCell: (params) => {
-        const v = params.value as number | null
-        const color =
-          v != null && v > 80
-            ? tokens.color.danger
-            : v != null && v > 60
-              ? tokens.color.warning
-              : tokens.color.accent
-        return (
-          <Typography
-            sx={{ fontSize: tokens.font.sizeSm, color, fontVariantNumeric: 'tabular-nums' }}
-          >
-            {v != null ? `${v}%` : '—'}
-          </Typography>
-        )
-      }
-    },
-    {
-      field: 'ramGb',
-      headerName: 'RAM GB',
-      width: 80,
-      renderCell: (params) => (
-        <Typography
-          sx={{
-            fontSize: tokens.font.sizeSm,
-            color: tokens.color.textPrimary,
-            fontVariantNumeric: 'tabular-nums'
-          }}
-        >
-          {params.value != null ? (params.value as string) : '—'}
-        </Typography>
-      )
-    },
-    {
-      field: 'blocking',
-      headerName: 'Blocking',
-      width: 80,
-      type: 'number',
-      renderCell: (params) => {
-        const v = params.value as number
-        return (
-          <Typography
-            sx={{
-              fontSize: tokens.font.sizeSm,
-              color: v > 0 ? tokens.color.danger : tokens.color.textMuted,
-              fontVariantNumeric: 'tabular-nums'
-            }}
-          >
-            {v}
-          </Typography>
-        )
-      }
-    },
-    {
-      field: 'dbOffline',
-      headerName: 'DB Offline',
-      width: 90,
-      type: 'number',
-      renderCell: (params) => {
-        const v = params.value as number
-        return (
-          <Typography
-            sx={{
-              fontSize: tokens.font.sizeSm,
-              color: v > 0 ? tokens.color.danger : tokens.color.textMuted,
-              fontVariantNumeric: 'tabular-nums'
-            }}
-          >
-            {v}
-          </Typography>
-        )
-      }
-    },
-    {
-      field: 'alertCount',
-      headerName: 'Alerts',
-      width: 68,
-      type: 'number',
-      renderCell: (params) => {
-        const v = params.value as number
-        return (
-          <Typography
-            sx={{
-              fontSize: tokens.font.sizeSm,
-              color: v > 0 ? tokens.color.warning : tokens.color.textMuted,
-              fontVariantNumeric: 'tabular-nums'
-            }}
-          >
-            {v > 0 ? v : '—'}
-          </Typography>
-        )
-      }
-    },
-    {
-      field: 'lastSeen',
-      headerName: 'Last seen',
-      flex: 1,
-      renderCell: (params) => {
-        const d = params.value as Date | null
-        if (!d)
-          return (
-            <Typography sx={{ fontSize: tokens.font.sizeSm, color: tokens.color.textMuted }}>
-              —
-            </Typography>
-          )
-        const minAgo = Math.floor((Date.now() - d.getTime()) / 60_000)
-        const label = minAgo < 2 ? 'just now' : `${minAgo}m ago`
-        const color =
-          minAgo < 5
-            ? tokens.color.success
-            : minAgo < 15
-              ? tokens.color.textMuted
-              : tokens.color.danger
-        return (
-          <Typography
-            sx={{ fontSize: tokens.font.sizeSm, color, fontVariantNumeric: 'tabular-nums' }}
-          >
-            {label}
-          </Typography>
-        )
-      }
-    }
-  ]
 
   // ---- Empty state ----
   if (servers.length === 0) {
@@ -369,7 +374,7 @@ export function HomeDashboard({
       <Box sx={{ flex: 1, minHeight: 0 }}>
         <DataGrid
           rows={rows}
-          columns={columns}
+          columns={COLUMNS}
           rowHeight={32}
           columnHeaderHeight={36}
           disableRowSelectionOnClick={false}

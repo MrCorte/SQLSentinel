@@ -1,17 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef, useCallback } from 'react'
 import {
   Drawer,
   Box,
   Typography,
   IconButton,
-  List,
-  ListItem,
-  ListItemText,
   Divider,
   Stack,
   Chip,
   Button
 } from '@mui/material'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import CloseIcon from '@mui/icons-material/Close'
 import DoneAllIcon from '@mui/icons-material/DoneAll'
 import type { Alert } from '../../../preload/index'
@@ -26,6 +24,18 @@ interface Props {
   onClose: () => void
   onAcknowledge: (alertId: string) => void
 }
+
+type AlertWithDup = Alert & { _dupCount?: number }
+
+type VirtualItem =
+  | { kind: 'header'; label: string }
+  | { kind: 'divider' }
+  | { kind: 'alert'; alert: AlertWithDup }
+
+// Estimated heights for virtualizer sizing
+const ROW_HEIGHT_HEADER = 32
+const ROW_HEIGHT_DIVIDER = 17
+const ROW_HEIGHT_ALERT = 90
 
 function categoryLabel(cat: Alert['category']): string {
   switch (cat) {
@@ -69,7 +79,7 @@ function AlertRow({
   alert,
   onAcknowledge
 }: {
-  alert: Alert & { _dupCount?: number }
+  alert: AlertWithDup
   onAcknowledge: (id: string) => void
 }): React.JSX.Element {
   const isCritical = alert.severity === 'CRITICAL'
@@ -78,109 +88,98 @@ function AlertRow({
   const dupCount = alert._dupCount ?? 0
 
   return (
-    <ListItem
-      alignItems="flex-start"
+    <Box
       sx={{
         opacity: isAcknowledged ? 0.55 : 1,
         borderLeft: `3px solid ${accentColor}`,
         bgcolor: tokens.color.bgSurface,
         mb: 0.5,
-        pr: 2,
-        flexDirection: 'column',
-        alignItems: 'flex-start'
+        mx: 1,
+        px: 1,
+        py: 0.75
       }}
     >
-      <ListItemText
-        primary={
-          <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.25 }}>
-            <Typography
-              component="span"
-              sx={{
-                fontSize: tokens.font.sizeXs,
-                fontWeight: tokens.font.weightSemibold,
-                textTransform: 'uppercase',
-                letterSpacing: '0.04em',
-                color: accentColor
-              }}
-            >
-              {isCritical ? 'CRITICAL' : 'WARNING'}
-            </Typography>
-            <Typography
-              component="span"
-              sx={{
-                fontSize: tokens.font.sizeXs,
-                fontWeight: tokens.font.weightSemibold,
-                color: tokens.color.textMuted,
-                bgcolor: tokens.color.bgBase,
-                px: 0.75,
-                py: 0.125,
-                borderRadius: tokens.radius.sm
-              }}
-            >
-              {categoryLabel(alert.category)}
-            </Typography>
-            <Typography
-              component="span"
-              sx={{ fontSize: tokens.font.sizeXs, color: tokens.color.textMuted }}
-            >
-              {alert.serverId}
-            </Typography>
-            {dupCount > 1 && (
-              <Typography
-                component="span"
-                aria-label={`${dupCount} similar alerts in the last hour`}
-                sx={{
-                  fontSize: tokens.font.sizeXs,
-                  fontWeight: tokens.font.weightSemibold,
-                  color: 'common.white',
-                  bgcolor: accentColor,
-                  px: 0.75,
-                  py: 0.125,
-                  borderRadius: tokens.radius.sm
-                }}
-              >
-                ×{dupCount}
-              </Typography>
-            )}
-          </Stack>
-        }
-        secondary={
-          <>
-            <Typography
-              component="span"
-              sx={{
-                display: 'block',
-                fontSize: tokens.font.sizeSm,
-                color: tokens.color.textPrimary,
-                mb: 0.5
-              }}
-            >
-              {alert.message}
-            </Typography>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography
-                component="span"
-                sx={{ fontSize: tokens.font.sizeXs, color: tokens.color.textMuted }}
-              >
-                {new Date(alert.detectedAt).toLocaleString('en-US')}
-              </Typography>
-              {!isAcknowledged && (
-                <Button
-                  size="small"
-                  variant="text"
-                  onClick={() => onAcknowledge(alert.id)}
-                  sx={{ minWidth: 'auto', p: 0.25, fontSize: tokens.font.sizeXs }}
-                  aria-label={`Acknowledge ${alert.severity} alert ${alert.message}`}
-                >
-                  Acknowledge
-                </Button>
-              )}
-            </Stack>
-          </>
-        }
-        secondaryTypographyProps={{ component: 'div' }}
-      />
-    </ListItem>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.25 }}>
+        <Typography
+          component="span"
+          sx={{
+            fontSize: tokens.font.sizeXs,
+            fontWeight: tokens.font.weightSemibold,
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+            color: accentColor
+          }}
+        >
+          {isCritical ? 'CRITICAL' : 'WARNING'}
+        </Typography>
+        <Typography
+          component="span"
+          sx={{
+            fontSize: tokens.font.sizeXs,
+            fontWeight: tokens.font.weightSemibold,
+            color: tokens.color.textMuted,
+            bgcolor: tokens.color.bgBase,
+            px: 0.75,
+            py: 0.125,
+            borderRadius: tokens.radius.sm
+          }}
+        >
+          {categoryLabel(alert.category)}
+        </Typography>
+        <Typography
+          component="span"
+          sx={{ fontSize: tokens.font.sizeXs, color: tokens.color.textMuted }}
+        >
+          {alert.serverId}
+        </Typography>
+        {dupCount > 1 && (
+          <Typography
+            component="span"
+            aria-label={`${dupCount} similar alerts in the last hour`}
+            sx={{
+              fontSize: tokens.font.sizeXs,
+              fontWeight: tokens.font.weightSemibold,
+              color: 'common.white',
+              bgcolor: accentColor,
+              px: 0.75,
+              py: 0.125,
+              borderRadius: tokens.radius.sm
+            }}
+          >
+            ×{dupCount}
+          </Typography>
+        )}
+      </Stack>
+      <Typography
+        sx={{
+          display: 'block',
+          fontSize: tokens.font.sizeSm,
+          color: tokens.color.textPrimary,
+          mb: 0.5
+        }}
+      >
+        {alert.message}
+      </Typography>
+      <Stack direction="row" justifyContent="space-between" alignItems="center">
+        <Typography
+          component="span"
+          sx={{ fontSize: tokens.font.sizeXs, color: tokens.color.textMuted }}
+        >
+          {new Date(alert.detectedAt).toLocaleString('en-US')}
+        </Typography>
+        {!isAcknowledged && (
+          <Button
+            size="small"
+            variant="text"
+            onClick={() => onAcknowledge(alert.id)}
+            sx={{ minWidth: 'auto', p: 0.25, fontSize: tokens.font.sizeXs }}
+            aria-label={`Acknowledge ${alert.severity} alert ${alert.message}`}
+          >
+            Acknowledge
+          </Button>
+        )}
+      </Stack>
+    </Box>
   )
 }
 
@@ -206,28 +205,26 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
   const openAlerts = useMemo(() => alerts.filter((a) => a.acknowledgedAt === null), [alerts])
   const acked = useMemo(() => alerts.filter((a) => a.acknowledgedAt !== null), [alerts])
 
-  // Available category facets — derived from the current open alert set
   const availableCategories = useMemo(() => {
     const set = new Set<Alert['category']>()
     for (const a of openAlerts) set.add(a.category)
     return Array.from(set)
   }, [openAlerts])
 
-  const matchesFilters = (a: Alert): boolean => {
-    if (severityFilter !== 'all' && a.severity !== severityFilter) return false
-    if (categoryFilter !== 'all' && a.category !== categoryFilter) return false
-    return true
-  }
+  const matchesFilters = useCallback(
+    (a: Alert): boolean => {
+      if (severityFilter !== 'all' && a.severity !== severityFilter) return false
+      if (categoryFilter !== 'all' && a.category !== categoryFilter) return false
+      return true
+    },
+    [severityFilter, categoryFilter]
+  )
 
   const filteredOpen = useMemo(() => openAlerts.filter(matchesFilters), [
     openAlerts,
-    severityFilter,
-    categoryFilter
+    matchesFilters
   ])
 
-  // When dedup is on, collapse alerts that share serverId+category and were
-  // detected in the last 60 minutes into a single representative alert (the
-  // most recent), augmented with a `_dupCount` so the row can render the count.
   const dedupedOpen = useMemo(() => {
     if (!dedup) return filteredOpen
     const ONE_HOUR = 60 * 60 * 1000
@@ -235,17 +232,14 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
     const groups = new Map<string, Array<Alert>>()
     for (const a of filteredOpen) {
       const ts = new Date(a.detectedAt).getTime()
-      const key =
-        now - ts < ONE_HOUR ? `${a.serverId}::${a.category}` : `solo:${a.id}`
+      const key = now - ts < ONE_HOUR ? `${a.serverId}::${a.category}` : `solo:${a.id}`
       const list = groups.get(key) ?? []
       list.push(a)
       groups.set(key, list)
     }
-    const out: Array<Alert & { _dupCount?: number }> = []
+    const out: AlertWithDup[] = []
     for (const list of groups.values()) {
-      list.sort(
-        (a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime()
-      )
+      list.sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime())
       const head = list[0]
       out.push(list.length > 1 ? { ...head, _dupCount: list.length } : head)
     }
@@ -263,11 +257,38 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
   )
 
   const handleAckAll = (): void => {
-    // Snapshot ids first — onAcknowledge mutates the parent state which would
-    // shrink the source array under iteration.
     const ids = criticalFirst.map((a) => a.id)
     for (const id of ids) onAcknowledge(id)
   }
+
+  // Flat list for the virtualizer: headers + alerts + optional divider
+  const virtualItems = useMemo<VirtualItem[]>(() => {
+    const items: VirtualItem[] = []
+    if (criticalFirst.length > 0) {
+      items.push({ kind: 'header', label: 'Active' })
+      for (const a of criticalFirst) items.push({ kind: 'alert', alert: a })
+    }
+    if (acked.length > 0) {
+      if (criticalFirst.length > 0) items.push({ kind: 'divider' })
+      items.push({ kind: 'header', label: 'Acknowledged' })
+      for (const a of acked) items.push({ kind: 'alert', alert: a })
+    }
+    return items
+  }, [criticalFirst, acked])
+
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  const virtualizer = useVirtualizer({
+    count: virtualItems.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: (i) => {
+      const item = virtualItems[i]
+      if (item.kind === 'header') return ROW_HEIGHT_HEADER
+      if (item.kind === 'divider') return ROW_HEIGHT_DIVIDER
+      return ROW_HEIGHT_ALERT
+    },
+    overscan: 5
+  })
 
   return (
     <Drawer
@@ -333,7 +354,7 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
           </IconButton>
         </Stack>
 
-        {/* Filter / bulk-action bar — only when there are open alerts */}
+        {/* Filter / bulk-action bar */}
         {openAlerts.length > 0 && (
           <Stack
             spacing={0.75}
@@ -410,39 +431,52 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
         )}
 
         {/* Body */}
-        <Box sx={{ flex: 1, overflow: 'auto' }}>
-          {criticalFirst.length === 0 && acked.length === 0 && (
-            <Typography variant="body2" sx={{ p: 3, textAlign: 'center', color: tokens.color.textMuted }}>
+        <Box ref={scrollRef} sx={{ flex: 1, overflow: 'auto' }}>
+          {virtualItems.length === 0 && acked.length === 0 && openAlerts.length === 0 && (
+            <Typography
+              variant="body2"
+              sx={{ p: 3, textAlign: 'center', color: tokens.color.textMuted }}
+            >
               No active alerts.
             </Typography>
           )}
-          {criticalFirst.length === 0 && openAlerts.length > 0 && (
-            <Typography variant="body2" sx={{ p: 3, textAlign: 'center', color: tokens.color.textMuted }}>
+          {virtualItems.length === 0 && openAlerts.length > 0 && (
+            <Typography
+              variant="body2"
+              sx={{ p: 3, textAlign: 'center', color: tokens.color.textMuted }}
+            >
               No alerts match the current filters.
             </Typography>
           )}
 
-          {criticalFirst.length > 0 && (
-            <>
-              <SectionHeader label="Active" />
-              <List dense disablePadding sx={{ px: 1, pt: 0.5 }}>
-                {criticalFirst.map((a) => (
-                  <AlertRow key={a.id} alert={a} onAcknowledge={onAcknowledge} />
-                ))}
-              </List>
-            </>
-          )}
-
-          {acked.length > 0 && (
-            <>
-              <Divider sx={{ my: 1 }} />
-              <SectionHeader label="Acknowledged" />
-              <List dense disablePadding sx={{ px: 1, pt: 0.5 }}>
-                {acked.map((a) => (
-                  <AlertRow key={a.id} alert={a} onAcknowledge={onAcknowledge} />
-                ))}
-              </List>
-            </>
+          {virtualItems.length > 0 && (
+            <Box
+              sx={{ height: virtualizer.getTotalSize(), position: 'relative' }}
+            >
+              {virtualizer.getVirtualItems().map((vItem) => {
+                const item = virtualItems[vItem.index]
+                return (
+                  <Box
+                    key={vItem.key}
+                    data-index={vItem.index}
+                    ref={virtualizer.measureElement}
+                    sx={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      transform: `translateY(${vItem.start}px)`
+                    }}
+                  >
+                    {item.kind === 'header' && <SectionHeader label={item.label} />}
+                    {item.kind === 'divider' && <Divider sx={{ my: 1 }} />}
+                    {item.kind === 'alert' && (
+                      <AlertRow alert={item.alert} onAcknowledge={onAcknowledge} />
+                    )}
+                  </Box>
+                )
+              })}
+            </Box>
           )}
         </Box>
       </Box>

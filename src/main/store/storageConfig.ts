@@ -1,5 +1,5 @@
 import Store from 'electron-store'
-import { encrypt, decrypt, isAvailable } from './safeStorageUtil'
+import { encrypt, decrypt } from './safeStorageUtil'
 import { createLogger } from '../utils/logger'
 
 const log = createLogger('storage-config')
@@ -35,13 +35,11 @@ export function saveStorageConfig(
   }
 ): void {
   const { password, ...rest } = params
-  let encryptedPassword: string
-  if (isAvailable()) {
-    encryptedPassword = encrypt(password)
-  } else {
-    log.warn('[storageConfig] safeStorage not available — password stored in plain text')
-    encryptedPassword = password
-  }
+  // encrypt() throws SafeStorageUnavailableError when DPAPI/keyring is missing.
+  // We do not catch — the IPC handler surfaces the error to the user instead of
+  // silently writing the plaintext password to disk.
+  const encryptedPassword = encrypt(password)
+  log.debug('[storageConfig] saving with encrypted password')
   store.set('config', {
     ...rest,
     encrypt: rest.encrypt ?? false,

@@ -36,7 +36,7 @@ function parsePorts(input: string): number[] {
 // -----------------------------------------------------------------------
 
 export function Discovery(): React.JSX.Element {
-  const { servers, isScanning, progress, error, scan, addServer } = useDiscovery()
+  const { servers, isScanning, progress, error, scan, cancelScan, addServer } = useDiscovery()
   const { setServerGroup, setServerAlias } = useGroupsStore()
   const savedServers = useServersStore((s) => s.servers)
 
@@ -242,9 +242,15 @@ export function Discovery(): React.JSX.Element {
             sx={{ width: 130 }}
           />
           <Stack direction="row" spacing={1} sx={{ pt: 0.5 }}>
-            <Button variant="contained" onClick={handleScan} disabled={isScanning}>
-              {isScanning ? 'Scanning...' : 'Start Scan'}
-            </Button>
+            {isScanning ? (
+              <Button variant="contained" color="error" onClick={cancelScan}>
+                Cancel Scan
+              </Button>
+            ) : (
+              <Button variant="contained" onClick={handleScan}>
+                Start Scan
+              </Button>
+            )}
             <Button variant="outlined" onClick={openDialogManual} disabled={isScanning}>
               Add Manually
             </Button>

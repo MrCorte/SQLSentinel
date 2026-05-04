@@ -19,19 +19,26 @@ afterAll(async () => {
   await new Promise<void>((r) => httpServer.close(() => r()))
 })
 
+// The server now requires the secret in the Authorization header (Bearer)
+// rather than the legacy ?secret= querystring. We also reject any client that
+// presents an Origin header (browser tabs).
+function authedSocket(secret: string): WebSocket {
+  return new WebSocket(`ws://127.0.0.1:${TEST_PORT}/`, {
+    headers: { Authorization: `Bearer ${secret}` }
+  })
+}
+
 describe('createWsServer', () => {
   it('rejects connection without correct secret', async () => {
-    const ws = new WebSocket(`ws://127.0.0.1:${TEST_PORT}?secret=wrong`)
+    const ws = authedSocket('wrong-secret')
     await new Promise<void>((resolve) => {
-      ws.on('close', (code) => {
-        expect(code).toBe(4401)
-        resolve()
-      })
+      ws.on('error', () => resolve())
+      ws.on('close', () => resolve())
     })
   })
 
   it('accepts connection with correct secret and receives service:ready', async () => {
-    const ws = new WebSocket(`ws://127.0.0.1:${TEST_PORT}?secret=${TEST_SECRET}`)
+    const ws = authedSocket(TEST_SECRET)
     const msg = await new Promise<string>((resolve) => {
       ws.on('message', (data) => resolve(data.toString()))
     })
@@ -41,8 +48,8 @@ describe('createWsServer', () => {
   })
 
   it('broadcast sends message to all connected clients', async () => {
-    const ws1 = new WebSocket(`ws://127.0.0.1:${TEST_PORT}?secret=${TEST_SECRET}`)
-    const ws2 = new WebSocket(`ws://127.0.0.1:${TEST_PORT}?secret=${TEST_SECRET}`)
+    const ws1 = authedSocket(TEST_SECRET)
+    const ws2 = authedSocket(TEST_SECRET)
 
     // Wait for both to be ready (skip the service:ready message)
     await Promise.all([

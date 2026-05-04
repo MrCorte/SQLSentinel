@@ -12,6 +12,34 @@ function bracketEscape(name: string): string {
   return `[${name.replace(/]/g, ']]')}]`
 }
 
+/**
+ * Reject identifiers that should never reach the SQL driver — control chars,
+ * NUL bytes, leading/trailing whitespace, length over the SQL Server cap, or
+ * non-string input. Bracket-escape neutralises ] but a malformed name still
+ * surfaces ugly errors and gets logged via sanitizeSqlError; refusing early
+ * is cleaner.
+ */
+// Control chars 0x00-0x1F plus DEL (0x7F). Built via codePoints to avoid
+// embedding raw control bytes in the source file.
+const CONTROL_CHAR_RE = new RegExp(
+  '[' + Array.from({ length: 32 }, (_v, i) => '\\x' + i.toString(16).padStart(2, '0')).join('') + '\\x7f]'
+)
+
+function assertSafeDbIdentifier(value: unknown, kind: 'database' | 'file'): asserts value is string {
+  if (typeof value !== 'string') {
+    throw new Error(`Invalid ${kind} name: expected string`)
+  }
+  if (value.length === 0 || value.length > 128) {
+    throw new Error(`Invalid ${kind} name: must be 1-128 chars`)
+  }
+  if (value !== value.trim()) {
+    throw new Error(`Invalid ${kind} name: leading/trailing whitespace not allowed`)
+  }
+  if (CONTROL_CHAR_RE.test(value)) {
+    throw new Error(`Invalid ${kind} name: control characters not allowed`)
+  }
+}
+
 function buildConfig(conn: CollectMetricsRequest, dbName: string): mssql.config {
   const base: mssql.config = {
     server: conn.ip,
@@ -56,6 +84,7 @@ export async function getShrinkEstimate(
   conn: CollectMetricsRequest,
   dbName: string
 ): Promise<ShrinkEstimate[]> {
+  assertSafeDbIdentifier(dbName, 'database')
   const config = buildConfig(conn, dbName)
   let pool: mssql.ConnectionPool | null = null
   try {
@@ -83,6 +112,7 @@ export async function shrinkDatabase(
   dbName: string,
   targetPercent: number
 ): Promise<ShrinkResult> {
+  assertSafeDbIdentifier(dbName, 'database')
   const t0 = Date.now()
   const safePercent = Math.floor(Math.max(0, Math.min(99, targetPercent)))
   const config = buildConfig(conn, dbName)
@@ -114,6 +144,8 @@ export async function shrinkFile(
   targetSizeMb: number,
   isLog: boolean
 ): Promise<ShrinkResult> {
+  assertSafeDbIdentifier(dbName, 'database')
+  assertSafeDbIdentifier(fileName, 'file')
   const t0 = Date.now()
   const config = buildConfig(conn, dbName)
   let pool: mssql.ConnectionPool | null = null

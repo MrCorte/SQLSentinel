@@ -20,6 +20,7 @@ import {
   Alert
 } from '@mui/material'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import { PasswordField } from './ui/PasswordField'
 import { useGroupsStore } from '../store/groupsStore'
 import { HOSTING_OPTIONS } from '../constants/hosting'
 import type { ServerHostingType } from '../constants/hosting'
@@ -448,9 +449,8 @@ export function AddServerDialog({
                 helperText={errors.username}
                 fullWidth
               />
-              <TextField
+              <PasswordField
                 label="Password"
-                type="password"
                 value={form.password}
                 onChange={(e) => set('password', e.target.value)}
                 fullWidth

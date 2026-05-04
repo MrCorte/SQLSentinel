@@ -12,6 +12,7 @@ import {
   CircularProgress,
   IconButton,
   LinearProgress,
+  Skeleton,
   Tooltip
 } from '@mui/material'
 import { alpha } from '@mui/material/styles'
@@ -286,6 +287,7 @@ export function Dashboard(): React.JSX.Element {
                 <IconButton
                   size="small"
                   onClick={startEditAlias}
+                  aria-label="Rename server alias"
                   sx={{ color: 'text.secondary', flexShrink: 0 }}
                 >
                   <EditIcon sx={{ fontSize: 14 }} />
@@ -369,16 +371,17 @@ export function Dashboard(): React.JSX.Element {
             const isFirstLoad = isLoading && !displayMetrics
 
             if (isFirstLoad) {
+              // Skeleton mirroring the actual server dashboard layout (KPI row +
+              // tabs + table) so the page feels populated while metrics load.
               return (
-                <Box
-                  sx={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  <CircularProgress size={32} />
+                <Box sx={{ flex: 1, p: 2 }}>
+                  <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
+                    {[0, 1, 2, 3].map((i) => (
+                      <Skeleton key={i} variant="rounded" height={86} sx={{ flex: 1 }} />
+                    ))}
+                  </Stack>
+                  <Skeleton variant="rounded" height={40} sx={{ mb: 1 }} />
+                  <Skeleton variant="rounded" height={280} />
                 </Box>
               )
             }

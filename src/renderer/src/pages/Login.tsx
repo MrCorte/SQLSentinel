@@ -7,15 +7,12 @@ import {
   Button,
   Alert,
   CircularProgress,
-  IconButton,
-  InputAdornment,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions
 } from '@mui/material'
-import VisibilityIcon from '@mui/icons-material/Visibility'
-import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
+import { PasswordField } from '../components/ui/PasswordField'
 import type { AuthSession } from '../../../preload/index'
 import { tokens } from '../styles/tokens'
 
@@ -39,14 +36,14 @@ function ChangePasswordDialog({ userId, onDone }: ChangePasswordDialogProps): Re
     e.preventDefault()
     setError('')
     if (newPwd !== confirm) {
-      setError('Le password non coincidono')
+      setError('Passwords do not match')
       return
     }
     setLoading(true)
     const result = await window.sqlSentinel.changePassword(userId, oldPwd, newPwd)
     setLoading(false)
     if (!result.success) {
-      setError(result.error ?? 'Errore durante il cambio password')
+      setError(result.error ?? 'Password change failed')
     } else {
       onDone()
     }
@@ -65,27 +62,24 @@ function ChangePasswordDialog({ userId, onDone }: ChangePasswordDialogProps): Re
           onSubmit={handleSubmit}
           sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}
         >
-          <TextField
+          <PasswordField
             label="Current password"
-            type="password"
             value={oldPwd}
             onChange={(e) => setOldPwd(e.target.value)}
             size="small"
             fullWidth
             autoFocus
           />
-          <TextField
+          <PasswordField
             label="New password"
-            type="password"
             value={newPwd}
             onChange={(e) => setNewPwd(e.target.value)}
             size="small"
             fullWidth
             helperText="Minimum 8 characters, at least 1 uppercase and 1 number"
           />
-          <TextField
+          <PasswordField
             label="Confirm new password"
-            type="password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             size="small"
@@ -119,7 +113,6 @@ interface LoginPageProps {
 export function LoginPage({ onLogin }: LoginPageProps): React.JSX.Element {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -135,7 +128,7 @@ export function LoginPage({ onLogin }: LoginPageProps): React.JSX.Element {
     setLoading(false)
 
     if (!result.success) {
-      setError(result.error ?? 'Credenziali non valide')
+      setError(result.error ?? 'Invalid credentials')
       return
     }
 
@@ -198,7 +191,7 @@ export function LoginPage({ onLogin }: LoginPageProps): React.JSX.Element {
             SQL Sentinel
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Accedi per continuare
+            Sign in to continue
           </Typography>
         </Box>
 
@@ -216,32 +209,13 @@ export function LoginPage({ onLogin }: LoginPageProps): React.JSX.Element {
             autoFocus
             autoComplete="username"
           />
-          <TextField
+          <PasswordField
             label="Password"
-            type={showPassword ? 'text' : 'password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             size="small"
             fullWidth
             autoComplete="current-password"
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    size="small"
-                    onClick={() => setShowPassword((v) => !v)}
-                    edge="end"
-                    tabIndex={-1}
-                  >
-                    {showPassword ? (
-                      <VisibilityOffIcon fontSize="small" />
-                    ) : (
-                      <VisibilityIcon fontSize="small" />
-                    )}
-                  </IconButton>
-                </InputAdornment>
-              )
-            }}
           />
 
           {error && (
@@ -257,7 +231,7 @@ export function LoginPage({ onLogin }: LoginPageProps): React.JSX.Element {
             disabled={loading || !username || !password}
             sx={{ mt: 0.5 }}
           >
-            {loading ? <CircularProgress size={20} color="inherit" /> : 'Accedi'}
+            {loading ? <CircularProgress size={20} color="inherit" /> : 'Sign in'}
           </Button>
         </Box>
 
@@ -265,7 +239,7 @@ export function LoginPage({ onLogin }: LoginPageProps): React.JSX.Element {
           variant="caption"
           sx={{ display: 'block', textAlign: 'center', mt: 2.5, color: 'text.disabled' }}
         >
-          SQL Sentinel — Accesso riservato
+          SQL Sentinel — Authorized access only
         </Typography>
       </Paper>
 

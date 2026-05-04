@@ -16,6 +16,7 @@ import {
   Switch,
   RadioGroup,
   Radio,
+  Skeleton,
   TextField,
   Tooltip,
   IconButton,
@@ -35,6 +36,8 @@ import { useWorker } from '../context/useWorker'
 import { useThemeContext } from '../context/ThemeContext'
 import type { ThemeMode } from '../context/ThemeContext'
 import { createLogger } from '../utils/logger'
+import { notify } from '../store/notifyStore'
+import { PasswordField } from '../components/ui/PasswordField'
 import { StorageSetupPage } from './StorageSetupPage'
 import type { StorageConfigInfo } from '../../../preload/index'
 
@@ -188,6 +191,7 @@ export function Settings(): React.JSX.Element {
   ) => {
     window.sqlSentinel.saveSettings(patch).catch((err: unknown) => {
       log.error('saveBgSettings failed:', err)
+      notify.error(err instanceof Error ? err.message : String(err), 'Save failed')
     })
   }
 
@@ -234,6 +238,7 @@ export function Settings(): React.JSX.Element {
   const saveEmail = (patch: Parameters<typeof window.sqlSentinel.saveEmailSettings>[0]) => {
     window.sqlSentinel.saveEmailSettings(patch).catch((err: unknown) => {
       log.error('saveEmailSettings failed:', err)
+      notify.error(err instanceof Error ? err.message : String(err), 'Save failed')
     })
   }
 
@@ -616,7 +621,7 @@ export function Settings(): React.JSX.Element {
                   control={<Radio />}
                   label={
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <span>Light — intervallo:</span>
+                      <span>Light — interval:</span>
                       <TextField
                         type="number"
                         size="small"
@@ -681,6 +686,16 @@ export function Settings(): React.JSX.Element {
       <ServiceStatusCard />
 
       {/* Card — Notifiche Email */}
+      {!emailLoaded && (
+        <Card variant="outlined">
+          <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Skeleton variant="text" width={180} height={28} />
+            <Skeleton variant="rounded" height={42} />
+            <Skeleton variant="rounded" height={42} />
+            <Skeleton variant="rounded" height={42} />
+          </CardContent>
+        </Card>
+      )}
       {emailLoaded && (
         <Card variant="outlined">
           <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -751,10 +766,9 @@ export function Settings(): React.JSX.Element {
                   onBlur={() => saveEmail({ smtpUser })}
                   placeholder="alerts@company.com"
                 />
-                <TextField
+                <PasswordField
                   label="SMTP Password"
                   size="small"
-                  type="password"
                   value={smtpPassword}
                   onChange={(e) => setSmtpPassword(e.target.value)}
                   onBlur={() => saveEmail({ smtpPassword })}
@@ -803,6 +817,7 @@ export function Settings(): React.JSX.Element {
                           size="small"
                           color="error"
                           onClick={() => removeRecipient(email)}
+                          aria-label={`Remove recipient ${email}`}
                         >
                           <DeleteIcon fontSize="small" />
                         </IconButton>

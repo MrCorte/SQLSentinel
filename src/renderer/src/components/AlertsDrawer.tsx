@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import {
   Drawer,
   Box,
@@ -7,11 +8,17 @@ import {
   ListItem,
   ListItemText,
   Divider,
-  Stack
+  Stack,
+  Chip,
+  Button
 } from '@mui/material'
 import CloseIcon from '@mui/icons-material/Close'
+import DoneAllIcon from '@mui/icons-material/DoneAll'
 import type { Alert } from '../../../preload/index'
 import { tokens } from '../styles/tokens'
+
+type SeverityFilter = 'all' | 'CRITICAL' | 'WARNING'
+type CategoryFilter = 'all' | Alert['category']
 
 interface Props {
   open: boolean
@@ -140,19 +147,15 @@ function AlertRow({
                 {new Date(alert.detectedAt).toLocaleString('en-US')}
               </Typography>
               {!isAcknowledged && (
-                <Typography
-                  component="span"
+                <Button
+                  size="small"
+                  variant="text"
                   onClick={() => onAcknowledge(alert.id)}
-                  sx={{
-                    fontSize: tokens.font.sizeXs,
-                    fontWeight: tokens.font.weightSemibold,
-                    color: tokens.color.accent,
-                    cursor: 'pointer',
-                    '&:hover': { textDecoration: 'underline' }
-                  }}
+                  sx={{ minWidth: 'auto', p: 0.25, fontSize: tokens.font.sizeXs }}
+                  aria-label={`Acknowledge ${alert.severity} alert ${alert.message}`}
                 >
-                  Acknowledge →
-                </Typography>
+                  Acknowledge
+                </Button>
               )}
             </Stack>
           </>
@@ -164,14 +167,47 @@ function AlertRow({
 }
 
 export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): React.JSX.Element {
-  const openAlerts = alerts.filter((a) => a.acknowledgedAt === null)
-  const acked = alerts.filter((a) => a.acknowledgedAt !== null)
+  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('all')
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all')
 
-  const criticalFirst = [...openAlerts].sort((a, b) => {
-    if (a.severity === 'CRITICAL' && b.severity !== 'CRITICAL') return -1
-    if (b.severity === 'CRITICAL' && a.severity !== 'CRITICAL') return 1
-    return 0
-  })
+  const openAlerts = useMemo(() => alerts.filter((a) => a.acknowledgedAt === null), [alerts])
+  const acked = useMemo(() => alerts.filter((a) => a.acknowledgedAt !== null), [alerts])
+
+  // Available category facets — derived from the current open alert set
+  const availableCategories = useMemo(() => {
+    const set = new Set<Alert['category']>()
+    for (const a of openAlerts) set.add(a.category)
+    return Array.from(set)
+  }, [openAlerts])
+
+  const matchesFilters = (a: Alert): boolean => {
+    if (severityFilter !== 'all' && a.severity !== severityFilter) return false
+    if (categoryFilter !== 'all' && a.category !== categoryFilter) return false
+    return true
+  }
+
+  const filteredOpen = useMemo(() => openAlerts.filter(matchesFilters), [
+    openAlerts,
+    severityFilter,
+    categoryFilter
+  ])
+
+  const criticalFirst = useMemo(
+    () =>
+      [...filteredOpen].sort((a, b) => {
+        if (a.severity === 'CRITICAL' && b.severity !== 'CRITICAL') return -1
+        if (b.severity === 'CRITICAL' && a.severity !== 'CRITICAL') return 1
+        return 0
+      }),
+    [filteredOpen]
+  )
+
+  const handleAckAll = (): void => {
+    // Snapshot ids first — onAcknowledge mutates the parent state which would
+    // shrink the source array under iteration.
+    const ids = criticalFirst.map((a) => a.id)
+    for (const id of ids) onAcknowledge(id)
+  }
 
   return (
     <Drawer
@@ -227,16 +263,94 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
               </Typography>
             )}
           </Typography>
-          <IconButton size="small" onClick={onClose} sx={{ color: tokens.color.textMuted }}>
+          <IconButton
+            size="small"
+            onClick={onClose}
+            aria-label="Close alerts panel"
+            sx={{ color: tokens.color.textMuted }}
+          >
             <CloseIcon fontSize="small" />
           </IconButton>
         </Stack>
+
+        {/* Filter / bulk-action bar — only when there are open alerts */}
+        {openAlerts.length > 0 && (
+          <Stack
+            spacing={0.75}
+            sx={{
+              px: 2,
+              py: 1,
+              bgcolor: tokens.color.bgSurface,
+              borderBottom: '1px solid',
+              borderBottomColor: tokens.color.bgBorder
+            }}
+          >
+            <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+              <Chip
+                label="All"
+                size="small"
+                color={severityFilter === 'all' ? 'primary' : 'default'}
+                variant={severityFilter === 'all' ? 'filled' : 'outlined'}
+                onClick={() => setSeverityFilter('all')}
+              />
+              <Chip
+                label="Critical"
+                size="small"
+                color={severityFilter === 'CRITICAL' ? 'error' : 'default'}
+                variant={severityFilter === 'CRITICAL' ? 'filled' : 'outlined'}
+                onClick={() => setSeverityFilter('CRITICAL')}
+              />
+              <Chip
+                label="Warning"
+                size="small"
+                color={severityFilter === 'WARNING' ? 'warning' : 'default'}
+                variant={severityFilter === 'WARNING' ? 'filled' : 'outlined'}
+                onClick={() => setSeverityFilter('WARNING')}
+              />
+            </Stack>
+            {availableCategories.length > 1 && (
+              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+                <Chip
+                  label="All categories"
+                  size="small"
+                  variant={categoryFilter === 'all' ? 'filled' : 'outlined'}
+                  onClick={() => setCategoryFilter('all')}
+                />
+                {availableCategories.map((cat) => (
+                  <Chip
+                    key={cat}
+                    label={categoryLabel(cat)}
+                    size="small"
+                    variant={categoryFilter === cat ? 'filled' : 'outlined'}
+                    onClick={() => setCategoryFilter(cat)}
+                  />
+                ))}
+              </Stack>
+            )}
+            {criticalFirst.length > 1 && (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<DoneAllIcon fontSize="small" />}
+                onClick={handleAckAll}
+                sx={{ alignSelf: 'flex-start' }}
+              >
+                Acknowledge {criticalFirst.length} shown
+              </Button>
+            )}
+          </Stack>
+        )}
 
         {/* Body */}
         <Box sx={{ flex: 1, overflow: 'auto' }}>
           {criticalFirst.length === 0 && acked.length === 0 && (
             <Typography variant="body2" sx={{ p: 3, textAlign: 'center', color: tokens.color.textMuted }}>
               No active alerts.
+            </Typography>
+          )}
+          {criticalFirst.length === 0 && openAlerts.length > 0 && (
+            <Typography variant="body2" sx={{ p: 3, textAlign: 'center', color: tokens.color.textMuted }}>
+              No alerts match the current filters.
             </Typography>
           )}
 

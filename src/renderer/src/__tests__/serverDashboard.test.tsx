@@ -96,7 +96,7 @@ describe('ServerHistoryChart — renders N points from the ring buffer', () => {
 
     // The mock LineChart must be present (non-empty data → no empty state)
     expect(screen.getByTestId('line-chart')).toBeTruthy()
-    expect(screen.queryByText(/in attesa del primo campione/i)).toBeNull()
+    expect(screen.queryByText(/waiting for the first sample/i)).toBeNull()
   })
 
   it('shows the chart even with a single point', () => {
@@ -112,13 +112,13 @@ describe('ServerHistoryChart — empty state when history is empty', () => {
   it('shows the waiting-for-first-sample message when historyMap is empty', () => {
     // historyMap does not contain the server — everything empty
     render(<ServerHistoryChart serverId="srv-1" />)
-    expect(screen.getByText(/in attesa del primo campione/i)).toBeTruthy()
+    expect(screen.getByText(/waiting for the first sample/i)).toBeTruthy()
   })
 
   it('shows empty state when explicit cpu array is empty', () => {
     setHistory('srv-1', [], [])
     render(<ServerHistoryChart serverId="srv-1" />)
-    expect(screen.getByText(/in attesa del primo campione/i)).toBeTruthy()
+    expect(screen.getByText(/waiting for the first sample/i)).toBeTruthy()
   })
 })
 

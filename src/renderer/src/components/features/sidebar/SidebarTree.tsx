@@ -179,6 +179,8 @@ export const AgGroupHeader = memo(function AgGroupHeader({
           e.stopPropagation()
           onToggleCollapse()
         }}
+        aria-label={isExpanded ? 'Collapse group' : 'Expand group'}
+        aria-expanded={isExpanded}
         sx={{ p: 0.25, color: '#7a9ab8', flexShrink: 0 }}
       >
         <ChevronRightIcon

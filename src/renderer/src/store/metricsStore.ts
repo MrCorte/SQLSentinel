@@ -226,12 +226,23 @@ function applyOne(state: Draft, serverId: string, delta: DeltaMetrics): void {
     const removed = new Set(delta.removedDbs)
     existing.databases = existing.databases.filter((d) => !removed.has(d.name))
   }
-  // Merge: update or insert changed databases
-  delta.databases.forEach((changedDb) => {
-    const idx = existing.databases.findIndex((d) => d.name === changedDb.name)
-    if (idx >= 0) existing.databases[idx] = changedDb
-    else existing.databases.push(changedDb)
-  })
+  // Merge: O(N) using a name→index Map. The previous findIndex() inside forEach
+  // was O(N²) — visible in profiles at ~1500 DBs across 200 servers per batch.
+  if (delta.databases.length > 0) {
+    const indexByName = new Map<string, number>()
+    for (let i = 0; i < existing.databases.length; i++) {
+      indexByName.set(existing.databases[i].name, i)
+    }
+    for (const changedDb of delta.databases) {
+      const idx = indexByName.get(changedDb.name)
+      if (idx !== undefined) {
+        existing.databases[idx] = changedDb
+      } else {
+        indexByName.set(changedDb.name, existing.databases.length)
+        existing.databases.push(changedDb)
+      }
+    }
+  }
   // Instance-level fields
   Object.assign(existing.instanceInfo, delta.instanceInfo)
   existing.activeSessions = delta.activeSessions

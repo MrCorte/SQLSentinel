@@ -74,7 +74,7 @@ export const ServerHistoryChart = memo(function ServerHistoryChart({ serverId }:
           fontSize: 13
         }}
       >
-        ⏳ In attesa del primo campione...
+        Waiting for the first sample…
       </Box>
     )
   }

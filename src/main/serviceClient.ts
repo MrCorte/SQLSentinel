@@ -114,8 +114,13 @@ export function connect(): void {
   }
 
   setStatus('connecting')
-  const url = `ws://127.0.0.1:${_config.port}?secret=${_config.secret}`
-  const ws = new WebSocket(url)
+  // Auth via Authorization header (not querystring) so the secret never lands
+  // in URL logs or process listings. Server-side rejects connections that
+  // present an Origin header (browser tabs) or come from non-loopback.
+  const url = `ws://127.0.0.1:${_config.port}/`
+  const ws = new WebSocket(url, {
+    headers: { Authorization: `Bearer ${_config.secret}` }
+  })
   _ws = ws
 
   ws.on('open', () => {

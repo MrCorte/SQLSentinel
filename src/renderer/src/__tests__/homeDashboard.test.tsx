@@ -157,8 +157,9 @@ describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
       <HomeDashboard onNavigateToServer={noop} onNavigateToDiscovery={noop} />
     )
 
-    // Must show the Home Dashboard with the "TOTAL SERVERS" KPI card
-    expect(screen.getAllByText(/TOTAL SERVERS/i).length).toBeGreaterThan(0)
+    // Must show the Home Dashboard with the "Total" KPI card (label was
+    // renamed from "TOTAL SERVERS" to "Total" — capitalization handled by CSS).
+    expect(screen.getAllByText(/^Total$/i).length).toBeGreaterThan(0)
   })
 })
 

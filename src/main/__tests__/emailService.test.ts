@@ -80,7 +80,9 @@ describe('sendAlertEmail', () => {
     expect(call.to).toContain('dest@example.com')
     expect(call.subject).toContain('CRITICAL')
     expect(call.subject).toContain('10.0.0.1:1433')
-    expect(call.html).toContain('cpu_high')
+    // The HTML template renders the category as a human-readable label
+    // (e.g. "CPU HIGH"), not the raw enum value.
+    expect(call.html).toMatch(/cpu_high|CPU HIGH/i)
   })
 
   it('deduplicates: does not re-send within 15 minutes', async () => {

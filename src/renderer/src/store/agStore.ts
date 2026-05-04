@@ -61,6 +61,8 @@ interface AgStore {
   ): Promise<void>
   /** Refresh full details for all AGs visible from a given connection */
   updateAgDetails(connection: CollectMetricsRequest): Promise<void>
+  /** Drop references to a removed server from agGroups; remove empty AGs */
+  removeServer(serverId: string): void
   /** Clear all AG state (e.g. on store reset) */
   clear(): void
 }
@@ -204,6 +206,27 @@ export const useAgStore = create<AgStore>((set, get) => ({
     } catch (err) {
       log.debug('updateAgDetails: error', (err as Error).message)
     }
+  },
+
+  removeServer: (serverId) => {
+    set((state) => {
+      const newGroups: Record<string, AgGroupState> = {}
+      const droppedAgNames = new Set<string>()
+      for (const [agName, group] of Object.entries(state.agGroups)) {
+        const remaining = group.serverIds.filter((id) => id !== serverId)
+        if (remaining.length === 0) {
+          droppedAgNames.add(agName)
+          continue
+        }
+        newGroups[agName] = { ...group, serverIds: remaining }
+      }
+      // Drop the matching detail entries too — they'd otherwise leak forever.
+      const newDetails: Record<string, AgDetail> = {}
+      for (const [agName, detail] of Object.entries(state.agDetails)) {
+        if (!droppedAgNames.has(agName)) newDetails[agName] = detail
+      }
+      return { agGroups: newGroups, agDetails: newDetails }
+    })
   },
 
   clear: () => set({ agGroups: {}, agDetails: {} })

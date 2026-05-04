@@ -450,6 +450,7 @@ export type AiStreamEvent =
 
 export interface SqlSentinelAPI {
   scanSubnet(options: ScanOptions): Promise<IpcResult<DiscoveredServer[]>>
+  cancelScan(): Promise<IpcResult<{ cancelled: boolean }>>
   onScanProgress(callback: (progress: ScanProgress) => void): () => void
   addServerManual(req: ManualServerRequest): Promise<IpcResult<DiscoveredServer>>
   getServers(): Promise<IpcResult<DiscoveredServer[]>>

@@ -212,6 +212,41 @@ export function remove(id: string): void {
   )
 }
 
+// Defence-in-depth: only fields in this allow-list are accepted from any
+// upsert payload. Renderer-supplied objects with unknown keys (typos, hijacked
+// payloads, future schema drift) cannot pollute electron-store.
+const UPSERT_ALLOWED_FIELDS = [
+  'host',
+  'ip', // legacy alias — normalizeServer collapses it into host
+  'port',
+  'instanceName',
+  'machineName',
+  'useWindowsAuth',
+  'username',
+  'password',
+  'encryptedPassword',
+  'lastSeen',
+  'unreachable',
+  'unreachableSince',
+  'agGroupId',
+  'agName',
+  'agRole',
+  'logicalCpus',
+  'physicalCpus',
+  'hostingType',
+  'notes'
+] as const
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function pickAllowedFields(params: any): Record<string, unknown> {
+  if (!params || typeof params !== 'object') return {}
+  const out: Record<string, unknown> = {}
+  for (const key of UPSERT_ALLOWED_FIELDS) {
+    if (key in params) out[key] = params[key]
+  }
+  return out
+}
+
 /**
  * Insert-or-update by host:port.
  * Used when ADD_SERVER_MANUAL completes — ensures the server is persisted
@@ -219,7 +254,8 @@ export function remove(id: string): void {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function upsertByIpPort(params: any): StoredServer {
-  const normalized = normalizeServer(params)
+  const filtered = pickAllowedFields(params)
+  const normalized = normalizeServer(filtered)
   const servers = store.get('servers', [])
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const idx = servers.findIndex(

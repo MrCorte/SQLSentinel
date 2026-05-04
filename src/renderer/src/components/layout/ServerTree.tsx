@@ -205,6 +205,7 @@ export function ServerTree({
             <IconButton
               size="small"
               onClick={() => setGroupManagerOpen(true)}
+              aria-label="Manage environments"
               sx={{ p: 0.25, color: tokens.color.textMuted, '&:hover': { color: '#fff' } }}
             >
               <SettingsIcon sx={{ fontSize: 14 }} />

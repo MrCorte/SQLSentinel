@@ -3,6 +3,8 @@ import type { StoredServer, ServerAddResult } from '../../../preload/index'
 import { useAgStore } from './agStore'
 import { useMetricsStore } from './metricsStore'
 import { useAlertsStore } from './alertsStore'
+import { useGroupsStore } from './groupsStore'
+import { notify } from './notifyStore'
 import { createLogger } from '../utils/logger'
 import * as ipc from '../api/ipc'
 
@@ -40,6 +42,7 @@ export const useServersStore = create<ServersStore>((set) => ({
       log.info('loadServers DONE')
     } catch (e) {
       log.error('loadServers ERROR:', e)
+      notify.error('Could not load the server list. Open the logs for details.', 'Load failed')
       set({ initialized: true })
     }
   },
@@ -80,6 +83,7 @@ export const useServersStore = create<ServersStore>((set) => ({
       return result ?? { success: false }
     } catch (e) {
       log.error('addServer error:', e)
+      notify.error(e instanceof Error ? e.message : String(e), 'Add server failed')
       return { success: false, reason: String(e) }
     }
   },
@@ -94,8 +98,14 @@ export const useServersStore = create<ServersStore>((set) => ({
         useMetricsStore.getState().deleteServerData(metricsKey)
         useAlertsStore.getState().deleteServerAlerts(metricsKey)
       }
+      // Drop AG group memberships and persisted alias/group assignment for the
+      // removed server. Without this, agStore retains a dead serverId entry
+      // (sidebar shows phantom AG members) and groupsStore leaks the alias.
+      useAgStore.getState().removeServer(id)
+      useGroupsStore.getState().removeServer(id)
     } catch (e) {
       log.error('removeServer error:', e)
+      notify.error(e instanceof Error ? e.message : String(e), 'Remove failed')
     }
   },
 
@@ -107,6 +117,7 @@ export const useServersStore = create<ServersStore>((set) => ({
       }))
     } catch (e) {
       log.error('updateServer error:', e)
+      notify.error(e instanceof Error ? e.message : String(e), 'Update failed')
     }
   }
 }))

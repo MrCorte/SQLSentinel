@@ -18,6 +18,12 @@ function buildConfig(params: {
     port: params.port,
     database: params.database,
     requestTimeout: 30000,
+    // Storage pool sizing: default mssql max is 10. With multiple dashboard
+    // tabs (charts + bulk + alerts) plus the worker save queue and the cleanup
+    // job all hitting the same pool, 10 starves quickly. 20 is a comfortable
+    // headroom; min=2 keeps two warm connections so first-request latency
+    // doesn't pay the full TLS handshake cost.
+    pool: { max: 20, min: 2, idleTimeoutMillis: 30000 },
     options: {
       encrypt: params.encrypt ?? false,
       trustServerCertificate: params.trustServerCertificate ?? true,

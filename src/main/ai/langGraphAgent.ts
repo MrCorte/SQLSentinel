@@ -535,6 +535,13 @@ export async function langGraphStream(
     return
   }
 
+  // Takeover: explicitly abort any previous in-flight controller before we
+  // overwrite the module-level slot. Without this, an earlier stream would
+  // keep its Ollama HTTP connection open until the model finishes — wasting
+  // GPU/CPU on the Ollama side and leaking AbortSignal listeners.
+  if (_activeAbortController) {
+    _activeAbortController.abort()
+  }
   const controller = new AbortController()
   _activeAbortController = controller
 

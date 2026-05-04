@@ -54,9 +54,21 @@ export function registerSystemHandlers(): void {
     IpcChannel.AUTH_LOGIN,
     async (
       _event: IpcMainInvokeEvent,
-      username: string,
-      password: string
+      username: unknown,
+      password: unknown
     ): Promise<LoginResult> => {
+      // Validate the IPC input shape — a hijacked renderer (or malformed test
+      // call) could send objects/null. Bcrypt expects strings; coercion errors
+      // would otherwise surface as 500-style stack traces.
+      if (typeof username !== 'string' || typeof password !== 'string') {
+        return { success: false, error: 'Invalid credentials' }
+      }
+      if (username.length === 0 || username.length > 128) {
+        return { success: false, error: 'Invalid credentials' }
+      }
+      if (password.length === 0 || password.length > 256) {
+        return { success: false, error: 'Invalid credentials' }
+      }
       try {
         return await login(username, password)
       } catch (err) {
@@ -82,10 +94,20 @@ export function registerSystemHandlers(): void {
     IpcChannel.AUTH_CHANGE_PASSWORD,
     async (
       _event: IpcMainInvokeEvent,
-      userId: string,
-      oldPassword: string,
-      newPassword: string
+      userId: unknown,
+      oldPassword: unknown,
+      newPassword: unknown
     ): Promise<ChangePasswordResult> => {
+      if (
+        typeof userId !== 'string' ||
+        typeof oldPassword !== 'string' ||
+        typeof newPassword !== 'string'
+      ) {
+        return { success: false, error: 'Invalid request' }
+      }
+      if (newPassword.length === 0 || newPassword.length > 256) {
+        return { success: false, error: 'Invalid password length' }
+      }
       const session = getSession()
       if (!session || session.userId !== userId) {
         return { success: false, error: 'Unauthorized' }

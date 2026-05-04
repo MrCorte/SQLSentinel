@@ -174,12 +174,22 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
             </Typography>
           </Box>
           <Tooltip title="Clear history">
-            <IconButton size="small" onClick={clear} sx={{ color: 'rgba(255,255,255,0.8)' }}>
+            <IconButton
+              size="small"
+              onClick={clear}
+              aria-label="Clear AI chat history"
+              sx={{ color: 'rgba(255,255,255,0.8)' }}
+            >
               <DeleteOutlineIcon fontSize="small" />
             </IconButton>
           </Tooltip>
           <Tooltip title="Close">
-            <IconButton size="small" onClick={onClose} sx={{ color: 'rgba(255,255,255,0.8)' }}>
+            <IconButton
+              size="small"
+              onClick={onClose}
+              aria-label="Close AI assistant"
+              sx={{ color: 'rgba(255,255,255,0.8)' }}
+            >
               <CloseIcon fontSize="small" />
             </IconButton>
           </Tooltip>

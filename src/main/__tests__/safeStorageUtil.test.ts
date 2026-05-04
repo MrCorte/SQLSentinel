@@ -55,10 +55,9 @@ describe('safeStorageUtil', () => {
       expect(mockEncryptString).toHaveBeenCalledWith('my-secret')
     })
 
-    it('returns plaintext when encryption is unavailable', () => {
+    it('throws SafeStorageUnavailableError when encryption is unavailable', () => {
       mockIsEncryptionAvailable.mockReturnValue(false)
-      const result = encrypt('my-secret')
-      expect(result).toBe('my-secret')
+      expect(() => encrypt('my-secret')).toThrow(/keyring|DPAPI|unavailable/i)
       expect(mockEncryptString).not.toHaveBeenCalled()
     })
   })
@@ -82,13 +81,16 @@ describe('safeStorageUtil', () => {
       expect(mockDecryptString).not.toHaveBeenCalled()
     })
 
-    it('rethrows when decryptString throws (keyring changed)', () => {
+    it('returns the stored value as-is when decryptString throws (legacy plaintext)', () => {
+      // Reads are intentionally forgiving — legacy records may already be
+      // plaintext in the store. We must not throw on read or the user can
+      // never recover their data after migrating the keyring.
       mockIsEncryptionAvailable.mockReturnValue(true)
       mockDecryptString.mockImplementation(() => {
         throw new Error('keyring error')
       })
-      const stored = Buffer.from('bad').toString('base64')
-      expect(() => decrypt(stored)).toThrow('keyring error')
+      const stored = Buffer.from('legacy-plaintext').toString('base64')
+      expect(decrypt(stored)).toBe(stored)
     })
   })
 

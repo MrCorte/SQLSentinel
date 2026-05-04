@@ -73,8 +73,29 @@ export function listServers(): StoredServer[] {
   return serverStore.getAllStripped()
 }
 
+// IPv4 dotted-quad. Hostname: RFC-1123 short-form (alnum + hyphens, 1-63 chars per label).
+// We deliberately reject IPv6 and FQDNs with trailing dots to keep the surface narrow.
+const IPV4_RE = /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)$/
+const HOSTNAME_RE = /^(?=.{1,253}$)([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
+
+function validateHostInput(host: string, port: number): void {
+  if (typeof host !== 'string' || host.length === 0 || host.length > 253) {
+    throw new Error('Invalid host: must be a non-empty string up to 253 chars')
+  }
+  if (!IPV4_RE.test(host) && !HOSTNAME_RE.test(host)) {
+    throw new Error(`Invalid host "${host}": expected IPv4 or DNS hostname`)
+  }
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid port ${port}: must be an integer 1-65535`)
+  }
+}
+
 /** TCP-probes the given host:port and persists the server to the store. */
 export async function addServerManual(req: ManualServerRequest): Promise<DiscoveredServer> {
+  // Defence-in-depth: even with auth on the IPC channel, validate the user-
+  // supplied target so we don't TCP-probe arbitrary internal endpoints
+  // (cloud metadata, link-local SSRF targets, malformed strings).
+  validateHostInput(req.ip, req.port)
   const probed = await scanHost(req.ip, req.port, 2000)
   serverStore.upsertByIpPort({
     host: probed.ip,

@@ -2,15 +2,19 @@ import { safeStorage } from 'electron'
 import { createLogger } from '../utils/logger'
 const log = createLogger('safe-storage')
 
-let warned = false
-
-function warnOnce(): void {
-  if (warned) return
-  warned = true
-  log.error(
-    '[safeStorage] ENCRYPTION UNAVAILABLE on this OS/profile — secrets will be stored in plaintext. ' +
-      'On Linux ensure libsecret is installed and a keyring is unlocked; on Windows ensure the user profile supports DPAPI.'
-  )
+/**
+ * Thrown when callers try to encrypt while OS-level safeStorage is unavailable.
+ * IPC handlers catch this and surface a "configure your keyring" message to the
+ * user instead of silently writing plaintext to disk.
+ */
+export class SafeStorageUnavailableError extends Error {
+  constructor() {
+    super(
+      'OS keyring/DPAPI is not available — refusing to store credentials in plaintext. ' +
+        'On Linux install libsecret and unlock the keyring; on Windows verify DPAPI/profile support.'
+    )
+    this.name = 'SafeStorageUnavailableError'
+  }
 }
 
 export function isAvailable(): boolean {
@@ -19,22 +23,25 @@ export function isAvailable(): boolean {
 
 export function encrypt(plain: string): string {
   if (!isAvailable()) {
-    warnOnce()
-    return plain
+    log.error(
+      '[safeStorage] encrypt() refused: OS keyring/DPAPI unavailable. Caller must surface this to the user.'
+    )
+    throw new SafeStorageUnavailableError()
   }
   return safeStorage.encryptString(plain).toString('base64')
 }
 
 export function decrypt(stored: string): string {
-  if (!isAvailable()) {
-    warnOnce()
-    return stored
-  }
+  // Backward compat: legacy records may already be plaintext. We attempt to
+  // decrypt; if the buffer is not a valid ciphertext (or safeStorage is off),
+  // we return the value as-is so the caller can still read it. Only writes
+  // are hardened — reads must remain forgiving.
+  if (!isAvailable()) return stored
   try {
     return safeStorage.decryptString(Buffer.from(stored, 'base64'))
-  } catch (err) {
-    log.error('[safeStorage] Decryption failed — OS keyring may have changed or credential is corrupt')
-    throw err
+  } catch {
+    // Not a ciphertext (legacy plaintext) or corrupted — return raw.
+    return stored
   }
 }
 

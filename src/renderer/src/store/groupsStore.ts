@@ -85,6 +85,8 @@ interface GroupsState {
   reorderGroups: (newOrder: ServerGroup[]) => void
   setServerGroup: (serverId: string, groupId: string | undefined) => void
   setServerAlias: (serverId: string, alias: string) => void
+  /** Drop alias + group assignment for a server that was deleted */
+  removeServer: (serverId: string) => void
   toggleAgCollapse: (agName: string) => void
   toggleMachineCollapse: (machineName: string) => void
 }
@@ -159,6 +161,15 @@ export const useGroupsStore = create<GroupsState>()(
             delete next[serverId]
           }
           return { serverAliases: next }
+        }),
+
+      removeServer: (serverId) =>
+        set((state) => {
+          const aliases = { ...state.serverAliases }
+          const groups = { ...state.serverGroups }
+          delete aliases[serverId]
+          delete groups[serverId]
+          return { serverAliases: aliases, serverGroups: groups }
         }),
 
       toggleAgCollapse: (agName) =>

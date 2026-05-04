@@ -39,7 +39,11 @@ const INTERVAL_OFFLINE_MS = 600_000
 const BACKOFF_CAP_MS = 3_600_000 // 1 hour max back-off
 const POLL_TIMEOUT_MS = 90_000 // max 90s per single job
 const SAVE_EVERY_N = 5 // save to SQLite every N polls (≈5 min at 60s interval)
-const SAVE_FLUSH_MS = 300_000 // flush batch every 5 min
+// Flush window: was 5 min, lowered to 60s so a hard crash loses at most ~1 min
+// of metrics instead of 5. The hard cap below also forces an early flush when
+// the queue grows beyond a sane size (e.g. 200 servers × N polls in flight).
+const SAVE_FLUSH_MS = 60_000
+const SAVE_QUEUE_HARD_CAP = 500
 const AG_DETECT_EVERY_N = 5 // detect AG roles every N polls — roles change only on failover
 
 // ---------------------------------------------------------------------------
@@ -150,6 +154,17 @@ function queueSave(srv: CollectMetricsRequest, metrics: ServerMetrics): void {
   const record = serverStore.getStrippedByIpPort(srv.ip, srv.port)
   if (!record) return
   saveQueue.push({ serverId: record.id, metrics })
+  // Hard cap: force an immediate flush instead of letting the queue grow
+  // unbounded if SAVE_FLUSH_MS hasn't elapsed yet. Protects against memory
+  // bloat when many servers save simultaneously after a long offline window.
+  if (saveQueue.length >= SAVE_QUEUE_HARD_CAP) {
+    if (saveFlushTimer) {
+      clearTimeout(saveFlushTimer)
+      saveFlushTimer = null
+    }
+    flushSaveQueue()
+    return
+  }
   if (!saveFlushTimer) {
     saveFlushTimer = setTimeout(flushSaveQueue, SAVE_FLUSH_MS)
   }

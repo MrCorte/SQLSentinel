@@ -13,6 +13,7 @@ import {
 } from '@mui/material'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
+import { PasswordField } from '../components/ui/PasswordField'
 import type { SchemaInitResult } from '../../../preload/index'
 
 interface FormState {
@@ -263,7 +264,7 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
           </Stack>
           <TextField label="Database" fullWidth {...field('database')} />
           <TextField label="Username" fullWidth {...field('username')} />
-          <TextField label="Password" type="password" fullWidth {...field('password')} />
+          <PasswordField label="Password" fullWidth {...field('password')} />
 
           <FormControlLabel
             control={<Checkbox {...checkField('encrypt')} size="small" />}

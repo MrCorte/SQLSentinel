@@ -5,6 +5,7 @@ import type {
   ScanProgress,
   ManualServerRequest
 } from '../../../preload/index'
+import { notify } from '../store/notifyStore'
 
 export interface DiscoveryRow extends DiscoveredServer {
   discoveryType: 'auto-tcp' | 'manual'
@@ -49,12 +50,25 @@ export function useDiscovery() {
         })
       } else {
         setError(result.error)
+        notify.error(result.error, 'Subnet scan failed')
       }
-    } catch {
-      setError('Scan failed unexpectedly')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Scan failed unexpectedly'
+      setError(msg)
+      notify.error(msg, 'Subnet scan failed')
     } finally {
       removeProgressListener()
       setIsScanning(false)
+    }
+  }, [])
+
+  const cancelScan = useCallback(async (): Promise<void> => {
+    // Best-effort: the in-flight scanSubnet will resolve normally with the
+    // partial results found before the abort.
+    try {
+      await window.sqlSentinel.cancelScan()
+    } catch {
+      // ignored — UI state is reset by scan() finally block when the promise settles
     }
   }, [])
 
@@ -75,10 +89,12 @@ export function useDiscovery() {
       const newRow: DiscoveryRow = { ...result.data, discoveryType: 'manual' }
       const key = `${params.ip}:${params.port}`
       setServers((prev) => [...prev.filter((s) => `${s.ip}:${s.port}` !== key), newRow])
+      notify.success(`Server ${key} added`, 'Server added')
     } else {
       setError(result.error)
+      notify.error(result.error, 'Add server failed')
     }
   }, [])
 
-  return { servers, isScanning, progress, error, scan, addServer }
+  return { servers, isScanning, progress, error, scan, cancelScan, addServer }
 }

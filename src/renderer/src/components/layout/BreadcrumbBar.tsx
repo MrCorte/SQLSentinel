@@ -98,7 +98,12 @@ export function BreadcrumbBar({
         )}
 
         <Tooltip title="AI Assistant" placement="bottom">
-          <IconButton size="small" onClick={onOpenAI} sx={{ color: tokens.color.textMuted }}>
+          <IconButton
+            size="small"
+            onClick={onOpenAI}
+            aria-label="Open AI assistant"
+            sx={{ color: tokens.color.textMuted }}
+          >
             <SmartToyIcon sx={{ fontSize: 16 }} />
           </IconButton>
         </Tooltip>

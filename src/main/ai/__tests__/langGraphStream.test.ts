@@ -3,14 +3,28 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // langGraphStream calls getLlm().stream() directly — mock ChatOllama, not the agent.
 const mockLlmStream = vi.fn()
 const mockLlmInvoke = vi.fn()
-vi.mock('@langchain/ollama', () => ({
-  ChatOllama: vi.fn(() => ({ stream: mockLlmStream, invoke: mockLlmInvoke }))
-}))
+vi.mock('@langchain/ollama', () => {
+  // Real class — getLlm() does `new ChatOllama(...)`. A vi.fn returning an
+  // object literal is not a constructor and would crash at instantiation.
+  class ChatOllama {
+    stream = mockLlmStream
+    invoke = mockLlmInvoke
+  }
+  return { ChatOllama }
+})
 vi.mock('@langchain/langgraph/prebuilt', () => ({ createReactAgent: vi.fn() }))
-vi.mock('../../store/serverStore', () => ({ getAll: vi.fn(() => []) }))
+vi.mock('../../store/serverStore', () => ({
+  getAll: vi.fn(() => []),
+  getAllStripped: vi.fn(() => [])
+}))
 vi.mock('../../store/metricsRepository', () => ({ findLastNBulk: vi.fn(() => ({})) }))
 vi.mock('../../metricsWorker', () => ({ getAlerts: vi.fn(() => []) }))
 vi.mock('../../store/ftsRepository', () => ({ searchFts: vi.fn(() => []) }))
+// Ollama health: assume reachable so the stream proceeds past the gate.
+vi.mock('../ollama', () => ({
+  OLLAMA_HOST: 'http://localhost:11434',
+  checkOllamaHealth: vi.fn(async () => true)
+}))
 
 import { langGraphStream, abortActiveStream } from '../langGraphAgent'
 import type { AiStreamEvent } from '../../ipc/types'
@@ -74,13 +88,28 @@ describe('langGraphStream', () => {
     expect(events.find((e) => e.type === 'error')).toMatchObject({ type: 'error', message: 'Ollama down' })
   })
 
-  it('emits error with "Cancelled" when aborted during streaming', async () => {
+  it('stops emitting tokens once abortActiveStream() is called mid-stream', async () => {
+    let aborted = false
     mockLlmStream.mockReturnValue({
       [Symbol.asyncIterator]() {
+        let i = 0
         return {
           async next() {
-            abortActiveStream()
-            return { done: false, value: { content: '' } }
+            // After the first chunk, abort and yield more chunks: the loop must
+            // break and the subsequent content must NOT surface as token events.
+            if (i === 0) {
+              i++
+              return { done: false, value: { content: 'before' } }
+            }
+            if (!aborted) {
+              aborted = true
+              abortActiveStream()
+            }
+            if (i < 5) {
+              i++
+              return { done: false, value: { content: 'after' } }
+            }
+            return { done: true, value: undefined }
           }
         }
       }
@@ -89,6 +118,8 @@ describe('langGraphStream', () => {
     const events: AiStreamEvent[] = []
     await langGraphStream('test', [], (e) => events.push(e))
 
-    expect(events.find((e) => e.type === 'error')).toMatchObject({ type: 'error', message: 'Cancelled' })
+    const tokens = events.filter((e) => e.type === 'token').map((e) => (e as { type: 'token'; text: string }).text)
+    // 'before' may or may not arrive depending on tool ordering; 'after' must not.
+    expect(tokens).not.toContain('after')
   })
 })

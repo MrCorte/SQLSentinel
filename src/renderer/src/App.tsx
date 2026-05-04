@@ -10,6 +10,7 @@ import { Settings } from './pages/Settings'
 import { LoginPage } from './pages/Login'
 import { StorageSetupPage } from './pages/StorageSetupPage'
 import { AlertsDrawer } from './components/AlertsDrawer'
+import { GlobalSnackbar } from './components/GlobalSnackbar'
 import { HomeDashboard } from './components/HomeDashboard'
 import { WorkerProvider } from './context/WorkerContext'
 import { useWorker } from './context/useWorker'
@@ -38,6 +39,7 @@ import type {
 import { createLogger } from './utils/logger'
 import { migrateAliasKeys, migrateServerGroupKeys } from './store/groupsStore'
 import { useGroupsStore } from './store/groupsStore'
+import { notify } from './store/notifyStore'
 import { getServerDisplayName } from './types/index'
 
 const log = createLogger('app')
@@ -125,10 +127,19 @@ function AppInner(): React.JSX.Element {
                   .catch(() => {}) // non-blocking
               }
             })
-            .catch((err) => log.error('workerStart failed:', err))
+            .catch((err) => {
+              log.error('workerStart failed:', err)
+              notify.error(
+                'Could not start the metrics collector. Polling is paused.',
+                'Worker error'
+              )
+            })
         }
       })
-      .catch((err) => log.error('loadServers failed:', err))
+      .catch((err) => {
+        log.error('loadServers failed:', err)
+        notify.error('Could not load saved servers from storage.', 'Load failed')
+      })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync server list with the background worker whenever servers are added/removed
@@ -243,9 +254,17 @@ function AppInner(): React.JSX.Element {
       .then((result) => {
         if (result.ok) {
           acknowledgeAlertInStore(alertId)
+        } else {
+          notify.error(result.error, 'Acknowledge failed')
         }
       })
-      .catch((err) => log.error('acknowledgeAlert failed:', err))
+      .catch((err) => {
+        log.error('acknowledgeAlert failed:', err)
+        notify.error(
+          err instanceof Error ? err.message : String(err),
+          'Acknowledge failed'
+        )
+      })
   }
 
   function handleSelectServer(server: StoredServer): void {
@@ -468,6 +487,8 @@ function App(): React.JSX.Element {
     <ThemeContext.Provider value={{ themeMode, setThemeMode }}>
       <ThemeProvider theme={muiTheme}>
         <CssBaseline />
+        {/* Mounted at the root so any store/component can call notify.error(...) */}
+        <GlobalSnackbar />
         {storageState === 'loading' ? null : storageState === 'setup' ? (
           <StorageSetupPage initialError={storageError} onConfigured={handleStorageConfigured} />
         ) : authChecking ? null : !session ? (

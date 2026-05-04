@@ -134,6 +134,18 @@ export function getByIpPort(host: string, port: number): StoredServer | undefine
   return match ? withDecryptedPassword(match) : undefined
 }
 
+/**
+ * Lookup-by-host:port that NEVER decrypts the password. Use this in hot paths
+ * (worker tick, batch save) where the caller only needs id/host/port/cpu fields.
+ * Avoids ~250-1000 synchronous DPAPI calls/min on a 200-server fleet.
+ */
+export function getStrippedByIpPort(host: string, port: number): StoredServer | undefined {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const raw = store.get('servers', []) as any[]
+  const match = raw.find((s) => (s.host ?? s.ip) === host && s.port === port)
+  return match ? stripCredentials(normalizeServer(match)) : undefined
+}
+
 export function add(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   params: any

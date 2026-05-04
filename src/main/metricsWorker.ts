@@ -146,7 +146,8 @@ function flushSaveQueue(): void {
 }
 
 function queueSave(srv: CollectMetricsRequest, metrics: ServerMetrics): void {
-  const record = serverStore.getByIpPort(srv.ip, srv.port)
+  // Hot path: only needs the record id — skip DPAPI decrypt entirely.
+  const record = serverStore.getStrippedByIpPort(srv.ip, srv.port)
   if (!record) return
   saveQueue.push({ serverId: record.id, metrics })
   if (!saveFlushTimer) {
@@ -167,11 +168,18 @@ function loadHistoryFromDb(servers: CollectMetricsRequest[]): void {
     }
   })
 
+  // Build the recordId→sid map once. We only need ids — skip DPAPI decrypts.
+  // Reading getAllStripped() once is also faster than per-server getByIpPort.
   const recordIdToSid = new Map<string, string>()
+  const allRecords = serverStore.getAllStripped() ?? []
+  const byHostPort = new Map<string, string>()
+  for (const r of allRecords) {
+    byHostPort.set(`${r.host}:${r.port}`, r.id)
+  }
   for (const srv of servers) {
     const sid = serverId(srv.ip, srv.port)
-    const record = serverStore.getByIpPort(srv.ip, srv.port)
-    if (record) recordIdToSid.set(record.id, sid)
+    const recordId = byHostPort.get(`${srv.ip}:${srv.port}`)
+    if (recordId) recordIdToSid.set(recordId, sid)
   }
 
   if (recordIdToSid.size > 0) {
@@ -400,14 +408,15 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     // These values rarely change (only on hardware upgrade) so the write is infrequent.
     const { logicalCpus, physicalCpus } = enrichedMetrics.instanceInfo
     if (logicalCpus > 0) {
-      const srvRecord = serverStore.getByIpPort(job.server.ip, job.server.port)
+      // CPU update doesn't need the password — use stripped lookup to skip DPAPI.
+      const srvRecord = serverStore.getStrippedByIpPort(job.server.ip, job.server.port)
       if (
         srvRecord &&
         (srvRecord.logicalCpus !== logicalCpus || srvRecord.physicalCpus !== physicalCpus)
       ) {
         serverStore.update(srvRecord.id, { logicalCpus, physicalCpus })
         pushToRenderer(IpcChannel.SERVER_CONFIG_UPDATED, [
-          serverStore.stripCredentials({ ...srvRecord, logicalCpus, physicalCpus })
+          { ...srvRecord, logicalCpus, physicalCpus }
         ])
       }
     }
@@ -509,18 +518,30 @@ function scheduleTick(): void {
 // Public API
 // ---------------------------------------------------------------------------
 
+// Set to false from __resetForTests so unit tests get deterministic nextRun=now
+// for every job. Production code never touches this.
+let _staggerEnabled = true
+
 export function startWorker(req: WorkerStartRequest): void {
   stopWorker()
   activeIntervalMs = Math.max(30_000, Math.min(300_000, req.intervalSeconds * 1000))
   if (req.activeServerId) activeServerId = req.activeServerId
   // Restore history from SQLite before scheduling any polls
   loadHistoryFromDb(req.servers)
+  // Stagger initial polls across the full interval window (except for the
+  // active server, which fires immediately so the dashboard shows fresh data).
+  // Without this, all N servers would queue at Date.now() and only BATCH_SIZE
+  // would dispatch; the rest would wait + thunder the SQL Servers in waves.
+  const stagger = _staggerEnabled && req.staggerStartup !== false
+  const now = Date.now()
   for (const srv of req.servers) {
     const sid = serverId(srv.ip, srv.port)
+    const isActive = sid === activeServerId
+    const offset = stagger && !isActive ? Math.floor(Math.random() * activeIntervalMs) : 0
     jobs.set(sid, {
       server: srv,
-      nextRun: Date.now(),
-      priority: sid === activeServerId ? 0 : 1,
+      nextRun: now + offset,
+      priority: isActive ? 0 : 1,
       lastFailed: false,
       failCount: 0,
       lastSuccess: null,
@@ -696,6 +717,8 @@ export function __resetForTests(): void {
     clearTimeout(batchFlushTimer)
     batchFlushTimer = null
   }
+  // Tests rely on deterministic nextRun=now for every job; disable stagger.
+  _staggerEnabled = false
 }
 
 /**

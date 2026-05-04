@@ -482,6 +482,9 @@ const realApi = {
   scanSubnet: (options: ScanOptions): Promise<IpcResult<DiscoveredServer[]>> =>
     ipcRenderer.invoke(IpcChannel.SCAN_SUBNET, options),
 
+  cancelScan: (): Promise<IpcResult<{ cancelled: boolean }>> =>
+    ipcRenderer.invoke(IpcChannel.SCAN_CANCEL),
+
   onScanProgress: (callback: (progress: ScanProgress) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, progress: ScanProgress) => callback(progress)
     ipcRenderer.on(IpcChannel.SCAN_PROGRESS, listener)
@@ -1090,6 +1093,7 @@ if (isMock) {
 // objects in some Electron/electron-vite build configurations).
 const bridgeApi = {
   scanSubnet: (o: ScanOptions) => api.scanSubnet(o),
+  cancelScan: () => (isMock ? Promise.resolve({ ok: true as const, data: { cancelled: true } }) : realApi.cancelScan()),
   onScanProgress: (cb: (p: ScanProgress) => void) => api.onScanProgress(cb),
   addServerManual: (r: ManualServerRequest) => api.addServerManual(r),
   getServers: () => api.getServers(),

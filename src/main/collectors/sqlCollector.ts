@@ -1,6 +1,7 @@
 import * as mssql from 'mssql'
 import { createLogger } from '../utils/logger'
 const log = createLogger('sql-collector')
+import { getPool, invalidatePool } from './connectionPool'
 import type {
   ServerConnection,
   ServerInfo,
@@ -102,8 +103,12 @@ function buildConfig(conn: ServerConnection): mssql.config {
     // requestTimeout goes directly on config (not inside options)
     requestTimeout: 30000,
     options: {
-      encrypt: false,
-      trustServerCertificate: true,
+      // Default: encrypt the TDS channel. trustServerCertificate stays true by
+      // default because most monitored SQL boxes use self-signed certs; this
+      // protects against passive sniffing but not active MITM. Per-server
+      // override via ServerConnection.encrypt / trustServerCertificate.
+      encrypt: conn.encrypt ?? true,
+      trustServerCertificate: conn.trustServerCertificate ?? true,
       // connectTimeout goes in options (via IOptions extends tds.ConnectionOptions)
       connectTimeout: 15000
       // instanceName NOT passed: SQL Browser is disabled and the port is always explicit
@@ -528,24 +533,22 @@ export async function detectServerInfo(connection: ServerConnection): Promise<Se
  * Collects all metrics from the specified SQL server.
  * Each query runs in parallel with its own catch: if one fails
  * it returns an empty/default value without blocking the others.
- * The connection is always closed in the finally block.
+ * Reuses a per-server cached pool via connectionPool.getPool — TLS+TDS handshake
+ * happens once per ~10 min idle window instead of every poll.
  */
 export async function collectMetrics(
   connection: ServerConnection,
   signal?: AbortSignal
 ): Promise<ServerMetrics> {
-  const config = buildConfig(connection)
-  let pool: mssql.ConnectionPool | null = null
-
-  // If the caller aborts (e.g. worker timeout), close the pool immediately
-  // to avoid orphaned handles on the TDS side.
+  // On abort: invalidate the cached pool so the half-open connection isn't reused.
   const onAbort = (): void => {
-    pool?.close().catch(() => {})
+    invalidatePool(connection)
   }
   signal?.addEventListener('abort', onAbort, { once: true })
 
+  let invalidateOnFail = false
   try {
-    pool = await mssql.connect(config)
+    const pool = await getPool(connection)
     if (signal?.aborted) throw new Error('aborted')
 
     const [
@@ -603,13 +606,12 @@ export async function collectMetrics(
       diskVolumes,
       databaseFiles
     }
+  } catch (err) {
+    invalidateOnFail = true
+    throw err
   } finally {
     signal?.removeEventListener('abort', onAbort)
-    if (pool) {
-      await pool
-        .close()
-        .catch((err: Error) => log.error('[collector] pool close:', sanitizeSqlError(err)))
-    }
+    if (invalidateOnFail) invalidatePool(connection)
   }
 }
 
@@ -618,21 +620,20 @@ export async function collectMetrics(
  * CPU/memory, DB state, blocked sessions, backup age, disk space.
  * Skips topQueries (dm_exec_query_stats), waitStats (dm_os_wait_stats) and
  * databaseFiles (FILEPROPERTY) — used for idle/background servers with lightCollectors=true.
+ * Uses the same cached pool as collectMetrics.
  */
 export async function collectMetricsCritical(
   connection: ServerConnection,
   signal?: AbortSignal
 ): Promise<ServerMetrics> {
-  const config = buildConfig(connection)
-  let pool: mssql.ConnectionPool | null = null
-
   const onAbort = (): void => {
-    pool?.close().catch(() => {})
+    invalidatePool(connection)
   }
   signal?.addEventListener('abort', onAbort, { once: true })
 
+  let invalidateOnFail = false
   try {
-    pool = await mssql.connect(config)
+    const pool = await getPool(connection)
     if (signal?.aborted) throw new Error('aborted')
 
     const [instanceInfo, databases, activeSessions, backupStatus, diskVolumes] = await Promise.all([
@@ -669,12 +670,11 @@ export async function collectMetricsCritical(
       diskVolumes,
       databaseFiles: []
     }
+  } catch (err) {
+    invalidateOnFail = true
+    throw err
   } finally {
     signal?.removeEventListener('abort', onAbort)
-    if (pool) {
-      await pool
-        .close()
-        .catch((err: Error) => log.error('[collector] pool close:', sanitizeSqlError(err)))
-    }
+    if (invalidateOnFail) invalidatePool(connection)
   }
 }

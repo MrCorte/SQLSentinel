@@ -8,6 +8,7 @@ import type { ServerMetrics } from '../collectors/types'
 export enum IpcChannel {
   SCAN_SUBNET = 'discovery:scan-subnet',
   SCAN_PROGRESS = 'discovery:scan-progress', // push-only: main → renderer
+  SCAN_CANCEL = 'discovery:scan-cancel',
   ADD_SERVER_MANUAL = 'servers:add-manual',
   GET_SERVERS = 'servers:get',
   REMOVE_SERVER = 'servers:remove',
@@ -118,6 +119,10 @@ export interface CollectMetricsRequest {
   useWindowsAuth: boolean
   username?: string
   password?: string
+  /** TLS encryption for TDS channel — default true */
+  encrypt?: boolean
+  /** Accept self-signed certs — default true (most monitored boxes use self-signed) */
+  trustServerCertificate?: boolean
 }
 
 export type AlertCategory =
@@ -142,6 +147,11 @@ export interface WorkerStartRequest {
   intervalSeconds: number
   servers: CollectMetricsRequest[]
   activeServerId?: string
+  /**
+   * When true (default), spread initial nextRun across the polling interval to
+   * prevent thundering-herd at boot. Set to false in deterministic test runs.
+   */
+  staggerStartup?: boolean
 }
 
 export interface WorkerSetActiveRequest {

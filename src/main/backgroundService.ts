@@ -62,7 +62,9 @@ export class BackgroundService {
 
   private rebuildMenu(): void {
     if (!this.tray || this.tray.isDestroyed()) return
-    const servers = serverStore.getAll()
+    // Tray menu only counts online/offline — no need to decrypt every server's
+    // password. getAllStripped() avoids ~200 DPAPI calls per 30s tick.
+    const servers = serverStore.getAllStripped()
     const online = servers.filter((s) => !s.unreachable).length
     const offline = servers.filter((s) => s.unreachable).length
     const settings = getSettings()

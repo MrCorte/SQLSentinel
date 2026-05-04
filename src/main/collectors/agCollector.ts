@@ -1,49 +1,37 @@
-import * as mssql from 'mssql'
 import { createLogger } from '../utils/logger'
 const log = createLogger('ag-collector')
 import type { CollectMetricsRequest } from '../ipc/types'
-import type { AvailabilityGroup, AvailabilityReplica, AvailabilityDatabase } from './types'
+import type {
+  AvailabilityGroup,
+  AvailabilityReplica,
+  AvailabilityDatabase,
+  ServerConnection
+} from './types'
 import * as serverStore from '../store/serverStore'
 import { sanitizeSqlError } from './sqlCollector'
+import { getPool, invalidatePool } from './connectionPool'
+
+// Same shape as ServerConnection — reuse the pool cache instead of opening
+// fresh tedious sessions every AG poll.
+function asServerConnection(conn: CollectMetricsRequest): ServerConnection {
+  return {
+    ip: conn.ip,
+    port: conn.port,
+    instanceName: conn.instanceName,
+    useWindowsAuth: conn.useWindowsAuth,
+    username: conn.username,
+    password: conn.password,
+    encrypt: conn.encrypt,
+    trustServerCertificate: conn.trustServerCertificate
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Connection helper — AG queries always run against master
 // ---------------------------------------------------------------------------
 
-function buildConfig(conn: CollectMetricsRequest): mssql.config {
-  const base: mssql.config = {
-    server: conn.ip,
-    port: conn.port,
-    database: 'master',
-    requestTimeout: 15_000,
-    options: {
-      encrypt: false,
-      trustServerCertificate: true,
-      connectTimeout: 10_000
-    }
-  }
-
-  if (conn.useWindowsAuth) {
-    return {
-      ...base,
-      authentication: {
-        type: 'ntlm',
-        options: { domain: '', userName: '', password: '' }
-      }
-    }
-  }
-
-  return {
-    ...base,
-    authentication: {
-      type: 'default',
-      options: {
-        userName: conn.username ?? '',
-        password: conn.password ?? ''
-      }
-    }
-  }
-}
+// Connection pooling is delegated to connectionPool.getPool — config is built
+// there. No local buildConfig needed.
 
 // ---------------------------------------------------------------------------
 // getAvailabilityGroups
@@ -52,9 +40,9 @@ function buildConfig(conn: CollectMetricsRequest): mssql.config {
 export async function getAvailabilityGroups(
   conn: CollectMetricsRequest
 ): Promise<AvailabilityGroup[]> {
-  let pool: mssql.ConnectionPool | null = null
+  const sc = asServerConnection(conn)
   try {
-    pool = await mssql.connect(buildConfig(conn))
+    const pool = await getPool(sc)
     const result = await pool.request().query<AvailabilityGroup>(`
       SELECT
         CAST(ag.group_id AS nvarchar(36))       AS group_id,
@@ -68,10 +56,9 @@ export async function getAvailabilityGroups(
         ON ag.group_id = ags.group_id
     `)
     return result.recordset
-  } finally {
-    await pool
-      ?.close()
-      .catch((err: Error) => log.error('[agCollector] pool close:', sanitizeSqlError(err)))
+  } catch (err) {
+    invalidatePool(sc)
+    throw err
   }
 }
 
@@ -82,9 +69,9 @@ export async function getAvailabilityGroups(
 export async function getAvailabilityReplicas(
   conn: CollectMetricsRequest
 ): Promise<AvailabilityReplica[]> {
-  let pool: mssql.ConnectionPool | null = null
+  const sc = asServerConnection(conn)
   try {
-    pool = await mssql.connect(buildConfig(conn))
+    const pool = await getPool(sc)
     const result = await pool.request().query<AvailabilityReplica>(`
       SELECT
         CAST(ar.replica_id AS nvarchar(36))                         AS replica_id,
@@ -106,10 +93,9 @@ export async function getAvailabilityReplicas(
         ON ar.replica_id = ars.replica_id
     `)
     return result.recordset
-  } finally {
-    await pool
-      ?.close()
-      .catch((err: Error) => log.error('[agCollector] pool close:', sanitizeSqlError(err)))
+  } catch (err) {
+    invalidatePool(sc)
+    throw err
   }
 }
 
@@ -130,10 +116,10 @@ export async function getAvailabilityReplicas(
 export async function detectAndSyncReplicaRoles(
   conn: CollectMetricsRequest
 ): Promise<serverStore.StoredServer[]> {
-  let pool: mssql.ConnectionPool | null = null
+  const sc = asServerConnection(conn)
   let replicas: Array<{ agName: string; groupId: string; replicaHost: string; agRole: string }> = []
   try {
-    pool = await mssql.connect(buildConfig(conn))
+    const pool = await getPool(sc)
     const result = await pool.request().query<{
       agName: string
       groupId: string
@@ -152,10 +138,10 @@ export async function detectAndSyncReplicaRoles(
         ON ar.replica_id = ars.replica_id
     `)
     replicas = result.recordset
-  } finally {
-    await pool
-      ?.close()
-      .catch((err: Error) => log.error('[agCollector] pool close:', sanitizeSqlError(err)))
+  } catch (err) {
+    invalidatePool(sc)
+    log.warn('[agCollector] detectAndSyncReplicaRoles failed:', sanitizeSqlError(err))
+    return []
   }
 
   if (replicas.length === 0) return []
@@ -200,9 +186,9 @@ export async function detectAndSyncReplicaRoles(
 export async function getAvailabilityDatabases(
   conn: CollectMetricsRequest
 ): Promise<AvailabilityDatabase[]> {
-  let pool: mssql.ConnectionPool | null = null
+  const sc = asServerConnection(conn)
   try {
-    pool = await mssql.connect(buildConfig(conn))
+    const pool = await getPool(sc)
     const result = await pool.request().query<{
       ag_name: string
       database_name: string
@@ -242,9 +228,8 @@ export async function getAvailabilityDatabases(
       is_suspended: Boolean(r.is_suspended),
       last_commit_time: r.last_commit_time ? r.last_commit_time.toISOString() : null
     })) as AvailabilityDatabase[]
-  } finally {
-    await pool
-      ?.close()
-      .catch((err: Error) => log.error('[agCollector] pool close:', sanitizeSqlError(err)))
+  } catch (err) {
+    invalidatePool(sc)
+    throw err
   }
 }

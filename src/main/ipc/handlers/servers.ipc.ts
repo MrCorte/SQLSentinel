@@ -42,22 +42,43 @@ import type { ScanOptions } from '../../discovery/types'
 // from a single location without reaching into the service layer themselves.
 export { resolveConnection }
 
+// Single-shot scan controller — only one scan runs at a time. A new SCAN_SUBNET
+// invocation aborts the previous one (defensive) and SCAN_CANCEL aborts the active one.
+let activeScanController: AbortController | null = null
+
 export function registerServerHandlers(): void {
   // SCAN_SUBNET — runs async TCP scan, streams progress events back to renderer
   handle(
     IpcChannel.SCAN_SUBNET,
     async (event: IpcMainInvokeEvent, options: ScanOptions): Promise<ScanSubnetResponse> => {
+      // Abort any prior scan before starting a new one.
+      activeScanController?.abort()
+      const controller = new AbortController()
+      activeScanController = controller
       try {
-        const results = await scanSubnet(options, (progress) => {
-          event.sender.send(IpcChannel.SCAN_PROGRESS, progress)
-        })
+        const results = await scanSubnet(
+          options,
+          (progress) => {
+            event.sender.send(IpcChannel.SCAN_PROGRESS, progress)
+          },
+          controller.signal
+        )
         return { ok: true, data: results }
       } catch (err) {
         log.error('[IPC] SCAN_SUBNET:', safeError(err))
         return { ok: false, error: 'Subnet scan failed' }
+      } finally {
+        if (activeScanController === controller) activeScanController = null
       }
     }
   )
+
+  // SCAN_CANCEL — abort the in-flight subnet scan (if any).
+  handle(IpcChannel.SCAN_CANCEL, async (): Promise<IpcResult<{ cancelled: boolean }>> => {
+    if (!activeScanController) return { ok: true, data: { cancelled: false } }
+    activeScanController.abort()
+    return { ok: true, data: { cancelled: true } }
+  })
 
   // ADD_SERVER_MANUAL — TCP-probes the given host:port, persists to electron-store
   handle(

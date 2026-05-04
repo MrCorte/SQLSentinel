@@ -69,8 +69,11 @@ function stmts() {
       ORDER BY collected_at DESC
       LIMIT 1
     `),
+    // Hard cap: a server with months of history could otherwise return
+    // hundreds of MB of JSON in a single .all() call. The MSSQL counterpart
+    // already enforces TOP 10000; we mirror that here for parity.
     findHistoryAll: db.prepare<[string], SnapshotRow>(
-      `SELECT * FROM metrics_snapshots WHERE server_id = ? ORDER BY collected_at DESC`
+      `SELECT * FROM metrics_snapshots WHERE server_id = ? ORDER BY collected_at DESC LIMIT 5000`
     ),
     findHistoryDays: db.prepare<[string, number], SnapshotRow>(`
       SELECT * FROM metrics_snapshots

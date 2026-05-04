@@ -83,15 +83,32 @@ export async function findHistory(serverId: string, limitDays: number): Promise<
   return r.recordset.map(rowToSnapshot)
 }
 
+// Batched purge: a single DELETE on millions of rows can lock the table for
+// 5-30s and pile up log writes. We loop in batches of 5000 with a tiny pause
+// between batches so concurrent metric inserts can interleave.
+const PURGE_BATCH_SIZE = 5000
+const PURGE_BATCH_PAUSE_MS = 50
+const PURGE_MAX_BATCHES = 200 // safety cap = up to 1M rows per cleanup run
+
 export async function cleanup(retentionDays: number): Promise<void> {
   if (retentionDays <= 0) return
   const pool = getPool()
-  await pool
-    .request()
-    .input('days', sql.Int, retentionDays)
-    .query(
-      `DELETE FROM dbo.metrics_snapshots WHERE collected_at < DATEADD(DAY, -@days, GETUTCDATE())`
-    )
+  let batches = 0
+  while (batches < PURGE_MAX_BATCHES) {
+    const r = await pool
+      .request()
+      .input('days', sql.Int, retentionDays)
+      .input('batch', sql.Int, PURGE_BATCH_SIZE)
+      .query<{ rows: number }>(
+        `DELETE TOP (@batch) FROM dbo.metrics_snapshots
+         WHERE collected_at < DATEADD(DAY, -@days, GETUTCDATE());
+         SELECT @@ROWCOUNT AS rows;`
+      )
+    const rows = r.recordset?.[0]?.rows ?? 0
+    batches++
+    if (rows < PURGE_BATCH_SIZE) break
+    await new Promise<void>((resolve) => setTimeout(resolve, PURGE_BATCH_PAUSE_MS))
+  }
 }
 
 export async function findLastN(serverId: string, n: number): Promise<ServerMetrics[]> {

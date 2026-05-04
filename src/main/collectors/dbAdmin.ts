@@ -19,8 +19,9 @@ function buildConfig(conn: CollectMetricsRequest, dbName: string): mssql.config 
     database: dbName,
     requestTimeout: 300_000, // 5 min — DBCC can be slow
     options: {
-      encrypt: false,
-      trustServerCertificate: true,
+      // Default to encrypted TDS — see sqlCollector.buildConfig for rationale.
+      encrypt: conn.encrypt ?? true,
+      trustServerCertificate: conn.trustServerCertificate ?? true,
       connectTimeout: 15_000
     }
   }

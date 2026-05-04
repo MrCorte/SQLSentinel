@@ -28,6 +28,7 @@ import { abortActiveStream, warmupModel } from './ai/langGraphAgent'
 import { safeError as redactError } from './utils/safeLog'
 import { createLogger } from './utils/logger'
 import { connect, onStatusChange, serviceApi } from './serviceClient'
+import { closeAllPools } from './collectors/connectionPool'
 const log = createLogger('main')
 
 const isDev = !app.isPackaged
@@ -147,8 +148,36 @@ function createWindow(): void {
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    // Validate scheme before opening — blocks file://, javascript:, ms-msdt:,
+    // smb:, vscode:, etc. Only http/https/mailto are user-safe in this context.
+    try {
+      const proto = new URL(details.url).protocol
+      if (proto === 'http:' || proto === 'https:' || proto === 'mailto:') {
+        shell.openExternal(details.url)
+      } else {
+        log.warn('[main] Blocked external URL with unsafe scheme:', proto)
+      }
+    } catch {
+      log.warn('[main] Blocked malformed external URL')
+    }
     return { action: 'deny' }
+  })
+
+  // Same scheme allow-list for renderer-initiated navigations
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    try {
+      const proto = new URL(url).protocol
+      // Allow internal app reload (file:// / dev-server URL); block others.
+      const devOrigin = process.env['ELECTRON_RENDERER_URL']
+      if (devOrigin && url.startsWith(devOrigin)) return
+      if (proto === 'file:') return
+      event.preventDefault()
+      if (proto === 'http:' || proto === 'https:' || proto === 'mailto:') {
+        shell.openExternal(url)
+      }
+    } catch {
+      event.preventDefault()
+    }
   })
 
   if (isDev && process.env['ELECTRON_RENDERER_URL']) {
@@ -354,6 +383,7 @@ function cleanupResources(): void {
   backgroundService?.destroy()
   backgroundService = null
   closeStoragePool().catch(() => {})
+  closeAllPools().catch(() => {})
 }
 
 app.on('window-all-closed', () => {

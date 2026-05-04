@@ -1,11 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as mssql from 'mssql'
 import { collectMetrics, collectMetricsCritical } from './sqlCollector'
+import { getPool } from './connectionPool'
 import type { ServerConnection } from './types'
 
 // Mock the entire mssql module — no real connection
 vi.mock('mssql', () => ({
   connect: vi.fn()
+}))
+
+// Pool cache layer — we drive the test through this entry point now.
+vi.mock('./connectionPool', () => ({
+  getPool: vi.fn(),
+  invalidatePool: vi.fn(),
+  closeAllPools: vi.fn()
 }))
 
 // Test connection fixture
@@ -79,9 +87,7 @@ describe('collectMetrics', () => {
 
   it('returns complete ServerMetrics when all queries succeed', async () => {
     const { mockPool } = makeMockPool()
-    vi.mocked(
-      mssql.connect as (config: mssql.config | string) => Promise<mssql.ConnectionPool>
-    ).mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
+    vi.mocked(getPool).mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
 
     const metrics = await collectMetrics(CONN)
 
@@ -118,18 +124,17 @@ describe('collectMetrics', () => {
     expect(metrics.backupStatus[0].lastFullBackup).toEqual(BACKUP_ROW.last_full_backup)
     expect(metrics.backupStatus[0].lastDiffBackup).toBeNull()
 
-    // Pool is always closed
-    expect(mockPool.close).toHaveBeenCalledOnce()
+    // Pool lifecycle is owned by connectionPool (mocked here), not collectMetrics.
   })
 
   it('propagates the error to the caller when the connection fails', async () => {
-    vi.mocked(mssql.connect).mockRejectedValue(new Error('Login failed for user'))
+    vi.mocked(getPool).mockRejectedValue(new Error('Login failed for user'))
 
     await expect(collectMetrics(CONN)).rejects.toThrow('Login failed for user')
   })
 
   it('propagates the error to the caller on connection timeout', async () => {
-    vi.mocked(mssql.connect).mockRejectedValue(
+    vi.mocked(getPool).mockRejectedValue(
       new Error('ConnectionError: Connection timeout: failed to create a connection')
     )
 
@@ -144,9 +149,7 @@ describe('collectMetrics', () => {
       }
       return { recordset: recordsetForSql(sql) }
     })
-    vi.mocked(
-      mssql.connect as (config: mssql.config | string) => Promise<mssql.ConnectionPool>
-    ).mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
+    vi.mocked(getPool).mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
@@ -165,9 +168,6 @@ describe('collectMetrics', () => {
       expect.stringContaining('msdb')
     )
 
-    // Pool is always closed even with a partially failed query
-    expect(mockPool.close).toHaveBeenCalledOnce()
-
     consoleSpy.mockRestore()
   })
 })
@@ -179,9 +179,7 @@ describe('collectMetricsCritical', () => {
 
   it('executes only 5 queries (skips dm_exec_query_stats, dm_os_wait_stats, FILEPROPERTY)', async () => {
     const { mockPool, mockRequest } = makeMockPool()
-    vi.mocked(
-      mssql.connect as (config: mssql.config | string) => Promise<mssql.ConnectionPool>
-    ).mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
+    vi.mocked(getPool).mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
 
     const result = await collectMetricsCritical(CONN)
 
@@ -211,8 +209,5 @@ describe('collectMetricsCritical', () => {
     expect(result.instanceInfo.version).toBe(INSTANCE_ROW.version)
     expect(result.databases).toHaveLength(1)
     expect(result.backupStatus).toHaveLength(1)
-
-    // Pool always closed
-    expect(mockPool.close).toHaveBeenCalledOnce()
   })
 })

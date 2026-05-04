@@ -32,7 +32,10 @@ vi.mock('electron', () => ({
   BrowserWindow: { getAllWindows: vi.fn(() => []) }
 }))
 
-vi.mock('../store/serverStore', () => ({ getAll: vi.fn(() => []) }))
+vi.mock('../store/serverStore', () => ({
+  getAll: vi.fn(() => []),
+  getAllStripped: vi.fn(() => [])
+}))
 vi.mock('../store/settings', () => ({
   getSettings: vi.fn(() => ({
     retentionMinutes: 60,

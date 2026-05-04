@@ -6,6 +6,10 @@ export interface ServerConnection {
   username?: string
   password?: string
   useWindowsAuth: boolean
+  /** TLS encryption for the TDS channel. Default: true. */
+  encrypt?: boolean
+  /** Accept self-signed certs. Default: true (most monitored SQL servers use self-signed certs). */
+  trustServerCertificate?: boolean
 }
 
 export interface ServerInfo {

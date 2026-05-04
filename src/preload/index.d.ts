@@ -449,6 +449,7 @@ export type AiStreamEvent =
   | { type: 'error'; message: string }
 
 export interface SqlSentinelAPI {
+  appVersion(): Promise<IpcResult<{ version: string }>>
   scanSubnet(options: ScanOptions): Promise<IpcResult<DiscoveredServer[]>>
   cancelScan(): Promise<IpcResult<{ cancelled: boolean }>>
   onScanProgress(callback: (progress: ScanProgress) => void): () => void

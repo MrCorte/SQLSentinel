@@ -50,6 +50,10 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
     resetStreaming
   } = useAiChatStore()
   const [input, setInput] = useState('')
+  // Health state: 'unknown' before the first probe, 'ok' / 'down' afterwards.
+  // Drives the inline banner shown when the user opens the panel — saves them
+  // from typing a question only to hit a 30-60s timeout.
+  const [ollamaHealth, setOllamaHealth] = useState<'unknown' | 'ok' | 'down'>('unknown')
   const bottomRef = useRef<HTMLDivElement>(null)
   const mountedRef = useRef(true)
   const unsubscribeRef = useRef<(() => void) | null>(null)
@@ -62,6 +66,28 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
       unsubscribeRef.current = null
     }
   }, [])
+
+  // Probe Ollama every time the panel opens. We deliberately re-probe on each
+  // open instead of caching: the user may have just started Ollama between
+  // visits, and a stale "down" banner would be misleading.
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    setOllamaHealth('unknown')
+    window.sqlSentinel
+      .aiCheck()
+      .then((res) => {
+        if (cancelled) return
+        const ok = res.ok && res.data === true
+        setOllamaHealth(ok ? 'ok' : 'down')
+      })
+      .catch(() => {
+        if (!cancelled) setOllamaHealth('down')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open])
 
 
   // Scroll to bottom when new messages arrive
@@ -197,6 +223,32 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
       </Box>
 
       <>
+        {/* Health banner — shown only when Ollama is unreachable. Surfaces the
+            problem proactively instead of waiting for the 30-60s stream timeout. */}
+        {ollamaHealth === 'down' && (
+          <Box
+            role="alert"
+            sx={{
+              px: 2,
+              py: 1,
+              bgcolor: tokens.color.danger,
+              color: '#fff',
+              fontSize: tokens.font.sizeXs,
+              borderBottom: '1px solid rgba(0,0,0,0.2)'
+            }}
+          >
+            Ollama is not reachable. Start it with{' '}
+            <Box component="code" sx={{ bgcolor: 'rgba(0,0,0,0.25)', px: 0.5, borderRadius: 0.5 }}>
+              ollama serve
+            </Box>{' '}
+            and ensure the model is available (
+            <Box component="code" sx={{ bgcolor: 'rgba(0,0,0,0.25)', px: 0.5, borderRadius: 0.5 }}>
+              ollama pull llama3.2:3b
+            </Box>
+            ).
+          </Box>
+        )}
+
         {/* Messages area */}
         <Box
           sx={{

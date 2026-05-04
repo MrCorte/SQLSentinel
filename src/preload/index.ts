@@ -49,16 +49,24 @@ import type { StoredServer } from '../main/store/serverStore'
 // Minimal dev-only logger — cannot import from renderer
 // ---------------------------------------------------------------------------
 
+const _isProd = process.env.NODE_ENV === 'production'
+
+// Errors raised from IPC results may include user-supplied strings (server
+// addresses, error message echoes). In production we suppress the payload so
+// the renderer console — which an extension or hijacked context could read —
+// only carries the fact that "something failed" without sensitive context.
+// Dev still gets the full payload for debugging.
 const _log = {
   info: (...a: unknown[]) => {
-    if (process.env.NODE_ENV !== 'production') console.log('[preload]', ...a)
+    if (!_isProd) console.log('[preload]', ...a)
   },
   warn: (...a: unknown[]) => {
-    if (process.env.NODE_ENV !== 'production') console.warn('[preload]', ...a)
+    if (!_isProd) console.warn('[preload]', ...a)
   },
   error: (...a: unknown[]) => {
-    console.error('[preload]', ...a)
-  } // always log errors
+    if (_isProd) console.error('[preload] error')
+    else console.error('[preload]', ...a)
+  }
 }
 
 // Re-export types so the renderer can import them from this file.
@@ -479,6 +487,9 @@ function vary(value: number, delta: number, lo: number, hi: number): number {
 // ---------------------------------------------------------------------------
 
 const realApi = {
+  appVersion: (): Promise<IpcResult<{ version: string }>> =>
+    ipcRenderer.invoke(IpcChannel.APP_VERSION),
+
   scanSubnet: (options: ScanOptions): Promise<IpcResult<DiscoveredServer[]>> =>
     ipcRenderer.invoke(IpcChannel.SCAN_SUBNET, options),
 
@@ -1092,6 +1103,7 @@ if (isMock) {
 // can proxy each one cleanly (passing a plain variable can silently drop nested
 // objects in some Electron/electron-vite build configurations).
 const bridgeApi = {
+  appVersion: () => realApi.appVersion(),
   scanSubnet: (o: ScanOptions) => api.scanSubnet(o),
   cancelScan: () => (isMock ? Promise.resolve({ ok: true as const, data: { cancelled: true } }) : realApi.cancelScan()),
   onScanProgress: (cb: (p: ScanProgress) => void) => api.onScanProgress(cb),

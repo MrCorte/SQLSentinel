@@ -168,6 +168,79 @@ async function statExists(table: string, name: string): Promise<boolean> {
   return r.recordset[0].cnt > 0
 }
 
+// ── Schema migration framework ──────────────────────────────────────────────
+//
+// Each entry is an idempotent forward migration. The runner records the
+// highest applied id in `dbo.schema_migrations`; future versions of the app
+// can append new entries here and they'll be picked up at the next launch
+// without touching the existing customer data.
+//
+// Authoring rules:
+//  - id MUST be unique and monotonically increasing
+//  - sql SHOULD be idempotent (use IF NOT EXISTS / IF EXISTS where possible)
+//  - sql MUST not depend on the order of execution within the same migration
+//  - one logical change per migration; bigger changes go in multiple entries
+//
+interface Migration {
+  id: number
+  description: string
+  sql: string
+}
+
+const MIGRATIONS: Migration[] = [
+  // No migrations yet — the bootstrap CREATE TABLE statements above cover v1.
+  // Example for the next schema bump:
+  //   {
+  //     id: 1,
+  //     description: 'Add notes column to users',
+  //     sql: `IF COL_LENGTH('dbo.users', 'notes') IS NULL
+  //           ALTER TABLE dbo.users ADD notes NVARCHAR(1000) NULL;`
+  //   },
+]
+
+async function ensureMigrationsTable(): Promise<void> {
+  await getPool().request().query(`
+    IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = N'schema_migrations' AND schema_id = SCHEMA_ID(N'dbo'))
+    CREATE TABLE dbo.schema_migrations (
+      id          INT NOT NULL PRIMARY KEY,
+      description NVARCHAR(400) NOT NULL,
+      applied_at  DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    )
+  `)
+}
+
+async function getAppliedMigrationIds(): Promise<Set<number>> {
+  const r = await getPool()
+    .request()
+    .query<{ id: number }>(`SELECT id FROM dbo.schema_migrations`)
+  return new Set(r.recordset.map((row) => row.id))
+}
+
+async function runMigrations(result: SchemaInitResult): Promise<void> {
+  await ensureMigrationsTable()
+  const applied = await getAppliedMigrationIds()
+  for (const m of MIGRATIONS) {
+    if (applied.has(m.id)) continue
+    try {
+      await getPool().request().query(m.sql)
+      await getPool()
+        .request()
+        .input('id', m.id)
+        .input('desc', m.description)
+        .query(
+          `INSERT INTO dbo.schema_migrations (id, description) VALUES (@id, @desc)`
+        )
+      result.warnings.push(`Applied migration ${m.id}: ${m.description}`)
+    } catch (err) {
+      // Fail-loud: a partially applied migration is worse than aborting the boot.
+      throw new Error(
+        `Migration ${m.id} (${m.description}) failed: ${(err as Error).message}. ` +
+          `Restore from backup before retrying.`
+      )
+    }
+  }
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 export async function initSchema(): Promise<SchemaInitResult> {
@@ -252,6 +325,9 @@ export async function initSchema(): Promise<SchemaInitResult> {
       // Non-fatal: empty tables or permission gap
     }
   }
+
+  // 7. Versioned migrations — append to MIGRATIONS array for forward changes.
+  await runMigrations(result)
 
   return result
 }

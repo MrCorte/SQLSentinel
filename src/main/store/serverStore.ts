@@ -194,15 +194,35 @@ export function migrateHostField(): void {
 export function update(id: string, patch: Partial<StoredServer>): void {
   const servers = store.get('servers', [])
   const idx = servers.findIndex((s) => s.id === id)
-  if (idx >= 0) {
-    const safePatch = { ...patch }
-    if (safePatch.password) {
-      safePatch.encryptedPassword = encryptPwd(safePatch.password)
-      delete safePatch.password
-    }
-    servers[idx] = { ...servers[idx], ...safePatch }
-    store.set('servers', servers)
+  if (idx < 0) return
+
+  // Defence-in-depth: route the patch through the same whitelist we use for
+  // upserts. Without this, a renderer (or a hijacked one) could send
+  // { id: 'B', addedAt: '...' } and overwrite the record's identity. id and
+  // addedAt are deliberately excluded from UPSERT_ALLOWED_FIELDS.
+  const safePatch = pickAllowedFields(patch)
+  if (typeof safePatch.password === 'string' && safePatch.password.length > 0) {
+    safePatch.encryptedPassword = encryptPwd(safePatch.password as string)
+    delete safePatch.password
   }
+
+  // No-op short-circuit: if every field in the patch already matches the
+  // current value, skip the write. Prevents the 50KB-JSON sync write storm
+  // caused by polling-driven CPU/AG-role updates (AV-scan can take 100-300ms
+  // per write on Windows).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const current = servers[idx] as any
+  let dirty = false
+  for (const key of Object.keys(safePatch)) {
+    if (current[key] !== safePatch[key]) {
+      dirty = true
+      break
+    }
+  }
+  if (!dirty) return
+
+  servers[idx] = { ...servers[idx], ...safePatch }
+  store.set('servers', servers)
 }
 
 export function remove(id: string): void {

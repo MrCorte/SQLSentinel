@@ -208,6 +208,7 @@ function DatabaseGroupCard({
           <Tooltip title="Shrink database">
             <IconButton
               size="small"
+              aria-label={`Shrink database ${dbName}`}
               sx={{ p: 0.25, color: tokens.color.textMuted, '&:hover': { color: tokens.color.primary } }}
               onClick={(e) => {
                 e.stopPropagation()
@@ -217,7 +218,12 @@ function DatabaseGroupCard({
               <SettingsIcon sx={{ fontSize: 14 }} />
             </IconButton>
           </Tooltip>
-          <IconButton size="small" sx={{ p: 0.25 }}>
+          <IconButton
+            size="small"
+            sx={{ p: 0.25 }}
+            aria-label={open ? 'Collapse files list' : 'Expand files list'}
+            aria-expanded={open}
+          >
             <ExpandMoreIcon
               sx={{
                 fontSize: 16,

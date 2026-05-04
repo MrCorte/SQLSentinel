@@ -146,16 +146,33 @@ export async function detectAndSyncReplicaRoles(
 
   if (replicas.length === 0) return []
 
-  const allServers = serverStore.getAll()
+  // Use the stripped variant — AG sync only needs id/host/agRole, no
+  // credentials. The previous getAll() decrypted every server's password via
+  // DPAPI: with 50 AG groups × 5 replicas × 200 servers that's 50,000 DPAPI
+  // calls per detect cycle. Now: 0.
+  const allServers = serverStore.getAllStripped()
   const updated: serverStore.StoredServer[] = []
+
+  // Build a host→server lookup once. Two-tier index:
+  //  1. exact host match (lowercased)
+  //  2. substring fallback for legacy entries where host has FQDN suffix
+  // Avoids the previous O(N) .find() inside the replica loop.
+  const byExactHost = new Map<string, serverStore.StoredServer>()
+  for (const s of allServers) {
+    byExactHost.set((s.host ?? '').toLowerCase(), s)
+  }
 
   for (const replica of replicas) {
     // Hostname matching: strip instance suffix, compare case-insensitive
     const replicaBase = replica.replicaHost.split('\\')[0].toLowerCase()
-    const match = allServers.find((s) => {
-      const addr = (s.host ?? '').toLowerCase()
-      return addr === replicaBase || addr.includes(replicaBase)
-    })
+    let match = byExactHost.get(replicaBase)
+    if (!match) {
+      // Substring fallback (rare path) — only walks the array when exact miss.
+      match = allServers.find((s) => {
+        const addr = (s.host ?? '').toLowerCase()
+        return addr.includes(replicaBase) || replicaBase.includes(addr)
+      })
+    }
     if (!match) continue
 
     const agRole = replica.agRole as 'PRIMARY' | 'SECONDARY' | 'RESOLVING'

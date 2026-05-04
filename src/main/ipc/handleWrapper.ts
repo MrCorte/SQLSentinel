@@ -17,6 +17,7 @@ const DEV_BYPASS_AUTH = process.env.SQLSENTINEL_DEV_BYPASS_AUTH === '1'
 // SETTINGS_SET rimosso: scrivere impostazioni richiede autenticazione.
 // STORAGE_GET_CONFIG esente: il renderer la legge prima del login per decidere il flow.
 const AUTH_EXEMPT_CHANNELS = new Set<string>([
+  IpcChannel.APP_VERSION,
   IpcChannel.AUTH_LOGIN,
   IpcChannel.AUTH_LOGOUT,
   IpcChannel.AUTH_CHECK,

@@ -49,7 +49,7 @@ let _stmts: {
   findLatest: Statement<[string], SnapshotRow>
   findHistoryAll: Statement<[string], SnapshotRow>
   findHistoryDays: Statement<[string, number], SnapshotRow>
-  cleanup: Statement<[number]>
+  cleanup: Statement<[number, number]>
   findLastN: Statement<[string, number], SnapshotRow>
   findLastNBulk: Statement<[string, number], SnapshotRow>
 } | null = null
@@ -81,9 +81,13 @@ function stmts() {
         AND collected_at >= datetime('now', ? || ' days')
       ORDER BY collected_at DESC
     `),
-    cleanup: db.prepare<[number]>(`
+    cleanup: db.prepare<[number, number]>(`
       DELETE FROM metrics_snapshots
-      WHERE collected_at < datetime('now', ? || ' days')
+      WHERE rowid IN (
+        SELECT rowid FROM metrics_snapshots
+        WHERE collected_at < datetime('now', ? || ' days')
+        LIMIT ?
+      )
     `),
     findLastN: db.prepare<[string, number], SnapshotRow>(`
       SELECT * FROM metrics_snapshots
@@ -149,8 +153,19 @@ export function findHistory(serverId: string, limitDays: number): MetricsSnapsho
 /**
  * Deletes all snapshots older than retentionDays days.
  */
+// Chunked cleanup: a single DELETE on millions of rows can lock the SQLite
+// table for several seconds, blocking every batchSave / find* call. We loop in
+// batches with the prepared LIMIT statement so writes can interleave between
+// chunks. Mirrors the MSSQL counterpart in store/sqlserver/metricsRepository.
+const CLEANUP_BATCH = 5000
+const CLEANUP_MAX_BATCHES = 200
+
 export function cleanup(retentionDays: number): void {
-  stmts().cleanup.run(-retentionDays)
+  const stmt = stmts().cleanup
+  for (let i = 0; i < CLEANUP_MAX_BATCHES; i++) {
+    const result = stmt.run(-retentionDays, CLEANUP_BATCH)
+    if (result.changes < CLEANUP_BATCH) break
+  }
 }
 
 /**

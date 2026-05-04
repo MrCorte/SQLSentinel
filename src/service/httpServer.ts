@@ -48,12 +48,50 @@ function requireLoopback(req: Request, res: Response, next: NextFunction): void 
   next()
 }
 
+// Defence vs deeply nested JSON ({"a":{"a":{"a":...}}}). The size limit alone
+// doesn't help — 200 KB of nested braces fits well under 256 KB and forces
+// O(depth) recursion in the parser. We post-validate the parsed object's
+// depth and reject anything beyond a sane ceiling.
+const MAX_JSON_DEPTH = 24
+
+function depthOf(value: unknown, max: number, depth = 0): number {
+  if (depth > max) return depth
+  if (Array.isArray(value)) {
+    let m = depth
+    for (const v of value) {
+      m = Math.max(m, depthOf(v, max, depth + 1))
+      if (m > max) return m
+    }
+    return m
+  }
+  if (value && typeof value === 'object') {
+    let m = depth
+    for (const v of Object.values(value)) {
+      m = Math.max(m, depthOf(v, max, depth + 1))
+      if (m > max) return m
+    }
+    return m
+  }
+  return depth
+}
+
+function depthGuard(req: Request, res: Response, next: NextFunction): void {
+  const body = req.body
+  if (body == null) return next()
+  if (depthOf(body, MAX_JSON_DEPTH) > MAX_JSON_DEPTH) {
+    res.status(400).json({ ok: false, error: 'Request body is too deeply nested' })
+    return
+  }
+  next()
+}
+
 export function createHttpServer(secret: string, wsHandle: WsServerHandle) {
   const app = express()
   app.disable('x-powered-by')
   // 256 KB cap is generous for a metrics-config payload but safely below the
   // default 100MB express.json() ceiling on JSON-bomb inputs.
   app.use(express.json({ limit: '256kb' }))
+  app.use(depthGuard)
   app.use(requireLoopback)
   app.use(rateLimit)
 

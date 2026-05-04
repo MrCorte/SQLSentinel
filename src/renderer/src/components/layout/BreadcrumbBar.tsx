@@ -76,7 +76,10 @@ export function BreadcrumbBar({
         {hasAlerts && (
           <Tooltip title="Open alerts" placement="bottom">
             <Box
+              component="button"
+              type="button"
               onClick={onOpenAlerts}
+              aria-label={`Open alerts panel — ${alertLabel}`}
               sx={{
                 fontSize: tokens.font.sizeXs,
                 fontWeight: tokens.font.weightMedium,
@@ -89,7 +92,12 @@ export function BreadcrumbBar({
                 cursor: 'pointer',
                 userSelect: 'none',
                 lineHeight: 1.4,
-                '&:hover': { bgcolor: `${alertColor}30` }
+                fontFamily: 'inherit',
+                '&:hover': { bgcolor: `${alertColor}30` },
+                '&:focus-visible': {
+                  outline: `2px solid ${alertColor}`,
+                  outlineOffset: 2
+                }
               }}
             >
               ● {alertLabel}

@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [master, sqlserver]
+  pull_request:
+    branches: [master]
+
+# Run the same checks any reviewer would run locally — typecheck + tests + lint —
+# so regressions can't sneak past PR review. The build job verifies the
+# packaged artifacts compile but does not sign them; signing happens in a
+# separate release workflow gated by a tag.
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js from .nvmrc
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          # better-sqlite3 needs the prebuilt for the Electron ABI; postinstall
+          # runs electron-builder install-app-deps which fetches it.
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 0
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test -- --run
+
+      - name: Lint (non-blocking)
+        run: npm run lint
+        continue-on-error: true
+
+  build:
+    needs: verify
+    runs-on: windows-latest
+    timeout-minutes: 30
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+      - run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Package (unpacked)
+        run: npm run build:unpack
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqlsentinel-unpacked-${{ github.sha }}
+          path: dist/win-unpacked
+          retention-days: 14

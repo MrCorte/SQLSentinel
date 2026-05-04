@@ -6,6 +6,7 @@ import type { ServerMetrics } from '../collectors/types'
  * esbuild cross-file inlining issues with electron-vite.
  */
 export enum IpcChannel {
+  APP_VERSION = 'app:version',
   SCAN_SUBNET = 'discovery:scan-subnet',
   SCAN_PROGRESS = 'discovery:scan-progress', // push-only: main → renderer
   SCAN_CANCEL = 'discovery:scan-cancel',

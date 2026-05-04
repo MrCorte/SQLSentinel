@@ -27,6 +27,7 @@ export interface WorkerApi {
 export class BackgroundService {
   private tray: Tray | null = null
   private menuTimer: ReturnType<typeof setInterval> | null = null
+  private dedupSweepTimer: ReturnType<typeof setInterval> | null = null
   quitting = false
   private wasStoppedWhenHidden = false
 
@@ -38,6 +39,16 @@ export class BackgroundService {
     this.attachWindowListeners()
     worker.onAlert((alert) => this.maybeNotify(alert))
     this.menuTimer = setInterval(() => this.rebuildMenu(), 30_000)
+    // Sweep dedup entries older than 24 h every 6 h so the map can never grow
+    // unbounded over long sessions even if alerts churn but never get acknowledged.
+    this.dedupSweepTimer = setInterval(() => this.sweepNotifyDedup(), 6 * 60 * 60_000)
+  }
+
+  private sweepNotifyDedup(): void {
+    const cutoff = Date.now() - 24 * 60 * 60_000
+    for (const [key, ts] of this.notifyDedup) {
+      if (ts < cutoff) this.notifyDedup.delete(key)
+    }
   }
 
   private createTray(): void {
@@ -196,6 +207,10 @@ export class BackgroundService {
     if (this.menuTimer) {
       clearInterval(this.menuTimer)
       this.menuTimer = null
+    }
+    if (this.dedupSweepTimer) {
+      clearInterval(this.dedupSweepTimer)
+      this.dedupSweepTimer = null
     }
     if (this.tray && !this.tray.isDestroyed()) {
       this.tray.destroy()

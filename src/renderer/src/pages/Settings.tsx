@@ -180,6 +180,20 @@ export function Settings(): React.JSX.Element {
     })
   }, [])
 
+  // Inline "Saved ✓" indicator: shows for 2s after a successful background-mode
+  // setting save. Without it, toggles like "Background polling" feel
+  // unresponsive — the user clicks and nothing visible happens beyond a
+  // potential snackbar that they may have configured to ignore.
+  const [bgSavedAt, setBgSavedAt] = useState<number | null>(null)
+  const showBgSavedIndicator = bgSavedAt !== null && Date.now() - bgSavedAt < 2000
+
+  // Force a re-render when the indicator should disappear.
+  useEffect(() => {
+    if (bgSavedAt === null) return
+    const t = setTimeout(() => setBgSavedAt(null), 2000)
+    return () => clearTimeout(t)
+  }, [bgSavedAt])
+
   const saveBgSettings = (
     patch: Partial<{
       backgroundEnabled: boolean
@@ -189,10 +203,13 @@ export function Settings(): React.JSX.Element {
       autostartEnabled: boolean
     }>
   ) => {
-    window.sqlSentinel.saveSettings(patch).catch((err: unknown) => {
-      log.error('saveBgSettings failed:', err)
-      notify.error(err instanceof Error ? err.message : String(err), 'Save failed')
-    })
+    window.sqlSentinel
+      .saveSettings(patch)
+      .then(() => setBgSavedAt(Date.now()))
+      .catch((err: unknown) => {
+        log.error('saveBgSettings failed:', err)
+        notify.error(err instanceof Error ? err.message : String(err), 'Save failed')
+      })
   }
 
   // --- Email settings state ---
@@ -213,10 +230,14 @@ export function Settings(): React.JSX.Element {
 
   const [storageConfig, setStorageConfig] = useState<StorageConfigInfo | null>(null)
   const [storageDialogOpen, setStorageDialogOpen] = useState(false)
+  const [appVersion, setAppVersion] = useState<string>('')
 
   useEffect(() => {
     window.sqlSentinel.storage.getConfig().then((r) => {
       if (r.ok) setStorageConfig(r.data)
+    }).catch(() => {})
+    window.sqlSentinel.appVersion().then((r) => {
+      if (r.ok) setAppVersion(r.data.version)
     }).catch(() => {})
   }, [])
 
@@ -581,11 +602,21 @@ export function Settings(): React.JSX.Element {
       {bgLoaded && (
         <Card variant="outlined">
           <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Box>
+            <Stack direction="row" alignItems="center" spacing={1.5}>
               <Typography variant="subtitle1" fontWeight={700}>
                 Background & Tray
               </Typography>
-            </Box>
+              {showBgSavedIndicator && (
+                <Typography
+                  variant="caption"
+                  role="status"
+                  aria-live="polite"
+                  sx={{ color: 'success.main', fontWeight: 600 }}
+                >
+                  Saved ✓
+                </Typography>
+              )}
+            </Stack>
             <FormControlLabel
               control={
                 <Switch
@@ -731,7 +762,6 @@ export function Settings(): React.JSX.Element {
                   size="small"
                   value={smtpHost}
                   onChange={(e) => setSmtpHost(e.target.value)}
-                  onBlur={() => saveEmail({ smtpHost })}
                   placeholder="smtp.office365.com"
                 />
                 <Stack direction="row" spacing={2} alignItems="center">
@@ -743,16 +773,12 @@ export function Settings(): React.JSX.Element {
                     inputProps={{ min: 1, max: 65535 }}
                     sx={{ width: 120 }}
                     onChange={(e) => setSmtpPort(Number(e.target.value))}
-                    onBlur={() => saveEmail({ smtpPort })}
                   />
                   <FormControlLabel
                     control={
                       <Switch
                         checked={smtpTls}
-                        onChange={(e) => {
-                          setSmtpTls(e.target.checked)
-                          saveEmail({ smtpTls: e.target.checked })
-                        }}
+                        onChange={(e) => setSmtpTls(e.target.checked)}
                       />
                     }
                     label="TLS/STARTTLS"
@@ -763,7 +789,6 @@ export function Settings(): React.JSX.Element {
                   size="small"
                   value={smtpUser}
                   onChange={(e) => setSmtpUser(e.target.value)}
-                  onBlur={() => saveEmail({ smtpUser })}
                   placeholder="alerts@company.com"
                 />
                 <PasswordField
@@ -771,8 +796,24 @@ export function Settings(): React.JSX.Element {
                   size="small"
                   value={smtpPassword}
                   onChange={(e) => setSmtpPassword(e.target.value)}
-                  onBlur={() => saveEmail({ smtpPassword })}
                 />
+
+                <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => {
+                      // Explicit save — replaces the previous per-field onBlur
+                      // which persisted partial state every time the user
+                      // tabbed between fields. Now SMTP credentials only land
+                      // in the store when the user clicks Save.
+                      saveEmail({ smtpHost, smtpPort, smtpUser, smtpPassword, smtpTls })
+                      notify.success('SMTP settings saved', 'Saved')
+                    }}
+                  >
+                    Save SMTP settings
+                  </Button>
+                </Stack>
 
                 {/* Recipient list */}
                 <Box>
@@ -909,9 +950,7 @@ export function Settings(): React.JSX.Element {
         variant="caption"
         sx={{ display: 'block', textAlign: 'center', mt: 4, mb: 1, color: 'text.disabled' }}
       >
-        Made with ❤️ in Italy 🇮🇹
-        <br />
-        ac
+        SQL Sentinel {appVersion ? `v${appVersion}` : ''}
       </Typography>
     </Box>
   )

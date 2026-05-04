@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, powerMonitor } from 'electron'
 import type { BrowserWindow as BrowserWindowType } from 'electron'
 import { join } from 'path'
 
@@ -12,7 +12,7 @@ import type { WorkerApi } from './backgroundService'
 import { syncServers, stopWorker, setIntervalOverrides, onAlert, setPushHandler } from './metricsWorker'
 import { app as electronApp } from 'electron'
 import { join as pathJoin } from 'node:path'
-import { initDb } from './store/database'
+import { initDbWithRecovery, closeDb } from './store/database'
 import { getStorageConfig } from './store/storageConfig'
 import { initStoragePool, closeStoragePool, getPool } from './store/sqlserver/connection'
 import { initSchema } from './store/sqlserver/database'
@@ -163,6 +163,21 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // H10: renderer crash recovery — without this, a crashed renderer leaves
+  // the user staring at a blank window with no recovery path.
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    log.error(`[main] Renderer process gone — reason=${details.reason}`)
+    if (details.reason === 'clean-exit' || details.reason === 'killed') return
+    // Reload the renderer; main-process state is preserved.
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      try {
+        mainWindow.webContents.reload()
+      } catch (err) {
+        log.error('[main] Reload after crash failed:', err)
+      }
+    }
+  })
+
   // Same scheme allow-list for renderer-initiated navigations
   mainWindow.webContents.on('will-navigate', (event, url) => {
     try {
@@ -187,11 +202,38 @@ function createWindow(): void {
   }
 }
 
+// PROD-5: single-instance lock — prevents two app instances on the same user
+// session from racing on electron-store writes. The second instance signals
+// the first to focus and exits.
+const gotInstanceLock = app.requestSingleInstanceLock()
+if (!gotInstanceLock) {
+  log.warn('[main] Another instance is already running — exiting')
+  app.quit()
+}
+
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    if (!mainWindow.isVisible()) mainWindow.show()
+    mainWindow.focus()
+  }
+})
+
+// Track corruption-recovery state so the first window load can show a banner.
+let sqliteRecovered: { rotatedPath?: string } | null = null
+
 app.whenReady().then(async () => {
-  // Initialize SQLite (server registry)
+  // Initialize SQLite (server registry) with corruption recovery.
   const sqliteDir = electronApp.getPath('userData')
   const sqliteDbPath = pathJoin(sqliteDir, 'data.db')
-  initDb(sqliteDbPath)
+  const initResult = initDbWithRecovery(sqliteDbPath)
+  if (initResult.recoveredFromCorruption) {
+    sqliteRecovered = { rotatedPath: initResult.rotatedPath }
+    log.error(
+      `[main] data.db was corrupt — rotated to ${initResult.rotatedPath}, recreated empty. ` +
+        `Historical metrics are lost; server registry restored from electron-store.`
+    )
+  }
   serverStore.migrateHostField()
   serverStore.migrateEncryptCredentials()
 
@@ -234,9 +276,10 @@ app.whenReady().then(async () => {
   deferredPurge()
   deferredPurgeIntervalId = setInterval(deferredPurge, 24 * 60 * 60 * 1000)
 
-  // One-shot migrations
-  serverStore.migrateHostField()
-  serverStore.migrateEncryptCredentials()
+  // Migrations are already invoked above, right after initDb() — no need to
+  // run them a second time. Each migration scans the full electron-store
+  // payload and is harmless when re-run, but the duplicate adds ~5-15 ms to
+  // cold start on a 200-server file.
 
   // M4: fail loud if OS-level encryption is unavailable — users must know that
   // credentials are falling back to plaintext storage. See safeStorageUtil.warnOnce()
@@ -326,6 +369,37 @@ app.whenReady().then(async () => {
         })
       }
     }
+    // H7: surface SQLite recovery banner so the operator knows historical
+    // metrics are gone but the app is otherwise functional.
+    if (sqliteRecovered) {
+      mainWindow?.webContents.send('sqlite:recovered', sqliteRecovered)
+    }
+  })
+
+  // H8: power suspend/resume — without this, on resume every job's nextRun is
+  // in the past, triggering a thundering herd against every monitored server
+  // simultaneously while every cached pool's underlying socket is dead.
+  powerMonitor.on('resume', async () => {
+    log.info('[main] System resumed — closing pools and re-staggering jobs')
+    try {
+      await closeAllPools()
+    } catch (err) {
+      log.warn('[main] closeAllPools on resume:', err)
+    }
+    // The metrics worker has its own restagger logic via syncServers. Trigger
+    // a soft restart by pushing the existing server list back through it.
+    try {
+      const servers = serverStore.getAllStripped().map((s) => ({
+        ip: s.host ?? s.ip ?? '',
+        port: s.port,
+        instanceName: s.instanceName,
+        useWindowsAuth: s.useWindowsAuth ?? false,
+        username: s.username
+      }))
+      if (servers.length > 0) syncServers(servers)
+    } catch (err) {
+      log.warn('[main] resume re-stagger:', err)
+    }
   })
 
   const workerApi: WorkerApi = { syncServers, stopWorker, setIntervalOverrides, onAlert }
@@ -382,6 +456,20 @@ function cleanupResources(): void {
   }
   backgroundService?.destroy()
   backgroundService = null
+  // Stop the metrics worker so any in-flight collect aborts cleanly.
+  try {
+    stopWorker()
+  } catch (err) {
+    log.warn('[main] stopWorker on shutdown:', err)
+  }
+  // H6: graceful SQLite shutdown — checkpoint(TRUNCATE) + optimize + close.
+  // Must happen BEFORE the storage / monitored pools close because some store
+  // helpers may try to write a final state during their close callbacks.
+  try {
+    closeDb()
+  } catch (err) {
+    log.warn('[main] closeDb on shutdown:', err)
+  }
   closeStoragePool().catch(() => {})
   closeAllPools().catch(() => {})
 }

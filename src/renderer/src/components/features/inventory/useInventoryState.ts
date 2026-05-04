@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useServersStore } from '../../../store/serversStore'
 import { useMetricsStore } from '../../../store/metricsStore'
 import { useThrottledMetricsMap } from '../../../hooks/useThrottledMetrics'
@@ -18,6 +18,25 @@ import type { DbCustomFields } from '../../../../../preload/index'
 import type { ServerHostingType } from '../../../constants/hosting'
 import { buildRows, buildDbViewRows } from './inventoryRowBuilders'
 import type { InventoryRow } from './inventoryTypes'
+
+function loadStoredKeySet(key: string): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(key)
+    if (!raw) return new Set()
+    const parsed = JSON.parse(raw) as unknown
+    return Array.isArray(parsed) ? new Set(parsed.filter((s) => typeof s === 'string')) : new Set()
+  } catch {
+    return new Set()
+  }
+}
+
+function persistKeySet(key: string, value: Set<string>): void {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(Array.from(value)))
+  } catch {
+    // quota / unavailable — non-fatal
+  }
+}
 
 export type FilterType = 'all' | 'standalone' | 'ag-primary' | 'ag-secondary'
 export type FilterState = 'all' | 'online' | 'offline'
@@ -59,12 +78,30 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
   const [filterVersion, setFilterVersion] = useState('all')
   const [sortKey, setSortKey] = useState<keyof InventoryRow>('envName')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
-  const [expandedClusters, setExpandedClusters] = useState<Set<string>>(new Set())
-  const [expandedMachines, setExpandedMachines] = useState<Set<string>>(new Set())
+  // Persist expansion state across tab navigation. sessionStorage is the right
+  // scope: it survives clicks elsewhere but not an app restart, where the
+  // user's mental model probably resets too.
+  const [expandedClusters, setExpandedClusters] = useState<Set<string>>(
+    () => loadStoredKeySet('sqlsentinel:inventory:expandedClusters')
+  )
+  const [expandedMachines, setExpandedMachines] = useState<Set<string>>(
+    () => loadStoredKeySet('sqlsentinel:inventory:expandedMachines')
+  )
+  useEffect(() => {
+    persistKeySet('sqlsentinel:inventory:expandedClusters', expandedClusters)
+  }, [expandedClusters])
+  useEffect(() => {
+    persistKeySet('sqlsentinel:inventory:expandedMachines', expandedMachines)
+  }, [expandedMachines])
 
   // ── DB View state ────────────────────────────────────────────────────────
   const [dbView, setDbView] = useState(false)
-  const [expandedDbServers, setExpandedDbServers] = useState<Set<string>>(new Set())
+  const [expandedDbServers, setExpandedDbServers] = useState<Set<string>>(
+    () => loadStoredKeySet('sqlsentinel:inventory:expandedDbServers')
+  )
+  useEffect(() => {
+    persistKeySet('sqlsentinel:inventory:expandedDbServers', expandedDbServers)
+  }, [expandedDbServers])
   const [dbSearch, setDbSearch] = useState('')
   const [filterDbRecovery, setFilterDbRecovery] = useState<FilterDbRecovery>('all')
   const [filterDbTde, setFilterDbTde] = useState<FilterDbTde>('all')

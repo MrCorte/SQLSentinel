@@ -69,12 +69,13 @@ function AlertRow({
   alert,
   onAcknowledge
 }: {
-  alert: Alert
+  alert: Alert & { _dupCount?: number }
   onAcknowledge: (id: string) => void
 }): React.JSX.Element {
   const isCritical = alert.severity === 'CRITICAL'
   const isAcknowledged = alert.acknowledgedAt !== null
   const accentColor = isCritical ? tokens.color.danger : tokens.color.warning
+  const dupCount = alert._dupCount ?? 0
 
   return (
     <ListItem
@@ -124,6 +125,23 @@ function AlertRow({
             >
               {alert.serverId}
             </Typography>
+            {dupCount > 1 && (
+              <Typography
+                component="span"
+                aria-label={`${dupCount} similar alerts in the last hour`}
+                sx={{
+                  fontSize: tokens.font.sizeXs,
+                  fontWeight: tokens.font.weightSemibold,
+                  color: 'common.white',
+                  bgcolor: accentColor,
+                  px: 0.75,
+                  py: 0.125,
+                  borderRadius: tokens.radius.sm
+                }}
+              >
+                ×{dupCount}
+              </Typography>
+            )}
           </Stack>
         }
         secondary={
@@ -169,6 +187,21 @@ function AlertRow({
 export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): React.JSX.Element {
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('all')
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all')
+  const [dedup, setDedup] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem('sqlsentinel:alerts:dedup') === '1'
+    } catch {
+      return false
+    }
+  })
+  const setDedupPersist = (next: boolean): void => {
+    setDedup(next)
+    try {
+      sessionStorage.setItem('sqlsentinel:alerts:dedup', next ? '1' : '0')
+    } catch {
+      // non-fatal
+    }
+  }
 
   const openAlerts = useMemo(() => alerts.filter((a) => a.acknowledgedAt === null), [alerts])
   const acked = useMemo(() => alerts.filter((a) => a.acknowledgedAt !== null), [alerts])
@@ -192,14 +225,41 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
     categoryFilter
   ])
 
+  // When dedup is on, collapse alerts that share serverId+category and were
+  // detected in the last 60 minutes into a single representative alert (the
+  // most recent), augmented with a `_dupCount` so the row can render the count.
+  const dedupedOpen = useMemo(() => {
+    if (!dedup) return filteredOpen
+    const ONE_HOUR = 60 * 60 * 1000
+    const now = Date.now()
+    const groups = new Map<string, Array<Alert>>()
+    for (const a of filteredOpen) {
+      const ts = new Date(a.detectedAt).getTime()
+      const key =
+        now - ts < ONE_HOUR ? `${a.serverId}::${a.category}` : `solo:${a.id}`
+      const list = groups.get(key) ?? []
+      list.push(a)
+      groups.set(key, list)
+    }
+    const out: Array<Alert & { _dupCount?: number }> = []
+    for (const list of groups.values()) {
+      list.sort(
+        (a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime()
+      )
+      const head = list[0]
+      out.push(list.length > 1 ? { ...head, _dupCount: list.length } : head)
+    }
+    return out
+  }, [filteredOpen, dedup])
+
   const criticalFirst = useMemo(
     () =>
-      [...filteredOpen].sort((a, b) => {
+      [...dedupedOpen].sort((a, b) => {
         if (a.severity === 'CRITICAL' && b.severity !== 'CRITICAL') return -1
         if (b.severity === 'CRITICAL' && a.severity !== 'CRITICAL') return 1
         return 0
       }),
-    [filteredOpen]
+    [dedupedOpen]
   )
 
   const handleAckAll = (): void => {
@@ -306,6 +366,14 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
                 color={severityFilter === 'WARNING' ? 'warning' : 'default'}
                 variant={severityFilter === 'WARNING' ? 'filled' : 'outlined'}
                 onClick={() => setSeverityFilter('WARNING')}
+              />
+              <Chip
+                label="Group similar"
+                size="small"
+                color={dedup ? 'primary' : 'default'}
+                variant={dedup ? 'filled' : 'outlined'}
+                onClick={() => setDedupPersist(!dedup)}
+                aria-pressed={dedup}
               />
             </Stack>
             {availableCategories.length > 1 && (

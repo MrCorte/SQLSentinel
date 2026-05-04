@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs'
 import { randomUUID, createHash, randomBytes } from 'node:crypto'
-import { writeFileSync, chmodSync } from 'node:fs'
+import { writeFileSync, chmodSync, unlinkSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { app } from 'electron'
@@ -71,6 +71,19 @@ const loginAttempts = new Map<string, LoginAttempt>()
 
 function recordFailedLogin(usernameKey: string): void {
   const now = Date.now()
+  // Opportunistic sweep: drop entries whose window has expired AND aren't
+  // currently locked. Without this, a username-spray attacker accumulates one
+  // entry per unique username forever (~120 bytes each, unbounded growth).
+  // We sweep at most every LOCKOUT_WINDOW_MS to keep the cost amortised.
+  if (now - lastLoginSweep > LOCKOUT_WINDOW_MS) {
+    for (const [key, e] of loginAttempts) {
+      if (now - e.firstFailedAt > LOCKOUT_WINDOW_MS && e.lockedUntil < now) {
+        loginAttempts.delete(key)
+      }
+    }
+    lastLoginSweep = now
+  }
+
   const entry = loginAttempts.get(usernameKey)
   if (!entry || now - entry.firstFailedAt > LOCKOUT_WINDOW_MS) {
     loginAttempts.set(usernameKey, { failed: 1, firstFailedAt: now, lockedUntil: 0 })
@@ -81,6 +94,8 @@ function recordFailedLogin(usernameKey: string): void {
     entry.lockedUntil = now + LOCKOUT_DURATION_MS
   }
 }
+
+let lastLoginSweep = 0
 
 function getLockoutStatus(usernameKey: string): { locked: boolean; retryAfterMs: number } {
   const entry = loginAttempts.get(usernameKey)
@@ -217,6 +232,21 @@ export async function changePassword(
   if (currentSession?.userId === userId) {
     currentSession.expiresAt = Date.now() + SESSION_TIMEOUT_MS
     currentSession.mustChangePassword = false
+  }
+
+  // H3: delete admin-bootstrap.txt if the admin user just changed password.
+  // The file holds the original random plaintext bootstrap; once rotated, the
+  // file is dead weight on disk and a forensic risk on stolen/reimaged systems.
+  if (user.username === 'admin') {
+    try {
+      const bootstrapPath = join(app.getPath('userData'), 'admin-bootstrap.txt')
+      if (existsSync(bootstrapPath)) {
+        unlinkSync(bootstrapPath)
+        log.info(`[AUTH] Removed admin-bootstrap.txt after password change`)
+      }
+    } catch (err) {
+      log.warn('[AUTH] Could not remove bootstrap file:', err)
+    }
   }
 
   return { success: true }

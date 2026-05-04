@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import type {
   DiscoveredServer,
   ScanOptions,
@@ -6,6 +6,31 @@ import type {
   ManualServerRequest
 } from '../../../preload/index'
 import { notify } from '../store/notifyStore'
+
+// sessionStorage key — survives tab navigation but not app restart, which is
+// the right scope for ephemeral scan output.
+const SCAN_RESULTS_KEY = 'sqlsentinel:discovery:scanResults'
+
+function loadPersistedScan(): DiscoveryRow[] {
+  try {
+    const raw = sessionStorage.getItem(SCAN_RESULTS_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as DiscoveryRow[]
+    return Array.isArray(parsed)
+      ? parsed.map((r) => ({ ...r, discoveredAt: new Date(r.discoveredAt) }))
+      : []
+  } catch {
+    return []
+  }
+}
+
+function persistScan(rows: DiscoveryRow[]): void {
+  try {
+    sessionStorage.setItem(SCAN_RESULTS_KEY, JSON.stringify(rows))
+  } catch {
+    // Quota exceeded or storage unavailable — non-fatal
+  }
+}
 
 export interface DiscoveryRow extends DiscoveredServer {
   discoveryType: 'auto-tcp' | 'manual'
@@ -22,10 +47,16 @@ export interface AddServerParams {
 }
 
 export function useDiscovery() {
-  const [servers, setServers] = useState<DiscoveryRow[]>([])
+  const [servers, setServers] = useState<DiscoveryRow[]>(() => loadPersistedScan())
   const [isScanning, setIsScanning] = useState(false)
   const [progress, setProgress] = useState<ScanProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // Persist scan output whenever the result set changes so navigating to
+  // Inventory and back doesn't blow it away.
+  useEffect(() => {
+    persistScan(servers)
+  }, [servers])
 
   const scan = useCallback(async (options: ScanOptions): Promise<void> => {
     setIsScanning(true)

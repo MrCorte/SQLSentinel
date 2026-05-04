@@ -98,13 +98,21 @@ export function registerStorageHandlers(): void {
         validateConnectionParams(params)
         // Verify the connection before doing anything else.
         await testConnection(params)
-        // Build the live pool from raw params — we'll only persist the config
-        // once schema init + admin bootstrap fully succeed. This prevents a
-        // half-broken setup from being read back on the next app launch.
+        // Build the live pool from raw params.
         await initStoragePoolFromParams(params)
+
+        // Persistence ordering: save the config BEFORE running schema +
+        // bootstrap admin. Reasoning: every step below is idempotent and the
+        // boot path in main/index.ts re-runs initSchema()/initDefaultAdmin()
+        // every launch. So if we crash after saveStorageConfig but before
+        // initSchema/initDefaultAdmin completes, the next launch finds a valid
+        // config, reconnects, and finishes the bootstrap automatically.
+        // The previous order saved the config LAST — a DPAPI write failure
+        // there left an unreachable schema + bootstrap admin on the target
+        // SQL Server with no way to resume.
+        saveStorageConfig(params)
         const schemaResult = await initSchema()
         await initDefaultAdmin()
-        saveStorageConfig(params)
         return { ok: true, data: schemaResult }
       } catch (err) {
         // Rollback the live pool so subsequent retries get a fresh attempt.

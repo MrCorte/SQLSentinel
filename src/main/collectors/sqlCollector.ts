@@ -78,19 +78,37 @@ interface WaitStatRow {
 
 // --- Error sanitization ---
 // Removes sensitive identifiers from mssql/tedious messages before logging.
-// Known patterns: "Login failed for user 'sa'", strings containing passwords/tokens,
-// connection details with host:port.
+// Known patterns from tedious / SQL Server: "Login failed for user 'sa'",
+// connection-string echoes with password=…, double-quoted variants on Linux,
+// "Cannot open database \"foo\" requested by the login" with the user appended.
+// We also collapse the multi-line stack so a single sanitized line is logged.
 const SANITIZE_PATTERNS: Array<[RegExp, string]> = [
+  // Single-quoted variant: for user 'sa'
   [/for user\s+'[^']*'/gi, "for user '***'"],
+  // Double-quoted variant: for user "sa" (some Linux locales)
+  [/for user\s+"[^"]*"/gi, 'for user "***"'],
+  // login 'name'
   [/login\s+'[^']*'/gi, "login '***'"],
-  [/password=[^;\s]+/gi, 'password=***'],
-  [/user id=[^;\s]+/gi, 'user id=***'],
-  [/uid=[^;\s]+/gi, 'uid=***']
+  // login "name"
+  [/login\s+"[^"]*"/gi, 'login "***"'],
+  // user='value' / "user"='value' (SqlClient style)
+  [/(["']?user(?:\s*id)?["']?\s*=\s*)[^;,\s]+/gi, '$1***'],
+  // password=... / pwd=... (case-insensitive, with or without spaces)
+  [/(["']?(?:password|pwd)["']?\s*=\s*)[^;,\s]+/gi, '$1***'],
+  // uid=foo
+  [/uid=[^;\s]+/gi, 'uid=***'],
+  // Authorization header echoes (Bearer xxxx)
+  [/Bearer\s+[A-Za-z0-9._\-+/=]+/gi, 'Bearer ***'],
+  // "requested by the login 'name'"
+  [/the login\s+'[^']*'/gi, "the login '***'"]
 ]
 
 export function sanitizeSqlError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err)
-  return SANITIZE_PATTERNS.reduce((msg, [re, repl]) => msg.replace(re, repl), raw)
+  // Collapse newlines/tabs first — multi-line stacks can hide patterns split
+  // across boundaries (e.g. password followed by \n then the value).
+  const flat = raw.replace(/[\r\n\t]+/g, ' ')
+  return SANITIZE_PATTERNS.reduce((msg, [re, repl]) => msg.replace(re, repl), flat)
 }
 
 // --- Connection configuration ---

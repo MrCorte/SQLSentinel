@@ -62,12 +62,24 @@ export function AlertsFeed({
           Recent alerts
         </Typography>
         <Box
+          component="button"
+          type="button"
           onClick={onOpenAlerts}
+          aria-label="Open all alerts"
           sx={{
             fontSize: tokens.font.sizeXs,
             color: tokens.color.primary,
             cursor: 'pointer',
-            '&:hover': { textDecoration: 'underline' }
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+            fontFamily: 'inherit',
+            '&:hover': { textDecoration: 'underline' },
+            '&:focus-visible': {
+              outline: `2px solid ${tokens.color.primary}`,
+              outlineOffset: 1,
+              borderRadius: 2
+            }
           }}
         >
           All →
@@ -101,22 +113,40 @@ export function AlertsFeed({
               : alert.serverId
             const alertBorderColor = alert.severity === 'CRITICAL' ? tokens.color.danger : tokens.color.dotWarning
 
+            const isClickable = !!srvForAlert
+            const handleNavigate = (): void => {
+              if (srvForAlert) onNavigateToServer(srvForAlert.id)
+            }
             return (
               <Box
                 key={alert.id}
-                onClick={() => {
-                  if (srvForAlert) onNavigateToServer(srvForAlert.id)
-                }}
+                {...(isClickable
+                  ? {
+                      role: 'button',
+                      tabIndex: 0,
+                      onClick: handleNavigate,
+                      onKeyDown: (e: React.KeyboardEvent) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          handleNavigate()
+                        }
+                      },
+                      'aria-label': `Open ${alertSrvName} — ${alert.message}`
+                    }
+                  : {})}
                 sx={{
                   borderLeft: `4px solid ${alertBorderColor}`,
                   px: 1.5,
                   py: 0.75,
                   borderBottom: '1px solid',
                   borderBottomColor: tokens.color.bgBorder,
-                  cursor: srvForAlert ? 'pointer' : 'default',
+                  cursor: isClickable ? 'pointer' : 'default',
                   transition: 'background-color 0.12s ease',
                   backgroundImage: `linear-gradient(90deg, ${alertBorderColor}0a 0%, transparent 40%)`,
-                  '&:hover': srvForAlert ? { bgcolor: tokens.color.bgBorder } : undefined
+                  '&:hover': isClickable ? { bgcolor: tokens.color.bgBorder } : undefined,
+                  '&:focus-visible': isClickable
+                    ? { outline: `2px solid ${alertBorderColor}`, outlineOffset: -2 }
+                    : undefined
                 }}
               >
                 <Box

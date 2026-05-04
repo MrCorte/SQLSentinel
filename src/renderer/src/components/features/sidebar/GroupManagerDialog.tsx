@@ -115,6 +115,7 @@ export function GroupManagerDialog({ open, onClose }: GroupManagerDialogProps): 
                       removeGroup(g.id)
                       setLocalGroups((prev) => prev.filter((x) => x.id !== g.id))
                     }}
+                    aria-label={`Delete group ${g.name}`}
                     sx={{ color: tokens.color.danger }}
                   >
                     <DeleteIcon fontSize="small" />
@@ -184,10 +185,19 @@ export function GroupManagerDialog({ open, onClose }: GroupManagerDialogProps): 
             size="small"
             sx={{ flex: 1 }}
           />
-          <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
+          <Box
+            role="radiogroup"
+            aria-label="Group color"
+            sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}
+          >
             {COLOR_PALETTE.map((c) => (
               <Box
                 key={c}
+                component="button"
+                type="button"
+                role="radio"
+                aria-checked={newColor === c}
+                aria-label={`Color ${c}`}
                 onClick={() => setNewColor(c)}
                 sx={{
                   width: 20,
@@ -197,12 +207,22 @@ export function GroupManagerDialog({ open, onClose }: GroupManagerDialogProps): 
                   cursor: 'pointer',
                   border: newColor === c ? '2px solid white' : '2px solid transparent',
                   boxSizing: 'border-box',
-                  '&:hover': { opacity: 0.8 }
+                  padding: 0,
+                  '&:hover': { opacity: 0.8 },
+                  '&:focus-visible': {
+                    outline: '2px solid #fff',
+                    outlineOffset: 2
+                  }
                 }}
               />
             ))}
           </Box>
-          <IconButton size="small" onClick={handleAdd} disabled={!newName.trim()}>
+          <IconButton
+            size="small"
+            onClick={handleAdd}
+            disabled={!newName.trim()}
+            aria-label="Add group"
+          >
             <AddIcon fontSize="small" />
           </IconButton>
         </Box>

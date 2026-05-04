@@ -1,9 +1,20 @@
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, renameSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import Database from 'better-sqlite3'
+import { createLogger } from '../utils/logger'
+
+const log = createLogger('sqlite')
 
 // Singleton — initialized by initDb() before any access
 let _db: Database.Database | null = null
+
+export interface InitDbResult {
+  db: Database.Database
+  /** Set when the on-disk file was corrupt and we rotated it aside before recreating. */
+  recoveredFromCorruption: boolean
+  /** Path of the rotated corrupt file, if any. */
+  rotatedPath?: string
+}
 
 const DDL = `
   CREATE TABLE IF NOT EXISTS settings (
@@ -84,18 +95,97 @@ const DDL = `
 
 `
 
+function isCorruptionError(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code
+  if (code === 'SQLITE_CORRUPT' || code === 'SQLITE_NOTADB' || code === 'SQLITE_IOERR_SHORT_READ') {
+    return true
+  }
+  const msg = (err as Error | null)?.message ?? String(err ?? '')
+  return /corrupt|malformed|not a database|disk image/i.test(msg)
+}
+
+function rotateCorruptDb(dbPath: string): string | null {
+  if (dbPath === ':memory:') return null
+  try {
+    const ts = new Date().toISOString().replace(/[:.]/g, '-')
+    const rotated = `${dbPath}.corrupt-${ts}`
+    if (existsSync(dbPath)) renameSync(dbPath, rotated)
+    // Also rotate WAL/SHM siblings if present so the recreated DB starts clean.
+    for (const suffix of ['-wal', '-shm']) {
+      const sib = dbPath + suffix
+      if (existsSync(sib)) renameSync(sib, rotated + suffix)
+    }
+    return rotated
+  } catch (err) {
+    log.error('[sqlite] rotate corrupt file failed:', err)
+    return null
+  }
+}
+
 /**
- * Initializes the SQLite database.
- * Call with the real path from src/main/index.ts, or ':memory:' in tests.
- * The path is constructed outside this module to avoid a dependency on Electron app here.
+ * Initializes the SQLite database with corruption recovery.
+ * If the file fails to open or fails the integrity check, we rotate it aside
+ * (`.corrupt-<ts>`) and recreate an empty DB. The caller can detect this via
+ * the `recoveredFromCorruption` flag and surface a banner to the user — their
+ * historical metrics are gone but the app starts.
  */
-export function initDb(dbPath: string): Database.Database {
-  // Create the directory if needed (skipped for :memory:)
+export function initDbWithRecovery(dbPath: string): InitDbResult {
   if (dbPath !== ':memory:') {
     mkdirSync(dirname(dbPath), { recursive: true })
   }
 
-  _db = new Database(dbPath)
+  let recoveredFromCorruption = false
+  let rotatedPath: string | undefined
+
+  // First attempt: open the file as-is.
+  try {
+    _db = new Database(dbPath)
+    // Integrity check — cheap on small DBs, runs in a couple of seconds even on
+    // hundreds of MB. Detects forms of corruption that don't show on open().
+    const integrity = _db.pragma('integrity_check', { simple: true })
+    if (integrity !== 'ok') {
+      log.error(`[sqlite] integrity_check returned: ${String(integrity)} — rotating`)
+      _db.close()
+      _db = null
+      const rot = rotateCorruptDb(dbPath)
+      if (rot) {
+        rotatedPath = rot
+        recoveredFromCorruption = true
+      }
+      _db = new Database(dbPath)
+    }
+  } catch (err) {
+    if (!isCorruptionError(err)) throw err
+    log.error('[sqlite] open failed with corruption, rotating:', err)
+    if (_db) {
+      try {
+        _db.close()
+      } catch {
+        // ignored
+      }
+      _db = null
+    }
+    const rot = rotateCorruptDb(dbPath)
+    if (rot) {
+      rotatedPath = rot
+      recoveredFromCorruption = true
+    }
+    _db = new Database(dbPath)
+  }
+  return finishInit(dbPath, recoveredFromCorruption, rotatedPath)
+}
+
+/** @deprecated Prefer initDbWithRecovery for the recovery flag. Kept for tests. */
+export function initDb(dbPath: string): Database.Database {
+  return initDbWithRecovery(dbPath).db
+}
+
+function finishInit(
+  _dbPath: string,
+  recoveredFromCorruption: boolean,
+  rotatedPath: string | undefined
+): InitDbResult {
+  if (!_db) throw new Error('initDb: pool not opened')
 
   // WAL mode: writes do not block reads
   _db.pragma('journal_mode = WAL')
@@ -136,7 +226,7 @@ export function initDb(dbPath: string): Database.Database {
   // Flush any WAL pages left from a previous run; keeps DB file compact
   _db.pragma('wal_checkpoint(PASSIVE)')
 
-  return _db
+  return { db: _db, recoveredFromCorruption, rotatedPath }
 }
 
 export function getDb(): Database.Database {
@@ -146,9 +236,26 @@ export function getDb(): Database.Database {
 
 export function closeDb(): void {
   if (_db) {
-    // Let SQLite update internal statistics for the query planner before closing
-    _db.pragma('optimize')
-    _db.close()
+    try {
+      // Truncate the WAL into the main DB file before close. Without this, the
+      // WAL/SHM pair can grow large between releases and a hard kill leaves
+      // the WAL behind without a guaranteed checkpoint at the next open
+      // (PASSIVE checkpoint in initDb only flushes pages with no contention).
+      _db.pragma('wal_checkpoint(TRUNCATE)')
+    } catch (err) {
+      log.warn('[sqlite] checkpoint(TRUNCATE) failed:', err)
+    }
+    try {
+      // Let SQLite update internal statistics for the query planner before closing
+      _db.pragma('optimize')
+    } catch (err) {
+      log.warn('[sqlite] optimize failed:', err)
+    }
+    try {
+      _db.close()
+    } catch (err) {
+      log.warn('[sqlite] close failed:', err)
+    }
     _db = null
   }
 }

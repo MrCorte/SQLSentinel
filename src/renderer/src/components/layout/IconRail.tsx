@@ -37,10 +37,27 @@ export function IconRail({ activeTab, onTabChange, onSettingsClick }: Props): Re
         zIndex: 200
       }}
     >
-      {/* Logo */}
+      {/* Logo — keyboard-activatable, navigates to Overview */}
       <Box
+        component="button"
+        type="button"
         onClick={() => onTabChange(0)}
-        sx={{ mb: 1.5, cursor: 'pointer', flexShrink: 0, display: 'flex', userSelect: 'none' }}
+        aria-label="Go to overview"
+        sx={{
+          mb: 1.5,
+          cursor: 'pointer',
+          flexShrink: 0,
+          display: 'flex',
+          userSelect: 'none',
+          background: 'transparent',
+          border: 'none',
+          padding: 0,
+          '&:focus-visible': {
+            outline: `2px solid ${tokens.color.accent}`,
+            outlineOffset: 2,
+            borderRadius: 4
+          }
+        }}
       >
         <svg viewBox="0 0 56 56" width="30" height="30" xmlns="http://www.w3.org/2000/svg">
           <defs>
@@ -69,7 +86,11 @@ export function IconRail({ activeTab, onTabChange, onSettingsClick }: Props): Re
         return (
           <Tooltip key={tab} title={label} placement="right" arrow>
             <Box
+              component="button"
+              type="button"
               onClick={() => onTabChange(tab)}
+              aria-label={label}
+              aria-current={isActive ? 'page' : undefined}
               sx={{
                 width: 34,
                 height: 34,
@@ -78,15 +99,20 @@ export function IconRail({ activeTab, onTabChange, onSettingsClick }: Props): Re
                 alignItems: 'center',
                 justifyContent: 'center',
                 cursor: 'pointer',
-                bgcolor: isActive ? tokens.color.accentAlpha12 : 'transparent',
+                background: isActive ? tokens.color.accentAlpha12 : 'transparent',
                 border: isActive
                   ? `1px solid ${tokens.color.accentAlpha40}`
                   : '1px solid transparent',
                 color: isActive ? tokens.color.accent : tokens.color.textMuted,
                 transition: 'all 0.15s ease',
+                padding: 0,
                 '&:hover': {
                   bgcolor: tokens.color.accentAlpha12,
                   color: tokens.color.textPrimary
+                },
+                '&:focus-visible': {
+                  outline: `2px solid ${tokens.color.accent}`,
+                  outlineOffset: 2
                 }
               }}
             >
@@ -99,7 +125,11 @@ export function IconRail({ activeTab, onTabChange, onSettingsClick }: Props): Re
       {/* Settings — pinned to bottom */}
       <Tooltip title="Settings" placement="right" arrow>
         <Box
+          component="button"
+          type="button"
           onClick={onSettingsClick}
+          aria-label="Settings"
+          aria-current={activeTab === 4 ? 'page' : undefined}
           sx={{
             mt: 'auto',
             width: 34,
@@ -109,13 +139,18 @@ export function IconRail({ activeTab, onTabChange, onSettingsClick }: Props): Re
             alignItems: 'center',
             justifyContent: 'center',
             cursor: 'pointer',
-            bgcolor: activeTab === 4 ? tokens.color.accentAlpha12 : 'transparent',
+            background: activeTab === 4 ? tokens.color.accentAlpha12 : 'transparent',
             border: activeTab === 4
               ? `1px solid ${tokens.color.accentAlpha40}`
               : '1px solid transparent',
             color: activeTab === 4 ? tokens.color.accent : tokens.color.textMuted,
             transition: 'all 0.15s ease',
-            '&:hover': { bgcolor: tokens.color.accentAlpha12, color: tokens.color.textPrimary }
+            padding: 0,
+            '&:hover': { bgcolor: tokens.color.accentAlpha12, color: tokens.color.textPrimary },
+            '&:focus-visible': {
+              outline: `2px solid ${tokens.color.accent}`,
+              outlineOffset: 2
+            }
           }}
         >
           <SettingsIcon sx={{ fontSize: 18 }} />

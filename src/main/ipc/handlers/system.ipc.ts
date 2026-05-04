@@ -48,6 +48,12 @@ import {
 import { resolveConnection } from './servers.ipc'
 
 export function registerSystemHandlers(): void {
+  // App version — surfaced in the UI for support / triage. Reads from
+  // package.json via Electron's app.getVersion() which is set at build time.
+  handle(IpcChannel.APP_VERSION, async (): Promise<IpcResult<{ version: string }>> => {
+    return { ok: true, data: { version: app.getVersion() } }
+  })
+
   // ── Auth handlers ─────────────────────────────────────────────────────────
 
   handle(

@@ -31,7 +31,7 @@ interface Props {
   onConfigured: () => void
 }
 
-const AUTO_NAVIGATE_MS = 5000
+const AUTO_NAVIGATE_SECONDS = 5
 
 export function StorageSetupPage({ initialError, onConfigured }: Props): React.JSX.Element {
   const [form, setForm] = useState<FormState>({
@@ -49,6 +49,8 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
   const [tested, setTested] = useState(false)
   const [setupResult, setSetupResult] = useState<SchemaInitResult | null>(null)
   const [safeStorageWarning, setSafeStorageWarning] = useState(false)
+  // Countdown shown after successful setup. null = cancelled by user; 0 = fired.
+  const [autoNavSeconds, setAutoNavSeconds] = useState<number | null>(null)
 
   const alive = useRef(true)
   // Stable ref for onConfigured so the auto-navigate effect doesn't re-fire
@@ -76,15 +78,25 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
     }
   }, [])
 
-  // Auto-navigate after successful setup. Depends only on setupResult so it
-  // fires exactly once even if onConfigured identity changes.
+  // Auto-navigate after successful setup with a visible countdown. The user can
+  // cancel by clicking the Cancel button in the success card; setting
+  // autoNavSeconds to null stops the timer so they can read the schema summary.
   useEffect(() => {
     if (!setupResult) return
-    const t = setTimeout(() => {
-      if (alive.current) onConfiguredRef.current()
-    }, AUTO_NAVIGATE_MS)
-    return () => clearTimeout(t)
+    setAutoNavSeconds(AUTO_NAVIGATE_SECONDS)
   }, [setupResult])
+
+  useEffect(() => {
+    if (autoNavSeconds === null) return
+    if (autoNavSeconds <= 0) {
+      if (alive.current) onConfiguredRef.current()
+      return
+    }
+    const t = setTimeout(() => {
+      if (alive.current) setAutoNavSeconds((s) => (s === null ? null : s - 1))
+    }, 1000)
+    return () => clearTimeout(t)
+  }, [autoNavSeconds])
 
   function field(key: 'host' | 'port' | 'database' | 'username' | 'password') {
     return {
@@ -215,9 +227,21 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
             )}
           </Stack>
 
-          <Button variant="contained" sx={{ mt: 3 }} onClick={onConfigured}>
-            Continue
-          </Button>
+          <Stack direction="row" spacing={1} sx={{ mt: 3 }} alignItems="center">
+            <Button variant="contained" onClick={onConfigured}>
+              Continue
+            </Button>
+            {autoNavSeconds !== null && autoNavSeconds > 0 && (
+              <>
+                <Typography variant="body2" color="text.secondary">
+                  Continuing automatically in {autoNavSeconds}s…
+                </Typography>
+                <Button size="small" onClick={() => setAutoNavSeconds(null)}>
+                  Cancel
+                </Button>
+              </>
+            )}
+          </Stack>
         </Box>
       </Box>
     )

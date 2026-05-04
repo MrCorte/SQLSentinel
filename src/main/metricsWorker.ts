@@ -75,6 +75,15 @@ let activeDebounce: ReturnType<typeof setTimeout> | null = null
 const metricsHistory = new Map<string, ServerMetrics[]>()
 let storedAlerts: Alert[] = []
 let alertCounter = 0
+// O(1) dedup: map of `${serverId}:${category}:${severity}` → alert id, only
+// for alerts with acknowledgedAt === null. Prevents the previous O(N) .some()
+// scan inside the hot processAlerts() path.
+const openAlertKeys = new Map<string, string>()
+// Hard cap: with 200 servers × 5 categories × 2 severities = 2000 possible
+// open alerts, but in practice a healthy fleet stays under 50. The cap exists
+// for runaway scenarios (e.g. flapping fleet during an incident) so the
+// memory footprint stays bounded.
+const MAX_STORED_ALERTS = 1000
 
 // --- SQLite persistence ---
 const saveQueue: metricsRepository.SaveItem[] = []
@@ -138,14 +147,57 @@ function enqueueBatchPush(sid: string, metrics: ServerMetrics): void {
 // SQLite persistence helpers
 // ---------------------------------------------------------------------------
 
+// Dead-letter buffer for batches that failed to persist. We retry on the next
+// flush; if persistence keeps failing for ~5 cycles we drop the oldest items so
+// the buffer can't grow unbounded.
+const failedBatches: metricsRepository.SaveItem[][] = []
+const MAX_FAILED_BATCHES = 5
+
 function flushSaveQueue(): void {
   saveFlushTimer = null
-  if (saveQueue.length === 0) return
-  const toFlush = saveQueue.splice(0, saveQueue.length)
-  try {
-    metricsRepository.batchSave(toFlush)
-  } catch (err) {
-    log.error('[worker] SQLite batch save:', err)
+  if (saveQueue.length === 0 && failedBatches.length === 0) return
+
+  // Snapshot what we'll persist BEFORE removing it from the queue. Previously
+  // we spliced first and persisted second — on batchSave failure the items
+  // were already gone, losing minutes of metrics across the fleet.
+  const toFlush = saveQueue.slice(0)
+  // Combine pending retry batches with the new items.
+  const allBatches = [...failedBatches, toFlush.length > 0 ? toFlush : null].filter(
+    (b): b is metricsRepository.SaveItem[] => b !== null && b.length > 0
+  )
+  if (allBatches.length === 0) return
+
+  // Reset the failed buffer; we'll re-populate on retry.
+  failedBatches.length = 0
+
+  let anyFailed = false
+  for (const batch of allBatches) {
+    try {
+      metricsRepository.batchSave(batch)
+    } catch (err) {
+      log.error('[worker] SQLite batch save failed, will retry:', err)
+      // Hold onto the batch for the next flush. Drop the OLDEST batch if we
+      // exceed the retry budget so a permanently failing storage can't OOM us.
+      if (failedBatches.length >= MAX_FAILED_BATCHES) {
+        const dropped = failedBatches.shift()
+        log.warn(
+          `[worker] DLQ overflow: dropping oldest batch of ${dropped?.length ?? 0} item(s)`
+        )
+      }
+      failedBatches.push(batch)
+      anyFailed = true
+    }
+  }
+
+  // Only consume the live queue if it was successfully persisted (or the
+  // failure was already recorded in failedBatches).
+  if (toFlush.length > 0) {
+    saveQueue.splice(0, toFlush.length)
+  }
+
+  // If anything failed, schedule a retry on the next regular flush window.
+  if (anyFailed && !saveFlushTimer) {
+    saveFlushTimer = setTimeout(flushSaveQueue, SAVE_FLUSH_MS)
   }
 }
 
@@ -340,23 +392,38 @@ function processAlerts(sid: string, metrics: ServerMetrics): void {
   const candidates = evaluateAlerts(sid, metrics)
   for (const alert of candidates) {
     const key = `${alert.serverId}:${alert.category}:${alert.severity}`
-    const hasOpen = storedAlerts.some(
-      (a) => a.acknowledgedAt === null && `${a.serverId}:${a.category}:${a.severity}` === key
-    )
-    if (!hasOpen) {
-      storedAlerts.push(alert)
-      pushToRenderer(IpcChannel.ALERT_NEW, alert)
-      if (alertCallback) alertCallback(alert)
-    }
+    if (openAlertKeys.has(key)) continue // dedup hit, skip
+    storedAlerts.push(alert)
+    openAlertKeys.set(key, alert.id)
+    pushToRenderer(IpcChannel.ALERT_NEW, alert)
+    if (alertCallback) alertCallback(alert)
   }
 
   // Prune acknowledged alerts older than 24 h to keep storedAlerts bounded
   const pruneOlderThan = Date.now() - 24 * 60 * 60 * 1000
-  const spliced = storedAlerts.filter(
+  const beforeLen = storedAlerts.length
+  storedAlerts = storedAlerts.filter(
     (a) => !(a.acknowledgedAt && new Date(a.acknowledgedAt).getTime() < pruneOlderThan)
   )
-  if (spliced.length !== storedAlerts.length) {
-    storedAlerts.splice(0, storedAlerts.length, ...spliced)
+  if (storedAlerts.length !== beforeLen) {
+    rebuildOpenAlertKeys()
+  }
+
+  // Hard cap: if open alerts exceed the cap (incident flood), drop the OLDEST
+  // ones — keep the most recent context for the operator. Preserves order:
+  // acknowledged first (already filtered above), then oldest open.
+  if (storedAlerts.length > MAX_STORED_ALERTS) {
+    storedAlerts = storedAlerts.slice(-MAX_STORED_ALERTS)
+    rebuildOpenAlertKeys()
+  }
+}
+
+function rebuildOpenAlertKeys(): void {
+  openAlertKeys.clear()
+  for (const a of storedAlerts) {
+    if (a.acknowledgedAt === null) {
+      openAlertKeys.set(`${a.serverId}:${a.category}:${a.severity}`, a.id)
+    }
   }
 }
 
@@ -404,6 +471,13 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
         offlineMap.delete(db.name)
         return db
       })
+    }
+    // Prune entries for DBs that no longer exist (dropped between polls).
+    // Without this the map keeps growing forever as users drop and recreate
+    // databases — a dozen bytes per ghost entry but unbounded over months.
+    const liveNames = new Set(enrichedMetrics.databases.map((d) => d.name))
+    for (const dbName of offlineMap.keys()) {
+      if (!liveNames.has(dbName)) offlineMap.delete(dbName)
     }
     dbOfflineTimestamps.set(sid, offlineMap)
 
@@ -661,6 +735,10 @@ export function acknowledgeAlert(alertId: string): boolean {
   const alert = storedAlerts.find((a) => a.id === alertId)
   if (!alert) return false
   alert.acknowledgedAt = new Date()
+  // Drop from the dedup map so a fresh alert in the same category can re-fire
+  // immediately after the operator acknowledges. Without this, the dedup
+  // would keep blocking new alerts indefinitely.
+  openAlertKeys.delete(`${alert.serverId}:${alert.category}:${alert.severity}`)
   return true
 }
 
@@ -722,7 +800,9 @@ export function __resetForTests(): void {
   metricsHistory.clear()
   dbOfflineTimestamps.clear()
   saveQueue.length = 0
+  failedBatches.length = 0
   storedAlerts = []
+  openAlertKeys.clear()
   alertCounter = 0
   activeServerId = null
   alertCallback = null

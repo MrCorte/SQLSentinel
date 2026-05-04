@@ -25,6 +25,54 @@ interface ChangePasswordDialogProps {
   onDone: () => void
 }
 
+// Live policy checks — same rules enforced server-side in authService.changePassword.
+// We surface them as live indicators so the user knows what's missing without
+// having to submit and read the error.
+interface PasswordChecks {
+  minLen: boolean
+  uppercase: boolean
+  digit: boolean
+  match: boolean
+}
+
+function evaluatePolicy(newPwd: string, confirm: string): PasswordChecks {
+  return {
+    minLen: newPwd.length >= 8,
+    uppercase: /[A-Z]/.test(newPwd),
+    digit: /[0-9]/.test(newPwd),
+    match: newPwd.length > 0 && newPwd === confirm
+  }
+}
+
+function PolicyHint({ ok, label }: { ok: boolean; label: string }): React.JSX.Element {
+  return (
+    <Typography
+      variant="caption"
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 0.5,
+        color: ok ? 'success.main' : 'text.secondary',
+        fontSize: 11,
+        lineHeight: 1.2
+      }}
+    >
+      <Box
+        component="span"
+        aria-hidden
+        sx={{
+          display: 'inline-block',
+          width: 12,
+          textAlign: 'center'
+        }}
+      >
+        {ok ? '✓' : '·'}
+      </Box>
+      {label}
+    </Typography>
+  )
+}
+
 function ChangePasswordDialog({ userId, onDone }: ChangePasswordDialogProps): React.JSX.Element {
   const [oldPwd, setOldPwd] = useState('')
   const [newPwd, setNewPwd] = useState('')
@@ -32,11 +80,15 @@ function ChangePasswordDialog({ userId, onDone }: ChangePasswordDialogProps): Re
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  const checks = evaluatePolicy(newPwd, confirm)
+  const allChecksPass = checks.minLen && checks.uppercase && checks.digit && checks.match
+
   async function handleSubmit(e: React.FormEvent): Promise<void> {
     e.preventDefault()
     setError('')
-    if (newPwd !== confirm) {
-      setError('Passwords do not match')
+    if (!allChecksPass) {
+      // Should not happen — submit button is disabled — but defensive.
+      setError('Password does not meet the policy')
       return
     }
     setLoading(true)
@@ -76,14 +128,22 @@ function ChangePasswordDialog({ userId, onDone }: ChangePasswordDialogProps): Re
             onChange={(e) => setNewPwd(e.target.value)}
             size="small"
             fullWidth
-            helperText="Minimum 8 characters, at least 1 uppercase and 1 number"
           />
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, mt: -1 }}>
+            <PolicyHint ok={checks.minLen} label="At least 8 characters" />
+            <PolicyHint ok={checks.uppercase} label="At least 1 uppercase letter" />
+            <PolicyHint ok={checks.digit} label="At least 1 number" />
+          </Box>
           <PasswordField
             label="Confirm new password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             size="small"
             fullWidth
+            error={confirm.length > 0 && !checks.match}
+            helperText={
+              confirm.length > 0 && !checks.match ? 'Passwords do not match' : undefined
+            }
           />
           {error && <Alert severity="error">{error}</Alert>}
         </Box>
@@ -93,7 +153,7 @@ function ChangePasswordDialog({ userId, onDone }: ChangePasswordDialogProps): Re
           type="submit"
           form="change-pwd-form"
           variant="contained"
-          disabled={loading || !oldPwd || !newPwd || !confirm}
+          disabled={loading || !oldPwd || !allChecksPass}
         >
           {loading ? <CircularProgress size={18} /> : 'Set password'}
         </Button>

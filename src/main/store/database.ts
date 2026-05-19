@@ -93,6 +93,59 @@ const DDL = `
 
   CREATE INDEX IF NOT EXISTS idx_rag_chunks_doc ON rag_chunks(document_id);
 
+  CREATE TABLE IF NOT EXISTS incidents (
+    id             TEXT    PRIMARY KEY,
+    server_id      TEXT    NOT NULL,
+    category       TEXT    NOT NULL,
+    severity       TEXT    NOT NULL,
+    status         TEXT    NOT NULL DEFAULT 'open',
+    opened_at      INTEGER NOT NULL,
+    resolved_at    INTEGER,
+    summary        TEXT,
+    root_cause_md  TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_incidents_status   ON incidents(status);
+  CREATE INDEX IF NOT EXISTS idx_incidents_server   ON incidents(server_id);
+  CREATE INDEX IF NOT EXISTS idx_incidents_opened   ON incidents(opened_at DESC);
+
+  CREATE TABLE IF NOT EXISTS incident_events (
+    id           TEXT    PRIMARY KEY,
+    incident_id  TEXT    NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
+    kind         TEXT    NOT NULL,
+    payload_json TEXT    NOT NULL,
+    at           INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_incident_events_incident ON incident_events(incident_id, at);
+
+  CREATE TABLE IF NOT EXISTS incident_actions (
+    id               TEXT    PRIMARY KEY,
+    incident_id      TEXT    NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
+    tool_name        TEXT    NOT NULL,
+    params_json      TEXT    NOT NULL,
+    tsql_preview     TEXT    NOT NULL,
+    explanation      TEXT    NOT NULL,
+    status           TEXT    NOT NULL DEFAULT 'pending',
+    approved_by      TEXT,
+    executed_at      INTEGER,
+    result_json      TEXT,
+    rejection_reason TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_incident_actions_incident ON incident_actions(incident_id);
+  CREATE INDEX IF NOT EXISTS idx_incident_actions_status   ON incident_actions(status);
+
+  CREATE TABLE IF NOT EXISTS incident_audit (
+    id            TEXT    PRIMARY KEY,
+    incident_id   TEXT    NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
+    provider      TEXT    NOT NULL,
+    model         TEXT    NOT NULL,
+    prompt_hash   TEXT    NOT NULL,
+    response_hash TEXT    NOT NULL,
+    tokens_in     INTEGER,
+    tokens_out    INTEGER,
+    at            INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_incident_audit_incident ON incident_audit(incident_id, at);
+
 `
 
 // Skip the integrity check if the DB file was last modified less than this
@@ -243,6 +296,13 @@ function finishInit(
     `)
     _db.pragma('foreign_keys = ON')
     _db.pragma('user_version = 2')
+  }
+
+  // v3: add incident management tables (incidents, incident_events, incident_actions, incident_audit).
+  // No destructive changes — the DDL above uses CREATE TABLE IF NOT EXISTS, so this migration
+  // only needs to bump the version number.
+  if (schemaVersion < 3) {
+    _db.pragma('user_version = 3')
   }
 
   _db.exec(DDL)

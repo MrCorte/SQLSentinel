@@ -63,7 +63,8 @@ export function registerIncidentHandlers(): void {
         data: {
           incident,
           events: repository.getEvents(id),
-          actions: repository.getActions(id)
+          actions: repository.getActions(id),
+          audit: repository.getAuditEntries(id)
         }
       }
     } catch (err) {

@@ -434,4 +434,5 @@ export interface IncidentDetail {
   incident: import('../incidents/types').Incident
   events: import('../incidents/types').IncidentEvent[]
   actions: import('../incidents/types').IncidentAction[]
+  audit: import('../incidents/types').IncidentAuditEntry[]
 }

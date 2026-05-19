@@ -496,10 +496,23 @@ export interface IncidentAction {
   rejectionReason?: string
 }
 
+export interface IncidentAuditEntry {
+  id: string
+  incidentId: string
+  provider: 'ollama' | 'claude'
+  model: string
+  promptHash: string
+  responseHash: string
+  tokensIn?: number
+  tokensOut?: number
+  at: number
+}
+
 export interface IncidentDetail {
   incident: Incident
   events: IncidentEvent[]
   actions: IncidentAction[]
+  audit: IncidentAuditEntry[]
 }
 
 export type AiStreamEvent =

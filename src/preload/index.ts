@@ -141,6 +141,7 @@ export type {
   Incident,
   IncidentEvent,
   IncidentAction,
+  IncidentAuditEntry,
   IncidentDetail,
   IncidentStatus,
   IncidentEventKind,

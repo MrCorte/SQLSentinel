@@ -16,7 +16,7 @@ import SmartToyIcon from '@mui/icons-material/SmartToy'
 import { tokens } from '../../styles/tokens'
 import { useIncidentsStore, loadDetail } from '../../store/incidentsStore'
 import { notify } from '../../store/notifyStore'
-import type { IncidentEvent, IncidentAction, IncidentStatus } from '../../../../preload/index'
+import type { IncidentEvent, IncidentAction, IncidentAuditEntry, IncidentStatus } from '../../../../preload/index'
 
 const DRAWER_WIDTH = 480
 
@@ -309,6 +309,23 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
               </Box>
             </Box>
 
+            {/* AI investigation audit */}
+            {(detail?.audit ?? []).length > 0 && (
+              <>
+                <Divider />
+                <Box>
+                  <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 1, color: tokens.color.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    AI Investigations
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                    {(detail!.audit).map((entry: IncidentAuditEntry) => (
+                      <AuditRow key={entry.id} entry={entry} />
+                    ))}
+                  </Box>
+                </Box>
+              </>
+            )}
+
             {/* Pending action proposals */}
             {pendingActions.length > 0 && (
               <>
@@ -401,6 +418,33 @@ function EventRow({ event }: { event: IncidentEvent }): React.JSX.Element {
           {detail}
         </Typography>
       )}
+    </Box>
+  )
+}
+
+function AuditRow({ entry }: { entry: IncidentAuditEntry }): React.JSX.Element {
+  const ts = new Date(entry.at).toLocaleString()
+  const providerColor = entry.provider === 'claude' ? tokens.color.accent : tokens.color.textMuted
+  return (
+    <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', py: 0.5 }}>
+      <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, flexShrink: 0, minWidth: 130 }}>
+        {ts}
+      </Typography>
+      <Chip
+        label={entry.provider}
+        size="small"
+        sx={{ height: 16, fontSize: 10, bgcolor: providerColor, color: '#fff', flexShrink: 0 }}
+      />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {entry.model}
+        </Typography>
+        {(entry.tokensIn != null || entry.tokensOut != null) && (
+          <Typography sx={{ fontSize: 10, color: tokens.color.textMuted }}>
+            {entry.tokensIn != null ? `↑${entry.tokensIn}` : ''}{entry.tokensOut != null ? ` ↓${entry.tokensOut}` : ''} tokens
+          </Typography>
+        )}
+      </Box>
     </Box>
   )
 }

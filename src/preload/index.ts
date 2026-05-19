@@ -46,7 +46,8 @@ import type {
   Incident,
   IncidentDetail,
   IncidentListRequest,
-  IncidentSetStatusRequest
+  IncidentSetStatusRequest,
+  AiProviderSettings
 } from '../main/ipc/types'
 import type { ServerMetrics, ServerInfo } from '../main/collectors/types'
 import type { StoredServer } from '../main/store/serverStore'
@@ -134,7 +135,7 @@ export type {
   DatabaseFile
 } from '../main/collectors/types'
 export type { StoredServer } from '../main/store/serverStore'
-export type { AiStreamEvent } from '../main/ipc/types'
+export type { AiStreamEvent, AiProviderSettings, AiProviderName } from '../main/ipc/types'
 export type {
   Incident,
   IncidentEvent,
@@ -729,6 +730,15 @@ const realApi = {
     return () => ipcRenderer.removeListener(IpcChannel.AI_STREAM_EVENT, listener)
   },
 
+  aiGetSettings: (): Promise<IpcResult<AiProviderSettings>> =>
+    ipcRenderer.invoke(IpcChannel.AI_GET_SETTINGS),
+
+  aiSaveSettings: (settings: Partial<AiProviderSettings>): Promise<IpcResult<null>> =>
+    ipcRenderer.invoke(IpcChannel.AI_SAVE_SETTINGS, settings),
+
+  aiCheckProvider: (): Promise<IpcResult<boolean>> =>
+    ipcRenderer.invoke(IpcChannel.AI_CHECK_PROVIDER),
+
   incidents: {
     list: (req?: IncidentListRequest): Promise<IpcResult<Incident[]>> =>
       ipcRenderer.invoke(IpcChannel.INCIDENTS_LIST, req),
@@ -1138,7 +1148,17 @@ const mockApi = {
 
   onAiStreamEvent: (_cb: (event: AiStreamEvent) => void): (() => void) => {
     return () => { /* no-op in mock */ }
-  }
+  },
+
+  aiGetSettings: async (): Promise<IpcResult<AiProviderSettings>> => ({
+    ok: true,
+    data: { provider: 'ollama', ollamaModel: 'llama3.2:3b', claudeModel: 'claude-haiku-4-5-20251001' }
+  }),
+
+  aiSaveSettings: async (_s: Partial<AiProviderSettings>): Promise<IpcResult<null>> =>
+    ({ ok: true, data: null }),
+
+  aiCheckProvider: async (): Promise<IpcResult<boolean>> => ({ ok: true, data: false })
 }
 
 // ---------------------------------------------------------------------------
@@ -1246,6 +1266,9 @@ const bridgeApi = {
     realApi.aiAgentStream(q, h),
   aiAgentCancel: () => realApi.aiAgentCancel(),
   onAiStreamEvent: (cb: (e: AiStreamEvent) => void) => realApi.onAiStreamEvent(cb),
+  aiGetSettings: () => realApi.aiGetSettings(),
+  aiSaveSettings: (s: Partial<AiProviderSettings>) => realApi.aiSaveSettings(s),
+  aiCheckProvider: () => realApi.aiCheckProvider(),
   incidents: realApi.incidents,
   getServiceStatus: () => ipcRenderer.invoke(IpcChannel.SERVICE_STATUS_GET),
   storage: {

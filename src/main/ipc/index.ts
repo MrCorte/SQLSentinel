@@ -5,6 +5,7 @@ import { registerKnowledgeHandlers } from './handlers/knowledge.ipc'
 import { registerSystemHandlers } from './handlers/system.ipc'
 import { registerStorageHandlers } from './handlers/storage.ipc'
 import { registerIncidentHandlers } from './handlers/incidents.ipc'
+import { registerAiSettingsHandlers } from './handlers/aiSettings.ipc'
 
 export function registerIpcHandlers(): void {
   registerServerHandlers()
@@ -14,4 +15,5 @@ export function registerIpcHandlers(): void {
   registerSystemHandlers()
   registerStorageHandlers()
   registerIncidentHandlers()
+  registerAiSettingsHandlers()
 }

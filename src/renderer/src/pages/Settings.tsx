@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   Box,
   Card,
@@ -39,7 +39,7 @@ import { createLogger } from '../utils/logger'
 import { notify } from '../store/notifyStore'
 import { PasswordField } from '../components/ui/PasswordField'
 import { StorageSetupPage } from './StorageSetupPage'
-import type { StorageConfigInfo } from '../../../preload/index'
+import type { StorageConfigInfo, AiProviderSettings, AiProviderName } from '../../../preload/index'
 
 const log = createLogger('settings')
 
@@ -99,6 +99,148 @@ async function runExport(key: ExportKey): Promise<void> {
   }
   if (!result.ok) throw new Error((result as { error: string }).error)
   await window.sqlSentinel.saveCsv({ filename, content: result.data! })
+}
+
+// ---------------------------------------------------------------------------
+// AI Provider card
+// ---------------------------------------------------------------------------
+
+function AiProviderCard(): React.JSX.Element {
+  const [settings, setSettings] = useState<AiProviderSettings>({
+    provider: 'ollama',
+    ollamaModel: 'llama3.2:3b',
+    claudeModel: 'claude-haiku-4-5-20251001'
+  })
+  const [apiKey, setApiKey] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [healthy, setHealthy] = useState<boolean | null>(null)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
+
+  useEffect(() => {
+    window.sqlSentinel.aiGetSettings().then((res) => {
+      if (res.ok) {
+        setSettings(res.data)
+        // claudeApiKey from server is masked — show it in the field as placeholder
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    if (savedAt === null) return
+    const t = setTimeout(() => setSavedAt(null), 2000)
+    return () => clearTimeout(t)
+  }, [savedAt])
+
+  const checkHealth = useCallback(async () => {
+    setChecking(true)
+    setHealthy(null)
+    const res = await window.sqlSentinel.aiCheckProvider()
+    setChecking(false)
+    if (res.ok) setHealthy(res.data)
+  }, [])
+
+  async function handleSave(): Promise<void> {
+    setSaving(true)
+    const patch: Partial<AiProviderSettings> = {
+      provider: settings.provider,
+      ollamaModel: settings.ollamaModel,
+      claudeModel: settings.claudeModel
+    }
+    if (apiKey.trim()) patch.claudeApiKey = apiKey.trim()
+    const res = await window.sqlSentinel.aiSaveSettings(patch)
+    setSaving(false)
+    if (res.ok) {
+      setSavedAt(Date.now())
+      setApiKey('')
+    }
+  }
+
+  return (
+    <Card variant="outlined">
+      <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box>
+            <Typography variant="subtitle1" fontWeight={700}>
+              AI Provider
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              LLM backend used by the incident analysis agent.
+            </Typography>
+          </Box>
+          {healthy !== null && (
+            <Chip
+              size="small"
+              label={healthy ? 'reachable' : 'unreachable'}
+              color={healthy ? 'success' : 'error'}
+            />
+          )}
+        </Box>
+
+        <RadioGroup
+          row
+          value={settings.provider}
+          onChange={(e) => setSettings((s) => ({ ...s, provider: e.target.value as AiProviderName }))}
+        >
+          <FormControlLabel value="ollama" control={<Radio size="small" />} label="Ollama (local)" />
+          <FormControlLabel value="claude" control={<Radio size="small" />} label="Claude API" />
+        </RadioGroup>
+
+        {settings.provider === 'ollama' && (
+          <TextField
+            label="Ollama model"
+            size="small"
+            value={settings.ollamaModel}
+            onChange={(e) => setSettings((s) => ({ ...s, ollamaModel: e.target.value }))}
+            placeholder="llama3.2:3b"
+          />
+        )}
+
+        {settings.provider === 'claude' && (
+          <>
+            <TextField
+              label="Claude model"
+              size="small"
+              value={settings.claudeModel}
+              onChange={(e) => setSettings((s) => ({ ...s, claudeModel: e.target.value }))}
+              placeholder="claude-haiku-4-5-20251001"
+            />
+            <PasswordField
+              label="API key"
+              size="small"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={settings.claudeApiKey ? '(key saved — paste new to update)' : 'sk-ant-…'}
+            />
+          </>
+        )}
+
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Button
+            size="small"
+            variant="contained"
+            onClick={handleSave}
+            disabled={saving}
+            startIcon={saving ? <CircularProgress size={14} /> : undefined}
+          >
+            Save
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={checkHealth}
+            disabled={checking}
+            startIcon={checking ? <CircularProgress size={14} /> : undefined}
+          >
+            Test connection
+          </Button>
+          {savedAt !== null && (
+            <Typography variant="body2" color="success.main">Saved ✓</Typography>
+          )}
+        </Stack>
+      </CardContent>
+    </Card>
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -895,6 +1037,9 @@ export function Settings(): React.JSX.Element {
           </CardContent>
         </Card>
       )}
+
+      {/* Card — AI Provider */}
+      <AiProviderCard />
 
       {/* Card — Storage Database */}
       <Card variant="outlined">

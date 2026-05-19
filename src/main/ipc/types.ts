@@ -83,6 +83,10 @@ export enum IpcChannel {
   AI_AGENT_STREAM = 'ai:agentStream', // invoke: starts stream, returns IpcResult<void> immediately
   AI_AGENT_CANCEL = 'ai:agentCancel', // invoke: aborts active stream
   AI_STREAM_EVENT = 'ai:streamEvent', // push-only: main → renderer
+  // AI provider settings (Ollama / Claude)
+  AI_GET_SETTINGS = 'ai:getSettings',
+  AI_SAVE_SETTINGS = 'ai:saveSettings',
+  AI_CHECK_PROVIDER = 'ai:checkProvider',
   // Storage connection management
   STORAGE_GET_CONFIG      = 'storage:get-config',
   STORAGE_TEST_CONNECTION = 'storage:test-connection',
@@ -104,6 +108,16 @@ export enum IpcChannel {
 
 /** Unified result envelope — never throw raw errors to the renderer. */
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string }
+
+export type AiProviderName = 'ollama' | 'claude'
+
+export interface AiProviderSettings {
+  provider: AiProviderName
+  ollamaModel: string
+  /** Claude API key — returned masked (first 8 chars + '…') on read, full value on save */
+  claudeApiKey?: string
+  claudeModel: string
+}
 
 export type AiStreamEvent =
   | { type: 'tool_start'; name: string }

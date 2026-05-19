@@ -509,6 +509,15 @@ export type AiStreamEvent =
   | { type: 'done' }
   | { type: 'error'; message: string }
 
+export type AiProviderName = 'ollama' | 'claude'
+
+export interface AiProviderSettings {
+  provider: AiProviderName
+  ollamaModel: string
+  claudeApiKey?: string
+  claudeModel: string
+}
+
 export interface SqlSentinelAPI {
   appVersion(): Promise<IpcResult<{ version: string }>>
   scanSubnet(options: ScanOptions): Promise<IpcResult<DiscoveredServer[]>>
@@ -597,6 +606,9 @@ export interface SqlSentinelAPI {
   ): Promise<IpcResult<void>>
   aiAgentCancel(): Promise<void>
   onAiStreamEvent(callback: (event: AiStreamEvent) => void): () => void
+  aiGetSettings(): Promise<IpcResult<AiProviderSettings>>
+  aiSaveSettings(settings: Partial<AiProviderSettings>): Promise<IpcResult<null>>
+  aiCheckProvider(): Promise<IpcResult<boolean>>
   incidents: {
     list(req?: { status?: IncidentStatus }): Promise<IpcResult<Incident[]>>
     get(id: string): Promise<IpcResult<IncidentDetail>>

@@ -109,6 +109,7 @@ const pendingBatch: Array<{ serverId: string; metrics: ServerMetrics }> = []
 let batchFlushTimer: ReturnType<typeof setTimeout> | null = null
 
 let alertCallback: ((alert: Alert) => void) | null = null
+let incidentAlertCallback: ((alert: Alert) => void) | null = null
 let intervalOverrides: IntervalOverrides | null = null
 
 // ---------------------------------------------------------------------------
@@ -406,6 +407,7 @@ function processAlerts(sid: string, metrics: ServerMetrics): void {
     openAlertKeys.set(key, alert.id)
     pushToRenderer(IpcChannel.ALERT_NEW, alert)
     if (alertCallback) alertCallback(alert)
+    if (incidentAlertCallback) incidentAlertCallback(alert)
   }
 
   // Prune acknowledged alerts older than 24 h to keep storedAlerts bounded
@@ -797,6 +799,10 @@ export function onAlert(cb: (alert: Alert) => void): void {
   alertCallback = cb
 }
 
+export function onIncidentAlert(cb: (alert: Alert) => void): void {
+  incidentAlertCallback = cb
+}
+
 export function setIntervalOverrides(overrides: IntervalOverrides | null): void {
   intervalOverrides = overrides
   if (overrides !== null) {
@@ -837,6 +843,7 @@ export function __resetForTests(): void {
   alertCounter = 0
   activeServerId = null
   alertCallback = null
+  incidentAlertCallback = null
   intervalOverrides = null
   pendingBatch.length = 0
   if (batchFlushTimer !== null) {

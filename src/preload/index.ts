@@ -42,6 +42,12 @@ import type {
   StorageConnectionParams,
   StorageConfigInfo
 } from '../main/ipc/types'
+import type {
+  Incident,
+  IncidentDetail,
+  IncidentListRequest,
+  IncidentSetStatusRequest
+} from '../main/ipc/types'
 import type { ServerMetrics, ServerInfo } from '../main/collectors/types'
 import type { StoredServer } from '../main/store/serverStore'
 
@@ -128,6 +134,16 @@ export type {
   DatabaseFile
 } from '../main/collectors/types'
 export type { StoredServer } from '../main/store/serverStore'
+export type { AiStreamEvent } from '../main/ipc/types'
+export type {
+  Incident,
+  IncidentEvent,
+  IncidentAction,
+  IncidentDetail,
+  IncidentStatus,
+  IncidentEventKind,
+  ActionStatus
+} from '../main/ipc/types'
 
 // ---------------------------------------------------------------------------
 // Mock data — used only when VITE_MOCK_MODE === 'true'
@@ -711,6 +727,35 @@ const realApi = {
     const listener = (_event: IpcRendererEvent, ev: AiStreamEvent) => callback(ev)
     ipcRenderer.on(IpcChannel.AI_STREAM_EVENT, listener)
     return () => ipcRenderer.removeListener(IpcChannel.AI_STREAM_EVENT, listener)
+  },
+
+  incidents: {
+    list: (req?: IncidentListRequest): Promise<IpcResult<Incident[]>> =>
+      ipcRenderer.invoke(IpcChannel.INCIDENTS_LIST, req),
+
+    get: (id: string): Promise<IpcResult<IncidentDetail>> =>
+      ipcRenderer.invoke(IpcChannel.INCIDENTS_GET, id),
+
+    setStatus: (req: IncidentSetStatusRequest): Promise<IpcResult<null>> =>
+      ipcRenderer.invoke(IpcChannel.INCIDENTS_SET_STATUS, req),
+
+    countOpen: (): Promise<IpcResult<number>> =>
+      ipcRenderer.invoke(IpcChannel.INCIDENTS_COUNT_OPEN),
+
+    exportPostmortem: (id: string): Promise<IpcResult<string>> =>
+      ipcRenderer.invoke(IpcChannel.INCIDENTS_EXPORT_POSTMORTEM, id),
+
+    onCreated: (callback: (incident: Incident) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, inc: Incident) => callback(inc)
+      ipcRenderer.on(IpcChannel.INCIDENT_CREATED, listener)
+      return () => ipcRenderer.removeListener(IpcChannel.INCIDENT_CREATED, listener)
+    },
+
+    onUpdated: (callback: (incident: Incident) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, inc: Incident) => callback(inc)
+      ipcRenderer.on(IpcChannel.INCIDENT_UPDATED, listener)
+      return () => ipcRenderer.removeListener(IpcChannel.INCIDENT_UPDATED, listener)
+    }
   }
 }
 
@@ -1192,6 +1237,7 @@ const bridgeApi = {
     realApi.aiAgentStream(q, h),
   aiAgentCancel: () => realApi.aiAgentCancel(),
   onAiStreamEvent: (cb: (e: AiStreamEvent) => void) => realApi.onAiStreamEvent(cb),
+  incidents: realApi.incidents,
   getServiceStatus: () => ipcRenderer.invoke(IpcChannel.SERVICE_STATUS_GET),
   storage: {
     getConfig: (): Promise<IpcResult<StorageConfigInfo | null>> =>

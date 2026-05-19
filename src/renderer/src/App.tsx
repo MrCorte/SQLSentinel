@@ -5,6 +5,7 @@ import CssBaseline from '@mui/material/CssBaseline'
 import { Discovery } from './pages/Discovery'
 import { Inventory } from './pages/Inventory'
 import { Dashboard } from './pages/Dashboard'
+import { Incidents } from './pages/Incidents'
 // Lazy-loaded chunks: AIPanel (langchain ~1.5MB), Settings, StorageSetupPage,
 // LoginPage are reached only on demand. Splitting them out of the initial
 // bundle drops cold-start payload from ~3.7MB to ~2MB and reduces TTI ~300ms.
@@ -50,6 +51,7 @@ import type {
 import { createLogger } from './utils/logger'
 import { migrateAliasKeys, migrateServerGroupKeys } from './store/groupsStore'
 import { useGroupsStore } from './store/groupsStore'
+import { useIncidentsStore, loadOpenCount } from './store/incidentsStore'
 import { notify } from './store/notifyStore'
 import { getServerDisplayName } from './types/index'
 
@@ -79,6 +81,7 @@ function AppInner(): React.JSX.Element {
   } = useAlertsStore()
   const { selectedServerId, setSelectedServerId } = useAppStore()
   const servers = useServersStore((s) => s.servers)
+  const incidentBadge = useIncidentsStore((s) => s.openCount)
   const serverAliases = useGroupsStore((s) => s.serverAliases)
 
   // Derive selected server object from id
@@ -249,6 +252,17 @@ function AppInner(): React.JSX.Element {
       .catch((err) => log.error('getAlerts failed:', err))
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    loadOpenCount()
+    const unsubCreated = window.sqlSentinel.incidents.onCreated((incident) => {
+      useIncidentsStore.getState().upsertIncident(incident)
+    })
+    const unsubUpdated = window.sqlSentinel.incidents.onUpdated((incident) => {
+      useIncidentsStore.getState().upsertIncident(incident)
+    })
+    return () => { unsubCreated(); unsubUpdated() }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleAlertNew = useCallback(
     (...args: unknown[]) => {
       const alert = args[0] as Alert
@@ -290,7 +304,7 @@ function AppInner(): React.JSX.Element {
     <AccentProvider>
       <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
         {/* Icon Rail */}
-        <IconRail activeTab={tab} onTabChange={setTab} onSettingsClick={() => setTab(4)} />
+        <IconRail activeTab={tab} onTabChange={setTab} onSettingsClick={() => setTab(4)} incidentBadge={incidentBadge} />
 
         {/* Right of rail: breadcrumb + (tree + content) */}
         <Box
@@ -360,6 +374,11 @@ function AppInner(): React.JSX.Element {
                   <Suspense fallback={null}>
                     <Settings />
                   </Suspense>
+                </Box>
+              )}
+              {tab === 5 && (
+                <Box sx={{ height: '100%', overflow: 'hidden' }}>
+                  <Incidents />
                 </Box>
               )}
             </Box>

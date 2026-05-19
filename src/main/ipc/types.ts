@@ -87,7 +87,17 @@ export enum IpcChannel {
   STORAGE_GET_CONFIG      = 'storage:get-config',
   STORAGE_TEST_CONNECTION = 'storage:test-connection',
   STORAGE_SAVE_CONFIG     = 'storage:save-config',
-  STORAGE_SAFE_STORAGE_STATUS = 'storage:safeStorageStatus'
+  STORAGE_SAFE_STORAGE_STATUS = 'storage:safeStorageStatus',
+  // Incident management
+  INCIDENTS_LIST           = 'incidents:list',
+  INCIDENTS_GET            = 'incidents:get',
+  INCIDENTS_SET_STATUS     = 'incidents:setStatus',
+  INCIDENTS_COUNT_OPEN     = 'incidents:countOpen',
+  INCIDENTS_EXPORT_POSTMORTEM = 'incidents:exportPostmortem',
+  INCIDENT_CREATED         = 'incident:created',   // push: main → renderer
+  INCIDENT_UPDATED         = 'incident:updated',   // push: main → renderer
+  INCIDENT_EVENT           = 'incident:event',     // push: main → renderer
+  INCIDENT_ACTION          = 'incident:action'     // push: main → renderer
 }
 
 /** Unified result envelope — never throw raw errors to the renderer. */
@@ -378,3 +388,32 @@ export type {
   AgHealth,
   AgRole
 } from '../collectors/types'
+
+// ---------------------------------------------------------------------------
+// Incident management types (re-exported for preload bridge)
+// ---------------------------------------------------------------------------
+
+export type {
+  Incident,
+  IncidentEvent,
+  IncidentAction,
+  IncidentAuditEntry,
+  IncidentStatus,
+  IncidentEventKind,
+  ActionStatus
+} from '../incidents/types'
+
+export interface IncidentSetStatusRequest {
+  id: string
+  status: import('../incidents/types').IncidentStatus
+}
+
+export interface IncidentListRequest {
+  status?: import('../incidents/types').IncidentStatus
+}
+
+export interface IncidentDetail {
+  incident: import('../incidents/types').Incident
+  events: import('../incidents/types').IncidentEvent[]
+  actions: import('../incidents/types').IncidentAction[]
+}

@@ -6,6 +6,7 @@ const icon = app.isPackaged
   ? join(process.resourcesPath, 'icon.png')
   : join(__dirname, '../../resources/icon.png')
 import { registerIpcHandlers } from './ipc'
+import { setRendererWindow } from './ipc/push'
 import { initDefaultAdmin } from './authService'
 import { BackgroundService } from './backgroundService'
 import type { WorkerApi } from './backgroundService'
@@ -154,6 +155,7 @@ function createWindow(): void {
   })
 
   mainWindow.on('ready-to-show', () => {
+    setRendererWindow(mainWindow!)
     mainWindow!.setTitle('SQL Sentinel')
     mainWindow!.show()
     if (isDev) {

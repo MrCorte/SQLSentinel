@@ -1,8 +1,9 @@
-import { Box, Tooltip } from '@mui/material'
+import { Box, Tooltip, Badge } from '@mui/material'
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import SearchIcon from '@mui/icons-material/Search'
 import StorageIcon from '@mui/icons-material/Storage'
 import BarChartIcon from '@mui/icons-material/BarChart'
+import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import SettingsIcon from '@mui/icons-material/Settings'
 import { tokens } from '../../styles/tokens'
 
@@ -10,16 +11,18 @@ const SECTIONS = [
   { tab: 0, label: 'Overview', icon: DashboardIcon },
   { tab: 1, label: 'Discovery', icon: SearchIcon },
   { tab: 2, label: 'Inventory', icon: StorageIcon },
-  { tab: 3, label: 'Dashboard', icon: BarChartIcon }
+  { tab: 3, label: 'Dashboard', icon: BarChartIcon },
+  { tab: 5, label: 'Incidents', icon: WarningAmberIcon }
 ]
 
 interface Props {
   activeTab: number
   onTabChange: (tab: number) => void
   onSettingsClick: () => void
+  incidentBadge?: number
 }
 
-export function IconRail({ activeTab, onTabChange, onSettingsClick }: Props): React.JSX.Element {
+export function IconRail({ activeTab, onTabChange, onSettingsClick, incidentBadge = 0 }: Props): React.JSX.Element {
   return (
     <Box
       sx={{
@@ -83,6 +86,7 @@ export function IconRail({ activeTab, onTabChange, onSettingsClick }: Props): Re
       {/* Nav icons */}
       {SECTIONS.map(({ tab, label, icon: Icon }) => {
         const isActive = activeTab === tab
+        const showBadge = tab === 5 && incidentBadge > 0
         return (
           <Tooltip key={tab} title={label} placement="right" arrow>
             <Box
@@ -116,7 +120,14 @@ export function IconRail({ activeTab, onTabChange, onSettingsClick }: Props): Re
                 }
               }}
             >
-              <Icon sx={{ fontSize: 18 }} />
+              <Badge
+                badgeContent={showBadge ? incidentBadge : 0}
+                color="error"
+                max={99}
+                sx={{ '& .MuiBadge-badge': { fontSize: 9, height: 14, minWidth: 14, p: '0 3px' } }}
+              >
+                <Icon sx={{ fontSize: 18 }} />
+              </Badge>
             </Box>
           </Tooltip>
         )

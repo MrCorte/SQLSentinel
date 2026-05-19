@@ -441,6 +441,67 @@ export interface AgGroup {
   serverIds: string[] // ids of StoredServer that are part of this AG
 }
 
+// ---------------------------------------------------------------------------
+// Incident management
+// ---------------------------------------------------------------------------
+
+export type IncidentStatus =
+  | 'open'
+  | 'investigating'
+  | 'awaiting_approval'
+  | 'resolved'
+  | 'archived'
+
+export type IncidentEventKind =
+  | 'alert_added'
+  | 'tool_call'
+  | 'llm_message'
+  | 'action_proposed'
+  | 'action_executed'
+  | 'status_change'
+
+export type ActionStatus = 'pending' | 'approved' | 'rejected' | 'executed' | 'failed'
+
+export interface Incident {
+  id: string
+  serverId: string
+  category: AlertCategory
+  severity: AlertSeverity
+  status: IncidentStatus
+  openedAt: number
+  resolvedAt?: number
+  summary?: string
+  rootCauseMd?: string
+}
+
+export interface IncidentEvent {
+  id: string
+  incidentId: string
+  kind: IncidentEventKind
+  payload: unknown
+  at: number
+}
+
+export interface IncidentAction {
+  id: string
+  incidentId: string
+  toolName: string
+  params: Record<string, unknown>
+  tsqlPreview: string
+  explanation: string
+  status: ActionStatus
+  approvedBy?: string
+  executedAt?: number
+  result?: unknown
+  rejectionReason?: string
+}
+
+export interface IncidentDetail {
+  incident: Incident
+  events: IncidentEvent[]
+  actions: IncidentAction[]
+}
+
 export type AiStreamEvent =
   | { type: 'tool_start'; name: string }
   | { type: 'tool_end'; name: string; output: string }
@@ -536,6 +597,15 @@ export interface SqlSentinelAPI {
   ): Promise<IpcResult<void>>
   aiAgentCancel(): Promise<void>
   onAiStreamEvent(callback: (event: AiStreamEvent) => void): () => void
+  incidents: {
+    list(req?: { status?: IncidentStatus }): Promise<IpcResult<Incident[]>>
+    get(id: string): Promise<IpcResult<IncidentDetail>>
+    setStatus(req: { id: string; status: IncidentStatus }): Promise<IpcResult<null>>
+    countOpen(): Promise<IpcResult<number>>
+    exportPostmortem(id: string): Promise<IpcResult<string>>
+    onCreated(callback: (incident: Incident) => void): () => void
+    onUpdated(callback: (incident: Incident) => void): () => void
+  }
   getServiceStatus(): Promise<IpcResult<{ status: 'connected' | 'connecting' | 'disconnected' }>>
   storage: {
     getConfig(): Promise<IpcResult<StorageConfigInfo | null>>

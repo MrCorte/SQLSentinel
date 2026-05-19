@@ -94,10 +94,12 @@ export enum IpcChannel {
   INCIDENTS_SET_STATUS     = 'incidents:setStatus',
   INCIDENTS_COUNT_OPEN     = 'incidents:countOpen',
   INCIDENTS_EXPORT_POSTMORTEM = 'incidents:exportPostmortem',
+  INCIDENTS_RUN_AGENT      = 'incidents:runAgent',
   INCIDENT_CREATED         = 'incident:created',   // push: main → renderer
   INCIDENT_UPDATED         = 'incident:updated',   // push: main → renderer
   INCIDENT_EVENT           = 'incident:event',     // push: main → renderer
-  INCIDENT_ACTION          = 'incident:action'     // push: main → renderer
+  INCIDENT_ACTION          = 'incident:action',    // push: main → renderer
+  INCIDENT_AGENT_EVENT     = 'incident:agentEvent' // push: AiStreamEvent for live token streaming
 }
 
 /** Unified result envelope — never throw raw errors to the renderer. */

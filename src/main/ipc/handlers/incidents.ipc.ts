@@ -5,12 +5,28 @@ import { IpcChannel } from '../types'
 import type { IpcResult, IncidentListRequest, IncidentSetStatusRequest, IncidentDetail } from '../types'
 import type { Incident, IncidentEvent, IncidentAction } from '../../incidents/types'
 import * as repository from '../../incidents/repository'
-import { attachDetector, onIncidentChange } from '../../incidents/detector'
+import { attachDetector, onIncidentChange, setAgentRunner } from '../../incidents/detector'
+import { runIncidentAgent } from '../../incidents/incidentAgent'
+
+function fireAgent(incidentId: string): void {
+  runIncidentAgent(incidentId, {
+    onEvent: (ev) => pushToRenderer(IpcChannel.INCIDENT_AGENT_EVENT, { incidentId, event: ev })
+  })
+    .then(() => {
+      // Push updated incident with summary/rootCause after agent completes.
+      const incident = repository.getIncidentById(incidentId)
+      if (incident) pushToRenderer(IpcChannel.INCIDENT_UPDATED, incident)
+    })
+    .catch((err) => log.error('[incidents] agent error:', err))
+}
 
 export function registerIncidentHandlers(): void {
   // Attach detector on first handler registration — idempotent in practice
   // (registerIpcHandlers is called once at startup)
   attachDetector()
+
+  // Wire the agent runner so the detector can trigger it on new incidents.
+  setAgentRunner(fireAgent)
 
   // Push incident changes to renderer whenever the detector fires
   onIncidentChange((type, incidentId) => {
@@ -93,6 +109,17 @@ export function registerIncidentHandlers(): void {
       log.error('[IPC] INCIDENTS_EXPORT_POSTMORTEM:', safeError(err))
       return { ok: false, error: safeError(err) }
     }
+  })
+
+  handle(IpcChannel.INCIDENTS_RUN_AGENT, (
+    _event: IpcMainInvokeEvent,
+    id: string
+  ): IpcResult<null> => {
+    const incident = repository.getIncidentById(id)
+    if (!incident) return { ok: false, error: `Incident ${id} not found` }
+    // Runs asynchronously — agent events are pushed via INCIDENT_AGENT_EVENT.
+    setImmediate(() => fireAgent(id))
+    return { ok: true, data: null }
   })
 }
 

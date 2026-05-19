@@ -605,6 +605,8 @@ export interface SqlSentinelAPI {
     exportPostmortem(id: string): Promise<IpcResult<string>>
     onCreated(callback: (incident: Incident) => void): () => void
     onUpdated(callback: (incident: Incident) => void): () => void
+    runAgent(id: string): Promise<IpcResult<null>>
+    onAgentEvent(callback: (payload: { incidentId: string; event: AiStreamEvent }) => void): () => void
   }
   getServiceStatus(): Promise<IpcResult<{ status: 'connected' | 'connecting' | 'disconnected' }>>
   storage: {

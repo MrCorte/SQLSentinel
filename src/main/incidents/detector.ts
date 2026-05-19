@@ -12,9 +12,15 @@ const SEVERITY_RANK: Record<string, number> = { WARNING: 1, CRITICAL: 2 }
 type IncidentCallback = (type: 'created' | 'updated', incidentId: string) => void
 
 let _callback: IncidentCallback | null = null
+// Populated by registerIncidentHandlers to avoid a circular dep at import time.
+let _agentRunner: ((id: string) => void) | null = null
 
 export function onIncidentChange(cb: IncidentCallback): void {
   _callback = cb
+}
+
+export function setAgentRunner(fn: (id: string) => void): void {
+  _agentRunner = fn
 }
 
 export function attachDetector(): void {
@@ -65,5 +71,9 @@ function handleAlert(alert: Alert): void {
 
     log.info(`[detector] new incident ${incident.id} created (${alert.category}, ${alert.severity})`)
     _callback?.('created', incident.id)
+    // Fire agent asynchronously so the alert pipeline is never blocked.
+    if (_agentRunner) {
+      setImmediate(() => _agentRunner!(incident.id))
+    }
   }
 }

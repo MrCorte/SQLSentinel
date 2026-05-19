@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Box from '@mui/material/Box'
 import Drawer from '@mui/material/Drawer'
 import Typography from '@mui/material/Typography'
@@ -12,6 +12,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import ArchiveIcon from '@mui/icons-material/Archive'
 import DownloadIcon from '@mui/icons-material/Download'
+import SmartToyIcon from '@mui/icons-material/SmartToy'
 import { tokens } from '../../styles/tokens'
 import { useIncidentsStore, loadDetail } from '../../store/incidentsStore'
 import { notify } from '../../store/notifyStore'
@@ -39,9 +40,35 @@ interface Props {
 
 export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Element {
   const { selectedId, detail, loadingDetail } = useIncidentsStore()
+  const [agentRunning, setAgentRunning] = useState(false)
+  const [agentTokens, setAgentTokens] = useState('')
+  const tokenBufRef = useRef('')
 
   useEffect(() => {
-    if (open && selectedId) loadDetail(selectedId)
+    if (open && selectedId) {
+      loadDetail(selectedId)
+      setAgentTokens('')
+      tokenBufRef.current = ''
+    }
+  }, [open, selectedId])
+
+  // Subscribe to live agent events for this incident.
+  useEffect(() => {
+    if (!open || !selectedId) return
+    const unsub = window.sqlSentinel.incidents.onAgentEvent(({ incidentId, event }) => {
+      if (incidentId !== selectedId) return
+      if (event.type === 'token') {
+        tokenBufRef.current += event.text
+        setAgentTokens(tokenBufRef.current)
+      } else if (event.type === 'done' || event.type === 'error') {
+        setAgentRunning(false)
+        // Reload detail to pick up summary/rootCause written by the agent.
+        loadDetail(selectedId)
+      } else if (event.type === 'tool_start') {
+        setAgentRunning(true)
+      }
+    })
+    return unsub
   }, [open, selectedId])
 
   const incident = detail?.incident
@@ -63,6 +90,18 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
     a.download = `incident-${incident.id.slice(0, 8)}.md`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  async function handleRunAgent(): Promise<void> {
+    if (!incident || agentRunning) return
+    setAgentRunning(true)
+    tokenBufRef.current = ''
+    setAgentTokens('')
+    const res = await window.sqlSentinel.incidents.runAgent(incident.id)
+    if (!res.ok) {
+      notify.error(res.error, 'Agent failed to start')
+      setAgentRunning(false)
+    }
   }
 
   return (
@@ -89,6 +128,13 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
         <Typography sx={{ flex: 1, fontWeight: 600, fontSize: 14 }}>
           {incident ? `Incident #${incident.id.slice(0, 8)}` : 'Incident Detail'}
         </Typography>
+        <Tooltip title={agentRunning ? 'AI analysis running…' : 'Run AI analysis'}>
+          <span>
+            <IconButton size="small" onClick={handleRunAgent} disabled={!incident || agentRunning}>
+              {agentRunning ? <CircularProgress size={16} /> : <SmartToyIcon fontSize="small" />}
+            </IconButton>
+          </span>
+        </Tooltip>
         <Tooltip title="Export postmortem">
           <span>
             <IconButton size="small" onClick={handleExport} disabled={!incident}>
@@ -176,6 +222,34 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
                   }}
                 >
                   {incident.rootCauseMd}
+                </Box>
+              </Box>
+            )}
+
+            {/* Live AI stream */}
+            {(agentRunning || agentTokens) && (
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                  <Typography sx={{ fontSize: 11, color: tokens.color.textMuted }}>AI Analysis</Typography>
+                  {agentRunning && <CircularProgress size={10} sx={{ ml: 0.5 }} />}
+                </Box>
+                <Box
+                  component="pre"
+                  sx={{
+                    fontSize: 12,
+                    fontFamily: 'inherit',
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    bgcolor: tokens.color.bgBase,
+                    border: `1px solid ${tokens.color.bgBorder}`,
+                    borderRadius: 1,
+                    p: 1.5,
+                    m: 0,
+                    maxHeight: 240,
+                    overflowY: 'auto'
+                  }}
+                >
+                  {agentTokens || '…'}
                 </Box>
               </Box>
             )}

@@ -755,6 +755,15 @@ const realApi = {
       const listener = (_e: IpcRendererEvent, inc: Incident) => callback(inc)
       ipcRenderer.on(IpcChannel.INCIDENT_UPDATED, listener)
       return () => ipcRenderer.removeListener(IpcChannel.INCIDENT_UPDATED, listener)
+    },
+
+    runAgent: (id: string): Promise<IpcResult<null>> =>
+      ipcRenderer.invoke(IpcChannel.INCIDENTS_RUN_AGENT, id),
+
+    onAgentEvent: (callback: (payload: { incidentId: string; event: AiStreamEvent }) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, payload: { incidentId: string; event: AiStreamEvent }) => callback(payload)
+      ipcRenderer.on(IpcChannel.INCIDENT_AGENT_EVENT, listener)
+      return () => ipcRenderer.removeListener(IpcChannel.INCIDENT_AGENT_EVENT, listener)
     }
   }
 }

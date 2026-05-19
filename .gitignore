@@ -12,7 +12,9 @@ CLAUDE.local.md
 .claude/
 .superpowers/
 .vscode/
-docs/
 REFACTORING_PLAN.md
 documentazione.md
 data/*.pdf
+docs/~$*
+docs/superpowers/
+docs/*.docx

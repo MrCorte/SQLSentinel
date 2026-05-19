@@ -16,7 +16,7 @@ import SmartToyIcon from '@mui/icons-material/SmartToy'
 import { tokens } from '../../styles/tokens'
 import { useIncidentsStore, loadDetail } from '../../store/incidentsStore'
 import { notify } from '../../store/notifyStore'
-import type { IncidentEvent, IncidentStatus } from '../../../../preload/index'
+import type { IncidentEvent, IncidentAction, IncidentStatus } from '../../../../preload/index'
 
 const DRAWER_WIDTH = 480
 
@@ -43,14 +43,23 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
   const [agentRunning, setAgentRunning] = useState(false)
   const [agentTokens, setAgentTokens] = useState('')
   const tokenBufRef = useRef('')
+  const [pendingActions, setPendingActions] = useState<IncidentAction[]>([])
+  const [actionBusy, setActionBusy] = useState<string | null>(null) // actionId being approved/rejected
 
   useEffect(() => {
     if (open && selectedId) {
       loadDetail(selectedId)
       setAgentTokens('')
       tokenBufRef.current = ''
+      setPendingActions([])
     }
   }, [open, selectedId])
+
+  // Sync pending actions from loaded detail.
+  useEffect(() => {
+    const actions = (detail?.actions ?? []).filter((a) => a.status === 'pending')
+    setPendingActions(actions)
+  }, [detail])
 
   // Subscribe to live agent events for this incident.
   useEffect(() => {
@@ -62,11 +71,25 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
         setAgentTokens(tokenBufRef.current)
       } else if (event.type === 'done' || event.type === 'error') {
         setAgentRunning(false)
-        // Reload detail to pick up summary/rootCause written by the agent.
         loadDetail(selectedId)
       } else if (event.type === 'tool_start') {
         setAgentRunning(true)
       }
+    })
+    return unsub
+  }, [open, selectedId])
+
+  // Subscribe to action push events (proposed / approved / rejected).
+  useEffect(() => {
+    if (!open || !selectedId) return
+    const unsub = window.sqlSentinel.incidents.onAction(({ incidentId, action }) => {
+      if (incidentId !== selectedId) return
+      setPendingActions((prev) => {
+        if (action.status === 'pending') {
+          return prev.some((a) => a.id === action.id) ? prev : [...prev, action]
+        }
+        return prev.filter((a) => a.id !== action.id)
+      })
     })
     return unsub
   }, [open, selectedId])
@@ -102,6 +125,21 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
       notify.error(res.error, 'Agent failed to start')
       setAgentRunning(false)
     }
+  }
+
+  async function handleApproveAction(actionId: string): Promise<void> {
+    setActionBusy(actionId)
+    const res = await window.sqlSentinel.incidents.approveAction({ actionId, approvedBy: 'user' })
+    setActionBusy(null)
+    if (!res.ok) notify.error(res.error, 'Action failed')
+    else loadDetail(selectedId!)
+  }
+
+  async function handleRejectAction(actionId: string): Promise<void> {
+    setActionBusy(actionId)
+    const res = await window.sqlSentinel.incidents.rejectAction({ actionId })
+    setActionBusy(null)
+    if (!res.ok) notify.error(res.error, 'Reject failed')
   }
 
   return (
@@ -271,7 +309,30 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
               </Box>
             </Box>
 
-            {/* Actions */}
+            {/* Pending action proposals */}
+            {pendingActions.length > 0 && (
+              <>
+                <Divider />
+                <Box>
+                  <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 1, color: tokens.color.warning, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Pending Actions ({pendingActions.length})
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    {pendingActions.map((action) => (
+                      <ActionApprovalCard
+                        key={action.id}
+                        action={action}
+                        busy={actionBusy === action.id}
+                        onApprove={() => handleApproveAction(action.id)}
+                        onReject={() => handleRejectAction(action.id)}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              </>
+            )}
+
+            {/* Status buttons */}
             <Divider />
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
               {(incident.status === 'open' || incident.status === 'investigating') && (
@@ -340,6 +401,80 @@ function EventRow({ event }: { event: IncidentEvent }): React.JSX.Element {
           {detail}
         </Typography>
       )}
+    </Box>
+  )
+}
+
+interface ActionApprovalCardProps {
+  action: IncidentAction
+  busy: boolean
+  onApprove: () => void
+  onReject: () => void
+}
+
+function ActionApprovalCard({ action, busy, onApprove, onReject }: ActionApprovalCardProps): React.JSX.Element {
+  return (
+    <Box
+      sx={{
+        border: `1px solid ${tokens.color.warning}`,
+        borderRadius: 1,
+        p: 1.5,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 1
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Chip
+          label={action.toolName.replace(/_/g, ' ')}
+          size="small"
+          sx={{ bgcolor: tokens.color.warning, color: '#fff', fontWeight: 600, fontSize: 11 }}
+        />
+        <Typography sx={{ fontSize: 12, color: tokens.color.textMuted, wordBreak: 'break-word' }}>
+          {action.explanation}
+        </Typography>
+      </Box>
+
+      <Box
+        component="pre"
+        sx={{
+          fontSize: 11,
+          fontFamily: 'monospace',
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+          bgcolor: tokens.color.bgBase,
+          border: `1px solid ${tokens.color.bgBorder}`,
+          borderRadius: 1,
+          p: 1,
+          m: 0,
+          maxHeight: 120,
+          overflowY: 'auto'
+        }}
+      >
+        {action.tsqlPreview}
+      </Box>
+
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <Button
+          size="small"
+          variant="contained"
+          color="warning"
+          disabled={busy}
+          startIcon={busy ? <CircularProgress size={12} /> : <CheckCircleIcon fontSize="small" />}
+          onClick={onApprove}
+        >
+          Approve & Run
+        </Button>
+        <Button
+          size="small"
+          variant="outlined"
+          color="inherit"
+          disabled={busy}
+          onClick={onReject}
+        >
+          Reject
+        </Button>
+      </Box>
     </Box>
   )
 }

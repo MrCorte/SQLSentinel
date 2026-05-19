@@ -99,6 +99,8 @@ export enum IpcChannel {
   INCIDENTS_COUNT_OPEN     = 'incidents:countOpen',
   INCIDENTS_EXPORT_POSTMORTEM = 'incidents:exportPostmortem',
   INCIDENTS_RUN_AGENT      = 'incidents:runAgent',
+  INCIDENTS_APPROVE_ACTION = 'incidents:approveAction',
+  INCIDENTS_REJECT_ACTION  = 'incidents:rejectAction',
   INCIDENT_CREATED         = 'incident:created',   // push: main → renderer
   INCIDENT_UPDATED         = 'incident:updated',   // push: main → renderer
   INCIDENT_EVENT           = 'incident:event',     // push: main → renderer

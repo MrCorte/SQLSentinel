@@ -2,6 +2,7 @@ import * as serverStore from '../store/serverStore'
 import * as repo from './repository'
 import { getProvider } from '../ai/providers'
 import { buildDiagnosticTools } from '../ai/diagnosticTools'
+import { buildActionTools } from '../ai/actionTools'
 import type { ToolDefinition } from '../ai/providers'
 import type { AiStreamEvent } from '../ipc/types'
 import type { Incident } from './types'
@@ -30,12 +31,14 @@ INCIDENT
 TASK
 1. Use the diagnostic tools to collect live data from the affected server.
 2. Identify the most likely root cause based on the data.
-3. Write a concise summary (1 sentence) and a markdown root-cause analysis (2-4 paragraphs).
+3. If a safe corrective action is appropriate (e.g. killing a confirmed long-running blocker), use an action proposal tool — it will NOT execute immediately; a human must approve first.
+4. Write a concise summary (1 sentence) and a markdown root-cause analysis (2-4 paragraphs).
 
 RULES
 - Always respond in English.
 - Use only the provided tools. Do not invent data.
-- Queries are executed live against the monitored server — do not run destructive commands.
+- Only propose an action when the diagnostic data clearly supports it.
+- Never propose the same action twice.
 - End with a section "## Root Cause" followed by your analysis.
 - Do not repeat the incident metadata in the body.`
 }
@@ -80,16 +83,40 @@ export async function runIncidentAgent(
   }
 
   const diagnosticTools = buildDiagnosticTools(conn)
+  const actionTools = buildActionTools(incidentId)
+  const allTools = [...diagnosticTools, ...actionTools]
 
-  // Build ToolDefinition array for the provider (all tools here have empty schemas).
-  const toolDefs: ToolDefinition[] = diagnosticTools.map((t) => ({
-    name: t.name,
-    description: t.description,
-    inputSchema: EMPTY_SCHEMA
-  }))
+  // Build ToolDefinition array for the provider.
+  // Diagnostic tools have empty schemas; action tools have structured schemas.
+  const toolDefs: ToolDefinition[] = allTools.map((t) => {
+    // DynamicStructuredTool exposes the zod schema — convert to JSON Schema.
+    // For diagnostic tools (empty schema) and action tools with simple types
+    // we produce the JSON Schema manually from the zod shape.
+    const shape = (t.schema as { shape?: Record<string, unknown> }).shape
+    const properties: Record<string, { type: string; description?: string }> = {}
+    const required: string[] = []
+    if (shape) {
+      for (const [key, def] of Object.entries(shape)) {
+        const d = def as { _def?: { typeName?: string; description?: string } }
+        const typeName = d._def?.typeName ?? 'ZodString'
+        properties[key] = {
+          type: typeName === 'ZodNumber' ? 'number' : 'string',
+          description: d._def?.description
+        }
+        required.push(key)
+      }
+    }
+    return {
+      name: t.name,
+      description: t.description,
+      inputSchema: Object.keys(properties).length > 0
+        ? { type: 'object' as const, properties, required }
+        : EMPTY_SCHEMA
+    }
+  })
 
   // Dispatch table: tool name → DynamicStructuredTool.invoke()
-  const toolMap = new Map(diagnosticTools.map((t) => [t.name, t]))
+  const toolMap = new Map(allTools.map((t) => [t.name, t]))
 
   const ac = new AbortController()
 

@@ -7,6 +7,9 @@ import type { Incident, IncidentEvent, IncidentAction } from '../../incidents/ty
 import * as repository from '../../incidents/repository'
 import { attachDetector, onIncidentChange, setAgentRunner } from '../../incidents/detector'
 import { runIncidentAgent } from '../../incidents/incidentAgent'
+import { ACTION_WHITELIST } from '../../ai/actionTools'
+import { getPool } from '../../collectors/connectionPool'
+import * as serverStore from '../../store/serverStore'
 
 function fireAgent(incidentId: string): void {
   runIncidentAgent(incidentId, {
@@ -117,9 +120,79 @@ export function registerIncidentHandlers(): void {
   ): IpcResult<null> => {
     const incident = repository.getIncidentById(id)
     if (!incident) return { ok: false, error: `Incident ${id} not found` }
-    // Runs asynchronously — agent events are pushed via INCIDENT_AGENT_EVENT.
     setImmediate(() => fireAgent(id))
     return { ok: true, data: null }
+  })
+
+  handle(IpcChannel.INCIDENTS_APPROVE_ACTION, async (
+    _event: IpcMainInvokeEvent,
+    req: { actionId: string; approvedBy: string }
+  ): Promise<IpcResult<null>> => {
+    try {
+      const action = repository.getActionById(req.actionId)
+      if (!action) return { ok: false, error: `Action ${req.actionId} not found` }
+      if (action.status !== 'pending') return { ok: false, error: `Action is not pending (status: ${action.status})` }
+
+      // Hard whitelist guard — defence-in-depth even if the UI is bypassed.
+      if (!ACTION_WHITELIST.has(action.toolName)) {
+        return { ok: false, error: `Tool '${action.toolName}' is not whitelisted for execution` }
+      }
+
+      const incident = repository.getIncidentById(action.incidentId)
+      if (!incident) return { ok: false, error: 'Parent incident not found' }
+
+      const server = serverStore.getById(incident.serverId)
+      if (!server) return { ok: false, error: 'Server not found' }
+
+      // Execute the T-SQL preview against the server.
+      const pool = await getPool({
+        ip: server.host,
+        port: server.port,
+        instanceName: server.instanceName,
+        username: server.username,
+        password: server.password,
+        useWindowsAuth: server.useWindowsAuth,
+        encrypt: true,
+        trustServerCertificate: true
+      })
+      await pool.request().query(action.tsqlPreview)
+
+      repository.approveAction(req.actionId, req.approvedBy, { executed: true })
+      repository.addEvent(action.incidentId, 'action_executed', { toolName: action.toolName, actionId: action.id })
+
+      // Push updated action to renderer.
+      const updated = repository.getActionById(req.actionId)
+      if (updated) pushToRenderer(IpcChannel.INCIDENT_ACTION, { incidentId: action.incidentId, action: updated })
+
+      return { ok: true, data: null }
+    } catch (err) {
+      // Mark the action as failed if execution throws.
+      try { repository.failAction(req.actionId, safeError(err)) } catch {}
+      log.error('[IPC] INCIDENTS_APPROVE_ACTION execute error:', safeError(err))
+      return { ok: false, error: safeError(err) }
+    }
+  })
+
+  handle(IpcChannel.INCIDENTS_REJECT_ACTION, (
+    _event: IpcMainInvokeEvent,
+    req: { actionId: string; reason?: string }
+  ): IpcResult<null> => {
+    try {
+      const action = repository.getActionById(req.actionId)
+      if (!action) return { ok: false, error: `Action ${req.actionId} not found` }
+      if (action.status !== 'pending') return { ok: false, error: `Action is not pending (status: ${action.status})` }
+
+      repository.rejectAction(req.actionId, req.reason ?? 'Rejected by user')
+      repository.addEvent(action.incidentId, 'status_change', { actionId: req.actionId, status: 'rejected' })
+
+      const updated = repository.getActionById(req.actionId)
+      if (updated) pushToRenderer(IpcChannel.INCIDENT_ACTION, { incidentId: action.incidentId, action: updated })
+
+      return { ok: true, data: null }
+    } catch (err) {
+      log.error('[IPC] INCIDENTS_REJECT_ACTION:', safeError(err))
+      return { ok: false, error: safeError(err) }
+    }
   })
 }
 

@@ -49,6 +49,7 @@ import type {
   IncidentSetStatusRequest,
   AiProviderSettings
 } from '../main/ipc/types'
+import type { IncidentAction } from '../main/incidents/types'
 import type { ServerMetrics, ServerInfo } from '../main/collectors/types'
 import type { StoredServer } from '../main/store/serverStore'
 
@@ -770,10 +771,22 @@ const realApi = {
     runAgent: (id: string): Promise<IpcResult<null>> =>
       ipcRenderer.invoke(IpcChannel.INCIDENTS_RUN_AGENT, id),
 
+    approveAction: (req: { actionId: string; approvedBy: string }): Promise<IpcResult<null>> =>
+      ipcRenderer.invoke(IpcChannel.INCIDENTS_APPROVE_ACTION, req),
+
+    rejectAction: (req: { actionId: string; reason?: string }): Promise<IpcResult<null>> =>
+      ipcRenderer.invoke(IpcChannel.INCIDENTS_REJECT_ACTION, req),
+
     onAgentEvent: (callback: (payload: { incidentId: string; event: AiStreamEvent }) => void): (() => void) => {
       const listener = (_e: IpcRendererEvent, payload: { incidentId: string; event: AiStreamEvent }) => callback(payload)
       ipcRenderer.on(IpcChannel.INCIDENT_AGENT_EVENT, listener)
       return () => ipcRenderer.removeListener(IpcChannel.INCIDENT_AGENT_EVENT, listener)
+    },
+
+    onAction: (callback: (payload: { incidentId: string; action: IncidentAction }) => void): (() => void) => {
+      const listener = (_e: IpcRendererEvent, payload: { incidentId: string; action: IncidentAction }) => callback(payload)
+      ipcRenderer.on(IpcChannel.INCIDENT_ACTION, listener)
+      return () => ipcRenderer.removeListener(IpcChannel.INCIDENT_ACTION, listener)
     }
   }
 }

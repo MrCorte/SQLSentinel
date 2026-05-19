@@ -618,7 +618,10 @@ export interface SqlSentinelAPI {
     onCreated(callback: (incident: Incident) => void): () => void
     onUpdated(callback: (incident: Incident) => void): () => void
     runAgent(id: string): Promise<IpcResult<null>>
+    approveAction(req: { actionId: string; approvedBy: string }): Promise<IpcResult<null>>
+    rejectAction(req: { actionId: string; reason?: string }): Promise<IpcResult<null>>
     onAgentEvent(callback: (payload: { incidentId: string; event: AiStreamEvent }) => void): () => void
+    onAction(callback: (payload: { incidentId: string; action: IncidentAction }) => void): () => void
   }
   getServiceStatus(): Promise<IpcResult<{ status: 'connected' | 'connecting' | 'disconnected' }>>
   storage: {

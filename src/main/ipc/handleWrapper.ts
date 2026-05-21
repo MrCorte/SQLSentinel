@@ -22,7 +22,9 @@ const AUTH_EXEMPT_CHANNELS = new Set<string>([
   IpcChannel.AUTH_LOGOUT,
   IpcChannel.AUTH_CHECK,
   IpcChannel.SETTINGS_GET,
-  IpcChannel.STORAGE_GET_CONFIG
+  IpcChannel.STORAGE_GET_CONFIG,
+  // Read-only status check used by StorageSetupPage before the user logs in
+  IpcChannel.STORAGE_SAFE_STORAGE_STATUS
 ])
 
 // Canali esenti SOLO finché lo storage non è configurato (bootstrap di prima

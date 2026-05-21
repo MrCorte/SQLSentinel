@@ -119,6 +119,10 @@ export interface AiProviderSettings {
   /** Claude API key — returned masked (first 8 chars + '…') on read, full value on save */
   claudeApiKey?: string
   claudeModel: string
+  /** Strip query_text / current_sql fields before sending tool output to Claude (default: true) */
+  redactQueryText: boolean
+  /** Master switch — when false, all agent action approvals are blocked (default: true) */
+  agentActionsEnabled: boolean
 }
 
 export type AiStreamEvent =

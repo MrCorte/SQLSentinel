@@ -199,6 +199,10 @@ function buildStmts(db: Database.Database) {
     ),
     findAudit: db.prepare<[string], IncidentAuditRow>(
       'SELECT * FROM incident_audit WHERE incident_id = ? ORDER BY at ASC'
+    ),
+    countApprovedForIncident: db.prepare<[string], { count: number }>(
+      `SELECT COUNT(*) AS count FROM incident_actions
+       WHERE incident_id = ? AND status IN ('executed', 'approved')`
     )
   }
 }
@@ -344,12 +348,16 @@ export function failAction(id: string, error: string): void {
   stmts().updateActionStatus.run('failed', null, null, null, error, id)
 }
 
+export function countApprovedActionsForIncident(incidentId: string): number {
+  return stmts().countApprovedForIncident.get(incidentId)?.count ?? 0
+}
+
 // ---------------------------------------------------------------------------
 // Public API — audit
 // ---------------------------------------------------------------------------
 
 export function sha256(text: string): string {
-  return createHash('sha256').update(text).digest('hex').slice(0, 16)
+  return createHash('sha256').update(text).digest('hex').slice(0, 32)
 }
 
 export function addAuditEntry(

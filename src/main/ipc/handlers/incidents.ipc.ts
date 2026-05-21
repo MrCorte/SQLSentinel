@@ -10,6 +10,81 @@ import { runIncidentAgent } from '../../incidents/incidentAgent'
 import { ACTION_WHITELIST } from '../../ai/actionTools'
 import { getPool } from '../../collectors/connectionPool'
 import * as serverStore from '../../store/serverStore'
+import { getDb } from '../../store/database'
+
+// ---------------------------------------------------------------------------
+// Layer 4 — Global hourly rate limit + kill switch
+// ---------------------------------------------------------------------------
+
+const MAX_ACTIONS_PER_INCIDENT = 3
+const MAX_ACTIONS_PER_HOUR = 10
+
+// Sliding-window timestamp log of approved actions (in-memory, resets on restart).
+const hourlyActionLog: number[] = []
+
+function checkGlobalRateLimit(): void {
+  const cutoff = Date.now() - 3_600_000
+  while (hourlyActionLog.length > 0 && hourlyActionLog[0] < cutoff) hourlyActionLog.shift()
+  if (hourlyActionLog.length >= MAX_ACTIONS_PER_HOUR) {
+    throw new Error(`Global rate limit reached: max ${MAX_ACTIONS_PER_HOUR} agent actions per hour`)
+  }
+}
+
+function recordGlobalAction(): void {
+  hourlyActionLog.push(Date.now())
+}
+
+function isAgentActionsEnabled(): boolean {
+  const row = getDb()
+    .prepare<[], { value: string }>(`SELECT value FROM settings WHERE key = 'ai_agent_actions_enabled'`)
+    .get()
+  return row?.value !== 'false'
+}
+
+// ---------------------------------------------------------------------------
+// Layer 2 — Hard-coded preconditions (TypeScript, not delegated to LLM)
+// ---------------------------------------------------------------------------
+
+const PROTECTED_LOGINS = new Set([
+  'sa',
+  'NT AUTHORITY\\SYSTEM',
+  'NT AUTHORITY\\NETWORK SERVICE',
+  'NT AUTHORITY\\LOCAL SERVICE',
+  'NT SERVICE\\MSSQLSERVER',
+  'NT SERVICE\\SQLSERVERAGENT'
+])
+
+async function validateActionPreconditions(
+  action: import('../../incidents/types').IncidentAction,
+  pool: import('mssql').ConnectionPool
+): Promise<string | null> {
+  if (action.toolName === 'kill_session') {
+    const sessionId = Number(action.params.session_id)
+    if (!Number.isInteger(sessionId) || sessionId <= 0) {
+      return `Invalid session_id: ${String(action.params.session_id)}`
+    }
+    if (sessionId <= 50) {
+      return `Cannot kill system session (session_id ${sessionId} ≤ 50)`
+    }
+    // Query live server to verify session still exists and is killable.
+    const result = await pool.request().query<{ login_name: string; is_user_process: number }>(
+      `SELECT login_name, is_user_process
+       FROM sys.dm_exec_sessions
+       WHERE session_id = ${sessionId}`
+    )
+    if (!result.recordset.length) {
+      return `Session ${sessionId} not found — it may have already ended`
+    }
+    const session = result.recordset[0]
+    if (!session.is_user_process) {
+      return `Session ${sessionId} is a system process — cannot kill`
+    }
+    if (PROTECTED_LOGINS.has(session.login_name)) {
+      return `Login '${session.login_name}' is protected — cannot kill`
+    }
+  }
+  return null
+}
 
 function fireAgent(incidentId: string): void {
   runIncidentAgent(incidentId, {
@@ -134,13 +209,27 @@ export function registerIncidentHandlers(): void {
       if (!action) return { ok: false, error: `Action ${req.actionId} not found` }
       if (action.status !== 'pending') return { ok: false, error: `Action is not pending (status: ${action.status})` }
 
-      // Hard whitelist guard — defence-in-depth even if the UI is bypassed.
+      // Layer 4 — Kill switch
+      if (!isAgentActionsEnabled()) {
+        return { ok: false, error: 'Agent actions are disabled in Settings → AI Provider' }
+      }
+
+      // Layer 1 — Hard whitelist guard (defence-in-depth, even if UI is bypassed).
       if (!ACTION_WHITELIST.has(action.toolName)) {
         return { ok: false, error: `Tool '${action.toolName}' is not whitelisted for execution` }
       }
 
       const incident = repository.getIncidentById(action.incidentId)
       if (!incident) return { ok: false, error: 'Parent incident not found' }
+
+      // Layer 4 — Per-incident action cap
+      const approvedCount = repository.countApprovedActionsForIncident(action.incidentId)
+      if (approvedCount >= MAX_ACTIONS_PER_INCIDENT) {
+        return { ok: false, error: `Incident action cap reached (max ${MAX_ACTIONS_PER_INCIDENT} per incident)` }
+      }
+
+      // Layer 4 — Global hourly cap
+      checkGlobalRateLimit()
 
       const server = serverStore.getById(incident.serverId)
       if (!server) return { ok: false, error: 'Server not found' }
@@ -156,8 +245,18 @@ export function registerIncidentHandlers(): void {
         encrypt: true,
         trustServerCertificate: true
       })
+      // Layer 2 — Hard-coded preconditions (TypeScript, not delegated to LLM).
+      const preconditionError = await validateActionPreconditions(action, pool)
+      if (preconditionError) {
+        repository.failAction(req.actionId, preconditionError)
+        const failed = repository.getActionById(req.actionId)
+        if (failed) pushToRenderer(IpcChannel.INCIDENT_ACTION, { incidentId: action.incidentId, action: failed })
+        return { ok: false, error: preconditionError }
+      }
+
       await pool.request().query(action.tsqlPreview)
 
+      recordGlobalAction()
       repository.approveAction(req.actionId, req.approvedBy, { executed: true })
       repository.addEvent(action.incidentId, 'action_executed', { toolName: action.toolName, actionId: action.id })
 

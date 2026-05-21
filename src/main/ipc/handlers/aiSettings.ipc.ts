@@ -36,7 +36,9 @@ function readSettings(): AiProviderSettings {
     provider,
     ollamaModel: map['ai_ollama_model'] ?? 'llama3.2:3b',
     claudeApiKey,
-    claudeModel: map['ai_claude_model'] ?? 'claude-haiku-4-5-20251001'
+    claudeModel: map['ai_claude_model'] ?? 'claude-haiku-4-5-20251001',
+    redactQueryText: map['ai_redact_query_text'] !== 'false',
+    agentActionsEnabled: map['ai_agent_actions_enabled'] !== 'false'
   }
 }
 
@@ -58,17 +60,17 @@ export function registerAiSettingsHandlers(): void {
       if (settings.provider != null) upsert('ai_provider', settings.provider)
       if (settings.ollamaModel != null) upsert('ai_ollama_model', settings.ollamaModel.trim())
       if (settings.claudeModel != null) upsert('ai_claude_model', settings.claudeModel.trim())
+      if (settings.redactQueryText != null) upsert('ai_redact_query_text', String(settings.redactQueryText))
+      if (settings.agentActionsEnabled != null) upsert('ai_agent_actions_enabled', String(settings.agentActionsEnabled))
 
       if (settings.claudeApiKey != null && settings.claudeApiKey.trim() !== '') {
         // Only update the stored key if it's a real value (not the masked placeholder).
         const raw = settings.claudeApiKey.trim()
         if (!raw.endsWith('…') && raw !== '••••••••') {
-          if (safeStorageAvailable()) {
-            upsert('ai_claude_api_key', encrypt(raw))
-          } else {
-            // safeStorage unavailable (CI / headless) — store plaintext as fallback.
-            upsert('ai_claude_api_key', raw)
+          if (!safeStorageAvailable()) {
+            throw new Error('Secure storage unavailable — cannot store Claude API key safely. Launch the app as a logged-in user.')
           }
+          upsert('ai_claude_api_key', encrypt(raw))
         }
       }
 

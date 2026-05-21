@@ -9,6 +9,15 @@ const MAX_ROWS = 200
 const WRITE_PATTERN =
   /\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE|EXEC|EXECUTE|MERGE|BULK|GRANT|REVOKE|DENY|KILL|DBCC|CHECKPOINT|BACKUP|RESTORE|RECONFIGURE|SHUTDOWN)\b/i
 
+// SECURITY: strip SQL comments before regex check — comment text must not mask or
+// falsely trigger the write keyword pattern. Sound only because all callers pass
+// literal SQL constants; never pass dynamic/user-supplied SQL through this function.
+function stripSqlComments(sql: string): string {
+  return sql
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/--[^\r\n]*/g, ' ')
+}
+
 export class ReadOnlyViolation extends Error {
   constructor(keyword: string) {
     super(`Query contains disallowed keyword: ${keyword}`)
@@ -24,7 +33,7 @@ export async function executeReadOnly(
   conn: ServerConnection,
   sql: string
 ): Promise<QueryRow[]> {
-  const match = sql.match(WRITE_PATTERN)
+  const match = stripSqlComments(sql).match(WRITE_PATTERN)
   if (match) throw new ReadOnlyViolation(match[0])
 
   const pool = await getPool(conn)

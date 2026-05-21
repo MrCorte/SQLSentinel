@@ -23,16 +23,23 @@ function killSessionSql(sessionId: number): string {
   return `KILL ${sessionId};`
 }
 
+function bracketName(name: string): string {
+  const dot = name.indexOf('.')
+  if (dot === -1) return `[${name.replace(/]/g, ']]')}]`
+  return `[${name.slice(0, dot).replace(/]/g, ']]')}].[${name.slice(dot + 1).replace(/]/g, ']]')}]`
+}
+
 function updateStatsSql(dbName: string, tableName: string): string {
-  return `USE [${dbName.replace(/]/g, ']]')}];\nUPDATE STATISTICS [${tableName.replace(/]/g, ']]')}] WITH FULLSCAN;`
+  return `USE [${dbName.replace(/]/g, ']]')}];\nUPDATE STATISTICS ${bracketName(tableName)} WITH FULLSCAN;`
 }
 
 function rebuildIndexSql(dbName: string, tableName: string, indexName: string): string {
+  // ONLINE = ON requires Enterprise / Developer Edition — omit to support all editions.
   return [
     `USE [${dbName.replace(/]/g, ']]')}];`,
     `ALTER INDEX [${indexName.replace(/]/g, ']]')}]`,
-    `  ON [${tableName.replace(/]/g, ']]')}]`,
-    `  REBUILD WITH (ONLINE = ON);`
+    `  ON ${bracketName(tableName)}`,
+    `  REBUILD;`
   ].join('\n')
 }
 

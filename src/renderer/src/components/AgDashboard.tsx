@@ -18,6 +18,7 @@ import type {
   AvailabilityReplica,
   AvailabilityDatabase
 } from '../../../preload/index'
+import { useShallow } from 'zustand/react/shallow'
 import { useAgStore } from '../store/agStore'
 import { useServersStore } from '../store/serversStore'
 import { useGroupsStore } from '../store/groupsStore'
@@ -225,7 +226,9 @@ const DB_GRID_SX = {
 }
 
 export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
-  const { agDetails, updateAgDetails } = useAgStore()
+  const { agDetails, updateAgDetails } = useAgStore(
+    useShallow((s) => ({ agDetails: s.agDetails, updateAgDetails: s.updateAgDetails }))
+  )
   const servers = useServersStore((s) => s.servers)
   const serverAliases = useGroupsStore((s) => s.serverAliases)
   const setPendingServerId = useAppStore((s) => s.setPendingServerId)

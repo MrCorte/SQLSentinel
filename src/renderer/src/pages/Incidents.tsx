@@ -7,6 +7,7 @@ import ToggleButton from '@mui/material/ToggleButton'
 import { DataGrid } from '@mui/x-data-grid'
 import type { GridColDef, GridRowParams } from '@mui/x-data-grid'
 import { tokens } from '../styles/tokens'
+import { useShallow } from 'zustand/react/shallow'
 import { useIncidentsStore, loadIncidents, loadOpenCount } from '../store/incidentsStore'
 import { IncidentDetailDrawer } from '../components/incidents/IncidentDetailDrawer'
 import type { Incident, IncidentStatus } from '../../../preload/index'
@@ -92,7 +93,10 @@ const STATUS_FILTERS: Array<{ label: string; value: IncidentStatus | 'all' }> = 
 ]
 
 export function Incidents(): React.JSX.Element {
-  const { incidents, selectedId, setSelectedId } = useIncidentsStore()
+  const { incidents, selectedId } = useIncidentsStore(
+    useShallow((s) => ({ incidents: s.incidents, selectedId: s.selectedId }))
+  )
+  const setSelectedId = useIncidentsStore((s) => s.setSelectedId)
   const [statusFilter, setStatusFilter] = useState<IncidentStatus | 'all'>('open')
   const [drawerOpen, setDrawerOpen] = useState(false)
 

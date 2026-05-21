@@ -1,4 +1,5 @@
 import { useMemo, useCallback } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useServersStore } from '../../../store/serversStore'
 import { useMetricsStore } from '../../../store/metricsStore'
 import { useGroupsStore } from '../../../store/groupsStore'
@@ -109,8 +110,10 @@ export function useHomeDashboard(onNavigateToServer: (id: string) => void): Home
   const { metricsMap, summaries } = useThrottledMetrics()
 
   const now = useNow()
-  const { groups, serverGroups, serverAliases } = useGroupsStore()
-  const { agGroups } = useAgStore()
+  const { groups, serverGroups, serverAliases } = useGroupsStore(
+    useShallow((s) => ({ groups: s.groups, serverGroups: s.serverGroups, serverAliases: s.serverAliases }))
+  )
+  const agGroups = useAgStore((s) => s.agGroups)
   const alerts = useAlertsStore((s) => s.alerts)
   const { refreshing, handleRefresh } = useRefreshAllServers()
 

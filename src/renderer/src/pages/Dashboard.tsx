@@ -29,7 +29,7 @@ import { useServersStore } from '../store/serversStore'
 import { useAgStore } from '../store/agStore'
 import { useAppStore } from '../store/appStore'
 import { useMetricsStore } from '../store/metricsStore'
-import { useShallow } from 'zustand/shallow'
+import { useShallow } from 'zustand/react/shallow'
 import { getServerDisplayName } from '../types/index'
 import { tokens } from '../styles/tokens'
 
@@ -65,7 +65,7 @@ export function Dashboard(): React.JSX.Element {
       removeServer: s.removeServer
     }))
   )
-  const { detectAgsForServer } = useAgStore()
+  const detectAgsForServer = useAgStore((s) => s.detectAgsForServer)
   const selectedServerId = useAppStore((s) => s.selectedServerId)
   const selectedServer = useMemo(
     () => servers.find((s) => s.id === selectedServerId) ?? null,
@@ -76,7 +76,8 @@ export function Dashboard(): React.JSX.Element {
 
   const { intervalSeconds, setIntervalSeconds, setConnection, pushSnapshot, pushSnapshotBatch } =
     useWorker()
-  const { serverAliases, setServerAlias } = useGroupsStore()
+  const serverAliases = useGroupsStore((s) => s.serverAliases)
+  const setServerAlias = useGroupsStore((s) => s.setServerAlias)
 
   // Inline alias editing
   const [editingAlias, setEditingAlias] = useState(false)

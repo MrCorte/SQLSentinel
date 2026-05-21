@@ -14,33 +14,68 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
 
   // useRef for the Map: never recreated → no data loss on re-render
   const historyMapRef = useRef<Map<string, MetricsHistoryPoint[]>>(new Map())
+  // Pending batch held while document is hidden; flushed on visibilitychange
+  const pendingBatchRef = useRef<Array<{ serverId: string; metrics: ServerMetrics }>>([])
 
   // maxPoints: based on worst-case 30s interval
   const maxPoints = Math.ceil((retentionMinutes * 60) / 30)
 
+  // Flush pending store updates when the page becomes visible again.
+  // Also flush on unmount so metrics buffered during a hidden window are not lost.
+  useEffect(() => {
+    function flush(): void {
+      if (pendingBatchRef.current.length === 0) return
+      useMetricsStore.getState().applyDeltaBatch(pendingBatchRef.current)
+      pendingBatchRef.current = []
+    }
+    function onVisibilityChange(): void {
+      // Fires on both hidden→visible and visible→hidden; only flush when becoming visible
+      if (!document.hidden) flush()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      flush() // drain any buffered snapshots on unmount
+    }
+  }, [])
+
   const pushSnapshot = useCallback(
     (serverId: string, m: ServerMetrics) => {
-      // Apply delta or full update to the metrics store
-      useMetricsStore.getState().applyDelta(serverId, m)
+      // Always update history (no re-renders); skip store update when hidden
       const map = historyMapRef.current
       const existing = map.get(serverId) ?? []
       const newPoint = metricsToHistoryPoint(m)
-      const updated = [...existing, newPoint].slice(-maxPoints)
-      map.set(serverId, updated)
+      map.set(serverId, [...existing, newPoint].slice(-maxPoints))
+      if (document.hidden) {
+        const idx = pendingBatchRef.current.findIndex((e) => e.serverId === serverId)
+        if (idx >= 0) pendingBatchRef.current[idx].metrics = m
+        else pendingBatchRef.current.push({ serverId, metrics: m })
+        return
+      }
+      useMetricsStore.getState().applyDelta(serverId, m)
     },
     [maxPoints]
   )
 
   const pushSnapshotBatch = useCallback(
     (batch: Array<{ serverId: string; metrics: ServerMetrics }>) => {
-      // Single Zustand set() for all servers in the batch
-      useMetricsStore.getState().applyDeltaBatch(batch)
+      // Always update history; only update store when visible
       const map = historyMapRef.current
       for (const { serverId, metrics: m } of batch) {
         const existing = map.get(serverId) ?? []
         const newPoint = metricsToHistoryPoint(m)
         map.set(serverId, [...existing, newPoint].slice(-maxPoints))
       }
+      if (document.hidden) {
+        // Replace pending entries for each server with the latest snapshot
+        for (const entry of batch) {
+          const idx = pendingBatchRef.current.findIndex((e) => e.serverId === entry.serverId)
+          if (idx >= 0) pendingBatchRef.current[idx] = entry
+          else pendingBatchRef.current.push(entry)
+        }
+        return
+      }
+      useMetricsStore.getState().applyDeltaBatch(batch)
     },
     [maxPoints]
   )

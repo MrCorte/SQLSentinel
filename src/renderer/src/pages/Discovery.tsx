@@ -37,7 +37,8 @@ function parsePorts(input: string): number[] {
 
 export function Discovery(): React.JSX.Element {
   const { servers, isScanning, progress, error, scan, cancelScan, addServer } = useDiscovery()
-  const { setServerGroup, setServerAlias } = useGroupsStore()
+  const setServerGroup = useGroupsStore((s) => s.setServerGroup)
+  const setServerAlias = useGroupsStore((s) => s.setServerAlias)
   const savedServers = useServersStore((s) => s.servers)
 
   const isAlreadySaved = (row: DiscoveryRow): boolean =>

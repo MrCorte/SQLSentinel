@@ -26,10 +26,12 @@ import { GlobalSnackbar } from './components/GlobalSnackbar'
 import { HomeDashboard } from './components/HomeDashboard'
 import { WorkerProvider } from './context/WorkerContext'
 import { useWorker } from './context/useWorker'
+import { useShallow } from 'zustand/react/shallow'
 import { useServersStore } from './store/serversStore'
 import { useAlertsStore } from './store/alertsStore'
 import { useAppStore } from './store/appStore'
 import { useMetricsStore } from './store/metricsStore'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { useMockData } from './hooks/useMockData'
 import { useIpcEvent } from './hooks/useIpcEvent'
 import { buildTheme } from './styles/theme'
@@ -73,13 +75,12 @@ function AppInner(): React.JSX.Element {
   useMockData()
 
   const { setRetentionMinutes, seedHistory } = useWorker()
-  const {
-    alerts,
-    setAlerts,
-    addAlert,
-    acknowledgeAlert: acknowledgeAlertInStore
-  } = useAlertsStore()
-  const { selectedServerId, setSelectedServerId } = useAppStore()
+  const alerts = useAlertsStore((s) => s.alerts)
+  const setAlerts = useAlertsStore((s) => s.setAlerts)
+  const addAlert = useAlertsStore((s) => s.addAlert)
+  const acknowledgeAlertInStore = useAlertsStore((s) => s.acknowledgeAlert)
+  const selectedServerId = useAppStore((s) => s.selectedServerId)
+  const setSelectedServerId = useAppStore((s) => s.setSelectedServerId)
   const servers = useServersStore((s) => s.servers)
   const incidentBadge = useIncidentsStore((s) => s.openCount)
   const serverAliases = useGroupsStore((s) => s.serverAliases)
@@ -388,16 +389,20 @@ function AppInner(): React.JSX.Element {
 
       {/* AIPanel is lazy-loaded; only mount the chunk after the user opens it. */}
       {aiOpen && (
-        <Suspense fallback={null}>
-          <AIPanel open={aiOpen} onClose={() => setAiOpen(false)} />
-        </Suspense>
+        <ErrorBoundary label="AIPanel" fallback={null}>
+          <Suspense fallback={null}>
+            <AIPanel open={aiOpen} onClose={() => setAiOpen(false)} />
+          </Suspense>
+        </ErrorBoundary>
       )}
-      <AlertsDrawer
-        open={drawerOpen}
-        alerts={alerts}
-        onClose={() => setDrawerOpen(false)}
-        onAcknowledge={handleAcknowledge}
-      />
+      <ErrorBoundary label="AlertsDrawer" fallback={null}>
+        <AlertsDrawer
+          open={drawerOpen}
+          alerts={alerts}
+          onClose={() => setDrawerOpen(false)}
+          onAcknowledge={handleAcknowledge}
+        />
+      </ErrorBoundary>
     </AccentProvider>
   )
 }
@@ -534,7 +539,9 @@ function App(): React.JSX.Element {
           ) : (
             <AuthContext.Provider value={{ session, logout: handleLogout }}>
               <WorkerProvider>
-                <AppInner />
+                <ErrorBoundary label="AppInner">
+                  <AppInner />
+                </ErrorBoundary>
               </WorkerProvider>
             </AuthContext.Provider>
           )}

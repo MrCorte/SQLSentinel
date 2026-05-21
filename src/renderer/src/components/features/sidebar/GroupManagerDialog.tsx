@@ -17,6 +17,7 @@ import {
 import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
 import DragHandleIcon from '@mui/icons-material/DragHandle'
+import { useShallow } from 'zustand/react/shallow'
 import { useGroupsStore } from '../../../store/groupsStore'
 import type { ServerGroup } from '../../../types/index'
 import { tokens } from '../../../styles/tokens'
@@ -46,7 +47,15 @@ interface GroupManagerDialogProps {
 }
 
 export function GroupManagerDialog({ open, onClose }: GroupManagerDialogProps): React.JSX.Element {
-  const { groups, addGroup, removeGroup, renameGroup, reorderGroups } = useGroupsStore()
+  const { groups, addGroup, removeGroup, renameGroup, reorderGroups } = useGroupsStore(
+    useShallow((s) => ({
+      groups: s.groups,
+      addGroup: s.addGroup,
+      removeGroup: s.removeGroup,
+      renameGroup: s.renameGroup,
+      reorderGroups: s.reorderGroups
+    }))
+  )
   const [localGroups, setLocalGroups] = useState<ServerGroup[]>([])
   const [newName, setNewName] = useState('')
   const [newColor, setNewColor] = useState(COLOR_PALETTE[0])

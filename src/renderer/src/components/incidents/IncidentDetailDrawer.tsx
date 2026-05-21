@@ -14,8 +14,10 @@ import ArchiveIcon from '@mui/icons-material/Archive'
 import DownloadIcon from '@mui/icons-material/Download'
 import SmartToyIcon from '@mui/icons-material/SmartToy'
 import { tokens } from '../../styles/tokens'
+import { useShallow } from 'zustand/react/shallow'
 import { useIncidentsStore, loadDetail } from '../../store/incidentsStore'
 import { notify } from '../../store/notifyStore'
+import { useAuth } from '../../context/AuthContext'
 import type { IncidentEvent, IncidentAction, IncidentAuditEntry, IncidentStatus } from '../../../../preload/index'
 
 const DRAWER_WIDTH = 480
@@ -39,7 +41,10 @@ interface Props {
 }
 
 export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Element {
-  const { selectedId, detail, loadingDetail } = useIncidentsStore()
+  const { selectedId, detail, loadingDetail } = useIncidentsStore(
+    useShallow((s) => ({ selectedId: s.selectedId, detail: s.detail, loadingDetail: s.loadingDetail }))
+  )
+  const { session } = useAuth()
   const [agentRunning, setAgentRunning] = useState(false)
   const [agentTokens, setAgentTokens] = useState('')
   const tokenBufRef = useRef('')
@@ -129,7 +134,7 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
 
   async function handleApproveAction(actionId: string): Promise<void> {
     setActionBusy(actionId)
-    const res = await window.sqlSentinel.incidents.approveAction({ actionId, approvedBy: 'user' })
+    const res = await window.sqlSentinel.incidents.approveAction({ actionId, approvedBy: session.username })
     setActionBusy(null)
     if (!res.ok) notify.error(res.error, 'Action failed')
     else loadDetail(selectedId!)

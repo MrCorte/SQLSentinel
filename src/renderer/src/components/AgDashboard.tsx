@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { memo, useState, useCallback, useEffect } from 'react'
 import {
   Box,
   Typography,
@@ -20,6 +20,7 @@ import type {
 } from '../../../preload/index'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgStore } from '../store/agStore'
+import type { AgDetail } from '../store/agStore'
 import { useServersStore } from '../store/serversStore'
 import { useGroupsStore } from '../store/groupsStore'
 import { useAppStore } from '../store/appStore'
@@ -54,8 +55,135 @@ function syncStateBg(s: string): string {
   return tokens.color.dangerAlpha12
 }
 
+const LOG_QUEUE_WARN_KB = 10240
+
 // ---------------------------------------------------------------------------
-// ReplicaCard
+// DB_GRID_SX — module-level constant (never recreated)
+// ---------------------------------------------------------------------------
+
+const DB_GRID_SX = {
+  border: 0,
+  '& .MuiDataGrid-columnHeader': {
+    bgcolor: tokens.color.bgBase,
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.04em',
+    color: tokens.color.textMuted
+  },
+  '& .MuiDataGrid-columnHeaders': {
+    borderBottom: `2px solid ${tokens.color.primary}`
+  },
+  '& .row-sync': { bgcolor: tokens.color.warningAlpha12 },
+  '& .row-nosync': { bgcolor: tokens.color.dangerAlpha12 }
+}
+
+// DB columns are static — defined once at module level, never recreated
+const DB_COLUMNS: GridColDef<AvailabilityDatabase>[] = [
+  {
+    field: 'database_name',
+    headerName: 'Database',
+    flex: 1,
+    renderCell: (p) => (
+      <Typography variant="body2" noWrap sx={{ width: '100%' }}>
+        {p.value as string}
+      </Typography>
+    )
+  },
+  {
+    field: 'synchronization_state_desc',
+    headerName: 'Sync State',
+    width: 140,
+    renderCell: (p) => (
+      <Chip
+        label={p.value as string}
+        size="small"
+        sx={{
+          fontSize: 10,
+          height: 20,
+          fontWeight: 700,
+          bgcolor: syncStateBg(p.value as string),
+          color: syncStateColor(p.value as string)
+        }}
+      />
+    )
+  },
+  {
+    field: 'synchronization_health_desc',
+    headerName: 'Health',
+    width: 130,
+    renderCell: (p) => (
+      <Chip
+        label={p.value as string}
+        size="small"
+        sx={{
+          fontSize: 10,
+          height: 20,
+          fontWeight: 700,
+          bgcolor: healthBg(p.value as string),
+          color: healthColor(p.value as string)
+        }}
+      />
+    )
+  },
+  {
+    field: 'log_send_queue_kb',
+    headerName: 'Log Queue (KB)',
+    width: 130,
+    type: 'number',
+    align: 'right',
+    headerAlign: 'right',
+    renderCell: (p) => {
+      const v = p.value as number
+      return (
+        <Stack
+          direction="row"
+          spacing={0.5}
+          alignItems="center"
+          justifyContent="flex-end"
+          sx={{ width: '100%' }}
+        >
+          {v > LOG_QUEUE_WARN_KB && (
+            <Tooltip title={`High log queue: ${v.toLocaleString('en-US')} KB`}>
+              <WarningAmberIcon sx={{ fontSize: 14, color: '#d83b01' }} />
+            </Tooltip>
+          )}
+          <Typography
+            variant="body2"
+            sx={{
+              color: v > LOG_QUEUE_WARN_KB ? '#d83b01' : 'inherit',
+              fontWeight: v > LOG_QUEUE_WARN_KB ? 700 : 400
+            }}
+          >
+            {v.toLocaleString('en-US')}
+          </Typography>
+        </Stack>
+      )
+    }
+  },
+  {
+    field: 'redo_queue_kb',
+    headerName: 'Redo Queue (KB)',
+    width: 140,
+    type: 'number',
+    align: 'right',
+    headerAlign: 'right',
+    valueFormatter: (v: number) => v.toLocaleString('en-US')
+  },
+  {
+    field: 'last_commit_time',
+    headerName: 'Last Commit',
+    width: 160,
+    renderCell: (p) => (
+      <Typography variant="body2">
+        {p.value ? new Date(p.value as string).toLocaleString('en-US') : '—'}
+      </Typography>
+    )
+  }
+]
+
+// ---------------------------------------------------------------------------
+// ReplicaCard — memoized: only re-renders if its own replica/displayName changes
 // ---------------------------------------------------------------------------
 
 interface ReplicaCardProps {
@@ -64,7 +192,11 @@ interface ReplicaCardProps {
   onNavigate: (replica: AvailabilityReplica) => void
 }
 
-function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): React.JSX.Element {
+const ReplicaCard = memo(function ReplicaCard({
+  replica,
+  displayName,
+  onNavigate
+}: ReplicaCardProps): React.JSX.Element {
   const [hovered, setHovered] = useState(false)
   const isPrimary = replica.role_desc === 'PRIMARY'
   const isConnected = replica.connected_state_desc === 'CONNECTED'
@@ -94,7 +226,6 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
           position: 'relative'
         }}
       >
-        {/* Header */}
         <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1 }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography sx={{ fontSize: 13, fontWeight: 700, color: tokens.color.textPrimary }}>
@@ -124,9 +255,7 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
 
         <Stack spacing={0.5}>
           <Stack direction="row" justifyContent="space-between">
-            <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
-              Mode
-            </Typography>
+            <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>Mode</Typography>
             <Typography variant="caption" sx={{ color: tokens.color.textPrimary, fontWeight: 600 }}>
               {replica.availability_mode_desc === 'SYNCHRONOUS_COMMIT' ? 'SYNC' : 'ASYNC'}
               {' — '}
@@ -135,24 +264,17 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
           </Stack>
 
           <Stack direction="row" justifyContent="space-between">
-            <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
-              Connection
-            </Typography>
+            <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>Connection</Typography>
             <Typography
               variant="caption"
-              sx={{
-                color: isConnected ? tokens.color.success : tokens.color.danger,
-                fontWeight: 600
-              }}
+              sx={{ color: isConnected ? tokens.color.success : tokens.color.danger, fontWeight: 600 }}
             >
               {isConnected ? '✅' : '❌'} {replica.connected_state_desc}
             </Typography>
           </Stack>
 
           <Stack direction="row" justifyContent="space-between">
-            <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
-              Sync health
-            </Typography>
+            <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>Sync health</Typography>
             <Typography
               variant="caption"
               sx={{ color: healthColor(replica.synchronization_health_desc), fontWeight: 600 }}
@@ -167,9 +289,7 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
 
           {replica.operational_state_desc && (
             <Stack direction="row" justifyContent="space-between">
-              <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
-                Op. state
-              </Typography>
+              <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>Op. state</Typography>
               <Typography variant="caption" sx={{ color: tokens.color.textPrimary }}>
                 {replica.operational_state_desc}
               </Typography>
@@ -177,7 +297,6 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
           )}
         </Stack>
 
-        {/* "→ Dashboard" arrow — visible only on hover */}
         <Typography
           sx={{
             position: 'absolute',
@@ -195,34 +314,167 @@ function ReplicaCard({ replica, displayName, onNavigate }: ReplicaCardProps): Re
       </Box>
     </Tooltip>
   )
-}
+})
 
 // ---------------------------------------------------------------------------
-// AG Dashboard
+// AgHeader — memoized: re-renders only when ag_health / primary_replica changes
+// ---------------------------------------------------------------------------
+
+const AgHeader = memo(function AgHeader({ detail }: { detail: AgDetail }): React.JSX.Element {
+  return (
+    <Box
+      sx={{
+        bgcolor: tokens.color.bgSurface,
+        border: '1px solid',
+        borderColor: tokens.color.bgBorder,
+        borderLeft: `4px solid ${healthColor(detail.ag_health)}`,
+        borderRadius: tokens.radius.sm,
+        px: 2,
+        py: 1.5,
+        boxShadow: tokens.shadow.card
+      }}
+    >
+      <Stack direction="row" alignItems="center" spacing={1.5}>
+        <Typography sx={{ fontSize: 18, fontWeight: 700, color: tokens.color.textPrimary, flex: 1 }}>
+          {detail.ag_name}
+        </Typography>
+        <Chip
+          label={`● ${detail.ag_health}`}
+          size="small"
+          sx={{
+            fontWeight: 700,
+            fontSize: 11,
+            bgcolor: healthBg(detail.ag_health),
+            color: healthColor(detail.ag_health)
+          }}
+        />
+      </Stack>
+      <Stack direction="row" spacing={3} sx={{ mt: 0.75 }}>
+        <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
+          Primary: <strong style={{ color: 'inherit' }}>{detail.primary_replica || '—'}</strong>
+        </Typography>
+        <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
+          Updated:{' '}
+          <strong style={{ color: 'inherit' }}>
+            {detail.lastUpdated.toLocaleTimeString('en-US')}
+          </strong>
+        </Typography>
+        <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
+          {detail.replicas.length} replicas · {detail.databases.length} DB
+        </Typography>
+      </Stack>
+    </Box>
+  )
+})
+
+// ---------------------------------------------------------------------------
+// AgReplicaList — memoized per-replica rendering via memoized ReplicaCard
+// ---------------------------------------------------------------------------
+
+interface AgReplicaListProps {
+  replicas: AvailabilityReplica[]
+  getDisplayName: (replicaServerName: string) => string
+  onNavigate: (replica: AvailabilityReplica) => void
+}
+
+const AgReplicaList = memo(function AgReplicaList({
+  replicas,
+  getDisplayName,
+  onNavigate
+}: AgReplicaListProps): React.JSX.Element {
+  return (
+    <Box>
+      <Typography
+        sx={{
+          fontSize: 11,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+          color: tokens.color.textMuted,
+          mb: 1.5
+        }}
+      >
+        Replicas — click to open the server dashboard
+      </Typography>
+      {replicas.length === 0 ? (
+        <Typography variant="body2" sx={{ color: tokens.color.textMuted }}>
+          No replicas available.
+        </Typography>
+      ) : (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
+          {replicas.map((r) => (
+            <ReplicaCard
+              key={r.replica_id}
+              replica={r}
+              displayName={getDisplayName(r.replica_server_name)}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </Box>
+      )}
+    </Box>
+  )
+})
+
+// ---------------------------------------------------------------------------
+// AgDatabaseGrid — memoized: expensive DataGrid re-renders only when databases change
+// ---------------------------------------------------------------------------
+
+const AgDatabaseGrid = memo(function AgDatabaseGrid({
+  databases
+}: {
+  databases: AvailabilityDatabase[]
+}): React.JSX.Element {
+  return (
+    <Box>
+      <Typography
+        sx={{
+          fontSize: 11,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: '0.5px',
+          color: tokens.color.textMuted,
+          mb: 1.5
+        }}
+      >
+        AG Databases
+      </Typography>
+      {databases.length === 0 ? (
+        <Typography variant="body2" sx={{ color: tokens.color.textMuted }}>
+          No AG databases available (this replica may be SECONDARY — data is only visible from the
+          PRIMARY).
+        </Typography>
+      ) : (
+        <DataGrid<AvailabilityDatabase>
+          rows={databases}
+          columns={DB_COLUMNS}
+          getRowId={(r) => `${r.ag_name}-${r.database_name}`}
+          density="compact"
+          autoHeight
+          disableRowSelectionOnClick
+          hideFooter={databases.length <= 25}
+          pageSizeOptions={[25, 50]}
+          initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+          getRowClassName={(p) => {
+            const s = (p.row as AvailabilityDatabase).synchronization_state_desc
+            if (s === 'SYNCHRONIZING') return 'row-sync'
+            if (s === 'NOT_SYNCHRONIZING') return 'row-nosync'
+            return ''
+          }}
+          sx={DB_GRID_SX}
+        />
+      )}
+    </Box>
+  )
+})
+
+// ---------------------------------------------------------------------------
+// AgDashboard — composition only; data fetching stays here
 // ---------------------------------------------------------------------------
 
 interface Props {
   agName: string
   connection: CollectMetricsRequest
-}
-
-const LOG_QUEUE_WARN_KB = 10240
-
-const DB_GRID_SX = {
-  border: 0,
-  '& .MuiDataGrid-columnHeader': {
-    bgcolor: tokens.color.bgBase,
-    fontSize: 11,
-    fontWeight: 700,
-    textTransform: 'uppercase' as const,
-    letterSpacing: '0.04em',
-    color: tokens.color.textMuted
-  },
-  '& .MuiDataGrid-columnHeaders': {
-    borderBottom: `2px solid ${tokens.color.primary}`
-  },
-  '& .row-sync': { bgcolor: tokens.color.warningAlpha12 },
-  '& .row-nosync': { bgcolor: tokens.color.dangerAlpha12 }
 }
 
 export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
@@ -236,12 +488,10 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
 
   const [snackbarMsg, setSnackbarMsg] = useState<string | null>(null)
 
-  // Fetch details on mount
   useEffect(() => {
     updateAgDetails(connection)
   }, [agName, connection.ip, connection.port]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Poll every 60s, pausing when window is hidden
   const handleUpdateDetails = useCallback(() => {
     if (connection) updateAgDetails(connection)
   }, [connection, updateAgDetails])
@@ -288,231 +538,20 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
     )
   }
 
-  const dbColumns: GridColDef<AvailabilityDatabase>[] = [
-    {
-      field: 'database_name',
-      headerName: 'Database',
-      flex: 1,
-      renderCell: (p) => (
-        <Typography variant="body2" noWrap sx={{ width: '100%' }}>
-          {p.value as string}
-        </Typography>
-      )
-    },
-    {
-      field: 'synchronization_state_desc',
-      headerName: 'Sync State',
-      width: 140,
-      renderCell: (p) => (
-        <Chip
-          label={p.value as string}
-          size="small"
-          sx={{
-            fontSize: 10,
-            height: 20,
-            fontWeight: 700,
-            bgcolor: syncStateBg(p.value as string),
-            color: syncStateColor(p.value as string)
-          }}
-        />
-      )
-    },
-    {
-      field: 'synchronization_health_desc',
-      headerName: 'Health',
-      width: 130,
-      renderCell: (p) => (
-        <Chip
-          label={p.value as string}
-          size="small"
-          sx={{
-            fontSize: 10,
-            height: 20,
-            fontWeight: 700,
-            bgcolor: healthBg(p.value as string),
-            color: healthColor(p.value as string)
-          }}
-        />
-      )
-    },
-    {
-      field: 'log_send_queue_kb',
-      headerName: 'Log Queue (KB)',
-      width: 130,
-      type: 'number',
-      align: 'right',
-      headerAlign: 'right',
-      renderCell: (p) => {
-        const v = p.value as number
-        return (
-          <Stack
-            direction="row"
-            spacing={0.5}
-            alignItems="center"
-            justifyContent="flex-end"
-            sx={{ width: '100%' }}
-          >
-            {v > LOG_QUEUE_WARN_KB && (
-              <Tooltip title={`High log queue: ${v.toLocaleString('en-US')} KB`}>
-                <WarningAmberIcon sx={{ fontSize: 14, color: '#d83b01' }} />
-              </Tooltip>
-            )}
-            <Typography
-              variant="body2"
-              sx={{
-                color: v > LOG_QUEUE_WARN_KB ? '#d83b01' : 'inherit',
-                fontWeight: v > LOG_QUEUE_WARN_KB ? 700 : 400
-              }}
-            >
-              {v.toLocaleString('en-US')}
-            </Typography>
-          </Stack>
-        )
-      }
-    },
-    {
-      field: 'redo_queue_kb',
-      headerName: 'Redo Queue (KB)',
-      width: 140,
-      type: 'number',
-      align: 'right',
-      headerAlign: 'right',
-      valueFormatter: (v: number) => v.toLocaleString('en-US')
-    },
-    {
-      field: 'last_commit_time',
-      headerName: 'Last Commit',
-      width: 160,
-      renderCell: (p) => (
-        <Typography variant="body2">
-          {p.value ? new Date(p.value as string).toLocaleString('en-US') : '—'}
-        </Typography>
-      )
-    }
-  ]
-
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-      {/* AG Header */}
-      <Box
-        sx={{
-          bgcolor: tokens.color.bgSurface,
-          border: '1px solid',
-          borderColor: tokens.color.bgBorder,
-          borderLeft: `4px solid ${healthColor(detail.ag_health)}`,
-          borderRadius: tokens.radius.sm,
-          px: 2,
-          py: 1.5,
-          boxShadow: tokens.shadow.card
-        }}
-      >
-        <Stack direction="row" alignItems="center" spacing={1.5}>
-          <Typography sx={{ fontSize: 18, fontWeight: 700, color: tokens.color.textPrimary, flex: 1 }}>
-            {detail.ag_name}
-          </Typography>
-          <Chip
-            label={`● ${detail.ag_health}`}
-            size="small"
-            sx={{
-              fontWeight: 700,
-              fontSize: 11,
-              bgcolor: healthBg(detail.ag_health),
-              color: healthColor(detail.ag_health)
-            }}
-          />
-        </Stack>
-        <Stack direction="row" spacing={3} sx={{ mt: 0.75 }}>
-          <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
-            Primary: <strong style={{ color: 'inherit' }}>{detail.primary_replica || '—'}</strong>
-          </Typography>
-          <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
-            Updated:{' '}
-            <strong style={{ color: 'inherit' }}>
-              {detail.lastUpdated.toLocaleTimeString('en-US')}
-            </strong>
-          </Typography>
-          <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
-            {detail.replicas.length} replicas · {detail.databases.length} DB
-          </Typography>
-        </Stack>
-      </Box>
+      <AgHeader detail={detail} />
 
-      {/* Replica cards */}
-      <Box>
-        <Typography
-          sx={{
-            fontSize: 11,
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            color: tokens.color.textMuted,
-            mb: 1.5
-          }}
-        >
-          Replicas — click to open the server dashboard
-        </Typography>
-        {detail.replicas.length === 0 ? (
-          <Typography variant="body2" sx={{ color: tokens.color.textMuted }}>
-            No replicas available.
-          </Typography>
-        ) : (
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
-            {detail.replicas.map((r) => (
-              <ReplicaCard
-                key={r.replica_id}
-                replica={r}
-                displayName={getDisplayName(r.replica_server_name)}
-                onNavigate={handleNavigateToServer}
-              />
-            ))}
-          </Box>
-        )}
-      </Box>
+      <AgReplicaList
+        replicas={detail.replicas}
+        getDisplayName={getDisplayName}
+        onNavigate={handleNavigateToServer}
+      />
 
       <Divider />
 
-      {/* Database table */}
-      <Box>
-        <Typography
-          sx={{
-            fontSize: 11,
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            color: tokens.color.textMuted,
-            mb: 1.5
-          }}
-        >
-          AG Databases
-        </Typography>
-        {detail.databases.length === 0 ? (
-          <Typography variant="body2" sx={{ color: tokens.color.textMuted }}>
-            No AG databases available (this replica may be SECONDARY — data is only visible from the
-            PRIMARY).
-          </Typography>
-        ) : (
-          <DataGrid<AvailabilityDatabase>
-            rows={detail.databases}
-            columns={dbColumns}
-            getRowId={(r) => `${r.ag_name}-${r.database_name}`}
-            density="compact"
-            autoHeight
-            disableRowSelectionOnClick
-            hideFooter={detail.databases.length <= 25}
-            pageSizeOptions={[25, 50]}
-            initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
-            getRowClassName={(p) => {
-              const s = (p.row as AvailabilityDatabase).synchronization_state_desc
-              if (s === 'SYNCHRONIZING') return 'row-sync'
-              if (s === 'NOT_SYNCHRONIZING') return 'row-nosync'
-              return ''
-            }}
-            sx={DB_GRID_SX}
-          />
-        )}
-      </Box>
+      <AgDatabaseGrid databases={detail.databases} />
 
-      {/* Toast warning — server not monitored */}
       <Snackbar
         open={snackbarMsg !== null}
         autoHideDuration={5000}

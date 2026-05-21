@@ -21,16 +21,19 @@ let _snapshot: StoreState = useMetricsStore.getState()
 const _listeners = new Set<() => void>()
 let _timer: ReturnType<typeof setTimeout> | null = null
 
-// Single subscription to the underlying store. Survives the lifetime of the
-// renderer — there's no teardown because the metrics store is a global.
-useMetricsStore.subscribe(() => {
-  if (_timer) return
-  _timer = setTimeout(() => {
-    _timer = null
-    _snapshot = useMetricsStore.getState()
-    for (const l of _listeners) l()
-  }, THROTTLE_MS)
-})
+// Subscribe only to metricsMap changes — skips re-fires from setServerHealth
+// and other fields that don't affect the throttled snapshot consumers need.
+useMetricsStore.subscribe(
+  (state) => state.metricsMap,
+  () => {
+    if (_timer) return
+    _timer = setTimeout(() => {
+      _timer = null
+      _snapshot = useMetricsStore.getState()
+      for (const l of _listeners) l()
+    }, THROTTLE_MS)
+  }
+)
 
 function subscribe(listener: () => void): () => void {
   _listeners.add(listener)

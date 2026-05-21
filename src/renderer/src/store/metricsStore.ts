@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
+import { subscribeWithSelector } from 'zustand/middleware'
 import type { ServerMetrics, ServerHealthPayload } from '../../../preload/index'
 
 // Delta type for partial updates from main process
@@ -101,7 +102,7 @@ interface MetricsStore {
 // ── Store implementation ───────────────────────────────────────────────────
 
 export const useMetricsStore = create<MetricsStore>()(
-  immer((set) => ({
+  subscribeWithSelector(immer((set) => ({
     metricsMap: {},
     summaries: {},
     historyMap: {},
@@ -185,7 +186,7 @@ export const useMetricsStore = create<MetricsStore>()(
         }
         state.lastUpdate = new Date()
       })
-  }))
+  })))
 )
 
 // ── Internal mutators (operate on Immer draft) ─────────────────────────────

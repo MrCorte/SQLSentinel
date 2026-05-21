@@ -30,8 +30,7 @@ export const useServersStore = create<ServersStore>((set) => ({
       log.debug('getAll result:', JSON.stringify(result))
 
       const list: StoredServer[] = Array.isArray(result) ? result : []
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const normalized = list.map((s: any) => {
+      const normalized = list.map((s) => {
         const addr: string = s.host ?? s.ip ?? ''
         // Set both host (canonical) and ip (compat with all renderer code that uses s.ip)
         return { ...s, host: addr, ip: addr }
@@ -55,8 +54,7 @@ export const useServersStore = create<ServersStore>((set) => ({
       // result is flat { success, reason?, server? }
       if (result?.success !== false) {
         const raw = result?.server ?? (params as StoredServer)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const addr: string = (raw as any).host ?? (raw as any).ip ?? ''
+        const addr: string = raw.host ?? (raw as StoredServer & { ip?: string }).ip ?? ''
         const addedServer: StoredServer = { ...raw, host: addr, ip: addr }
         set((state) => ({ servers: [...state.servers, addedServer] }))
         // AG detection in background — non-blocking.

@@ -1,16 +1,17 @@
+import { useRef } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { Box } from '@mui/material'
 import { tokens } from '../../../styles/tokens'
 import { serverKey } from './useHomeDashboard'
-import { ServerRow } from './ServerRow'
+import { ServerRow, GRID_TEMPLATE } from './ServerRow'
 import type { StoredServer, ServerMetrics } from '../../../../../preload/index'
 import type { ServerSummary } from '../../../store/metricsStore'
 import type { ServerGroup } from '../../../types/index'
 
 // ---------------------------------------------------------------------------
-// Column widths
+// Column config
 // ---------------------------------------------------------------------------
 
-const COL_WIDTHS = ['18%', '12%', '11%', '8%', '6%', '6%', '8%', '14%', '10%', '7%']
 const COL_HEADERS = [
   'SERVER',
   'ENVIRONMENT',
@@ -23,6 +24,8 @@ const COL_HEADERS = [
   'STATUS',
   'UPTIME'
 ]
+
+const ROW_HEIGHT = 48
 
 const thStyle: React.CSSProperties = {
   padding: '8px 10px',
@@ -40,7 +43,7 @@ const thStyle: React.CSSProperties = {
 }
 
 // ---------------------------------------------------------------------------
-// ServerTable — scrollable server list table
+// ServerTable — virtualised server list
 // ---------------------------------------------------------------------------
 
 export interface ServerTableProps {
@@ -64,6 +67,15 @@ export function ServerTable({
   now,
   onNavigate
 }: ServerTableProps): React.JSX.Element {
+  const parentRef = useRef<HTMLDivElement>(null)
+
+  const virtualizer = useVirtualizer({
+    count: servers.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 8
+  })
+
   return (
     <Box
       sx={{
@@ -73,38 +85,46 @@ export function ServerTable({
         borderColor: tokens.color.bgBorder,
         borderRadius: `${tokens.radius.md}px`,
         boxShadow: tokens.shadow.elevated,
-        overflow: 'auto',
-        minWidth: 0
+        overflow: 'hidden',
+        minWidth: 0,
+        display: 'flex',
+        flexDirection: 'column'
       }}
     >
-      <table
+      {/* Sticky header */}
+      <div
         style={{
-          width: '100%',
-          borderCollapse: 'collapse',
-          fontSize: tokens.font.sizeSm,
-          tableLayout: 'fixed'
+          display: 'grid',
+          gridTemplateColumns: GRID_TEMPLATE,
+          position: 'sticky',
+          top: 0,
+          zIndex: 1,
+          flexShrink: 0
         }}
       >
-        <colgroup>
-          {COL_WIDTHS.map((w, i) => (
-            <col key={i} style={{ width: w }} />
-          ))}
-        </colgroup>
-        <thead>
-          <tr style={{ position: 'sticky', top: 0, backgroundColor: 'transparent', zIndex: 1 }}>
-            {COL_HEADERS.map((col) => (
-              <th key={col} style={thStyle}>
-                {col}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {servers.map((s) => {
+        {COL_HEADERS.map((col) => (
+          <div key={col} style={thStyle}>
+            {col}
+          </div>
+        ))}
+      </div>
+
+      {/* Scroll container */}
+      <div ref={parentRef} style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+        {/* Total height spacer + absolutely positioned virtual rows */}
+        <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+          {virtualizer.getVirtualItems().map((vRow) => {
+            const s = servers[vRow.index]
             const key = serverKey(s)
             return (
               <ServerRow
                 key={s.id}
+                style={{
+                  position: 'absolute',
+                  top: vRow.start,
+                  height: vRow.size,
+                  width: '100%'
+                }}
                 s={s}
                 m={metricsMap[key]}
                 summary={summaries[key]}
@@ -116,8 +136,8 @@ export function ServerTable({
               />
             )
           })}
-        </tbody>
-      </table>
+        </div>
+      </div>
     </Box>
   )
 }

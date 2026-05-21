@@ -8,74 +8,64 @@ import type { ServerSummary } from '../../../store/metricsStore'
 import type { ServerGroup } from '../../../types/index'
 
 // ---------------------------------------------------------------------------
+// Column layout — shared with ServerTable header
+// ---------------------------------------------------------------------------
+
+export const GRID_TEMPLATE = '18% 12% 11% 8% 6% 6% 8% 14% 10% 7%'
+
+// ---------------------------------------------------------------------------
 // Stable style constants — defined outside component so memo stays effective
 // ---------------------------------------------------------------------------
 
-const tdBase: React.CSSProperties = {
-  padding: '9px 10px',
-  borderBottom: '1px solid rgba(128,128,128,0.2)'
-}
-
-const tdNameStyle: React.CSSProperties = {
-  ...tdBase,
-  fontWeight: tokens.font.weightSemibold,
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap'
-}
-
-const tdGroupStyle: React.CSSProperties = {
-  ...tdBase,
-  opacity: 0.7,
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap'
-}
-
-const tdHostingStyle: React.CSSProperties = {
-  ...tdBase,
-  whiteSpace: 'nowrap'
-}
-
-const tdTipoStyle: React.CSSProperties = {
-  ...tdBase,
-  opacity: 0.7,
-  whiteSpace: 'nowrap'
-}
-
-const tdDbStyle: React.CSSProperties = {
-  ...tdBase,
-  whiteSpace: 'nowrap'
-}
-
-const tdAlertsStyle: React.CSSProperties = {
-  ...tdBase
-}
-
-const tdStatusStyle: React.CSSProperties = {
-  ...tdBase,
+const cellBase: React.CSSProperties = {
+  padding: '7px 10px',
+  display: 'flex',
+  alignItems: 'center',
   overflow: 'hidden'
 }
 
-const tdUptimeStyle: React.CSSProperties = {
-  ...tdBase,
+const cellName: React.CSSProperties = {
+  ...cellBase,
+  fontWeight: tokens.font.weightSemibold
+}
+
+const cellGroup: React.CSSProperties = {
+  ...cellBase,
+  opacity: 0.7
+}
+
+const cellHosting: React.CSSProperties = {
+  ...cellBase,
+  whiteSpace: 'nowrap'
+}
+
+const cellTipo: React.CSSProperties = {
+  ...cellBase,
   opacity: 0.7,
   whiteSpace: 'nowrap'
 }
 
-const ellipsisSpan: React.CSSProperties = {
-  display: 'block',
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap'
+const cellDb: React.CSSProperties = {
+  ...cellBase,
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+  gap: 1
 }
 
-const alertsWrap: React.CSSProperties = {
-  display: 'flex',
+const cellAlerts: React.CSSProperties = {
+  ...cellBase,
   flexWrap: 'wrap',
-  gap: '3px',
-  alignItems: 'center',
-  minWidth: 0
+  gap: 3
+}
+
+const cellStatus: React.CSSProperties = {
+  ...cellBase
+}
+
+const cellUptime: React.CSSProperties = {
+  ...cellBase,
+  opacity: 0.7,
+  whiteSpace: 'nowrap'
 }
 
 const critBadge: React.CSSProperties = {
@@ -98,15 +88,16 @@ const warnBadge: React.CSSProperties = {
   whiteSpace: 'nowrap'
 }
 
-const dbAgeWrap: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '2px'
+const ellipsisSpan: React.CSSProperties = {
+  display: 'block',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  width: '100%'
 }
 
 // ---------------------------------------------------------------------------
-// ServerRow — memoized table row
-// Re-renders only when its own server data changes (Immer structural sharing).
+// ServerRow — memoized div-based grid row (compatible with react-virtual)
 // ---------------------------------------------------------------------------
 
 export interface ServerRowProps {
@@ -118,6 +109,8 @@ export interface ServerRowProps {
   serverAlias: string | undefined
   now: number
   onNavigate: (id: string) => void
+  /** Injected by the virtualizer (position: absolute, top, height, width) */
+  style?: React.CSSProperties
 }
 
 export const ServerRow = memo(function ServerRow({
@@ -128,7 +121,8 @@ export const ServerRow = memo(function ServerRow({
   group,
   serverAlias,
   now,
-  onNavigate
+  onNavigate,
+  style
 }: ServerRowProps): React.JSX.Element {
   const key = serverKey(s)
   const name = serverAlias || s.host || s.ip || key
@@ -150,44 +144,59 @@ export const ServerRow = memo(function ServerRow({
   const uptime = m?.instanceInfo?.uptimeDays
   const rowBg = s.unreachable ? tokens.color.dangerAlpha12 : 'transparent'
 
-  const tdCpuStyle: React.CSSProperties = {
-    ...tdBase,
-    color:
-      cpu === undefined
-        ? 'rgba(128,128,128,0.5)'
-        : cpu >= 80
-          ? '#a4262c'
-          : cpu >= 60
-            ? '#d83b01'
-            : undefined,
+  const cpuColor =
+    cpu === undefined
+      ? 'rgba(128,128,128,0.5)'
+      : cpu >= 80
+        ? '#a4262c'
+        : cpu >= 60
+          ? '#d83b01'
+          : undefined
+  const cellCpu: React.CSSProperties = {
+    ...cellBase,
+    color: cpuColor,
     fontWeight: cpu !== undefined && cpu >= 60 ? tokens.font.weightBold : tokens.font.weightRegular,
     whiteSpace: 'nowrap'
   }
 
-  const tdMemStyle: React.CSSProperties = {
-    ...tdBase,
+  const cellMem: React.CSSProperties = {
+    ...cellBase,
     color: memPct === null ? 'rgba(128,128,128,0.5)' : memPct >= 90 ? '#a4262c' : undefined,
     whiteSpace: 'nowrap'
   }
 
   return (
-    <tr
+    <div
       onClick={() => onNavigate(s.id)}
-      style={{ backgroundColor: rowBg, cursor: 'pointer', transition: 'background-color 100ms' }}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: GRID_TEMPLATE,
+        alignItems: 'center',
+        backgroundColor: rowBg,
+        borderBottom: '1px solid rgba(128,128,128,0.2)',
+        cursor: 'pointer',
+        transition: 'background-color 100ms',
+        fontSize: tokens.font.sizeSm,
+        boxSizing: 'border-box',
+        ...style
+      }}
       onMouseEnter={(e) => {
         if (!s.unreachable)
-          (e.currentTarget as HTMLTableRowElement).style.backgroundColor = 'rgba(128,128,128,0.08)'
+          (e.currentTarget as HTMLDivElement).style.backgroundColor = 'rgba(128,128,128,0.08)'
       }}
       onMouseLeave={(e) => {
-        ;(e.currentTarget as HTMLTableRowElement).style.backgroundColor = rowBg
+        ;(e.currentTarget as HTMLDivElement).style.backgroundColor = rowBg
       }}
     >
-      <td style={tdNameStyle}>
+      {/* SERVER */}
+      <div style={cellName}>
         <MuiTooltip title={name} placement="top" arrow>
           <span style={ellipsisSpan}>{name}</span>
         </MuiTooltip>
-      </td>
-      <td style={tdGroupStyle}>
+      </div>
+
+      {/* ENVIRONMENT */}
+      <div style={cellGroup}>
         {group ? (
           <MuiTooltip title={group.name} placement="top" arrow>
             <span style={ellipsisSpan}>
@@ -197,8 +206,10 @@ export const ServerRow = memo(function ServerRow({
         ) : (
           '—'
         )}
-      </td>
-      <td style={tdHostingStyle}>
+      </div>
+
+      {/* INFRASTRUCTURE */}
+      <div style={cellHosting}>
         {(() => {
           const hBadge = HOSTING_BADGE[s.hostingType ?? 'on-premise']
           return (
@@ -217,24 +228,32 @@ export const ServerRow = memo(function ServerRow({
             </span>
           )
         })()}
-      </td>
-      <td style={tdTipoStyle}>{tipo}</td>
-      <td style={tdCpuStyle}>{cpu !== undefined ? `${Math.round(cpu * 10) / 10}%` : '—'}</td>
-      <td style={tdMemStyle}>{memPct !== null ? `${memPct}%` : '—'}</td>
-      <td style={tdDbStyle}>
-        <div style={dbAgeWrap}>
-          <span>{dbCount !== null ? dbCount : '—'}</span>
-          <span style={{ fontSize: 10, color: age.color, lineHeight: 1.2 }}>{age.label}</span>
-        </div>
-      </td>
-      <td style={tdAlertsStyle}>
-        <div style={alertsWrap}>
-          {critSrv > 0 && <span style={critBadge}>{critSrv} CRIT</span>}
-          {warnSrv > 0 && <span style={warnBadge}>{warnSrv} WARN</span>}
-          {critSrv === 0 && warnSrv === 0 && <span style={{ opacity: 0.4 }}>—</span>}
-        </div>
-      </td>
-      <td style={tdStatusStyle}>
+      </div>
+
+      {/* TYPE */}
+      <div style={cellTipo}>{tipo}</div>
+
+      {/* CPU */}
+      <div style={cellCpu}>{cpu !== undefined ? `${Math.round(cpu * 10) / 10}%` : '—'}</div>
+
+      {/* MEM */}
+      <div style={cellMem}>{memPct !== null ? `${memPct}%` : '—'}</div>
+
+      {/* DB */}
+      <div style={cellDb}>
+        <span>{dbCount !== null ? dbCount : '—'}</span>
+        <span style={{ fontSize: 10, color: age.color, lineHeight: 1.2 }}>{age.label}</span>
+      </div>
+
+      {/* ALERTS */}
+      <div style={cellAlerts}>
+        {critSrv > 0 && <span style={critBadge}>{critSrv} CRIT</span>}
+        {warnSrv > 0 && <span style={warnBadge}>{warnSrv} WARN</span>}
+        {critSrv === 0 && warnSrv === 0 && <span style={{ opacity: 0.4 }}>—</span>}
+      </div>
+
+      {/* STATUS */}
+      <div style={cellStatus}>
         {s.unreachable ? (
           <span
             style={{
@@ -262,8 +281,10 @@ export const ServerRow = memo(function ServerRow({
             ● UNKNOWN
           </span>
         )}
-      </td>
-      <td style={tdUptimeStyle}>{uptime !== undefined ? `${uptime}d` : '—'}</td>
-    </tr>
+      </div>
+
+      {/* UPTIME */}
+      <div style={cellUptime}>{uptime !== undefined ? `${uptime}d` : '—'}</div>
+    </div>
   )
 })

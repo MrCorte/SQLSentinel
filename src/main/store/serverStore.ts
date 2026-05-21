@@ -39,6 +39,14 @@ export interface StoredServer {
   notes?: string // free-text notes; persisted in electron-store
 }
 
+/**
+ * Shape of a server record as it exists on disk. Pre-migration records may
+ * carry `ip` instead of (or alongside) `host`; normalizeServer() collapses
+ * them. Using this type for raw store reads avoids `as any[]` casts while
+ * being honest about what the JSON may actually contain.
+ */
+type PersistedServer = Omit<StoredServer, 'host'> & { host?: string; ip?: string }
+
 // ---------------------------------------------------------------------------
 // Encryption helpers (safeStorage — Windows DPAPI, macOS Keychain, Linux Secret Service)
 // ---------------------------------------------------------------------------
@@ -52,8 +60,7 @@ function decryptPwd(stored: string): string {
 }
 
 /** Inject decrypted password into a stored server before returning to callers */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function withDecryptedPassword(s: any): StoredServer {
+function withDecryptedPassword(s: PersistedServer): StoredServer {
   const srv: StoredServer = normalizeServer(s)
   if (srv.encryptedPassword) {
     srv.password = decryptPwd(srv.encryptedPassword)
@@ -78,19 +85,18 @@ export function stripCredentials(s: StoredServer): StoredServer {
  * Normalize a raw stored record: resolves host from either 'host' or legacy 'ip' field.
  * Strips 'ip' from output so new records are stored with 'host' only.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normalizeServer(s: any): StoredServer {
+function normalizeServer(s: PersistedServer): StoredServer {
   const host: string = s.host ?? s.ip ?? ''
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { ip: _ip, ...rest } = s
-  return { ...rest, host }
+  return { ...rest, host } as StoredServer
 }
 
 // ---------------------------------------------------------------------------
 // electron-store singleton
 // ---------------------------------------------------------------------------
 
-type Schema = { servers: StoredServer[] }
+type Schema = { servers: PersistedServer[] }
 
 const store = new Store<Schema>({
   name: 'sql-sentinel-data',
@@ -124,8 +130,7 @@ export function flushLastSeenBuffer(): void {
   if (lastSeenBuffer.size === 0) return
   const updates = Array.from(lastSeenBuffer.entries())
   lastSeenBuffer.clear()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const servers = store.get('servers', []) as any[]
+  const servers = store.get('servers', [])
   let dirty = false
   for (const [id, ts] of updates) {
     const idx = servers.findIndex((s) => s.id === id)
@@ -171,8 +176,7 @@ function invalidateStrippedCache(): void {
 // ---------------------------------------------------------------------------
 
 export function getAll(): StoredServer[] {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (store.get('servers', []) as any[]).map(withDecryptedPassword)
+  return store.get('servers', []).map(withDecryptedPassword)
 }
 
 /**
@@ -181,10 +185,7 @@ export function getAll(): StoredServer[] {
  */
 export function getAllStripped(): StoredServer[] {
   if (_strippedCache) return _strippedCache
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  _strippedCache = (store.get('servers', []) as any[]).map((s) =>
-    stripCredentials(normalizeServer(s))
-  )
+  _strippedCache = store.get('servers', []).map((s) => stripCredentials(normalizeServer(s)))
   return _strippedCache
 }
 
@@ -193,15 +194,13 @@ export function getAllStripped(): StoredServer[] {
  * Decrypts only the matching record.
  */
 export function getById(id: string): StoredServer | undefined {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const raw = store.get('servers', []) as any[]
+  const raw = store.get('servers', [])
   const match = raw.find((s) => s.id === id)
   return match ? withDecryptedPassword(match) : undefined
 }
 
 export function getByIpPort(host: string, port: number): StoredServer | undefined {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const raw = store.get('servers', []) as any[]
+  const raw = store.get('servers', [])
   const match = raw.find((s) => (s.host ?? s.ip) === host && s.port === port)
   return match ? withDecryptedPassword(match) : undefined
 }
@@ -212,23 +211,19 @@ export function getByIpPort(host: string, port: number): StoredServer | undefine
  * Avoids ~250-1000 synchronous DPAPI calls/min on a 200-server fleet.
  */
 export function getStrippedByIpPort(host: string, port: number): StoredServer | undefined {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const raw = store.get('servers', []) as any[]
+  const raw = store.get('servers', [])
   const match = raw.find((s) => (s.host ?? s.ip) === host && s.port === port)
   return match ? stripCredentials(normalizeServer(match)) : undefined
 }
 
 export function add(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  params: any
+  params: unknown
 ): { success: boolean; reason?: string; server?: StoredServer } {
-  const normalized = normalizeServer(params)
+  const normalized = normalizeServer(params as PersistedServer)
   if (!normalized.host) return { success: false, reason: 'missing host' }
   const servers = store.get('servers', [])
-  // Duplicate check: accept both host and legacy ip from stored records
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (
-    servers.some((s: any) => (s.host ?? s.ip) === normalized.host && s.port === normalized.port)
+    servers.some((s) => (s.host ?? s.ip) === normalized.host && s.port === normalized.port)
   ) {
     return { success: false, reason: 'duplicate' }
   }
@@ -253,8 +248,7 @@ export function add(
  */
 export function migrateHostField(): void {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const raw = store.get('servers', []) as any[]
+    const raw = store.get('servers', [])
     const needsMigration = raw.some((s) => !s.host)
     if (!needsMigration) return
     store.set('servers', raw.map(normalizeServer))
@@ -284,8 +278,7 @@ export function update(id: string, patch: Partial<StoredServer>): void {
   // current value, skip the write. Prevents the 50KB-JSON sync write storm
   // caused by polling-driven CPU/AG-role updates (AV-scan can take 100-300ms
   // per write on Windows).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const current = servers[idx] as any
+  const current = servers[idx] as Record<string, unknown>
   let dirty = false
   for (const key of Object.keys(safePatch)) {
     if (current[key] !== safePatch[key]) {
@@ -333,12 +326,12 @@ const UPSERT_ALLOWED_FIELDS = [
   'notes'
 ] as const
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function pickAllowedFields(params: any): Record<string, unknown> {
+function pickAllowedFields(params: unknown): Record<string, unknown> {
   if (!params || typeof params !== 'object') return {}
+  const obj = params as Record<string, unknown>
   const out: Record<string, unknown> = {}
   for (const key of UPSERT_ALLOWED_FIELDS) {
-    if (key in params) out[key] = params[key]
+    if (key in obj) out[key] = obj[key]
   }
   return out
 }
@@ -348,14 +341,12 @@ function pickAllowedFields(params: any): Record<string, unknown> {
  * Used when ADD_SERVER_MANUAL completes — ensures the server is persisted
  * without creating duplicates.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function upsertByIpPort(params: any): StoredServer {
+export function upsertByIpPort(params: unknown): StoredServer {
   const filtered = pickAllowedFields(params)
-  const normalized = normalizeServer(filtered)
+  const normalized = normalizeServer(filtered as PersistedServer)
   const servers = store.get('servers', [])
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const idx = servers.findIndex(
-    (s: any) => (s.host ?? s.ip) === normalized.host && s.port === normalized.port
+    (s) => (s.host ?? s.ip) === normalized.host && s.port === normalized.port
   )
   if (idx >= 0) {
     const safePatch = { ...normalized }
@@ -513,8 +504,7 @@ export function readAutoBackup(): string | null {
 export function migrateEncryptCredentials(): void {
   try {
     if (!safeStorageAvailable()) return
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const raw = store.get('servers', []) as any[]
+    const raw = store.get('servers', [])
     const toMigrate = raw.filter((s) => s.password && !s.encryptedPassword)
     if (toMigrate.length === 0) return
     const migrated = raw.map((s) => {

@@ -11,6 +11,18 @@ export default defineConfig({
         '@renderer': resolve('src/renderer/src')
       }
     },
-    plugins: [react()]
+    plugins: [react()],
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-mui': ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
+            'vendor-datagrid': ['@mui/x-data-grid'],
+            'vendor-charts': ['recharts'],
+            'vendor-react': ['react', 'react-dom']
+          }
+        }
+      }
+    }
   }
 })

@@ -54,7 +54,7 @@ export const useServersStore = create<ServersStore>((set) => ({
       // result is flat { success, reason?, server? }
       if (result?.success !== false) {
         const raw = result?.server ?? (params as StoredServer)
-        const addr: string = raw.host ?? (raw as StoredServer & { ip?: string }).ip ?? ''
+        const addr: string = raw.host ?? raw.ip ?? ''
         const addedServer: StoredServer = { ...raw, host: addr, ip: addr }
         set((state) => ({ servers: [...state.servers, addedServer] }))
         // AG detection in background — non-blocking.

@@ -219,6 +219,7 @@ export function getStrippedByIpPort(host: string, port: number): StoredServer | 
 export function add(
   params: unknown
 ): { success: boolean; reason?: string; server?: StoredServer } {
+  if (!params || typeof params !== 'object') return { success: false, reason: 'invalid params' }
   const normalized = normalizeServer(params as PersistedServer)
   if (!normalized.host) return { success: false, reason: 'missing host' }
   const servers = store.get('servers', [])

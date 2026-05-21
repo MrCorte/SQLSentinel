@@ -317,17 +317,35 @@ const ReplicaCard = memo(function ReplicaCard({
 })
 
 // ---------------------------------------------------------------------------
-// AgHeader — memoized: re-renders only when ag_health / primary_replica changes
+// AgHeader — memoized with scalar props so memo() can actually skip re-renders.
+// AgDetail reference always changes on poll (lastUpdated: new Date()), so
+// passing the full object would defeat memo. Scalars use value equality.
 // ---------------------------------------------------------------------------
 
-const AgHeader = memo(function AgHeader({ detail }: { detail: AgDetail }): React.JSX.Element {
+interface AgHeaderProps {
+  agName: string
+  agHealth: string
+  primaryReplica: string
+  lastUpdatedMs: number
+  replicaCount: number
+  dbCount: number
+}
+
+const AgHeader = memo(function AgHeader({
+  agName,
+  agHealth,
+  primaryReplica,
+  lastUpdatedMs,
+  replicaCount,
+  dbCount
+}: AgHeaderProps): React.JSX.Element {
   return (
     <Box
       sx={{
         bgcolor: tokens.color.bgSurface,
         border: '1px solid',
         borderColor: tokens.color.bgBorder,
-        borderLeft: `4px solid ${healthColor(detail.ag_health)}`,
+        borderLeft: `4px solid ${healthColor(agHealth)}`,
         borderRadius: tokens.radius.sm,
         px: 2,
         py: 1.5,
@@ -336,31 +354,31 @@ const AgHeader = memo(function AgHeader({ detail }: { detail: AgDetail }): React
     >
       <Stack direction="row" alignItems="center" spacing={1.5}>
         <Typography sx={{ fontSize: 18, fontWeight: 700, color: tokens.color.textPrimary, flex: 1 }}>
-          {detail.ag_name}
+          {agName}
         </Typography>
         <Chip
-          label={`● ${detail.ag_health}`}
+          label={`● ${agHealth}`}
           size="small"
           sx={{
             fontWeight: 700,
             fontSize: 11,
-            bgcolor: healthBg(detail.ag_health),
-            color: healthColor(detail.ag_health)
+            bgcolor: healthBg(agHealth),
+            color: healthColor(agHealth)
           }}
         />
       </Stack>
       <Stack direction="row" spacing={3} sx={{ mt: 0.75 }}>
         <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
-          Primary: <strong style={{ color: 'inherit' }}>{detail.primary_replica || '—'}</strong>
+          Primary: <strong style={{ color: 'inherit' }}>{primaryReplica || '—'}</strong>
         </Typography>
         <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
           Updated:{' '}
           <strong style={{ color: 'inherit' }}>
-            {detail.lastUpdated.toLocaleTimeString('en-US')}
+            {new Date(lastUpdatedMs).toLocaleTimeString('en-US')}
           </strong>
         </Typography>
         <Typography variant="caption" sx={{ color: tokens.color.textMuted }}>
-          {detail.replicas.length} replicas · {detail.databases.length} DB
+          {replicaCount} replicas · {dbCount} DB
         </Typography>
       </Stack>
     </Box>
@@ -540,7 +558,14 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-      <AgHeader detail={detail} />
+      <AgHeader
+        agName={detail.ag_name}
+        agHealth={detail.ag_health}
+        primaryReplica={detail.primary_replica}
+        lastUpdatedMs={detail.lastUpdated.getTime()}
+        replicaCount={detail.replicas.length}
+        dbCount={detail.databases.length}
+      />
 
       <AgReplicaList
         replicas={detail.replicas}

@@ -23,6 +23,9 @@ let _timer: ReturnType<typeof setTimeout> | null = null
 
 // Subscribe only to metricsMap changes — skips re-fires from setServerHealth
 // and other fields that don't affect the throttled snapshot consumers need.
+// Invariant: summaries is always mutated in the same immer set() call as
+// metricsMap (see applyFullSnapshot / applyOne). If a future mutator ever
+// updates summaries independently, add it as a second subscription here.
 useMetricsStore.subscribe(
   (state) => state.metricsMap,
   () => {

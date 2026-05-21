@@ -91,14 +91,11 @@ export function ServerTable({
         flexDirection: 'column'
       }}
     >
-      {/* Sticky header */}
+      {/* Header — outside the scroll container so it never scrolls away */}
       <div
         style={{
           display: 'grid',
           gridTemplateColumns: GRID_TEMPLATE,
-          position: 'sticky',
-          top: 0,
-          zIndex: 1,
           flexShrink: 0
         }}
       >

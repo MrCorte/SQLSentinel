@@ -167,9 +167,6 @@ export class ClaudeProvider implements LlmProvider {
     }
 
     onEvent({ type: 'error', message: 'Max iterations reached without final answer' })
-
-    // Suppress unused variable warning for token counters (used for future billing/logging)
-    void totalTokensIn
-    void totalTokensOut
+    console.warn('[ClaudeProvider] max iterations; tokens in=%d out=%d', totalTokensIn, totalTokensOut)
   }
 }

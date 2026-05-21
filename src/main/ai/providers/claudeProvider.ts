@@ -1,18 +1,43 @@
-import Anthropic from '@anthropic-ai/sdk'
+import type {
+  default as AnthropicSDK,
+  Tool,
+  MessageParam,
+  MessageStreamParams,
+  ToolUseBlock,
+  ToolResultBlockParam
+} from '@anthropic-ai/sdk'
 import type { LlmProvider, LlmRequest, ToolDefinition } from './provider'
 
-function toAnthropicTool(def: ToolDefinition): Anthropic.Tool {
+// SDK loaded only on first Claude invocation — prevents app crash if the
+// package isn't installed (e.g. fresh clone without npm install).
+let _SdkClass: typeof AnthropicSDK | null = null
+
+async function getSdkClass(): Promise<typeof AnthropicSDK> {
+  if (!_SdkClass) {
+    try {
+      const mod = await import('@anthropic-ai/sdk')
+      _SdkClass = mod.default as typeof AnthropicSDK
+    } catch {
+      throw new Error(
+        '@anthropic-ai/sdk not found. Run "npm install" in the project root.'
+      )
+    }
+  }
+  return _SdkClass
+}
+
+function toAnthropicTool(def: ToolDefinition): Tool {
   return {
     name: def.name,
     description: def.description,
-    input_schema: def.inputSchema as Anthropic.Tool['input_schema']
+    input_schema: def.inputSchema as Tool['input_schema']
   }
 }
 
 export class ClaudeProvider implements LlmProvider {
   readonly name = 'claude' as const
   readonly model: string
-  private _client: Anthropic | null = null
+  private _client: AnthropicSDK | null = null
   private readonly apiKey: string
 
   constructor(apiKey: string, model = 'claude-haiku-4-5-20251001') {
@@ -20,8 +45,9 @@ export class ClaudeProvider implements LlmProvider {
     this.model = model
   }
 
-  private getClient(): Anthropic {
+  private async getClient(): Promise<AnthropicSDK> {
     if (!this._client) {
+      const Anthropic = await getSdkClass()
       this._client = new Anthropic({ apiKey: this.apiKey })
     }
     return this._client
@@ -29,7 +55,8 @@ export class ClaudeProvider implements LlmProvider {
 
   async health(): Promise<boolean> {
     try {
-      await this.getClient().models.list()
+      const client = await this.getClient()
+      await client.models.list()
       return true
     } catch {
       return false
@@ -39,16 +66,15 @@ export class ClaudeProvider implements LlmProvider {
   async stream(req: LlmRequest): Promise<void> {
     const { systemPrompt, messages, tools, onToolCall, onEvent, signal } = req
 
-    const client = this.getClient()
+    const client = await this.getClient()
     const anthropicTools = tools.map(toAnthropicTool)
 
-    const buildMessages = (msgs: typeof messages): Anthropic.MessageParam[] =>
-      msgs.map((m) => ({
-        role: m.role === 'assistant' ? 'assistant' : 'user',
-        content: m.content
-      }))
-
-    const currentMessages = [...messages]
+    // Maintain a typed Anthropic message list so multi-turn tool loops carry
+    // full content arrays (text + tool_use blocks) as the API requires.
+    const anthropicMessages: MessageParam[] = messages.map((m) => ({
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      content: m.content
+    }))
 
     const MAX_ITERATIONS = 8
     let totalTokensIn = 0
@@ -60,7 +86,7 @@ export class ClaudeProvider implements LlmProvider {
         return
       }
 
-      const streamParams: Anthropic.MessageStreamParams = {
+      const streamParams: MessageStreamParams = {
         model: this.model,
         max_tokens: 2048,
         system: [
@@ -71,12 +97,12 @@ export class ClaudeProvider implements LlmProvider {
             cache_control: { type: 'ephemeral' }
           }
         ],
-        messages: buildMessages(currentMessages),
+        messages: anthropicMessages,
         ...(anthropicTools.length > 0 ? { tools: anthropicTools } : {})
       }
 
       let finalText = ''
-      const toolUseBlocks: Anthropic.ToolUseBlock[] = []
+      const toolUseBlocks: ToolUseBlock[] = []
 
       const stream = client.messages.stream(streamParams)
 
@@ -94,7 +120,7 @@ export class ClaudeProvider implements LlmProvider {
         } else if (event.type === 'content_block_start') {
           if (event.content_block.type === 'tool_use') {
             onEvent({ type: 'tool_start', name: event.content_block.name })
-            toolUseBlocks.push(event.content_block as Anthropic.ToolUseBlock)
+            toolUseBlocks.push(event.content_block as ToolUseBlock)
           }
         } else if (event.type === 'message_delta') {
           if (event.usage) {
@@ -114,10 +140,11 @@ export class ClaudeProvider implements LlmProvider {
         return
       }
 
-      // Processa tool calls
-      currentMessages.push({ role: 'assistant', content: finalText })
+      // Append the full assistant content (text + tool_use blocks) so the next
+      // turn has matching tool_use IDs for the tool_result blocks.
+      anthropicMessages.push({ role: 'assistant', content: finalMessage.content })
 
-      const toolResults: Anthropic.ToolResultBlockParam[] = []
+      const toolResults: ToolResultBlockParam[] = []
       for (const block of toolUseBlocks) {
         const inputObj = (block.input ?? {}) as Record<string, unknown>
         try {
@@ -136,12 +163,13 @@ export class ClaudeProvider implements LlmProvider {
         }
       }
 
-      currentMessages.push({
-        role: 'user',
-        content: JSON.stringify(toolResults)
-      })
+      anthropicMessages.push({ role: 'user', content: toolResults })
     }
 
     onEvent({ type: 'error', message: 'Max iterations reached without final answer' })
+
+    // Suppress unused variable warning for token counters (used for future billing/logging)
+    void totalTokensIn
+    void totalTokensOut
   }
 }

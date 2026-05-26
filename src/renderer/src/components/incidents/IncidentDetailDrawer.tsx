@@ -27,6 +27,7 @@ import type {
 import {
   buildAiRecommendations,
   buildAiWorkspaceSummary,
+  parseIncidentAiSections,
   type AiRecommendationItem
 } from './aiWorkspace'
 import { ThumbsRow } from '../ai/ThumbsRow'
@@ -142,6 +143,7 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
         rootCauseMd: incident?.rootCauseMd
       })
     : null
+  const incidentAiSections = parseIncidentAiSections(incident?.rootCauseMd)
 
   async function handleSetStatus(status: IncidentStatus): Promise<void> {
     if (!incident) return
@@ -411,7 +413,7 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
                     letterSpacing: 0.5
                   }}
                 >
-                  AI Recommendations
+                  Recommended Fix
                 </Typography>
                 {aiRecommendations.items.length > 0 ? (
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -463,10 +465,10 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
               </Box>
             )}
 
-            {incident.rootCauseMd && (
+            {incidentAiSections.rootCause && (
               <Box>
                 <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, mb: 0.5 }}>
-                  Root Cause Analysis
+                  Root Cause
                 </Typography>
                 <Box
                   component="pre"
@@ -482,13 +484,13 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
                     m: 0
                   }}
                 >
-                  {incident.rootCauseMd}
+                  {incidentAiSections.rootCause}
                 </Box>
               </Box>
             )}
 
             {/* Live AI stream */}
-            {(agentRunning || agentTokens) && (
+            {agentRunning && (
               <Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
                   <Typography sx={{ fontSize: 11, color: tokens.color.textMuted }}>

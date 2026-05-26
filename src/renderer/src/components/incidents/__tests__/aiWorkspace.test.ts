@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { buildAiRecommendations, buildAiWorkspaceSummary } from '../aiWorkspace'
+import {
+  buildAiRecommendations,
+  buildAiWorkspaceSummary,
+  parseIncidentAiSections
+} from '../aiWorkspace'
 import type {
   IncidentAction,
   IncidentAuditEntry,
@@ -168,5 +172,38 @@ describe('buildAiRecommendations', () => {
     expect(recommendations.items[0]?.explanation).toBe(
       'Run the backup remediation selected by the model and verify that SQL Server records the next full backup completion.'
     )
+  })
+
+  it('uses a dedicated recommended fix payload when the root cause is stored separately', () => {
+    const recommendations = buildAiRecommendations({
+      events: [
+        event('llm_message', {
+          summary: 'Full backups are missing.',
+          rootCauseMd: 'The monitored databases have no recorded full backup history.',
+          recommendedFix: 'Review the SQL Agent backup job and run a manual full backup.'
+        })
+      ],
+      actions: [],
+      summary: undefined,
+      rootCauseMd: undefined
+    })
+
+    expect(recommendations.items[0]?.explanation).toBe(
+      'Review the SQL Agent backup job and run a manual full backup.'
+    )
+  })
+})
+
+describe('parseIncidentAiSections', () => {
+  it('separates root cause text from the recommended fix section', () => {
+    const sections = parseIncidentAiSections(
+      'The backup job has not recorded a successful full backup.\n\n## Recommended Fix\nVerify SQL Agent job history, run a manual full backup, then monitor the next scheduled run.'
+    )
+
+    expect(sections).toEqual({
+      rootCause: 'The backup job has not recorded a successful full backup.',
+      recommendedFix:
+        'Verify SQL Agent job history, run a manual full backup, then monitor the next scheduled run.'
+    })
   })
 })

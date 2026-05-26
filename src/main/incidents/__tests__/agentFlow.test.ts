@@ -263,6 +263,22 @@ describe('runIncidentAgent — root cause & summary parsing', () => {
     )
   })
 
+  it('does not persist the recommended fix inside root cause text', async () => {
+    vi.mocked(providers.getProvider).mockReturnValue(
+      makeFakeProvider({
+        finalText:
+          'Backups are overdue.\n\n## Root Cause\nThe backup job has no successful full backup history.\n\n## Recommended Fix\nReview SQL Agent job history and run a manual full backup.'
+      })
+    )
+
+    await runIncidentAgent('inc-test-001')
+
+    expect(repo.setRootCause).toHaveBeenCalledWith(
+      'inc-test-001',
+      'The backup job has no successful full backup history.'
+    )
+  })
+
   it('falls back to category (underscores → spaces) when no text before ## Root Cause', async () => {
     vi.mocked(providers.getProvider).mockReturnValue(
       makeFakeProvider({ finalText: '## Root Cause\nBlocking detected.' })

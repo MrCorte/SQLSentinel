@@ -5,6 +5,7 @@ import type { IpcResult, AiProviderSettings, AiProviderName } from '../types'
 import { getDb } from '../../store/database'
 import { encrypt, decrypt, isAvailable as safeStorageAvailable } from '../../store/safeStorageUtil'
 import { getProvider } from '../../ai/providers'
+import { normalizeOllamaModel } from '../../ai/providers/defaults'
 
 function loadRaw(): { map: Record<string, string> } {
   const db = getDb()
@@ -34,7 +35,7 @@ function readSettings(): AiProviderSettings {
 
   return {
     provider,
-    ollamaModel: map['ai_ollama_model'] ?? 'llama3.2:3b',
+    ollamaModel: normalizeOllamaModel(map['ai_ollama_model']),
     claudeApiKey,
     claudeModel: map['ai_claude_model'] ?? 'claude-haiku-4-5-20251001',
     redactQueryText: map['ai_redact_query_text'] !== 'false',

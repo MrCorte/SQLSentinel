@@ -1,13 +1,13 @@
 import type { IpcMainInvokeEvent } from 'electron'
 import { handle, safeError, log } from '../handleWrapper'
-import { checkOllamaHealth } from '../../ai/ollama'
 import { langGraphAsk, langGraphStream, abortActiveStream, type AgentHistory } from '../../ai/langGraphAgent'
+import { getProvider } from '../../ai/providers'
 import { IpcChannel, type IpcResult, type AiStreamEvent } from '../types'
 
 export function registerKnowledgeHandlers(): void {
   handle(IpcChannel.AI_CHECK, async (): Promise<IpcResult<boolean>> => {
     try {
-      return { ok: true, data: await checkOllamaHealth() }
+      return { ok: true, data: await getProvider().health() }
     } catch (err) {
       return { ok: false, error: safeError(err) }
     }

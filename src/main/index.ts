@@ -242,7 +242,14 @@ app.whenReady().then(async () => {
   // Initialize SQLite (server registry) with corruption recovery.
   const sqliteDir = electronApp.getPath('userData')
   const sqliteDbPath = pathJoin(sqliteDir, 'data.db')
-  const initResult = initDbWithRecovery(sqliteDbPath)
+  let initResult: ReturnType<typeof initDbWithRecovery>
+  try {
+    initResult = initDbWithRecovery(sqliteDbPath)
+  } catch (err) {
+    log.error('[main] Fatal: SQLite initialization failed — quitting:', err)
+    app.quit()
+    return
+  }
   if (initResult.recoveredFromCorruption) {
     sqliteRecovered = { rotatedPath: initResult.rotatedPath }
     log.error(
@@ -345,6 +352,7 @@ app.whenReady().then(async () => {
   connect()
   onStatusChange(async (status) => {
     if (status !== 'connected') return
+    if (process.platform !== 'win32') return
     try {
       const serviceServers = await serviceApi.getServers()
       const localServers = serverStore.getAll()
@@ -515,6 +523,7 @@ app.on('window-all-closed', () => {
 // until the kernel kills the process, and the SQLite DB could close
 // without flushing.
 app.on('before-quit', () => {
+  if (backgroundService) backgroundService.quitting = true
   abortActiveStream()
   cleanupResources()
 })

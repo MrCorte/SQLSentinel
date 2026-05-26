@@ -61,6 +61,16 @@ export function getSettings(): AppSettings {
   }
 }
 
+export function getRawSetting(key: string): string | null {
+  const db = getDb()
+  const row = db.prepare<[string], SettingsRow>('SELECT value FROM settings WHERE key = ?').get(key)
+  return row?.value ?? null
+}
+
+export function setRawSetting(key: string, value: string): void {
+  stmts().upsert.run(key, value)
+}
+
 export function saveSettings(settings: Partial<AppSettings>): void {
   const upsert = stmts().upsert
   if (settings.retentionMinutes != null)

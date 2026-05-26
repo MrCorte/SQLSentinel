@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 function Versions(): React.JSX.Element {
-  const [versions] = useState(window.electron.process.versions)
+  const [versions] = useState(window.sqlSentinel.runtimeVersions())
 
   return (
     <ul className="versions">

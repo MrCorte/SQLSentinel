@@ -95,7 +95,12 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
   }, [expandedMachines])
 
   // ── DB View state ────────────────────────────────────────────────────────
-  const [dbView, setDbView] = useState(false)
+  const [dbView, setDbView] = useState<boolean>(
+    () => sessionStorage.getItem('sqlsentinel:inventory:dbView') === 'true'
+  )
+  useEffect(() => {
+    sessionStorage.setItem('sqlsentinel:inventory:dbView', String(dbView))
+  }, [dbView])
   const [expandedDbServers, setExpandedDbServers] = useState<Set<string>>(
     () => loadStoredKeySet('sqlsentinel:inventory:expandedDbServers')
   )
@@ -123,7 +128,7 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
   // Throttled metrics snapshot — max 1 re-render/s to handle 200+ servers
   const metricsMap = useThrottledMetricsMap()
 
-  const inventory = useMemo(() => computeInventory(), [servers, envGroups, serverAliases])
+  const inventory = useMemo(() => computeInventory(), [servers, envGroups, serverAliases, metricsMap])
   const { totals } = inventory
 
   // ── Cluster / machine key collections ───────────────────────────────────

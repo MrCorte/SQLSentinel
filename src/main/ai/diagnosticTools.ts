@@ -86,6 +86,29 @@ const SQL = {
     WHERE mf.file_id = 1 AND mf.database_id > 4
   `,
 
+  backupStatus: `
+    WITH last_full_backup AS (
+      SELECT
+        database_name,
+        MAX(backup_finish_date) AS last_full_backup_finish_date
+      FROM msdb.dbo.backupset
+      WHERE type = 'D'
+      GROUP BY database_name
+    )
+    SELECT
+      d.name AS database_name,
+      d.state_desc,
+      d.recovery_model_desc,
+      b.last_full_backup_finish_date,
+      DATEDIFF(hour, b.last_full_backup_finish_date, GETDATE()) AS hours_since_last_full_backup
+    FROM sys.databases d
+    LEFT JOIN last_full_backup b ON b.database_name = d.name
+    WHERE d.database_id > 4
+    ORDER BY
+      CASE WHEN b.last_full_backup_finish_date IS NULL THEN 0 ELSE 1 END,
+      b.last_full_backup_finish_date ASC
+  `,
+
   cpuHistory: `
     SELECT TOP 30
       record.value('(./Record/SchedulerMonitorEvent/SystemHealth/ProcessUtilization)[1]', 'int') AS sql_cpu_pct,
@@ -147,6 +170,17 @@ export function buildDiagnosticTools(conn: ServerConnection): DynamicStructuredT
       schema: z.object({}),
       func: async () => {
         const rows = await executeReadOnly(conn, SQL.diskUsage)
+        return JSON.stringify(rows)
+      }
+    }),
+
+    new DynamicStructuredTool({
+      name: 'get_backup_status',
+      description:
+        'Returns each user database with state, recovery model, last full backup finish time, and hours since last full backup. Use first for backup_overdue incidents.',
+      schema: z.object({}),
+      func: async () => {
+        const rows = await executeReadOnly(conn, SQL.backupStatus)
         return JSON.stringify(rows)
       }
     }),

@@ -20,6 +20,7 @@ import CancelIcon from '@mui/icons-material/Cancel'
 import { tokens } from '../../styles/tokens'
 import { useAiChatStore } from '../../store/aiChatStore'
 import type { ToolStep } from '../../store/aiChatStore'
+import type { AiProviderSettings } from '../../../../preload/index'
 
 type AiStreamEvent = Parameters<Parameters<typeof window.sqlSentinel.onAiStreamEvent>[0]>[0]
 
@@ -54,6 +55,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
   // Drives the inline banner shown when the user opens the panel — saves them
   // from typing a question only to hit a 30-60s timeout.
   const [ollamaHealth, setOllamaHealth] = useState<'unknown' | 'ok' | 'down'>('unknown')
+  const [providerSettings, setProviderSettings] = useState<AiProviderSettings | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const mountedRef = useRef(true)
   const unsubscribeRef = useRef<(() => void) | null>(null)
@@ -67,18 +69,17 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
     }
   }, [])
 
-  // Probe Ollama every time the panel opens. We deliberately re-probe on each
-  // open instead of caching: the user may have just started Ollama between
-  // visits, and a stale "down" banner would be misleading.
+  // Probe the configured provider every time the panel opens. We deliberately
+  // re-probe on each open: the user may have just started Ollama or fixed a key.
   useEffect(() => {
     if (!open) return
     let cancelled = false
     setOllamaHealth('unknown')
-    window.sqlSentinel
-      .aiCheck()
-      .then((res) => {
+    Promise.all([window.sqlSentinel.aiGetSettings(), window.sqlSentinel.aiCheck()])
+      .then(([settings, health]) => {
         if (cancelled) return
-        const ok = res.ok && res.data === true
+        if (settings.ok) setProviderSettings(settings.data)
+        const ok = health.ok && health.data === true
         setOllamaHealth(ok ? 'ok' : 'down')
       })
       .catch(() => {
@@ -88,6 +89,12 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
       cancelled = true
     }
   }, [open])
+
+  const providerLabel = providerSettings
+    ? providerSettings.provider === 'claude'
+      ? `Claude · ${providerSettings.claudeModel}`
+      : `Ollama · ${providerSettings.ollamaModel}`
+    : 'AI provider'
 
 
   // Scroll to bottom when new messages arrive
@@ -196,7 +203,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
               AI DBA Assistant
             </Typography>
             <Typography sx={{ fontSize: tokens.font.sizeXs, opacity: 0.85 }}>
-              llama3.2:3b · LangGraph agent · fully local
+              {providerLabel}
             </Typography>
           </Box>
           <Tooltip title="Clear history">
@@ -237,15 +244,17 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
               borderBottom: '1px solid rgba(0,0,0,0.2)'
             }}
           >
-            Ollama is not reachable. Start it with{' '}
-            <Box component="code" sx={{ bgcolor: 'rgba(0,0,0,0.25)', px: 0.5, borderRadius: 0.5 }}>
-              ollama serve
-            </Box>{' '}
-            and ensure the model is available (
-            <Box component="code" sx={{ bgcolor: 'rgba(0,0,0,0.25)', px: 0.5, borderRadius: 0.5 }}>
-              ollama pull llama3.2:3b
-            </Box>
-            ).
+            {providerSettings?.provider === 'claude'
+              ? 'Claude is not reachable. Check the API key, model, and network access in Settings.'
+              : (
+                <>
+                  Ollama is not reachable. Start it with{' '}
+                  <Box component="code" sx={{ bgcolor: 'rgba(0,0,0,0.25)', px: 0.5, borderRadius: 0.5 }}>
+                    ollama serve
+                  </Box>{' '}
+                  and ensure the model is available.
+                </>
+              )}
           </Box>
         )}
 

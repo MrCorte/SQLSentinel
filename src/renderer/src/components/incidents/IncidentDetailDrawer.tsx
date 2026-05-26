@@ -18,7 +18,17 @@ import { useShallow } from 'zustand/react/shallow'
 import { useIncidentsStore, loadDetail } from '../../store/incidentsStore'
 import { notify } from '../../store/notifyStore'
 import { useAuth } from '../../context/AuthContext'
-import type { IncidentEvent, IncidentAction, IncidentAuditEntry, IncidentStatus } from '../../../../preload/index'
+import type {
+  IncidentEvent,
+  IncidentAction,
+  IncidentAuditEntry,
+  IncidentStatus
+} from '../../../../preload/index'
+import {
+  buildAiRecommendations,
+  buildAiWorkspaceSummary,
+  type AiRecommendationItem
+} from './aiWorkspace'
 
 const DRAWER_WIDTH = 480
 
@@ -42,7 +52,11 @@ interface Props {
 
 export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Element {
   const { selectedId, detail, loadingDetail } = useIncidentsStore(
-    useShallow((s) => ({ selectedId: s.selectedId, detail: s.detail, loadingDetail: s.loadingDetail }))
+    useShallow((s) => ({
+      selectedId: s.selectedId,
+      detail: s.detail,
+      loadingDetail: s.loadingDetail
+    }))
   )
   const { session } = useAuth()
   const [agentRunning, setAgentRunning] = useState(false)
@@ -77,6 +91,9 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
       } else if (event.type === 'done' || event.type === 'error') {
         setAgentRunning(false)
         loadDetail(selectedId)
+      } else if (event.type === 'status') {
+        setAgentRunning(event.status === 'running')
+        if (event.status !== 'running') loadDetail(selectedId)
       } else if (event.type === 'tool_start') {
         setAgentRunning(true)
       }
@@ -100,6 +117,29 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
   }, [open, selectedId])
 
   const incident = detail?.incident
+  const currentActions = detail
+    ? [
+        ...detail.actions,
+        ...pendingActions.filter(
+          (pending) => !detail.actions.some((action) => action.id === pending.id)
+        )
+      ]
+    : pendingActions
+  const aiWorkspace = detail
+    ? buildAiWorkspaceSummary({
+        events: detail.events,
+        actions: currentActions,
+        audit: detail.audit
+      })
+    : null
+  const aiRecommendations = detail
+    ? buildAiRecommendations({
+        events: detail.events,
+        actions: currentActions,
+        summary: incident?.summary,
+        rootCauseMd: incident?.rootCauseMd
+      })
+    : null
 
   async function handleSetStatus(status: IncidentStatus): Promise<void> {
     if (!incident) return
@@ -110,7 +150,10 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
   async function handleExport(): Promise<void> {
     if (!incident) return
     const res = await window.sqlSentinel.incidents.exportPostmortem(incident.id)
-    if (!res.ok) { notify.error(res.error, 'Export failed'); return }
+    if (!res.ok) {
+      notify.error(res.error, 'Export failed')
+      return
+    }
     const blob = new Blob([res.data], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -134,7 +177,10 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
 
   async function handleApproveAction(actionId: string): Promise<void> {
     setActionBusy(actionId)
-    const res = await window.sqlSentinel.incidents.approveAction({ actionId, approvedBy: session.username })
+    const res = await window.sqlSentinel.incidents.approveAction({
+      actionId,
+      approvedBy: session.username
+    })
     setActionBusy(null)
     if (!res.ok) notify.error(res.error, 'Action failed')
     else loadDetail(selectedId!)
@@ -191,7 +237,9 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
       </Box>
 
       {/* Body */}
-      <Box sx={{ flex: 1, overflowY: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Box
+        sx={{ flex: 1, overflowY: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}
+      >
         {loadingDetail && (
           <Box sx={{ display: 'flex', justifyContent: 'center', pt: 4 }}>
             <CircularProgress size={24} />
@@ -223,33 +271,184 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
             </Box>
 
             <Box>
-              <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, mb: 0.5 }}>Server</Typography>
-              <Typography sx={{ fontSize: 13, fontFamily: 'monospace' }}>{incident.serverId}</Typography>
+              <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, mb: 0.5 }}>
+                Server
+              </Typography>
+              <Typography sx={{ fontSize: 13, fontFamily: 'monospace' }}>
+                {incident.serverId}
+              </Typography>
             </Box>
 
             <Box sx={{ display: 'flex', gap: 3 }}>
               <Box>
-                <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, mb: 0.5 }}>Opened</Typography>
-                <Typography sx={{ fontSize: 12 }}>{new Date(incident.openedAt).toLocaleString()}</Typography>
+                <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, mb: 0.5 }}>
+                  Opened
+                </Typography>
+                <Typography sx={{ fontSize: 12 }}>
+                  {new Date(incident.openedAt).toLocaleString()}
+                </Typography>
               </Box>
               {incident.resolvedAt && (
                 <Box>
-                  <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, mb: 0.5 }}>Resolved</Typography>
-                  <Typography sx={{ fontSize: 12 }}>{new Date(incident.resolvedAt).toLocaleString()}</Typography>
+                  <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, mb: 0.5 }}>
+                    Resolved
+                  </Typography>
+                  <Typography sx={{ fontSize: 12 }}>
+                    {new Date(incident.resolvedAt).toLocaleString()}
+                  </Typography>
                 </Box>
               )}
             </Box>
 
             {incident.summary && (
               <Box>
-                <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, mb: 0.5 }}>Summary</Typography>
+                <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, mb: 0.5 }}>
+                  Summary
+                </Typography>
                 <Typography sx={{ fontSize: 13 }}>{incident.summary}</Typography>
+              </Box>
+            )}
+
+            {aiWorkspace && (
+              <Box
+                sx={{
+                  border: `1px solid ${tokens.color.bgBorder}`,
+                  borderRadius: 1,
+                  p: 1.5,
+                  bgcolor: tokens.color.bgSurface,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 1
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                  <SmartToyIcon sx={{ fontSize: 16, color: tokens.color.accent }} />
+                  <Typography
+                    sx={{ fontSize: 12, fontWeight: 600, color: tokens.color.textPrimary }}
+                  >
+                    AI Workspace
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                  <Chip
+                    size="small"
+                    label={`Tools ${aiWorkspace.latestRun?.toolCallCount ?? aiWorkspace.toolCallCount}`}
+                    sx={{ height: 22, fontSize: 11 }}
+                  />
+                  <Chip
+                    size="small"
+                    label={`Proposed ${aiWorkspace.proposedActions}`}
+                    sx={{ height: 22, fontSize: 11 }}
+                  />
+                  <Chip
+                    size="small"
+                    label={`Executed ${aiWorkspace.executedActions}`}
+                    sx={{ height: 22, fontSize: 11 }}
+                  />
+                  {aiWorkspace.latestRun && (
+                    <Chip
+                      size="small"
+                      color={aiWorkspace.latestRun.error ? 'error' : 'success'}
+                      label={
+                        aiWorkspace.latestRun.error
+                          ? 'Last run failed'
+                          : `Last run ${formatDuration(aiWorkspace.latestRun.durationMs)}`
+                      }
+                      sx={{ height: 22, fontSize: 11 }}
+                    />
+                  )}
+                </Box>
+                {aiWorkspace.latestRun && (
+                  <Typography sx={{ fontSize: 11, color: tokens.color.textMuted }}>
+                    {aiWorkspace.latestRun.provider} / {aiWorkspace.latestRun.model}
+                  </Typography>
+                )}
+                {aiWorkspace.toolNames.length > 0 && (
+                  <Typography
+                    sx={{ fontSize: 11, color: tokens.color.textMuted, wordBreak: 'break-word' }}
+                  >
+                    {aiWorkspace.toolNames.join(', ')}
+                  </Typography>
+                )}
+                {aiWorkspace.latestRun?.error && (
+                  <Typography
+                    sx={{ fontSize: 11, color: tokens.color.danger, wordBreak: 'break-word' }}
+                  >
+                    {aiWorkspace.latestRun.error}
+                  </Typography>
+                )}
+              </Box>
+            )}
+
+            {aiRecommendations && (
+              <Box>
+                <Typography
+                  sx={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    mb: 1,
+                    color: tokens.color.textMuted,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5
+                  }}
+                >
+                  AI Recommendations
+                </Typography>
+                {aiRecommendations.items.length > 0 ? (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {aiRecommendations.items.map((item) => (
+                      <AiRecommendationCard
+                        key={item.id}
+                        item={item}
+                        busy={item.action ? actionBusy === item.action.id : false}
+                        onApprove={
+                          item.action?.status === 'pending'
+                            ? () => handleApproveAction(item.action!.id)
+                            : undefined
+                        }
+                        onReject={
+                          item.action?.status === 'pending'
+                            ? () => handleRejectAction(item.action!.id)
+                            : undefined
+                        }
+                      />
+                    ))}
+                  </Box>
+                ) : (
+                  <Box
+                    sx={{
+                      border: `1px solid ${tokens.color.bgBorder}`,
+                      borderRadius: 1,
+                      p: 1.5,
+                      bgcolor: tokens.color.bgSurface,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 1
+                    }}
+                  >
+                    <Typography sx={{ fontSize: 12, color: tokens.color.textMuted }}>
+                      No proposed fix yet
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={agentRunning ? <CircularProgress size={12} /> : <SmartToyIcon />}
+                      disabled={!incident || agentRunning}
+                      onClick={handleRunAgent}
+                    >
+                      Run AI
+                    </Button>
+                  </Box>
+                )}
               </Box>
             )}
 
             {incident.rootCauseMd && (
               <Box>
-                <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, mb: 0.5 }}>Root Cause Analysis</Typography>
+                <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, mb: 0.5 }}>
+                  Root Cause Analysis
+                </Typography>
                 <Box
                   component="pre"
                   sx={{
@@ -273,7 +472,9 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
             {(agentRunning || agentTokens) && (
               <Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
-                  <Typography sx={{ fontSize: 11, color: tokens.color.textMuted }}>AI Analysis</Typography>
+                  <Typography sx={{ fontSize: 11, color: tokens.color.textMuted }}>
+                    AI Analysis
+                  </Typography>
                   {agentRunning && <CircularProgress size={10} sx={{ ml: 0.5 }} />}
                 </Box>
                 <Box
@@ -301,7 +502,16 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
 
             {/* Timeline */}
             <Box>
-              <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 1, color: tokens.color.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <Typography
+                sx={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  mb: 1,
+                  color: tokens.color.textMuted,
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5
+                }}
+              >
                 Timeline
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
@@ -309,7 +519,9 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
                   <EventRow key={ev.id} event={ev} />
                 ))}
                 {detail?.events.length === 0 && (
-                  <Typography sx={{ fontSize: 12, color: tokens.color.textMuted }}>No events yet</Typography>
+                  <Typography sx={{ fontSize: 12, color: tokens.color.textMuted }}>
+                    No events yet
+                  </Typography>
                 )}
               </Box>
             </Box>
@@ -319,35 +531,21 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
               <>
                 <Divider />
                 <Box>
-                  <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 1, color: tokens.color.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  <Typography
+                    sx={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      mb: 1,
+                      color: tokens.color.textMuted,
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.5
+                    }}
+                  >
                     AI Investigations
                   </Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                    {(detail!.audit).map((entry: IncidentAuditEntry) => (
+                    {detail!.audit.map((entry: IncidentAuditEntry) => (
                       <AuditRow key={entry.id} entry={entry} />
-                    ))}
-                  </Box>
-                </Box>
-              </>
-            )}
-
-            {/* Pending action proposals */}
-            {pendingActions.length > 0 && (
-              <>
-                <Divider />
-                <Box>
-                  <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 1, color: tokens.color.warning, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                    Pending Actions ({pendingActions.length})
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                    {pendingActions.map((action) => (
-                      <ActionApprovalCard
-                        key={action.id}
-                        action={action}
-                        busy={actionBusy === action.id}
-                        onApprove={() => handleApproveAction(action.id)}
-                        onReject={() => handleRejectAction(action.id)}
-                      />
                     ))}
                   </Box>
                 </Box>
@@ -368,16 +566,18 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
                   Resolve
                 </Button>
               )}
-              {incident.status !== 'archived' && incident.status !== 'open' && incident.status !== 'investigating' && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={<ArchiveIcon />}
-                  onClick={() => handleSetStatus('archived')}
-                >
-                  Archive
-                </Button>
-              )}
+              {incident.status !== 'archived' &&
+                incident.status !== 'open' &&
+                incident.status !== 'investigating' && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<ArchiveIcon />}
+                    onClick={() => handleSetStatus('archived')}
+                  >
+                    Archive
+                  </Button>
+                )}
             </Box>
           </>
         )}
@@ -399,6 +599,9 @@ function EventRow({ event }: { event: IncidentEvent }): React.JSX.Element {
   } else if (event.kind === 'tool_call') {
     label = 'Tool'
     detail = String(payload.name ?? '')
+  } else if (event.kind === 'agent_run') {
+    label = 'AI Run'
+    detail = String(payload.error ?? payload.reason ?? payload.status ?? '')
   } else if (event.kind === 'action_proposed') {
     label = 'Proposed'
     detail = String(payload.toolName ?? '')
@@ -412,7 +615,9 @@ function EventRow({ event }: { event: IncidentEvent }): React.JSX.Element {
 
   return (
     <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-      <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, flexShrink: 0, pt: '1px', minWidth: 64 }}>
+      <Typography
+        sx={{ fontSize: 11, color: tokens.color.textMuted, flexShrink: 0, pt: '1px', minWidth: 64 }}
+      >
         {ts}
       </Typography>
       <Typography sx={{ fontSize: 12, fontWeight: 600, flexShrink: 0, minWidth: 70 }}>
@@ -432,7 +637,9 @@ function AuditRow({ entry }: { entry: IncidentAuditEntry }): React.JSX.Element {
   const providerColor = entry.provider === 'claude' ? tokens.color.accent : tokens.color.textMuted
   return (
     <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', py: 0.5 }}>
-      <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, flexShrink: 0, minWidth: 130 }}>
+      <Typography
+        sx={{ fontSize: 11, color: tokens.color.textMuted, flexShrink: 0, minWidth: 130 }}
+      >
         {ts}
       </Typography>
       <Chip
@@ -441,12 +648,33 @@ function AuditRow({ entry }: { entry: IncidentAuditEntry }): React.JSX.Element {
         sx={{ height: 16, fontSize: 10, bgcolor: providerColor, color: '#fff', flexShrink: 0 }}
       />
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <Typography
+          sx={{
+            fontSize: 11,
+            color: tokens.color.textMuted,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}
+        >
           {entry.model}
         </Typography>
         {(entry.tokensIn != null || entry.tokensOut != null) && (
           <Typography sx={{ fontSize: 10, color: tokens.color.textMuted }}>
-            {entry.tokensIn != null ? `↑${entry.tokensIn}` : ''}{entry.tokensOut != null ? ` ↓${entry.tokensOut}` : ''} tokens
+            {entry.tokensIn != null ? `↑${entry.tokensIn}` : ''}
+            {entry.tokensOut != null ? ` ↓${entry.tokensOut}` : ''} tokens
+          </Typography>
+        )}
+        {(entry.durationMs != null || entry.toolCallCount != null) && (
+          <Typography sx={{ fontSize: 10, color: tokens.color.textMuted }}>
+            {entry.durationMs != null ? formatDuration(entry.durationMs) : ''}
+            {entry.durationMs != null && entry.toolCallCount != null ? ' / ' : ''}
+            {entry.toolCallCount != null ? `${entry.toolCallCount} tools` : ''}
+          </Typography>
+        )}
+        {entry.error && (
+          <Typography sx={{ fontSize: 10, color: tokens.color.danger, wordBreak: 'break-word' }}>
+            {entry.error}
           </Typography>
         )}
       </Box>
@@ -454,76 +682,114 @@ function AuditRow({ entry }: { entry: IncidentAuditEntry }): React.JSX.Element {
   )
 }
 
-interface ActionApprovalCardProps {
-  action: IncidentAction
-  busy: boolean
-  onApprove: () => void
-  onReject: () => void
+function formatDuration(durationMs?: number): string {
+  if (durationMs == null) return 'n/a'
+  if (durationMs < 1000) return `${durationMs} ms`
+  return `${(durationMs / 1000).toFixed(durationMs < 10_000 ? 1 : 0)} s`
 }
 
-function ActionApprovalCard({ action, busy, onApprove, onReject }: ActionApprovalCardProps): React.JSX.Element {
+interface AiRecommendationCardProps {
+  item: AiRecommendationItem
+  busy: boolean
+  onApprove?: () => void
+  onReject?: () => void
+}
+
+function AiRecommendationCard({
+  item,
+  busy,
+  onApprove,
+  onReject
+}: AiRecommendationCardProps): React.JSX.Element {
+  const isPendingAction = item.action?.status === 'pending'
   return (
     <Box
       sx={{
-        border: `1px solid ${tokens.color.warning}`,
+        border: `1px solid ${isPendingAction ? tokens.color.warning : tokens.color.bgBorder}`,
         borderRadius: 1,
         p: 1.5,
         display: 'flex',
         flexDirection: 'column',
-        gap: 1
+        gap: 1,
+        bgcolor: tokens.color.bgSurface
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Chip
-          label={action.toolName.replace(/_/g, ' ')}
+          label={item.title}
           size="small"
-          sx={{ bgcolor: tokens.color.warning, color: '#fff', fontWeight: 600, fontSize: 11 }}
+          sx={{
+            bgcolor: isPendingAction ? tokens.color.warning : tokens.color.accent,
+            color: '#fff',
+            fontWeight: 600,
+            fontSize: 11
+          }}
         />
-        <Typography sx={{ fontSize: 12, color: tokens.color.textMuted, wordBreak: 'break-word' }}>
-          {action.explanation}
-        </Typography>
-      </Box>
-
-      <Box
-        component="pre"
-        sx={{
-          fontSize: 11,
-          fontFamily: 'monospace',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word',
-          bgcolor: tokens.color.bgBase,
-          border: `1px solid ${tokens.color.bgBorder}`,
-          borderRadius: 1,
-          p: 1,
-          m: 0,
-          maxHeight: 120,
-          overflowY: 'auto'
-        }}
-      >
-        {action.tsqlPreview}
-      </Box>
-
-      <Box sx={{ display: 'flex', gap: 1 }}>
-        <Button
+        <Chip
+          label={item.status}
           size="small"
-          variant="contained"
-          color="warning"
-          disabled={busy}
-          startIcon={busy ? <CircularProgress size={12} /> : <CheckCircleIcon fontSize="small" />}
-          onClick={onApprove}
-        >
-          Approve & Run
-        </Button>
-        <Button
-          size="small"
-          variant="outlined"
-          color="inherit"
-          disabled={busy}
-          onClick={onReject}
-        >
-          Reject
-        </Button>
+          color={recommendationStatusColor(item.status)}
+          sx={{ height: 20, fontSize: 10 }}
+        />
       </Box>
+      <Typography sx={{ fontSize: 12, color: tokens.color.textMuted, wordBreak: 'break-word' }}>
+        {item.explanation}
+      </Typography>
+
+      {item.sqlPreview && (
+        <Box
+          component="pre"
+          sx={{
+            fontSize: 11,
+            fontFamily: 'monospace',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            bgcolor: tokens.color.bgBase,
+            border: `1px solid ${tokens.color.bgBorder}`,
+            borderRadius: 1,
+            p: 1,
+            m: 0,
+            maxHeight: 120,
+            overflowY: 'auto'
+          }}
+        >
+          {item.sqlPreview}
+        </Box>
+      )}
+
+      {isPendingAction && (
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            size="small"
+            variant="contained"
+            color="warning"
+            disabled={busy}
+            startIcon={busy ? <CircularProgress size={12} /> : <CheckCircleIcon fontSize="small" />}
+            onClick={onApprove}
+          >
+            Approve & Run
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            color="inherit"
+            disabled={busy}
+            onClick={onReject}
+          >
+            Reject
+          </Button>
+        </Box>
+      )}
     </Box>
   )
+}
+
+function recommendationStatusColor(
+  status: AiRecommendationItem['status']
+): 'default' | 'warning' | 'error' | 'success' | 'info' {
+  if (status === 'pending' || status === 'approved') return 'warning'
+  if (status === 'executed') return 'success'
+  if (status === 'failed') return 'error'
+  if (status === 'info') return 'info'
+  return 'default'
 }

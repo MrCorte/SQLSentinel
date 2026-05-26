@@ -32,6 +32,7 @@ import { useMetricsStore } from '../store/metricsStore'
 import { useShallow } from 'zustand/react/shallow'
 import { getServerDisplayName } from '../types/index'
 import { tokens } from '../styles/tokens'
+import { selectDisplayMetrics } from '../utils/selectDisplayMetrics'
 
 // -----------------------------------------------------------------------
 // Helpers
@@ -74,8 +75,7 @@ export function Dashboard(): React.JSX.Element {
   const [selectedAgName, _setSelectedAgName] = useState<string | null>(null)
   const [retriggering, setRetriggering] = useState(false)
 
-  const { intervalSeconds, setIntervalSeconds, setConnection, pushSnapshot, pushSnapshotBatch } =
-    useWorker()
+  const { intervalSeconds, setIntervalSeconds, setConnection, pushSnapshot } = useWorker()
   const serverAliases = useGroupsStore((s) => s.serverAliases)
   const setServerAlias = useGroupsStore((s) => s.setServerAlias)
 
@@ -124,7 +124,6 @@ export function Dashboard(): React.JSX.Element {
     }
   }, [initialized]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const stablePushSnapshotBatch = useCallback(pushSnapshotBatch, [pushSnapshotBatch])
   const stableReceiveMetrics = useCallback(receiveMetrics, [receiveMetrics])
 
   // Ref always updated to the current server: we avoid re-subscribing to the IPC channel
@@ -135,15 +134,16 @@ export function Dashboard(): React.JSX.Element {
     selectedServerIdRef.current = serverMetricsKey
   }, [serverMetricsKey])
 
+  // Global metricsMap + history are updated by the AppInner-level subscription.
+  // Here we only update local component state for the currently selected server.
   useEffect(() => {
     const unsubBatch = window.sqlSentinel.onMetricsBatchUpdated((batch) => {
-      stablePushSnapshotBatch(batch)
       const currentId = selectedServerIdRef.current
       const active = batch.find(({ serverId }) => serverId === currentId)
       if (active) stableReceiveMetrics(active.metrics)
     })
     return unsubBatch
-  }, [stablePushSnapshotBatch, stableReceiveMetrics])
+  }, [stableReceiveMetrics])
 
   // Inline alias edit helpers
   const startEditAlias = useCallback((): void => {
@@ -368,7 +368,7 @@ export function Dashboard(): React.JSX.Element {
           {(() => {
             // Stale-while-revalidate: use fresh metrics if available,
             // otherwise show the store cache (seedFromHistory / worker push)
-            const displayMetrics = metrics ?? cachedMetrics
+            const displayMetrics = selectDisplayMetrics(metrics, cachedMetrics)
             const isFirstLoad = isLoading && !displayMetrics
 
             if (isFirstLoad) {
@@ -396,7 +396,7 @@ export function Dashboard(): React.JSX.Element {
             }
 
             return displayMetrics ? (
-              <Box sx={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+              <Box key={serverMetricsKey ?? ''} sx={{ flex: 1, overflow: 'auto', position: 'relative' }}>
                 {/* Silent refresh bar — does not block the UI */}
                 {isLoading && (
                   <LinearProgress

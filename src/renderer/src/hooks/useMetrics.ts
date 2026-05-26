@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import type { CollectMetricsRequest, ServerMetrics } from '../../../preload/index'
 import { useMetricsStore } from '../store/metricsStore'
 
@@ -24,10 +24,25 @@ interface UseMetricsOptions {
   onReceived?: (serverId: string, m: ServerMetrics) => void
 }
 
+function connKey(conn: CollectMetricsRequest | null): string {
+  return conn ? `${conn.ip}:${conn.port}` : ''
+}
+
 export function useMetrics(connection: CollectMetricsRequest | null, options?: UseMetricsOptions) {
   const [metrics, setMetrics] = useState<ServerMetrics | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Track which connection the current metrics belong to.
+  // When connection changes we clear stale local metrics synchronously
+  // (before the next render) so server A's data never shows while server B is selected.
+  const [trackedKey, setTrackedKey] = useState(() => connKey(connection))
+  const currentKey = connKey(connection)
+  if (trackedKey !== currentKey) {
+    setTrackedKey(currentKey)
+    setMetrics(null)
+    setError(null)
+  }
 
   const connectionRef = useRef(connection)
   connectionRef.current = connection
@@ -43,31 +58,37 @@ export function useMetrics(connection: CollectMetricsRequest | null, options?: U
   const refresh = useCallback(async (): Promise<void> => {
     const conn = connectionRef.current
     if (!conn) return
+    const keyAtStart = connKey(conn)
     setIsLoading(true)
     setError(null)
     try {
       const result = await window.sqlSentinel.collectMetrics(conn)
+
+      // Guard: if the user switched to a different server while this was in-flight,
+      // still persist to the global store (so the data isn't lost) but don't
+      // update local component state — that would show a different server's data.
+      const serverId = `${conn.ip}:${conn.port}`
       if (result.ok) {
-        setMetrics(result.data)
-        const serverId = `${conn.ip}:${conn.port}`
         useMetricsStore.getState().setMetrics(serverId, result.data)
         onReceivedRef.current?.(serverId, result.data)
+        if (connKey(connectionRef.current) === keyAtStart) {
+          setMetrics(result.data)
+        }
       } else {
-        setError(result.error)
+        if (connKey(connectionRef.current) === keyAtStart) {
+          setError(result.error)
+        }
       }
     } catch {
-      setError('Raccolta metriche fallita inaspettatamente')
+      if (connKey(connectionRef.current) === keyAtStart) {
+        setError('Raccolta metriche fallita inaspettatamente')
+      }
     } finally {
-      setIsLoading(false)
+      if (connKey(connectionRef.current) === keyAtStart) {
+        setIsLoading(false)
+      }
     }
   }, [])
-
-  // Reset error and local metrics on server change — the Dashboard will show
-  // cached data from metricsStore (metricsMap) during the silent refresh
-  useEffect(() => {
-    setError(null)
-    setMetrics(null)
-  }, [connection?.ip, connection?.port])
 
   return { metrics, isLoading, error, refresh, receiveMetrics }
 }

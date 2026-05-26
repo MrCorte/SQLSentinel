@@ -126,12 +126,7 @@ async function openPool(key: string, conn: ServerConnection): Promise<mssql.Conn
     }
   })
 
-  try {
-    await pool.connect()
-  } catch (err) {
-    // Connect failed: the entry was never cached, just throw.
-    throw err
-  }
+  await pool.connect()
 
   // Race guard: if we were beaten to the punch by another openPool that set
   // a different entry, close ours and return theirs. Cheap because both

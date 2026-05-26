@@ -73,7 +73,7 @@ export interface HomeDashboardData {
 
   // Chart data
   donutFinal: { name: string; value: number; fill: string }[]
-  cpuData: { name: string; cpu: number; fill: string; hasData: boolean }[]
+  cpuData: { id: string; name: string; cpu: number; fill: string; hasData: boolean }[]
   hasCpuData: boolean
   cpuChartHeight: number
 
@@ -169,6 +169,7 @@ export function useHomeDashboard(onNavigateToServer: (id: string) => void): Home
         const cpu = m?.instanceInfo?.cpuUsagePercent ?? 0
         const hasData = !!m
         return {
+          id: serverKey(s),
           name: serverAliases[s.id] || s.host || s.ip || serverKey(s),
           cpu: hasData ? Math.round(cpu * 10) / 10 : 0,
           fill: cpu < 60 ? '#107c10' : cpu < 80 ? '#d83b01' : '#a4262c',

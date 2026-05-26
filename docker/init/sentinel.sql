@@ -4,6 +4,8 @@
 --   All tables that replace SQLite: settings, db_custom_fields,
 --   metrics_snapshots, users, sessions, rag_documents, rag_chunks
 --   rag_chunks uses vector(1536) — requires SQL Server 2025
+--   DiskANN vector index is optional because some 2025 container builds expose
+--   the vector type before accepting CREATE VECTOR INDEX syntax.
 --
 -- Part 2: SentinelAppDB — test target database
 --   Realistic workload data for monitoring/collector testing
@@ -120,7 +122,14 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.rag_ch
     CREATE INDEX IX_rag_chunks_doc ON dbo.rag_chunks(document_id);
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.rag_chunks') AND name = N'IX_rag_chunks_vec')
-    CREATE VECTOR INDEX IX_rag_chunks_vec ON dbo.rag_chunks (embedding) USING DISKANN WITH (VECTOR_DISTANCE_FUNCTION = 'cosine');
+BEGIN
+    BEGIN TRY
+        EXEC(N'CREATE VECTOR INDEX IX_rag_chunks_vec ON dbo.rag_chunks (embedding) USING DISKANN WITH (VECTOR_DISTANCE_FUNCTION = ''cosine'')');
+    END TRY
+    BEGIN CATCH
+        PRINT N'Optional vector index IX_rag_chunks_vec skipped: ' + ERROR_MESSAGE();
+    END CATCH
+END
 GO
 
 -- Default app settings (mirrors SQLite defaults in settings.ts)
@@ -149,11 +158,15 @@ USE SentinelAppDB;
 GO
 
 -- Monitor login (read-only access to DMVs)
+USE master;
+GO
 IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'sqlsentinel_monitor')
     CREATE LOGIN sqlsentinel_monitor WITH PASSWORD = N'Monitor@Sentinel2025', CHECK_POLICY = OFF;
 GO
 GRANT VIEW SERVER STATE TO sqlsentinel_monitor;
 GRANT VIEW ANY DATABASE TO sqlsentinel_monitor;
+GO
+USE SentinelAppDB;
 GO
 IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'sqlsentinel_monitor')
     CREATE USER sqlsentinel_monitor FOR LOGIN sqlsentinel_monitor;
@@ -261,9 +274,9 @@ GO
 EXEC dbo.usp_SeedQueryCache;
 GO
 
--- Backup to /dev/null so msdb.dbo.backupset has rows for queryBackupStatus collector
+-- Write smoke-test backups so msdb.dbo.backupset has rows for queryBackupStatus collector
 USE master;
 GO
-BACKUP DATABASE SentinelAppDB  TO DISK = N'/dev/null' WITH FORMAT, INIT, SKIP, NO_LOG;
-BACKUP DATABASE SQLSentinelDB  TO DISK = N'/dev/null' WITH FORMAT, INIT, SKIP, NO_LOG;
+BACKUP DATABASE SentinelAppDB TO DISK = N'/var/opt/mssql/data/SentinelAppDB-smoke.bak' WITH FORMAT, INIT, SKIP;
+BACKUP DATABASE SQLSentinelDB TO DISK = N'/var/opt/mssql/data/SQLSentinelDB-smoke.bak' WITH FORMAT, INIT, SKIP;
 GO

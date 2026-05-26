@@ -6,12 +6,15 @@ import type {
   Incident,
   IncidentEvent,
   IncidentAction,
+  IncidentAiStats,
   IncidentAuditEntry,
+  IncidentAuditTelemetry,
   IncidentStatus,
   IncidentEventKind,
   ActionStatus
 } from './types'
 import type { AlertCategory, AlertSeverity } from '../ipc/types'
+import { buildIncidentAiStats } from './aiStats'
 
 // ---------------------------------------------------------------------------
 // Row shapes (SQLite → TypeScript)
@@ -60,6 +63,9 @@ interface IncidentAuditRow {
   response_hash: string
   tokens_in: number | null
   tokens_out: number | null
+  duration_ms: number | null
+  tool_call_count: number | null
+  error: string | null
   at: number
 }
 
@@ -117,6 +123,9 @@ function rowToAudit(row: IncidentAuditRow): IncidentAuditEntry {
     responseHash: row.response_hash,
     tokensIn: row.tokens_in ?? undefined,
     tokensOut: row.tokens_out ?? undefined,
+    durationMs: row.duration_ms ?? undefined,
+    toolCallCount: row.tool_call_count ?? undefined,
+    error: row.error ?? undefined,
     at: row.at
   }
 }
@@ -130,19 +139,17 @@ let _stmts: ReturnType<typeof buildStmts> | null = null
 
 function buildStmts(db: Database.Database) {
   return {
-    insertIncident: db.prepare<[string, string, string, string, string, number]>(
+    insertIncident: db.prepare<[string, string, string, string, number]>(
       `INSERT INTO incidents (id, server_id, category, severity, status, opened_at)
        VALUES (?, ?, ?, ?, 'open', ?)`
     ),
-    findAllIncidents: db.prepare<[string, string], IncidentRow>(
-      `SELECT * FROM incidents
-       WHERE (? = '' OR status = ?)
-       ORDER BY opened_at DESC
-       LIMIT 200`
+    findAllIncidents: db.prepare<[], IncidentRow>(
+      `SELECT * FROM incidents ORDER BY opened_at DESC LIMIT 200`
     ),
-    findIncidentById: db.prepare<[string], IncidentRow>(
-      'SELECT * FROM incidents WHERE id = ?'
+    findIncidentsByStatus: db.prepare<[string], IncidentRow>(
+      `SELECT * FROM incidents WHERE status = ? ORDER BY opened_at DESC LIMIT 200`
     ),
+    findIncidentById: db.prepare<[string], IncidentRow>('SELECT * FROM incidents WHERE id = ?'),
     findOpenByServerAndCategory: db.prepare<[string, string], IncidentRow>(
       `SELECT * FROM incidents
        WHERE server_id = ? AND category = ? AND status = 'open'
@@ -152,12 +159,8 @@ function buildStmts(db: Database.Database) {
     updateStatus: db.prepare<[string, number | null, string]>(
       `UPDATE incidents SET status = ?, resolved_at = ? WHERE id = ?`
     ),
-    updateSeverity: db.prepare<[string, string]>(
-      'UPDATE incidents SET severity = ? WHERE id = ?'
-    ),
-    updateSummary: db.prepare<[string, string]>(
-      'UPDATE incidents SET summary = ? WHERE id = ?'
-    ),
+    updateSeverity: db.prepare<[string, string]>('UPDATE incidents SET severity = ? WHERE id = ?'),
+    updateSummary: db.prepare<[string, string]>('UPDATE incidents SET summary = ? WHERE id = ?'),
     updateRootCause: db.prepare<[string, string]>(
       'UPDATE incidents SET root_cause_md = ? WHERE id = ?'
     ),
@@ -180,26 +183,47 @@ function buildStmts(db: Database.Database) {
     findActions: db.prepare<[string], IncidentActionRow>(
       'SELECT * FROM incident_actions WHERE incident_id = ? ORDER BY rowid ASC'
     ),
+    findAllActions: db.prepare<[], IncidentActionRow>(
+      'SELECT * FROM incident_actions ORDER BY rowid ASC'
+    ),
     findPendingActions: db.prepare<[string], IncidentActionRow>(
       `SELECT * FROM incident_actions WHERE incident_id = ? AND status = 'pending'`
     ),
     findActionById: db.prepare<[string], IncidentActionRow>(
       'SELECT * FROM incident_actions WHERE id = ?'
     ),
-    updateActionStatus: db.prepare<[string, string | null, number | null, string | null, string | null, string]>(
+    updateActionStatus: db.prepare<
+      [string, string | null, number | null, string | null, string | null, string]
+    >(
       `UPDATE incident_actions
        SET status = ?, approved_by = ?, executed_at = ?, result_json = ?, rejection_reason = ?
        WHERE id = ?`
     ),
 
-    insertAudit: db.prepare<[string, string, string, string, string, string, number | null, number | null, number]>(
+    insertAudit: db.prepare<
+      [
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        number | null,
+        number | null,
+        number | null,
+        number | null,
+        string | null,
+        number
+      ]
+    >(
       `INSERT INTO incident_audit
-         (id, incident_id, provider, model, prompt_hash, response_hash, tokens_in, tokens_out, at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (id, incident_id, provider, model, prompt_hash, response_hash, tokens_in, tokens_out, duration_ms, tool_call_count, error, at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ),
     findAudit: db.prepare<[string], IncidentAuditRow>(
       'SELECT * FROM incident_audit WHERE incident_id = ? ORDER BY at ASC'
     ),
+    findAllAudit: db.prepare<[], IncidentAuditRow>('SELECT * FROM incident_audit ORDER BY at ASC'),
     countApprovedForIncident: db.prepare<[string], { count: number }>(
       `SELECT COUNT(*) AS count FROM incident_actions
        WHERE incident_id = ? AND status IN ('executed', 'approved')`
@@ -226,13 +250,14 @@ export function createIncident(
   openedAt: number
 ): Incident {
   const id = randomUUID()
-  stmts().insertIncident.run(id, serverId, category, severity, 'open', openedAt)
+  stmts().insertIncident.run(id, serverId, category, severity, openedAt)
   return getIncidentById(id)!
 }
 
 export function listIncidents(filter?: { status?: IncidentStatus }): Incident[] {
-  const status = filter?.status ?? ''
-  const rows = stmts().findAllIncidents.all(status, status)
+  const rows = filter?.status
+    ? stmts().findIncidentsByStatus.all(filter.status)
+    : stmts().findAllIncidents.all()
   return rows.map(rowToIncident)
 }
 
@@ -249,11 +274,7 @@ export function findOpenByServerAndCategory(
   return row ? rowToIncident(row) : null
 }
 
-export function setIncidentStatus(
-  id: string,
-  status: IncidentStatus,
-  resolvedAt?: number
-): void {
+export function setIncidentStatus(id: string, status: IncidentStatus, resolvedAt?: number): void {
   stmts().updateStatus.run(
     status,
     status === 'resolved' || status === 'archived' ? (resolvedAt ?? Date.now()) : null,
@@ -308,7 +329,14 @@ export function createAction(
   explanation: string
 ): IncidentAction {
   const id = randomUUID()
-  stmts().insertAction.run(id, incidentId, toolName, JSON.stringify(params), tsqlPreview, explanation)
+  stmts().insertAction.run(
+    id,
+    incidentId,
+    toolName,
+    JSON.stringify(params),
+    tsqlPreview,
+    explanation
+  )
   return getActionById(id)!
 }
 
@@ -325,11 +353,7 @@ export function getActionById(id: string): IncidentAction | null {
   return row ? rowToAction(row) : null
 }
 
-export function approveAction(
-  id: string,
-  approvedBy: string,
-  result?: unknown
-): void {
+export function approveAction(id: string, approvedBy: string, result?: unknown): void {
   stmts().updateActionStatus.run(
     'executed',
     approvedBy,
@@ -366,20 +390,49 @@ export function addAuditEntry(
   model: string,
   prompt: string,
   response: string,
-  tokensIn?: number,
-  tokensOut?: number
+  telemetry: IncidentAuditTelemetry = {}
 ): IncidentAuditEntry {
   const id = randomUUID()
   const at = Date.now()
   const promptHash = sha256(prompt)
   const responseHash = sha256(response)
   stmts().insertAudit.run(
-    id, incidentId, provider, model, promptHash, responseHash,
-    tokensIn ?? null, tokensOut ?? null, at
+    id,
+    incidentId,
+    provider,
+    model,
+    promptHash,
+    responseHash,
+    telemetry.tokensIn ?? null,
+    telemetry.tokensOut ?? null,
+    telemetry.durationMs ?? null,
+    telemetry.toolCallCount ?? null,
+    telemetry.error ?? null,
+    at
   )
-  return { id, incidentId, provider, model, promptHash, responseHash, tokensIn, tokensOut, at }
+  return {
+    id,
+    incidentId,
+    provider,
+    model,
+    promptHash,
+    responseHash,
+    tokensIn: telemetry.tokensIn,
+    tokensOut: telemetry.tokensOut,
+    durationMs: telemetry.durationMs,
+    toolCallCount: telemetry.toolCallCount,
+    error: telemetry.error,
+    at
+  }
 }
 
 export function getAuditEntries(incidentId: string): IncidentAuditEntry[] {
   return stmts().findAudit.all(incidentId).map(rowToAudit)
+}
+
+export function getAiStats(): IncidentAiStats {
+  return buildIncidentAiStats({
+    audit: stmts().findAllAudit.all().map(rowToAudit),
+    actions: stmts().findAllActions.all().map(rowToAction)
+  })
 }

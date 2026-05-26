@@ -11,6 +11,7 @@ export type IncidentStatus =
 
 export type IncidentEventKind =
   | 'alert_added'
+  | 'agent_run'
   | 'tool_call'
   | 'llm_message'
   | 'action_proposed'
@@ -62,5 +63,36 @@ export interface IncidentAuditEntry {
   responseHash: string
   tokensIn?: number
   tokensOut?: number
+  durationMs?: number
+  toolCallCount?: number
+  error?: string
   at: number
+}
+
+export interface IncidentAuditTelemetry {
+  tokensIn?: number
+  tokensOut?: number
+  durationMs?: number
+  toolCallCount?: number
+  error?: string
+}
+
+export interface IncidentAiProviderStats {
+  provider: 'ollama' | 'claude'
+  runs: number
+  failedRuns: number
+}
+
+export interface IncidentAiStats {
+  totalRuns: number
+  successfulRuns: number
+  failedRuns: number
+  successRate: number
+  avgDurationMs: number
+  p95DurationMs: number
+  avgToolCalls: number
+  proposedActions: number
+  executedActions: number
+  lastRunAt?: number
+  providers: IncidentAiProviderStats[]
 }

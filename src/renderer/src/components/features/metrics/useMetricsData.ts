@@ -46,7 +46,14 @@ export interface MetricsData {
 }
 
 export function useMetricsData({ metrics, serverId }: UseMetricsDataParams): MetricsData {
-  const [tab, setTab] = useState(0)
+  const tabKey = `sqlsentinel:metricspanel:tab:${serverId}`
+  const [tab, setTab] = useState<number>(() => {
+    const stored = sessionStorage.getItem(tabKey)
+    return stored !== null ? Number(stored) : 0
+  })
+  useEffect(() => {
+    sessionStorage.setItem(tabKey, String(tab))
+  }, [tab, tabKey])
   const [customFields, setCustomFields] = useState<Record<string, DbCustomFields>>({})
   const [editingDb, setEditingDb] = useState<DatabaseInfo | null>(null)
   const [rowSelectionModel, setRowSelectionModel] =

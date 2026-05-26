@@ -73,12 +73,18 @@ export class BackgroundService {
 
   private rebuildMenu(): void {
     if (!this.tray || this.tray.isDestroyed()) return
+    if (this.quitting) return
     // Tray menu only counts online/offline — no need to decrypt every server's
     // password. getAllStripped() avoids ~200 DPAPI calls per 30s tick.
     const servers = serverStore.getAllStripped()
     const online = servers.filter((s) => !s.unreachable).length
     const offline = servers.filter((s) => s.unreachable).length
-    const settings = getSettings()
+    let settings: ReturnType<typeof getSettings>
+    try {
+      settings = getSettings()
+    } catch {
+      return
+    }
     const hasAlert = getAlerts().some((a) => a.severity === 'CRITICAL' && !a.acknowledgedAt)
     this.tray.setImage(hasAlert ? trayIconAlert : trayIconNormal)
     const menu = Menu.buildFromTemplate([
@@ -124,7 +130,13 @@ export class BackgroundService {
   }
 
   private reconfigureWorker(): void {
-    const s = getSettings()
+    if (this.quitting) return
+    let s: ReturnType<typeof getSettings>
+    try {
+      s = getSettings()
+    } catch {
+      return // DB already closed during shutdown — ignore
+    }
     this.wasStoppedWhenHidden = false
     if (!s.backgroundEnabled) {
       this.worker.stopWorker()

@@ -13,6 +13,7 @@ import { collectMetrics, collectMetricsCritical } from './collectors/sqlCollecto
 import { detectAndSyncReplicaRoles } from './collectors/agCollector'
 import * as serverStore from './store/serverStore'
 import * as metricsRepository from './store/metricsRepository'
+import * as serverDatabasesRepository from './store/serverDatabasesRepository'
 import { getSettings } from './store/settings'
 import type { ServerMetrics } from './collectors/types'
 import { getAllCustomFields } from './store/dbCustomFields'
@@ -503,6 +504,24 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     const delta = computeDelta(sid, enrichedMetrics)
     enqueueBatchPush(sid, delta)
     processAlerts(sid, enrichedMetrics)
+
+    // Persist database list to SQLite for instant availability on next startup.
+    // Full snapshot: upsert all + remove stale. Delta: upsert only changed + remove dropped.
+    try {
+      if (!delta.isDelta) {
+        serverDatabasesRepository.upsertDatabases(sid, enrichedMetrics.databases)
+        serverDatabasesRepository.deleteStale(sid, enrichedMetrics.databases.map((d) => d.name))
+      } else {
+        if (delta.databases.length > 0) {
+          serverDatabasesRepository.upsertDatabases(sid, delta.databases)
+        }
+        if (delta.removedDbs?.length) {
+          serverDatabasesRepository.deleteByNames(sid, delta.removedDbs)
+        }
+      }
+    } catch (err) {
+      log.warn('[worker] persist server_databases:', err)
+    }
 
     // CPU count persistence — save logicalCpus/physicalCpus to electron-store if changed.
     // These values rarely change (only on hardware upgrade) so the write is infrequent.

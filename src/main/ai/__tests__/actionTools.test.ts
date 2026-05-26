@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { buildActionTools, ACTION_WHITELIST } from '../actionTools'
+import { buildActionSqlForExecution, buildActionTools, ACTION_WHITELIST } from '../actionTools'
 
 vi.mock('../../incidents/repository', () => ({
   createAction: vi.fn().mockReturnValue({ id: 'action-1' }),
@@ -97,5 +97,18 @@ describe('buildActionTools', () => {
       const tsql: string = call[3]
       expect(tsql).toContain('[dbo].[Invoices]')
     })
+  })
+})
+
+describe('buildActionSqlForExecution', () => {
+  it('regenerates executable SQL from structured params', () => {
+    const sql = buildActionSqlForExecution('kill_session', { session_id: 99 })
+    expect(sql).toBe('KILL 99;')
+  })
+
+  it('rejects malformed structured params', () => {
+    expect(() => buildActionSqlForExecution('kill_session', { session_id: '99' })).toThrow(
+      'Invalid kill_session params'
+    )
   })
 })

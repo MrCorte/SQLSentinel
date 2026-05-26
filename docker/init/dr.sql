@@ -1,4 +1,4 @@
--- DR / Replica server: 1 database, read-heavy, simulates a DR standby
+-- DR / Replica server: 2 databases, read-heavy, simulates a DR standby
 -- Tests: server with lower activity, old backup scenario
 
 IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = 'AppDB_DR')
@@ -77,4 +77,53 @@ BEGIN
         ('sql-prod', 0,     0, 'NoChanges'),
         ('sql-prod', 3,  4820, 'SlowSync');
 END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = 'AppDB_DR_Archive')
+    CREATE DATABASE AppDB_DR_Archive;
+GO
+
+USE AppDB_DR_Archive;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'RestorePoints')
+CREATE TABLE RestorePoints (
+    Id              INT IDENTITY PRIMARY KEY,
+    SourceDatabase  NVARCHAR(128) NOT NULL,
+    BackupType      NVARCHAR(20) NOT NULL,
+    BackupStartedAt DATETIME2 NOT NULL,
+    BackupFinishedAt DATETIME2 NOT NULL,
+    BackupSizeMb    DECIMAL(10,2) NOT NULL,
+    IsRestorable    BIT NOT NULL DEFAULT 1
+);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'FailoverExercises')
+CREATE TABLE FailoverExercises (
+    Id              INT IDENTITY PRIMARY KEY,
+    ExerciseName    NVARCHAR(100) NOT NULL,
+    StartedAt       DATETIME2 NOT NULL,
+    CompletedAt     DATETIME2 NULL,
+    RpoSeconds      INT NOT NULL,
+    RtoSeconds      INT NOT NULL,
+    Outcome         NVARCHAR(20) NOT NULL
+);
+GO
+
+IF (SELECT COUNT(*) FROM RestorePoints) = 0
+BEGIN
+    INSERT INTO RestorePoints (SourceDatabase, BackupType, BackupStartedAt, BackupFinishedAt, BackupSizeMb, IsRestorable) VALUES
+        ('AppDB',       'FULL', DATEADD(day, -7, GETDATE()), DATEADD(day, -7, DATEADD(minute, 18, GETDATE())), 5120.50, 1),
+        ('AppDB',       'DIFF', DATEADD(day, -1, GETDATE()), DATEADD(day, -1, DATEADD(minute,  6, GETDATE())),  820.75, 1),
+        ('ReportingDB', 'FULL', DATEADD(day, -7, GETDATE()), DATEADD(day, -7, DATEADD(minute, 12, GETDATE())), 1840.25, 1),
+        ('ArchiveDB',   'FULL', DATEADD(day, -14, GETDATE()), DATEADD(day, -14, DATEADD(minute, 25, GETDATE())), 9100.00, 0);
+
+    INSERT INTO FailoverExercises (ExerciseName, StartedAt, CompletedAt, RpoSeconds, RtoSeconds, Outcome) VALUES
+        ('monthly-dr-check', DATEADD(day, -30, GETDATE()), DATEADD(day, -30, DATEADD(minute, 22, GETDATE())), 180, 1320, 'Passed'),
+        ('patch-window-dr',  DATEADD(day, -10, GETDATE()), DATEADD(day, -10, DATEADD(minute, 35, GETDATE())), 420, 2100, 'Warning');
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.RestorePoints') AND name = N'IX_RestorePoints_SourceDatabase')
+    CREATE INDEX IX_RestorePoints_SourceDatabase ON dbo.RestorePoints(SourceDatabase, BackupStartedAt DESC);
 GO

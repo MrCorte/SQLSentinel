@@ -1,6 +1,7 @@
 import { ChatOllama } from '@langchain/ollama'
 import { HumanMessage, AIMessage, SystemMessage, ToolMessage } from '@langchain/core/messages'
 import { OLLAMA_HOST, checkOllamaHealth } from '../ollama'
+import { DEFAULT_OLLAMA_MODEL } from './defaults'
 import type { LlmProvider, LlmRequest, ToolDefinition } from './provider'
 
 function toOllamaTool(def: ToolDefinition) {
@@ -30,7 +31,7 @@ export class OllamaProvider implements LlmProvider {
   readonly model: string
   private _llm: ChatOllama | null = null
 
-  constructor(model = 'llama3.2:3b') {
+  constructor(model = DEFAULT_OLLAMA_MODEL) {
     this.model = model
   }
 

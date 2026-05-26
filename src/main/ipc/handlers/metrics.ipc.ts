@@ -16,8 +16,9 @@ import {
   type HistoryRequest,
   type IpcResult
 } from '../types'
-import type { ServerMetrics } from '../../collectors/types'
+import type { ServerMetrics, DatabaseInfo } from '../../collectors/types'
 import { resolveConnection } from './servers.ipc'
+import { getAllGroupedByServer } from '../../store/serverDatabasesRepository'
 
 export function registerMetricsHandlers(): void {
   // WORKER_START — avvia il worker con intervallo e lista server.
@@ -88,6 +89,21 @@ export function registerMetricsHandlers(): void {
         return res as IpcResult<Record<string, ServerMetrics[]>>
       } catch (err) {
         log.error('[IPC] METRICS_HISTORY_BULK:', safeError(err))
+        return { ok: false, error: safeError(err) }
+      }
+    }
+  )
+
+  // METRICS_DATABASES_BULK — reads directly from SQLite server_databases table.
+  // No service dependency: always available at startup, returns the last known
+  // database list per server so the renderer can show databases immediately.
+  handle(
+    IpcChannel.METRICS_DATABASES_BULK,
+    (): IpcResult<Record<string, DatabaseInfo[]>> => {
+      try {
+        return { ok: true, data: getAllGroupedByServer() }
+      } catch (err) {
+        log.error('[IPC] METRICS_DATABASES_BULK:', safeError(err))
         return { ok: false, error: safeError(err) }
       }
     }

@@ -14,7 +14,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // ---------------------------------------------------------------------------
 
 vi.mock('../../store/serverStore', () => ({
-  getById: vi.fn()
+  getById: vi.fn(),
+  getByIpPort: vi.fn()
 }))
 
 vi.mock('../repository', () => ({
@@ -45,10 +46,18 @@ vi.mock('../../ai/diagnosticTools', () => ({
 // Imports AFTER mocks are registered
 // ---------------------------------------------------------------------------
 
-import { runIncidentAgent } from '../incidentAgent'
+import {
+  isIncidentAgentRunning,
+  runIncidentAgent,
+  selectActionToolsForIncident,
+  selectDiagnosticToolsForIncident
+} from '../incidentAgent'
+import { toolDefinitionFromDynamicTool } from '../incidentAgent'
 import * as serverStore from '../../store/serverStore'
 import * as repo from '../repository'
 import * as providers from '../../ai/providers'
+import * as diagnosticTools from '../../ai/diagnosticTools'
+import { buildActionTools } from '../../ai/actionTools'
 import type { LlmProvider, LlmRequest } from '../../ai/providers/provider'
 import type { Incident } from '../types'
 import type { StoredServer } from '../../../preload'
@@ -76,13 +85,20 @@ const FAKE_SERVER = {
   useWindowsAuth: false
 } as unknown as StoredServer
 
-const FAKE_ACTION = { id: 'action-abc', incidentId: 'inc-test-001', toolName: 'kill_session', status: 'pending' } as ReturnType<typeof repo.createAction>
+const FAKE_ACTION = {
+  id: 'action-abc',
+  incidentId: 'inc-test-001',
+  toolName: 'kill_session',
+  status: 'pending'
+} as ReturnType<typeof repo.createAction>
 
-function makeFakeProvider(options: {
-  callKillSession?: boolean
-  finalText?: string
-  throwStream?: string
-} = {}): LlmProvider {
+function makeFakeProvider(
+  options: {
+    callKillSession?: boolean
+    finalText?: string
+    throwStream?: string
+  } = {}
+): LlmProvider {
   return {
     name: 'ollama' as const,
     model: 'llama3',
@@ -92,7 +108,10 @@ function makeFakeProvider(options: {
 
       if (options.callKillSession) {
         req.onEvent({ type: 'tool_start', name: 'kill_session' })
-        await req.onToolCall('kill_session', { session_id: 99, reason: 'long-running blocking query' })
+        await req.onToolCall('kill_session', {
+          session_id: 99,
+          reason: 'long-running blocking query'
+        })
         req.onEvent({ type: 'tool_end', name: 'kill_session', output: 'proposed' })
       }
 
@@ -116,14 +135,20 @@ describe('runIncidentAgent — early-exit guards', () => {
 
   it('returns without action when incident not found', async () => {
     vi.mocked(repo.getIncidentById).mockReturnValue(null)
-    await expect(runIncidentAgent('inc-missing')).resolves.toBeUndefined()
+    await expect(runIncidentAgent('inc-missing')).resolves.toEqual({
+      status: 'skipped',
+      reason: 'incident_not_found'
+    })
     expect(repo.setIncidentStatus).not.toHaveBeenCalled()
   })
 
   it('returns without action when server not found', async () => {
     vi.mocked(repo.getIncidentById).mockReturnValue(FAKE_INCIDENT)
     vi.mocked(serverStore.getById).mockReturnValue(null)
-    await expect(runIncidentAgent('inc-test-001')).resolves.toBeUndefined()
+    await expect(runIncidentAgent('inc-test-001')).resolves.toEqual({
+      status: 'failed',
+      error: 'Server srv-001 not found'
+    })
     expect(repo.setIncidentStatus).not.toHaveBeenCalled()
   })
 
@@ -138,6 +163,25 @@ describe('runIncidentAgent — early-exit guards', () => {
       error: 'No provider configured'
     })
     expect(repo.setSummary).not.toHaveBeenCalled()
+  })
+
+  it('resolves incidents whose serverId is stored as host:port', async () => {
+    vi.mocked(repo.getIncidentById).mockReturnValue({
+      ...FAKE_INCIDENT,
+      serverId: 'localhost:1434'
+    })
+    vi.mocked(serverStore.getById).mockReturnValue(undefined)
+    vi.mocked(serverStore.getByIpPort).mockReturnValue({
+      ...FAKE_SERVER,
+      host: 'localhost',
+      port: 1434
+    })
+    vi.mocked(providers.getProvider).mockReturnValue(makeFakeProvider())
+
+    await expect(runIncidentAgent('inc-test-001')).resolves.toEqual({ status: 'completed' })
+
+    expect(serverStore.getByIpPort).toHaveBeenCalledWith('localhost', 1434)
+    expect(repo.setIncidentStatus).toHaveBeenCalledWith('inc-test-001', 'investigating')
   })
 })
 
@@ -159,6 +203,39 @@ describe('runIncidentAgent — status lifecycle', () => {
     await runIncidentAgent('inc-test-001')
     expect(repo.addEvent).toHaveBeenCalledWith('inc-test-001', 'status_change', {
       status: 'investigating'
+    })
+  })
+
+  it('prefetches single diagnostic-only incidents before calling the model', async () => {
+    const diagnosticTool = {
+      name: 'get_backup_status',
+      description: 'Backup status',
+      schema: { shape: {} },
+      invoke: vi.fn().mockResolvedValue('[{"database_name":"AppDB"}]')
+    }
+    vi.mocked(repo.getIncidentById).mockReturnValue({
+      ...FAKE_INCIDENT,
+      category: 'backup_overdue'
+    })
+    vi.mocked(diagnosticTools.buildDiagnosticTools).mockReturnValue([diagnosticTool as never])
+    vi.mocked(providers.getProvider).mockReturnValue({
+      name: 'ollama' as const,
+      model: 'gemma4:e4b',
+      health: async () => true,
+      stream: async (req: LlmRequest) => {
+        expect(req.tools).toEqual([])
+        expect(req.messages[0].content).toContain('get_backup_status')
+        expect(req.messages[0].content).toContain('AppDB')
+        req.onEvent({ type: 'token', text: 'Backups are overdue.\n\n## Root Cause\nNo full backup exists.' })
+        req.onEvent({ type: 'done' })
+      }
+    })
+
+    await runIncidentAgent('inc-test-001')
+
+    expect(diagnosticTool.invoke).toHaveBeenCalledWith({})
+    expect(repo.addEvent).toHaveBeenCalledWith('inc-test-001', 'tool_call', {
+      name: 'get_backup_status'
     })
   })
 })
@@ -200,7 +277,10 @@ describe('runIncidentAgent — root cause & summary parsing', () => {
       makeFakeProvider({ finalText: 'No clear root cause identified.' })
     )
     await runIncidentAgent('inc-test-001')
-    expect(repo.setRootCause).toHaveBeenCalledWith('inc-test-001', 'No clear root cause identified.')
+    expect(repo.setRootCause).toHaveBeenCalledWith(
+      'inc-test-001',
+      'No clear root cause identified.'
+    )
   })
 })
 
@@ -220,7 +300,27 @@ describe('runIncidentAgent — audit trail', () => {
       'ollama',
       'llama3',
       expect.any(String),
-      expect.any(String)
+      expect.any(String),
+      expect.objectContaining({
+        durationMs: expect.any(Number),
+        toolCallCount: 0
+      })
+    )
+  })
+
+  it('records tool call count in the audit telemetry', async () => {
+    vi.mocked(providers.getProvider).mockReturnValue(makeFakeProvider({ callKillSession: true }))
+    await runIncidentAgent('inc-test-001')
+    expect(repo.addAuditEntry).toHaveBeenCalledWith(
+      'inc-test-001',
+      'ollama',
+      'llama3',
+      expect.any(String),
+      expect.any(String),
+      expect.objectContaining({
+        durationMs: expect.any(Number),
+        toolCallCount: 1
+      })
     )
   })
 
@@ -241,14 +341,123 @@ describe('runIncidentAgent — audit trail', () => {
     expect(repo.addEvent).toHaveBeenCalledWith('inc-test-001', 'llm_message', {
       error: 'Stream timeout'
     })
+    expect(repo.addAuditEntry).toHaveBeenCalledWith(
+      'inc-test-001',
+      'ollama',
+      'llama3',
+      expect.any(String),
+      '',
+      expect.objectContaining({
+        durationMs: expect.any(Number),
+        toolCallCount: 0,
+        error: 'Stream timeout'
+      })
+    )
     expect(repo.setSummary).not.toHaveBeenCalled()
+  })
+
+  it('fails a hung provider run after the configured timeout', async () => {
+    vi.mocked(providers.getProvider).mockReturnValue({
+      name: 'ollama' as const,
+      model: 'llama3',
+      health: async () => true,
+      stream: async () => new Promise<void>(() => {})
+    })
+
+    const events: unknown[] = []
+    await runIncidentAgent('inc-test-001', {
+      timeoutMs: 5,
+      onEvent: (event) => events.push(event)
+    })
+
+    expect(repo.addEvent).toHaveBeenCalledWith('inc-test-001', 'agent_run', {
+      status: 'failed',
+      error: 'Agent run timed out after 5 ms'
+    })
+    expect(repo.addAuditEntry).toHaveBeenCalledWith(
+      'inc-test-001',
+      'ollama',
+      'llama3',
+      expect.any(String),
+      '',
+      expect.objectContaining({
+        error: 'Agent run timed out after 5 ms'
+      })
+    )
+    expect(events).toContainEqual({
+      type: 'error',
+      message: 'Agent run timed out after 5 ms'
+    })
+    expect(repo.setSummary).not.toHaveBeenCalled()
+  })
+
+  it('allows slow local model runs past two minutes before the default timeout', async () => {
+    vi.useFakeTimers()
+    vi.mocked(providers.getProvider).mockReturnValue({
+      name: 'ollama' as const,
+      model: 'gemma4:e4b',
+      health: async () => true,
+      stream: async () => new Promise<void>(() => {})
+    })
+
+    const run = runIncidentAgent('inc-test-001')
+
+    await vi.advanceTimersByTimeAsync(120_001)
+    expect(repo.addEvent).not.toHaveBeenCalledWith(
+      'inc-test-001',
+      'agent_run',
+      expect.objectContaining({
+        status: 'failed',
+        error: expect.stringContaining('timed out')
+      })
+    )
+
+    await vi.advanceTimersByTimeAsync(180_000)
+    await expect(run).resolves.toEqual({
+      status: 'failed',
+      error: 'Agent run timed out after 300000 ms'
+    })
+    vi.useRealTimers()
+  })
+
+  it('skips a concurrent run for the same incident while one is already active', async () => {
+    let release!: () => void
+    const stream = vi.fn(async () => {
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+    })
+    vi.mocked(providers.getProvider).mockReturnValue({
+      name: 'ollama' as const,
+      model: 'llama3',
+      health: async () => true,
+      stream
+    })
+
+    const first = runIncidentAgent('inc-test-001')
+    expect(isIncidentAgentRunning('inc-test-001')).toBe(true)
+    const second = await runIncidentAgent('inc-test-001')
+
+    expect(second).toEqual({ status: 'skipped', reason: 'already_running' })
+    expect(repo.addEvent).toHaveBeenCalledWith('inc-test-001', 'agent_run', {
+      status: 'skipped',
+      reason: 'already_running'
+    })
+    expect(stream).toHaveBeenCalledTimes(1)
+
+    release()
+    await first
+    expect(isIncidentAgentRunning('inc-test-001')).toBe(false)
   })
 })
 
 describe('runIncidentAgent — action proposal flow', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(repo.getIncidentById).mockReturnValue(FAKE_INCIDENT)
+    vi.mocked(repo.getIncidentById).mockReturnValue({
+      ...FAKE_INCIDENT,
+      category: 'blocking_sessions'
+    })
     vi.mocked(serverStore.getById).mockReturnValue(FAKE_SERVER)
     vi.mocked(repo.createAction).mockReturnValue(FAKE_ACTION)
   })
@@ -313,5 +522,47 @@ describe('runIncidentAgent — action proposal flow', () => {
     expect(capturedOutput).toContain('<<TOOL_OUTPUT>>')
     expect(capturedOutput).toContain('Unknown tool: nonexistent_tool')
     expect(capturedOutput).toContain('<<END_TOOL_OUTPUT>>')
+  })
+})
+
+describe('toolDefinitionFromDynamicTool', () => {
+  it('keeps numeric action params as JSON schema numbers', () => {
+    const killSession = buildActionTools('inc-test-001').find((t) => t.name === 'kill_session')
+    expect(killSession).toBeDefined()
+
+    const def = toolDefinitionFromDynamicTool(killSession!)
+
+    expect(def.inputSchema.properties.session_id.type).toBe('number')
+    expect(def.inputSchema.properties.reason.type).toBe('string')
+    expect(def.inputSchema.required).toEqual(['session_id', 'reason'])
+  })
+})
+
+describe('selectDiagnosticToolsForIncident', () => {
+  it('restricts backup overdue incidents to the backup status tool', () => {
+    const tools = [
+      { name: 'get_backup_status' },
+      { name: 'get_disk_usage' },
+      { name: 'get_wait_stats' },
+      { name: 'get_top_queries' }
+    ] as never
+
+    const selected = selectDiagnosticToolsForIncident('backup_overdue', tools)
+
+    expect(selected.map((tool) => tool.name)).toEqual(['get_backup_status'])
+  })
+})
+
+describe('selectActionToolsForIncident', () => {
+  it('does not expose action tools for backup overdue incidents', () => {
+    const tools = [
+      { name: 'kill_session' },
+      { name: 'update_statistics' },
+      { name: 'rebuild_index' }
+    ] as never
+
+    const selected = selectActionToolsForIncident('backup_overdue', tools)
+
+    expect(selected).toEqual([])
   })
 })

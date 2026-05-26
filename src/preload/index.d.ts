@@ -1,5 +1,3 @@
-import { ElectronAPI } from '@electron-toolkit/preload'
-
 // Types mirroring src/main/discovery/types.ts and src/main/ipc/types.ts.
 // Declared here (not imported from main) because this file is compiled
 // under tsconfig.web.json which does not include src/main/.
@@ -238,6 +236,13 @@ export interface ChangePasswordResult {
   error?: string
 }
 
+export interface RuntimeVersions {
+  chrome?: string
+  electron?: string
+  node?: string
+  [key: string]: string | undefined
+}
+
 export interface WorkerStartRequest {
   intervalSeconds: number
   servers: CollectMetricsRequest[]
@@ -454,6 +459,7 @@ export type IncidentStatus =
 
 export type IncidentEventKind =
   | 'alert_added'
+  | 'agent_run'
   | 'tool_call'
   | 'llm_message'
   | 'action_proposed'
@@ -505,7 +511,30 @@ export interface IncidentAuditEntry {
   responseHash: string
   tokensIn?: number
   tokensOut?: number
+  durationMs?: number
+  toolCallCount?: number
+  error?: string
   at: number
+}
+
+export interface IncidentAiProviderStats {
+  provider: 'ollama' | 'claude'
+  runs: number
+  failedRuns: number
+}
+
+export interface IncidentAiStats {
+  totalRuns: number
+  successfulRuns: number
+  failedRuns: number
+  successRate: number
+  avgDurationMs: number
+  p95DurationMs: number
+  avgToolCalls: number
+  proposedActions: number
+  executedActions: number
+  lastRunAt?: number
+  providers: IncidentAiProviderStats[]
 }
 
 export interface IncidentDetail {
@@ -516,6 +545,7 @@ export interface IncidentDetail {
 }
 
 export type AiStreamEvent =
+  | { type: 'status'; status: 'running' | 'completed' | 'failed'; message?: string }
   | { type: 'tool_start'; name: string }
   | { type: 'tool_end'; name: string; output: string }
   | { type: 'token'; text: string }
@@ -529,9 +559,12 @@ export interface AiProviderSettings {
   ollamaModel: string
   claudeApiKey?: string
   claudeModel: string
+  redactQueryText: boolean
+  agentActionsEnabled: boolean
 }
 
 export interface SqlSentinelAPI {
+  runtimeVersions(): RuntimeVersions
   appVersion(): Promise<IpcResult<{ version: string }>>
   scanSubnet(options: ScanOptions): Promise<IpcResult<DiscoveredServer[]>>
   cancelScan(): Promise<IpcResult<{ cancelled: boolean }>>
@@ -551,6 +584,7 @@ export interface SqlSentinelAPI {
   acknowledgeAlert(req: AcknowledgeAlertRequest): Promise<IpcResult<null>>
   getHistory(req: HistoryRequest): Promise<IpcResult<ServerMetrics[]>>
   getHistoryBulk(): Promise<IpcResult<Record<string, ServerMetrics[]>>>
+  getDatabasesBulk(): Promise<IpcResult<Record<string, DatabaseInfo[]>>>
   onMetricsUpdated(
     callback: (data: { serverId: string; metrics: ServerMetrics }) => void
   ): () => void
@@ -627,14 +661,19 @@ export interface SqlSentinelAPI {
     get(id: string): Promise<IpcResult<IncidentDetail>>
     setStatus(req: { id: string; status: IncidentStatus }): Promise<IpcResult<null>>
     countOpen(): Promise<IpcResult<number>>
+    aiStats(): Promise<IpcResult<IncidentAiStats>>
     exportPostmortem(id: string): Promise<IpcResult<string>>
     onCreated(callback: (incident: Incident) => void): () => void
     onUpdated(callback: (incident: Incident) => void): () => void
     runAgent(id: string): Promise<IpcResult<null>>
     approveAction(req: { actionId: string; approvedBy: string }): Promise<IpcResult<null>>
     rejectAction(req: { actionId: string; reason?: string }): Promise<IpcResult<null>>
-    onAgentEvent(callback: (payload: { incidentId: string; event: AiStreamEvent }) => void): () => void
-    onAction(callback: (payload: { incidentId: string; action: IncidentAction }) => void): () => void
+    onAgentEvent(
+      callback: (payload: { incidentId: string; event: AiStreamEvent }) => void
+    ): () => void
+    onAction(
+      callback: (payload: { incidentId: string; action: IncidentAction }) => void
+    ): () => void
   }
   getServiceStatus(): Promise<IpcResult<{ status: 'connected' | 'connecting' | 'disconnected' }>>
   storage: {
@@ -649,7 +688,6 @@ export interface SqlSentinelAPI {
 
 declare global {
   interface Window {
-    electron: ElectronAPI
     api: unknown
     sqlSentinel: SqlSentinelAPI
   }

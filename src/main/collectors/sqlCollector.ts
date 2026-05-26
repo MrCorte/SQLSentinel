@@ -2,6 +2,13 @@ import * as mssql from 'mssql'
 import { createLogger } from '../utils/logger'
 const log = createLogger('sql-collector')
 import { getPool, invalidatePool } from './connectionPool'
+
+const CONNECTION_ERROR_CODES = new Set(['ESOCKET', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ETIMEOUT'])
+
+function isConnectionError(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException).code
+  return code != null && CONNECTION_ERROR_CODES.has(code)
+}
 import type {
   ServerConnection,
   ServerInfo,
@@ -218,18 +225,21 @@ async function queryInstanceInfo(pool: mssql.ConnectionPool): Promise<InstanceIn
  * Source: sys.databases JOIN sys.master_files GROUP BY
  */
 async function queryDatabases(pool: mssql.ConnectionPool): Promise<DatabaseInfo[]> {
-  const sql = `
+  // Full query: includes file sizes via sys.master_files.
+  // Some stripped-down SQL variants (Azure SQL Edge) may fail here; the catch
+  // below falls back to a simpler query without size data.
+  const sqlFull = `
     SELECT
       d.name                                                                    AS name,
       d.state_desc                                                              AS state_desc,
-      d.recovery_model_desc                                                     AS recovery_model,
+      ISNULL(d.recovery_model_desc, 'SIMPLE')                                  AS recovery_model,
       CAST(SUM(CASE WHEN mf.type = 0 THEN mf.size * 8.0 / 1024 ELSE 0 END)
            AS DECIMAL(18,2))                                                    AS size_mb,
       CAST(SUM(CASE WHEN mf.type = 1 THEN mf.size * 8.0 / 1024 ELSE 0 END)
            AS DECIMAL(18,2))                                                    AS log_size_mb,
-      d.compatibility_level                                                     AS compatibility_level,
-      d.is_encrypted                                                            AS is_encrypted,
-      d.is_read_only                                                            AS is_read_only,
+      ISNULL(d.compatibility_level, 0)                                         AS compatibility_level,
+      ISNULL(CAST(d.is_encrypted AS INT), 0)                                   AS is_encrypted,
+      ISNULL(CAST(d.is_read_only AS INT), 0)                                   AS is_read_only,
       ISNULL(SUSER_SNAME(d.owner_sid), '')                                     AS owner,
       d.create_date                                                             AS create_date
     FROM sys.databases d
@@ -241,9 +251,26 @@ async function queryDatabases(pool: mssql.ConnectionPool): Promise<DatabaseInfo[
     ORDER BY d.name
   `
 
-  const result = await pool.request().query<DatabaseInfoRow>(sql)
+  // Fallback: no file sizes, minimal columns — works on Azure SQL Edge and
+  // other stripped-down variants that restrict access to sys.master_files.
+  const sqlSimple = `
+    SELECT
+      d.name                                                                    AS name,
+      d.state_desc                                                              AS state_desc,
+      ISNULL(d.recovery_model_desc, 'SIMPLE')                                  AS recovery_model,
+      CAST(0 AS DECIMAL(18,2))                                                 AS size_mb,
+      CAST(0 AS DECIMAL(18,2))                                                 AS log_size_mb,
+      ISNULL(d.compatibility_level, 0)                                         AS compatibility_level,
+      CAST(0 AS INT)                                                            AS is_encrypted,
+      ISNULL(CAST(d.is_read_only AS INT), 0)                                   AS is_read_only,
+      ISNULL(SUSER_SNAME(d.owner_sid), '')                                     AS owner,
+      d.create_date                                                             AS create_date
+    FROM sys.databases d
+    WHERE d.database_id > 4
+    ORDER BY d.name
+  `
 
-  return result.recordset.map((row) => ({
+  const mapRow = (row: DatabaseInfoRow): DatabaseInfo => ({
     name: row.name,
     stateDesc: row.state_desc,
     recoveryModel: row.recovery_model,
@@ -255,7 +282,16 @@ async function queryDatabases(pool: mssql.ConnectionPool): Promise<DatabaseInfo[
     owner: row.owner ?? '',
     createDate:
       row.create_date instanceof Date ? row.create_date.toISOString() : String(row.create_date)
-  }))
+  })
+
+  try {
+    const result = await pool.request().query<DatabaseInfoRow>(sqlFull)
+    return result.recordset.map(mapRow)
+  } catch {
+    log.warn('[collector] queryDatabases full query failed, falling back to simple query')
+    const result = await pool.request().query<DatabaseInfoRow>(sqlSimple)
+    return result.recordset.map(mapRow)
+  }
 }
 
 /**
@@ -329,12 +365,8 @@ async function queryTopQueries(pool: mssql.ConnectionPool): Promise<QueryInfo[]>
  * Backup status for each database (last 7 days).
  * Source: msdb.dbo.backupset GROUP BY database_name, type
  */
-async function queryBackupStatus(pool: mssql.ConnectionPool): Promise<BackupInfo[]> {
-  // LEFT JOIN: all user-level DBs appear even if they have never had a backup.
-  // The bs.type filter is pushed into the JOIN so the optimizer can use the
-  // backupset_database index and prune rows early; on msdb with millions of rows
-  // this drastically cuts query cost (from 1-5s to <200ms).
-  const sql = `
+export function buildBackupStatusSql(lookbackDays = 35): string {
+  return `
     SELECT
       d.name                                                                    AS database_name,
       MAX(CASE WHEN bs.type = 'D' THEN bs.backup_finish_date ELSE NULL END)    AS last_full_backup,
@@ -344,10 +376,20 @@ async function queryBackupStatus(pool: mssql.ConnectionPool): Promise<BackupInfo
     LEFT JOIN msdb.dbo.backupset bs WITH (READUNCOMMITTED)
       ON d.name = bs.database_name
       AND bs.type IN ('D', 'I', 'L')
+      AND bs.backup_finish_date >= DATEADD(DAY, -${lookbackDays}, GETDATE())
     WHERE d.database_id > 4
     GROUP BY d.name
     ORDER BY d.name
   `
+}
+
+async function queryBackupStatus(pool: mssql.ConnectionPool): Promise<BackupInfo[]> {
+  // LEFT JOIN: all user-level DBs appear even if they have never had a backup.
+  // The bs.type filter is pushed into the JOIN so the optimizer can use the
+  // backupset_database index and prune rows early. The lookback keeps msdb scans
+  // bounded on instances with millions of backup history rows; anything older is
+  // still treated as missing/overdue by alert evaluation.
+  const sql = buildBackupStatusSql()
 
   const result = await pool.request().query<BackupInfoRow>(sql)
 
@@ -471,13 +513,13 @@ async function queryDatabaseFiles(pool: mssql.ConnectionPool): Promise<DatabaseF
       mf.name                                                                      AS file_name,
       mf.type_desc,
       mf.physical_name,
-      CAST(mf.size * 8 / 1024.0 AS DECIMAL(10,2))                                AS size_mb,
-      ISNULL(CAST(FILEPROPERTY(mf.name, 'SpaceUsed') * 8 / 1024.0
+      CAST(CAST(mf.size AS DECIMAL(19,2)) * 8 / 1024.0 AS DECIMAL(10,2))          AS size_mb,
+      ISNULL(CAST(CAST(FILEPROPERTY(mf.name, 'SpaceUsed') AS DECIMAL(19,2)) * 8 / 1024.0
                AS DECIMAL(10,2)), 0)                                               AS used_mb,
-      ISNULL(CAST((mf.size - FILEPROPERTY(mf.name, 'SpaceUsed')) * 8 / 1024.0
+      ISNULL(CAST((CAST(mf.size AS DECIMAL(19,2)) - CAST(FILEPROPERTY(mf.name, 'SpaceUsed') AS DECIMAL(19,2))) * 8 / 1024.0
                AS DECIMAL(10,2)), 0)                                               AS free_mb,
       CASE WHEN mf.max_size = -1 THEN NULL
-           ELSE CAST(mf.max_size * 8 / 1024.0 AS DECIMAL(10,2))
+           ELSE CAST(CAST(mf.max_size AS DECIMAL(19,2)) * 8 / 1024.0 AS DECIMAL(10,2))
       END                                                                          AS max_mb,
       mf.is_percent_growth,
       mf.growth
@@ -580,34 +622,42 @@ export async function collectMetrics(
       databaseFiles
     ] = await Promise.all([
       queryInstanceInfo(pool).catch((err: Error) => {
+        if (isConnectionError(err)) invalidatePool(connection)
         log.error('[collector] instance info:', sanitizeSqlError(err))
         return defaultInstanceInfo()
       }),
       queryDatabases(pool).catch((err: Error) => {
+        if (isConnectionError(err)) invalidatePool(connection)
         log.error('[collector] databases:', sanitizeSqlError(err))
         return [] as DatabaseInfo[]
       }),
       querySessions(pool).catch((err: Error) => {
+        if (isConnectionError(err)) invalidatePool(connection)
         log.error('[collector] sessions:', sanitizeSqlError(err))
         return [] as SessionInfo[]
       }),
       queryTopQueries(pool).catch((err: Error) => {
+        if (isConnectionError(err)) invalidatePool(connection)
         log.error('[collector] top queries:', sanitizeSqlError(err))
         return [] as QueryInfo[]
       }),
       queryBackupStatus(pool).catch((err: Error) => {
+        if (isConnectionError(err)) invalidatePool(connection)
         log.error('[collector] backup status:', sanitizeSqlError(err))
         return [] as BackupInfo[]
       }),
       queryWaitStats(pool).catch((err: Error) => {
+        if (isConnectionError(err)) invalidatePool(connection)
         log.error('[collector] wait stats:', sanitizeSqlError(err))
         return [] as WaitStatInfo[]
       }),
       queryDiskVolumes(pool).catch((err: Error) => {
+        if (isConnectionError(err)) invalidatePool(connection)
         log.error('[collector] disk volumes:', sanitizeSqlError(err))
         return [] as DiskVolume[]
       }),
       queryDatabaseFiles(pool).catch((err: Error) => {
+        if (isConnectionError(err)) invalidatePool(connection)
         log.error('[collector] database files:', sanitizeSqlError(err))
         return [] as DatabaseFile[]
       })
@@ -656,22 +706,27 @@ export async function collectMetricsCritical(
 
     const [instanceInfo, databases, activeSessions, backupStatus, diskVolumes] = await Promise.all([
       queryInstanceInfo(pool).catch((err: Error) => {
+        if (isConnectionError(err)) invalidatePool(connection)
         log.error('[collector] instance info:', sanitizeSqlError(err))
         return defaultInstanceInfo()
       }),
       queryDatabases(pool).catch((err: Error) => {
+        if (isConnectionError(err)) invalidatePool(connection)
         log.error('[collector] databases:', sanitizeSqlError(err))
         return [] as DatabaseInfo[]
       }),
       querySessions(pool).catch((err: Error) => {
+        if (isConnectionError(err)) invalidatePool(connection)
         log.error('[collector] sessions:', sanitizeSqlError(err))
         return [] as SessionInfo[]
       }),
       queryBackupStatus(pool).catch((err: Error) => {
+        if (isConnectionError(err)) invalidatePool(connection)
         log.error('[collector] backup status:', sanitizeSqlError(err))
         return [] as BackupInfo[]
       }),
       queryDiskVolumes(pool).catch((err: Error) => {
+        if (isConnectionError(err)) invalidatePool(connection)
         log.error('[collector] disk volumes:', sanitizeSqlError(err))
         return [] as DiskVolume[]
       })

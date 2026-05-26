@@ -92,6 +92,18 @@ function normalizeServer(s: PersistedServer): StoredServer {
   return { ...rest, host } as StoredServer
 }
 
+const IPV4_RE = /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)$/
+const HOSTNAME_RE =
+  /^(?=.{1,253}$)([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
+
+function validateNewServer(s: StoredServer): string | null {
+  if (!s.host) return 'missing host'
+  if (!IPV4_RE.test(s.host) && !HOSTNAME_RE.test(s.host)) return 'invalid host'
+  if (!Number.isInteger(s.port) || s.port < 1 || s.port > 65535) return 'invalid port'
+  if (typeof s.useWindowsAuth !== 'boolean') return 'invalid auth mode'
+  return null
+}
+
 // ---------------------------------------------------------------------------
 // electron-store singleton
 // ---------------------------------------------------------------------------
@@ -221,7 +233,8 @@ export function add(
 ): { success: boolean; reason?: string; server?: StoredServer } {
   if (!params || typeof params !== 'object') return { success: false, reason: 'invalid params' }
   const normalized = normalizeServer(params as PersistedServer)
-  if (!normalized.host) return { success: false, reason: 'missing host' }
+  const invalidReason = validateNewServer(normalized)
+  if (invalidReason) return { success: false, reason: invalidReason }
   const servers = store.get('servers', [])
   if (
     servers.some((s) => (s.host ?? s.ip) === normalized.host && s.port === normalized.port)
@@ -345,6 +358,8 @@ function pickAllowedFields(params: unknown): Record<string, unknown> {
 export function upsertByIpPort(params: unknown): StoredServer {
   const filtered = pickAllowedFields(params)
   const normalized = normalizeServer(filtered as PersistedServer)
+  const invalidReason = validateNewServer(normalized)
+  if (invalidReason) throw new Error(invalidReason)
   const servers = store.get('servers', [])
   const idx = servers.findIndex(
     (s) => (s.host ?? s.ip) === normalized.host && s.port === normalized.port
@@ -427,7 +442,7 @@ export function writeAutoBackup(): void {
     const payload: ServerBackupFile = {
       version: 1,
       exportedAt: new Date().toISOString(),
-      servers: servers.map(toBackupEntry)
+      servers: servers.map((s) => toBackupEntry(normalizeServer(s)))
     }
     const backupPath = join(dirname(store.path), 'sql-sentinel-backup.json')
     writeFileSync(backupPath, JSON.stringify(payload, null, 2), 'utf8')
@@ -442,7 +457,7 @@ export function exportForBackup(): string {
   const payload: ServerBackupFile = {
     version: 1,
     exportedAt: new Date().toISOString(),
-    servers: servers.map(toBackupEntry)
+    servers: servers.map((s) => toBackupEntry(normalizeServer(s)))
   }
   return JSON.stringify(payload, null, 2)
 }

@@ -20,7 +20,6 @@ import type {
 } from '../../../preload/index'
 import { useShallow } from 'zustand/react/shallow'
 import { useAgStore } from '../store/agStore'
-import type { AgDetail } from '../store/agStore'
 import { useServersStore } from '../store/serversStore'
 import { useGroupsStore } from '../store/groupsStore'
 import { useAppStore } from '../store/appStore'

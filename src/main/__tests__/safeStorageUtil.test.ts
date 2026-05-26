@@ -5,13 +5,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const mockIsEncryptionAvailable = vi.fn()
 const mockEncryptString = vi.fn()
 const mockDecryptString = vi.fn()
+const mockElectronState = vi.hoisted(() => ({ safeStorageMissing: false }))
 
 vi.mock('electron', () => ({
   app: { isPackaged: false, getPath: () => '/tmp' },
-  safeStorage: {
-    isEncryptionAvailable: mockIsEncryptionAvailable,
-    encryptString: mockEncryptString,
-    decryptString: mockDecryptString
+  get safeStorage() {
+    if (mockElectronState.safeStorageMissing) return undefined
+    return {
+      isEncryptionAvailable: mockIsEncryptionAvailable,
+      encryptString: mockEncryptString,
+      decryptString: mockDecryptString
+    }
   }
 }))
 
@@ -26,6 +30,7 @@ describe('safeStorageUtil', () => {
   beforeEach(async () => {
     vi.resetModules()
     vi.clearAllMocks()
+    mockElectronState.safeStorageMissing = false
     ;({ isAvailable, encrypt, decrypt, isEncrypted } = await import('../store/safeStorageUtil'))
   })
 
@@ -39,6 +44,14 @@ describe('safeStorageUtil', () => {
 
     it('returns false when safeStorage reports unavailable', () => {
       mockIsEncryptionAvailable.mockReturnValue(false)
+      expect(isAvailable()).toBe(false)
+    })
+
+    it('returns false when Electron does not expose safeStorage in this process', async () => {
+      vi.resetModules()
+      mockElectronState.safeStorageMissing = true
+      ;({ isAvailable } = await import('../store/safeStorageUtil'))
+
       expect(isAvailable()).toBe(false)
     })
   })

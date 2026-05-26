@@ -16,6 +16,7 @@ import {
   createSession,
   removeSession
 } from './store/sqlserver/sessionsRepository'
+import { getRawSetting, setRawSetting } from './store/settings'
 import { createLogger } from './utils/logger'
 
 const log = createLogger('auth')
@@ -234,10 +235,11 @@ export async function changePassword(
     currentSession.mustChangePassword = false
   }
 
-  // H3: delete admin-bootstrap.txt if the admin user just changed password.
-  // The file holds the original random plaintext bootstrap; once rotated, the
-  // file is dead weight on disk and a forensic risk on stolen/reimaged systems.
   if (user.username === 'admin') {
+    // Keep local backup hash in sync so restore after SQL Server reset uses the new password.
+    setRawSetting('admin_bootstrap_hash', hash)
+
+    // H3: delete admin-bootstrap.txt — original plaintext is no longer valid.
     try {
       const bootstrapPath = join(app.getPath('userData'), 'admin-bootstrap.txt')
       if (existsSync(bootstrapPath)) {
@@ -312,6 +314,21 @@ export async function initDefaultAdmin(): Promise<void> {
   const count = await countUsers()
   if (count !== 0) return
 
+  // Check if admin was previously created — SQLite persists the hash so we can
+  // restore it if the SQL Server database is wiped (e.g. container recreated).
+  const storedHash = getRawSetting('admin_bootstrap_hash')
+  if (storedHash) {
+    await createUser({
+      id: randomUUID(),
+      username: 'admin',
+      password: storedHash,
+      role: 'admin',
+      mustChangePassword: false
+    })
+    log.warn('[AUTH] Admin user restored from local backup — SQL Server users table was empty.')
+    return
+  }
+
   const plaintext = generateBootstrapPassword()
   const hash = await bcrypt.hash(plaintext, SALT_ROUNDS)
   await createUser({
@@ -321,6 +338,8 @@ export async function initDefaultAdmin(): Promise<void> {
     role: 'admin',
     mustChangePassword: true
   })
+  // Persist hash locally so it survives SQL Server resets
+  setRawSetting('admin_bootstrap_hash', hash)
 
   const filePath = writeBootstrapCredentialsFile('admin', plaintext)
   if (filePath) {
@@ -329,8 +348,6 @@ export async function initDefaultAdmin(): Promise<void> {
         `— log in and change it, then delete the file.`
     )
   } else {
-    // Fallback: dump to stderr if we couldn't write the file. Better to leak
-    // to logs than to lose the password forever.
     log.warn(`[AUTH] Default admin created. Initial password: ${plaintext} (CHANGE IMMEDIATELY)`)
   }
 }

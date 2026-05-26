@@ -272,8 +272,60 @@ describe('applyDeltaBatch', () => {
     expect(updatedDb?.sizeMb).toBe(999)
   })
 
+  it('does not create a full metrics entry from an orphan delta', () => {
+    const SID = 'orphan:1433'
+    useMetricsStore.getState().applyDeltaBatch([
+      {
+        serverId: SID,
+        metrics: {
+          ...makeMetrics({
+            databases: [],
+            activeSessions: [
+              {
+                sessionId: 51,
+                status: 'running',
+                blockingSessionId: 0,
+                waitType: '',
+                waitTimeMs: 0,
+                cpuTime: 12,
+                logicalReads: 128
+              }
+            ]
+          }),
+          isDelta: true
+        }
+      }
+    ])
+    expect(useMetricsStore.getState().metricsMap[SID]).toBeUndefined()
+    expect(useMetricsStore.getState().summaries[SID]).toBeUndefined()
+  })
+
   it('sets lastUpdate after batch', () => {
     useMetricsStore.getState().applyDeltaBatch([{ serverId: 'D:1433', metrics: makeMetrics() }])
     expect(useMetricsStore.getState().lastUpdate).not.toBeNull()
+  })
+})
+
+// ── seedFromDatabases ────────────────────────────────────────────────────────
+
+describe('seedFromDatabases', () => {
+  it('fills database list when an existing metrics entry has no databases', () => {
+    const SID = 'localhost:1435'
+    const db = {
+      name: 'AppDB_Test_A',
+      stateDesc: 'ONLINE' as const,
+      recoveryModel: 'SIMPLE',
+      sizeMb: 128,
+      logSizeMb: 16,
+      compatibilityLevel: 170,
+      isEncrypted: false,
+      isReadOnly: false,
+      owner: 'sa',
+      createDate: '2026-05-25'
+    }
+    useMetricsStore.getState().setMetrics(SID, makeMetrics({ databases: [] }))
+    useMetricsStore.getState().seedFromDatabases({ [SID]: [db] })
+    expect(useMetricsStore.getState().metricsMap[SID].databases).toEqual([db])
+    expect(useMetricsStore.getState().summaries[SID].dbCount).toBe(1)
   })
 })

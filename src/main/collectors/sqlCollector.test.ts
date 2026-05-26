@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as mssql from 'mssql'
 import { collectMetrics, collectMetricsCritical } from './sqlCollector'
-import { getPool } from './connectionPool'
+import { getPool, invalidatePool } from './connectionPool'
 import type { ServerConnection } from './types'
 
 // Mock the entire mssql module — no real connection
@@ -127,6 +127,23 @@ describe('collectMetrics', () => {
     // Pool lifecycle is owned by connectionPool (mocked here), not collectMetrics.
   })
 
+  it('casts file size pages before arithmetic to avoid int overflow', async () => {
+    const { mockPool, mockRequest } = makeMockPool()
+    vi.mocked(getPool).mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
+
+    await collectMetrics(CONN)
+
+    const databaseFilesSql = mockRequest.query.mock.calls
+      .map(([sql]: [string]) => sql)
+      .find((sql: string) => sql.includes('sys.master_files mf') && sql.includes('physical_name'))
+
+    expect(databaseFilesSql).toContain('CAST(mf.size AS DECIMAL(19,2)) * 8 / 1024.0')
+    expect(databaseFilesSql).toContain('CAST(mf.max_size AS DECIMAL(19,2)) * 8 / 1024.0')
+    expect(databaseFilesSql).toContain(
+      "CAST(FILEPROPERTY(mf.name, 'SpaceUsed') AS DECIMAL(19,2)) * 8 / 1024.0"
+    )
+  })
+
   it('propagates the error to the caller when the connection fails', async () => {
     vi.mocked(getPool).mockRejectedValue(new Error('Login failed for user'))
 
@@ -169,6 +186,38 @@ describe('collectMetrics', () => {
     )
 
     consoleSpy.mockRestore()
+  })
+
+  it('invalidates the pool when a sub-query fails with a TCP connection error', async () => {
+    const connError = Object.assign(new Error('Connection reset by peer'), {
+      code: 'ECONNRESET'
+    })
+    const { mockPool } = makeMockPool(async (sql: string) => {
+      if (sql.includes('dm_os_process_memory')) throw connError
+      return { recordset: recordsetForSql(sql) }
+    })
+    vi.mocked(getPool).mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await collectMetrics(CONN)
+    consoleSpy.mockRestore()
+
+    expect(vi.mocked(invalidatePool)).toHaveBeenCalledWith(CONN)
+  })
+
+  it('does NOT invalidate the pool when a sub-query fails with a permission error', async () => {
+    const permError = new Error("The server principal 'sa' is not able to access the database 'msdb'")
+    const { mockPool } = makeMockPool(async (sql: string) => {
+      if (sql.includes('backupset')) throw permError
+      return { recordset: recordsetForSql(sql) }
+    })
+    vi.mocked(getPool).mockResolvedValue(mockPool as unknown as mssql.ConnectionPool)
+
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await collectMetrics(CONN)
+    consoleSpy.mockRestore()
+
+    expect(vi.mocked(invalidatePool)).not.toHaveBeenCalled()
   })
 })
 

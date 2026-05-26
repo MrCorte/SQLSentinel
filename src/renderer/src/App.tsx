@@ -3,8 +3,9 @@ import { Box } from '@mui/material'
 import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { Dashboard } from './pages/Dashboard'
+import { Incidents } from './pages/Incidents'
 // Lazy-loaded chunks: AIPanel (langchain ~1.5MB), Settings, StorageSetupPage,
-// LoginPage are reached only on demand. Discovery, Inventory, Incidents are
+// LoginPage are reached only on demand. Discovery and Inventory are
 // secondary tabs not visited on cold start — deferring them shaves ~600KB from
 // the initial bundle and reduces TTI further.
 const AIPanel = lazy(() =>
@@ -25,15 +26,11 @@ const Discovery = lazy(() =>
 const Inventory = lazy(() =>
   import('./pages/Inventory').then((m) => ({ default: m.Inventory }))
 )
-const Incidents = lazy(() =>
-  import('./pages/Incidents').then((m) => ({ default: m.Incidents }))
-)
 import { AlertsDrawer } from './components/AlertsDrawer'
 import { GlobalSnackbar } from './components/GlobalSnackbar'
 import { HomeDashboard } from './components/HomeDashboard'
 import { WorkerProvider } from './context/WorkerContext'
 import { useWorker } from './context/useWorker'
-import { useShallow } from 'zustand/react/shallow'
 import { useServersStore } from './store/serversStore'
 import { useAlertsStore } from './store/alertsStore'
 import { useAppStore } from './store/appStore'
@@ -81,7 +78,7 @@ function AppInner(): React.JSX.Element {
 
   useMockData()
 
-  const { setRetentionMinutes, seedHistory } = useWorker()
+  const { setRetentionMinutes, seedHistory, pushSnapshotBatch } = useWorker()
   const alerts = useAlertsStore((s) => s.alerts)
   const setAlerts = useAlertsStore((s) => s.setAlerts)
   const addAlert = useAlertsStore((s) => s.addAlert)
@@ -124,6 +121,18 @@ function AppInner(): React.JSX.Element {
         const { servers: srvs } = useServersStore.getState()
         migrateAliasKeys(srvs)
         migrateServerGroupKeys(srvs)
+        // Seed database lists from SQLite immediately — no worker needed.
+        // This prevents the blank-databases flash when switching servers at startup.
+        if (typeof window.sqlSentinel?.getDatabasesBulk === 'function') {
+          window.sqlSentinel
+            .getDatabasesBulk()
+            .then((result) => {
+              if (result.ok && Object.keys(result.data).length > 0) {
+                useMetricsStore.getState().seedFromDatabases(result.data)
+              }
+            })
+            .catch(() => {}) // non-blocking
+        }
         if (srvs.length > 0) {
           window.sqlSentinel
             .workerStart({
@@ -280,6 +289,16 @@ function AppInner(): React.JSX.Element {
   )
 
   useIpcEvent(window.sqlSentinel.onAlertNew, handleAlertNew)
+
+  // Keep metricsMap fresh regardless of which tab is active.
+  // Dashboard subscribes too (for local component state), but when it unmounts
+  // this subscription ensures the global store keeps receiving worker pushes.
+  useEffect(() => {
+    if (typeof window.sqlSentinel?.onMetricsBatchUpdated !== 'function') return
+    return window.sqlSentinel.onMetricsBatchUpdated((batch) => {
+      pushSnapshotBatch(batch)
+    })
+  }, [pushSnapshotBatch])
 
   function handleAcknowledge(alertId: string): void {
     window.sqlSentinel

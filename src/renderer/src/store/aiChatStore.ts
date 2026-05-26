@@ -69,7 +69,7 @@ export const useAiChatStore = create<AiChatStore>((set, get) => ({
         ...s.messages,
         {
           role: 'assistant',
-          content: `Error: ${error}\n\nMake sure Ollama is running:\n  ollama serve\n  ollama pull llama3.2:3b`,
+          content: `Error: ${error}\n\nMake sure Ollama is running:\n  ollama serve\n  ollama pull gemma4:e4b`,
           ts: Date.now()
         }
       ],

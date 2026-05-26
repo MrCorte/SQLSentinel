@@ -7,6 +7,26 @@
  */
 import { vi } from 'vitest'
 
+if (
+  typeof globalThis.localStorage === 'undefined' ||
+  typeof globalThis.localStorage.clear !== 'function'
+) {
+  const state = new Map<string, string>()
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => state.get(key) ?? null,
+      setItem: (key: string, value: string) => state.set(key, String(value)),
+      removeItem: (key: string) => state.delete(key),
+      clear: () => state.clear(),
+      key: (index: number) => Array.from(state.keys())[index] ?? null,
+      get length() {
+        return state.size
+      }
+    }
+  })
+}
+
 // ── Tipi interni ─────────────────────────────────────────────────────────────
 
 type Row = Record<string, unknown>

@@ -35,6 +35,7 @@ export enum IpcChannel {
   ALERTS_ACKNOWLEDGE = 'alerts:acknowledge',
   METRICS_HISTORY = 'metrics:history',
   METRICS_HISTORY_BULK = 'metrics:historyBulk',
+  METRICS_DATABASES_BULK = 'metrics:databasesBulk',
   SETTINGS_GET = 'settings:get',
   SETTINGS_SET = 'settings:set',
   DB_GET_CUSTOM_FIELDS = 'db:get-custom-fields',
@@ -88,24 +89,25 @@ export enum IpcChannel {
   AI_SAVE_SETTINGS = 'ai:saveSettings',
   AI_CHECK_PROVIDER = 'ai:checkProvider',
   // Storage connection management
-  STORAGE_GET_CONFIG      = 'storage:get-config',
+  STORAGE_GET_CONFIG = 'storage:get-config',
   STORAGE_TEST_CONNECTION = 'storage:test-connection',
-  STORAGE_SAVE_CONFIG     = 'storage:save-config',
+  STORAGE_SAVE_CONFIG = 'storage:save-config',
   STORAGE_SAFE_STORAGE_STATUS = 'storage:safeStorageStatus',
   // Incident management
-  INCIDENTS_LIST           = 'incidents:list',
-  INCIDENTS_GET            = 'incidents:get',
-  INCIDENTS_SET_STATUS     = 'incidents:setStatus',
-  INCIDENTS_COUNT_OPEN     = 'incidents:countOpen',
+  INCIDENTS_LIST = 'incidents:list',
+  INCIDENTS_GET = 'incidents:get',
+  INCIDENTS_SET_STATUS = 'incidents:setStatus',
+  INCIDENTS_COUNT_OPEN = 'incidents:countOpen',
+  INCIDENTS_AI_STATS = 'incidents:aiStats',
   INCIDENTS_EXPORT_POSTMORTEM = 'incidents:exportPostmortem',
-  INCIDENTS_RUN_AGENT      = 'incidents:runAgent',
+  INCIDENTS_RUN_AGENT = 'incidents:runAgent',
   INCIDENTS_APPROVE_ACTION = 'incidents:approveAction',
-  INCIDENTS_REJECT_ACTION  = 'incidents:rejectAction',
-  INCIDENT_CREATED         = 'incident:created',   // push: main → renderer
-  INCIDENT_UPDATED         = 'incident:updated',   // push: main → renderer
-  INCIDENT_EVENT           = 'incident:event',     // push: main → renderer
-  INCIDENT_ACTION          = 'incident:action',    // push: main → renderer
-  INCIDENT_AGENT_EVENT     = 'incident:agentEvent' // push: AiStreamEvent for live token streaming
+  INCIDENTS_REJECT_ACTION = 'incidents:rejectAction',
+  INCIDENT_CREATED = 'incident:created', // push: main → renderer
+  INCIDENT_UPDATED = 'incident:updated', // push: main → renderer
+  INCIDENT_EVENT = 'incident:event', // push: main → renderer
+  INCIDENT_ACTION = 'incident:action', // push: main → renderer
+  INCIDENT_AGENT_EVENT = 'incident:agentEvent' // push: AiStreamEvent for live token streaming
 }
 
 /** Unified result envelope — never throw raw errors to the renderer. */
@@ -126,6 +128,7 @@ export interface AiProviderSettings {
 }
 
 export type AiStreamEvent =
+  | { type: 'status'; status: 'running' | 'completed' | 'failed'; message?: string }
   | { type: 'tool_start'; name: string }
   | { type: 'tool_end'; name: string; output: string }
   | { type: 'token'; text: string }
@@ -419,6 +422,7 @@ export type {
   Incident,
   IncidentEvent,
   IncidentAction,
+  IncidentAiStats,
   IncidentAuditEntry,
   IncidentStatus,
   IncidentEventKind,

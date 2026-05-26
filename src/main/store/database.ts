@@ -142,6 +142,9 @@ const DDL = `
     response_hash TEXT    NOT NULL,
     tokens_in     INTEGER,
     tokens_out    INTEGER,
+    duration_ms   INTEGER,
+    tool_call_count INTEGER,
+    error         TEXT,
     at            INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_incident_audit_incident ON incident_audit(incident_id, at);
@@ -273,6 +276,10 @@ function finishInit(
   _db.pragma('temp_store   = MEMORY') // temporary tables in RAM
 
   // Schema migration: drop RAG tables with old schema (size_bytes → file_size)
+  // Bootstrap DDL before migrations so fresh databases have source tables
+  // available for non-destructive rebuild migrations.
+  _db.exec(DDL)
+
   const schemaVersion = (_db.pragma('user_version', { simple: true }) as number) ?? 0
   if (schemaVersion < 1) {
     _db.exec('DROP TABLE IF EXISTS rag_chunks; DROP TABLE IF EXISTS rag_documents;')
@@ -307,10 +314,58 @@ function finishInit(
 
   _db.exec(DDL)
 
+  // v4: incident AI telemetry. CREATE TABLE IF NOT EXISTS does not add columns
+  // to existing v3 databases, so patch the table in place.
+  if (schemaVersion < 4) {
+    addColumnIfMissing(_db, 'incident_audit', 'duration_ms', 'INTEGER')
+    addColumnIfMissing(_db, 'incident_audit', 'tool_call_count', 'INTEGER')
+    addColumnIfMissing(_db, 'incident_audit', 'error', 'TEXT')
+    _db.pragma('user_version = 4')
+  }
+
+  // v5: dedicated server_databases table — persistent database inventory per server.
+  // Survives restarts and seeds metricsMap immediately on boot so the database list
+  // is visible before the first worker polling cycle completes.
+  if (schemaVersion < 5) {
+    _db.exec(`
+      CREATE TABLE IF NOT EXISTS server_databases (
+        server_id       TEXT    NOT NULL,
+        name            TEXT    NOT NULL,
+        state_desc      TEXT    NOT NULL DEFAULT 'ONLINE',
+        recovery_model  TEXT    NOT NULL DEFAULT 'SIMPLE',
+        size_mb         REAL    NOT NULL DEFAULT 0,
+        log_size_mb     REAL    NOT NULL DEFAULT 0,
+        compat_level    INTEGER NOT NULL DEFAULT 150,
+        is_encrypted    INTEGER NOT NULL DEFAULT 0,
+        is_read_only    INTEGER NOT NULL DEFAULT 0,
+        owner           TEXT    NOT NULL DEFAULT '',
+        create_date     TEXT    NOT NULL DEFAULT '',
+        last_seen       INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (server_id, name)
+      );
+    `)
+    _db.pragma('user_version = 5')
+  }
+
   // Flush any WAL pages left from a previous run; keeps DB file compact
   _db.pragma('wal_checkpoint(PASSIVE)')
 
   return { db: _db, recoveredFromCorruption, rotatedPath }
+}
+
+function addColumnIfMissing(
+  db: Database.Database,
+  table: string,
+  column: string,
+  definition: string
+): void {
+  const row = db
+    .prepare<
+      [string],
+      { name: string }
+    >(`SELECT name FROM pragma_table_info('${table}') WHERE name = ?`)
+    .get(column)
+  if (!row) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
 }
 
 export function getDb(): Database.Database {

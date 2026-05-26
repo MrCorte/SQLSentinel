@@ -43,6 +43,44 @@ function rebuildIndexSql(dbName: string, tableName: string, indexName: string): 
   ].join('\n')
 }
 
+export function buildActionSqlForExecution(
+  toolName: string,
+  params: Record<string, unknown>
+): string {
+  if (toolName === 'kill_session') {
+    const sessionId = params['session_id']
+    if (!Number.isInteger(sessionId) || (sessionId as number) <= 0) {
+      throw new Error('Invalid kill_session params')
+    }
+    return killSessionSql(sessionId as number)
+  }
+
+  if (toolName === 'update_statistics') {
+    const dbName = params['db_name']
+    const tableName = params['table_name']
+    if (typeof dbName !== 'string' || typeof tableName !== 'string') {
+      throw new Error('Invalid update_statistics params')
+    }
+    return updateStatsSql(dbName, tableName)
+  }
+
+  if (toolName === 'rebuild_index') {
+    const dbName = params['db_name']
+    const tableName = params['table_name']
+    const indexName = params['index_name']
+    if (
+      typeof dbName !== 'string' ||
+      typeof tableName !== 'string' ||
+      typeof indexName !== 'string'
+    ) {
+      throw new Error('Invalid rebuild_index params')
+    }
+    return rebuildIndexSql(dbName, tableName, indexName)
+  }
+
+  throw new Error(`Unsupported action tool: ${toolName}`)
+}
+
 // ---------------------------------------------------------------------------
 // Tool factory — scoped to one incident so proposals land in the right row.
 // ---------------------------------------------------------------------------
@@ -58,7 +96,7 @@ export function buildActionTools(incidentId: string): DynamicStructuredTool[] {
         reason: z.string().describe('One sentence explaining why this session should be killed')
       }),
       func: async ({ session_id, reason }) => {
-        const tsql = killSessionSql(session_id)
+        const tsql = buildActionSqlForExecution('kill_session', { session_id })
         const action = repo.createAction(
           incidentId,
           'kill_session',
@@ -81,7 +119,7 @@ export function buildActionTools(incidentId: string): DynamicStructuredTool[] {
         reason: z.string().describe('One sentence explaining why statistics need updating')
       }),
       func: async ({ db_name, table_name, reason }) => {
-        const tsql = updateStatsSql(db_name, table_name)
+        const tsql = buildActionSqlForExecution('update_statistics', { db_name, table_name })
         const action = repo.createAction(
           incidentId,
           'update_statistics',
@@ -105,7 +143,11 @@ export function buildActionTools(incidentId: string): DynamicStructuredTool[] {
         reason: z.string().describe('One sentence justifying the rebuild')
       }),
       func: async ({ db_name, table_name, index_name, reason }) => {
-        const tsql = rebuildIndexSql(db_name, table_name, index_name)
+        const tsql = buildActionSqlForExecution('rebuild_index', {
+          db_name,
+          table_name,
+          index_name
+        })
         const action = repo.createAction(
           incidentId,
           'rebuild_index',

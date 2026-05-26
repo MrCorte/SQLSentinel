@@ -108,8 +108,10 @@ async function runExport(key: ExportKey): Promise<void> {
 function AiProviderCard(): React.JSX.Element {
   const [settings, setSettings] = useState<AiProviderSettings>({
     provider: 'ollama',
-    ollamaModel: 'llama3.2:3b',
-    claudeModel: 'claude-haiku-4-5-20251001'
+    ollamaModel: 'gemma4:e4b',
+    claudeModel: 'claude-haiku-4-5-20251001',
+    redactQueryText: true,
+    agentActionsEnabled: true
   })
   const [apiKey, setApiKey] = useState('')
   const [saving, setSaving] = useState(false)
@@ -192,7 +194,7 @@ function AiProviderCard(): React.JSX.Element {
             size="small"
             value={settings.ollamaModel}
             onChange={(e) => setSettings((s) => ({ ...s, ollamaModel: e.target.value }))}
-            placeholder="llama3.2:3b"
+            placeholder="gemma4:e4b"
           />
         )}
 

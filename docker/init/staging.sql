@@ -1,4 +1,4 @@
--- Staging server: 1 database, mirrors prod schema, moderate data
+-- Staging server: 2 databases, mirrors prod schema, moderate data
 -- Tests: mid-size server, index fragmentation scenario
 
 IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = 'StagingAppDB')
@@ -31,8 +31,8 @@ GO
 
 IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ConfigValues')
 CREATE TABLE ConfigValues (
-    Key         NVARCHAR(100) PRIMARY KEY,
-    Value       NVARCHAR(500),
+    [Key]       NVARCHAR(100) PRIMARY KEY,
+    [Value]     NVARCHAR(500),
     Environment NVARCHAR(20) NOT NULL DEFAULT 'staging',
     UpdatedAt   DATETIME2 DEFAULT GETDATE()
 );
@@ -56,7 +56,7 @@ BEGIN
         SET @j = @j + 1;
     END
 
-    INSERT INTO ConfigValues (Key, Value) VALUES
+    INSERT INTO ConfigValues ([Key], [Value]) VALUES
         ('api.timeout_ms',       '5000'),
         ('api.retry_count',      '3'),
         ('feature.new_checkout', 'false'),
@@ -66,10 +66,60 @@ END
 GO
 
 -- Create and immediately update rows to generate fragmentation
-CREATE INDEX IF NOT EXISTS IX_Orders_Status ON Orders(Status, OrderDate DESC);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.Orders') AND name = N'IX_Orders_Status')
+    CREATE INDEX IX_Orders_Status ON dbo.Orders(Status, OrderDate DESC);
 GO
 
 UPDATE Orders SET Status = 'Processing' WHERE Id % 3 = 0;
 UPDATE Orders SET Status = 'Shipped'    WHERE Id % 3 = 1;
 UPDATE Orders SET Status = 'Delivered'  WHERE Id % 7 = 0;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = 'StagingReportingDB')
+    CREATE DATABASE StagingReportingDB;
+GO
+
+USE StagingReportingDB;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'ReleaseValidationRuns')
+CREATE TABLE ReleaseValidationRuns (
+    Id             INT IDENTITY PRIMARY KEY,
+    ReleaseName    NVARCHAR(100) NOT NULL,
+    StartedAt      DATETIME2 NOT NULL DEFAULT GETDATE(),
+    CompletedAt    DATETIME2 NULL,
+    PassedChecks   INT NOT NULL DEFAULT 0,
+    FailedChecks   INT NOT NULL DEFAULT 0,
+    Status         NVARCHAR(20) NOT NULL DEFAULT 'Running'
+);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.tables WHERE name = 'SyntheticTraffic')
+CREATE TABLE SyntheticTraffic (
+    Id             INT IDENTITY PRIMARY KEY,
+    Endpoint       NVARCHAR(200) NOT NULL,
+    Requests       INT NOT NULL,
+    ErrorCount     INT NOT NULL DEFAULT 0,
+    AvgLatency_ms  INT NOT NULL,
+    CapturedAt     DATETIME2 NOT NULL DEFAULT GETDATE()
+);
+GO
+
+IF (SELECT COUNT(*) FROM ReleaseValidationRuns) = 0
+BEGIN
+    INSERT INTO ReleaseValidationRuns (ReleaseName, StartedAt, CompletedAt, PassedChecks, FailedChecks, Status) VALUES
+        ('2026.05.0-rc1', DATEADD(day, -3, GETDATE()), DATEADD(day, -3, DATEADD(minute, 42, GETDATE())), 118, 2, 'Failed'),
+        ('2026.05.0-rc2', DATEADD(day, -2, GETDATE()), DATEADD(day, -2, DATEADD(minute, 37, GETDATE())), 121, 0, 'Passed'),
+        ('2026.05.1-rc1', DATEADD(hour, -6, GETDATE()), DATEADD(hour, -5, GETDATE()), 96, 1, 'Failed');
+
+    INSERT INTO SyntheticTraffic (Endpoint, Requests, ErrorCount, AvgLatency_ms, CapturedAt) VALUES
+        ('/api/orders',      4200, 12, 118, DATEADD(hour, -4, GETDATE())),
+        ('/api/customers',   2100,  1,  74, DATEADD(hour, -4, GETDATE())),
+        ('/api/config',       650,  0,  42, DATEADD(hour, -4, GETDATE())),
+        ('/api/checkout',    1800, 24, 164, DATEADD(hour, -3, GETDATE()));
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('dbo.SyntheticTraffic') AND name = N'IX_SyntheticTraffic_CapturedAt')
+    CREATE INDEX IX_SyntheticTraffic_CapturedAt ON dbo.SyntheticTraffic(CapturedAt DESC);
 GO

@@ -1,7 +1,8 @@
 # SQLSentinel — storage database only (quickstart)
 #
 # Starts the SQL Server 2025 instance that SQLSentinel uses for its own data
-# (metrics, settings, users, sessions, RAG embeddings).
+# (metrics, settings, users, sessions, RAG embeddings), then initializes
+# SQLSentinelDB and the app login.
 #
 # For the full test environment with monitored target servers, use:
 #   docker compose -f docker/docker-compose.yml up -d
@@ -10,6 +11,11 @@
 #   Host: localhost  Port: 1437  Database: SQLSentinelDB
 #   User: sqlsentinel_app        Password: App@Sentinel2025
 #   sa:   Sentinel@SQLSentinel1
+#
+# Usage:
+#   docker compose up -d
+#   docker compose ps
+#   docker compose down -v
 
 services:
   sql-sentinel:
@@ -36,6 +42,19 @@ services:
       timeout: 10s
       retries: 12
       start_period: 60s
+
+  sql-sentinel-init:
+    image: mcr.microsoft.com/mssql/server:2025-latest
+    platform: linux/amd64
+    container_name: sqlsentinel-storage-init
+    depends_on:
+      sql-sentinel:
+        condition: service_healthy
+    volumes:
+      - ./docker/init/sentinel.sql:/init/sentinel.sql:ro
+    command: >
+      bash -c "/opt/mssql-tools18/bin/sqlcmd -S sql-sentinel,1433 -U sa -P 'Sentinel@SQLSentinel1' -i /init/sentinel.sql -b -C"
+    restart: 'no'
 
 volumes:
   sqlsentinel-data:

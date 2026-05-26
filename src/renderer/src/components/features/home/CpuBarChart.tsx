@@ -16,7 +16,7 @@ import { tokens } from '../../../styles/tokens'
 // ---------------------------------------------------------------------------
 
 export interface CpuBarChartProps {
-  cpuData: { name: string; cpu: number; fill: string; hasData: boolean }[]
+  cpuData: { id: string; name: string; cpu: number; fill: string; hasData: boolean }[]
   hasCpuData: boolean
   cpuChartHeight: number
 }
@@ -90,7 +90,7 @@ export function CpuBarChart({
               />
               <Bar dataKey="cpu" radius={[0, 2, 2, 0]} isAnimationActive={false}>
                 {cpuData.map((entry) => (
-                  <Cell key={entry.name} fill={entry.fill} />
+                  <Cell key={entry.id} fill={entry.fill} />
                 ))}
               </Bar>
             </BarChart>

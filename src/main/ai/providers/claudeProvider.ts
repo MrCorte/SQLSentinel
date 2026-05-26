@@ -1,11 +1,11 @@
+import type AnthropicSDK from '@anthropic-ai/sdk'
 import type {
-  default as AnthropicSDK,
   Tool,
   MessageParam,
-  MessageStreamParams,
   ToolUseBlock,
   ToolResultBlockParam
-} from '@anthropic-ai/sdk'
+} from '@anthropic-ai/sdk/resources/messages'
+import type { MessageStreamParams } from '@anthropic-ai/sdk/resources/messages/messages'
 import type { LlmProvider, LlmRequest, ToolDefinition } from './provider'
 
 // SDK loaded only on first Claude invocation — prevents app crash if the
@@ -34,11 +34,16 @@ function toAnthropicTool(def: ToolDefinition): Tool {
   }
 }
 
+const TOOL_OUTPUT_MAX_CHARS = 8_000
+const HEALTH_TTL_MS = 60_000
+
 export class ClaudeProvider implements LlmProvider {
   readonly name = 'claude' as const
   readonly model: string
   private _client: AnthropicSDK | null = null
   private readonly apiKey: string
+  private _healthOk = false
+  private _healthAt = 0
 
   constructor(apiKey: string, model = 'claude-haiku-4-5-20251001') {
     this.apiKey = apiKey
@@ -54,11 +59,15 @@ export class ClaudeProvider implements LlmProvider {
   }
 
   async health(): Promise<boolean> {
+    if (this._healthOk && Date.now() - this._healthAt < HEALTH_TTL_MS) return true
     try {
       const client = await this.getClient()
       await client.models.list()
+      this._healthOk = true
+      this._healthAt = Date.now()
       return true
     } catch {
+      this._healthOk = false
       return false
     }
   }
@@ -101,7 +110,6 @@ export class ClaudeProvider implements LlmProvider {
         ...(anthropicTools.length > 0 ? { tools: anthropicTools } : {})
       }
 
-      let finalText = ''
       const toolUseBlocks: ToolUseBlock[] = []
 
       const stream = client.messages.stream(streamParams)
@@ -115,7 +123,6 @@ export class ClaudeProvider implements LlmProvider {
         if (event.type === 'content_block_delta') {
           if (event.delta.type === 'text_delta') {
             onEvent({ type: 'token', text: event.delta.text })
-            finalText += event.delta.text
           }
         } else if (event.type === 'content_block_start') {
           if (event.content_block.type === 'tool_use') {
@@ -150,7 +157,11 @@ export class ClaudeProvider implements LlmProvider {
         try {
           const output = await onToolCall(block.name, inputObj)
           onEvent({ type: 'tool_end', name: block.name, output: output.slice(0, 2000) })
-          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: output })
+          const capped =
+            output.length > TOOL_OUTPUT_MAX_CHARS
+              ? output.slice(0, TOOL_OUTPUT_MAX_CHARS) + '\n…[truncated]'
+              : output
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: capped })
         } catch (err) {
           const errMsg = err instanceof Error ? err.message : String(err)
           onEvent({ type: 'tool_end', name: block.name, output: `Error: ${errMsg}` })

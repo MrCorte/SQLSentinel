@@ -95,6 +95,20 @@ describe('add', () => {
     expect(result.reason).toBe('missing host')
   })
 
+  it.each([
+    { host: '', port: 1433, reason: 'missing host' },
+    { host: 'bad host with spaces', port: 1433, reason: 'invalid host' },
+    { host: '10.0.0.1', port: 0, reason: 'invalid port' },
+    { host: '10.0.0.1', port: 65536, reason: 'invalid port' },
+    { host: '10.0.0.1', port: 1433.5, reason: 'invalid port' },
+    { host: '10.0.0.1', port: 1433, useWindowsAuth: 'yes', reason: 'invalid auth mode' }
+  ])('rejects malformed server input %#', (params) => {
+    const result = add(params)
+    expect(result.success).toBe(false)
+    expect(result.reason).toBe(params.reason)
+    expect(hoisted.mockStoreSet).not.toHaveBeenCalled()
+  })
+
   it('rejects duplicates (same host+port)', () => {
     const existing = makeRaw()
     hoisted.mockStoreGet.mockReturnValue([existing])

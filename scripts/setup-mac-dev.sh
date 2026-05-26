@@ -107,10 +107,10 @@ echo " done."
 
 if [[ "$WITH_OLLAMA" == "1" ]]; then
   echo ""
-  echo "==> Pulling Ollama model (llama3.2:3b)..."
+  echo "==> Pulling Ollama model (gemma4:e4b)..."
   ollama serve &>/dev/null &
   sleep 2
-  ollama pull llama3.2:3b
+  ollama pull gemma4:e4b
 else
   echo ""
   echo "==> Skipping Ollama bootstrap."
@@ -137,5 +137,5 @@ echo "      staging-sql  localhost:1435"
 echo "      dr-sql       localhost:1436"
 if [[ "$WITH_OLLAMA" == "1" ]]; then
   echo ""
-  echo "    Ollama model: llama3.2:3b"
+  echo "    Ollama model: gemma4:e4b"
 fi

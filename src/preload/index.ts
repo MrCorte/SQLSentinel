@@ -1,6 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
 import { IpcChannel } from '../main/ipc/types'
 import type { ScanOptions, ScanProgress, DiscoveredServer } from '../main/discovery/types'
 import type {
@@ -39,6 +38,7 @@ import type {
   LoginResult,
   ChangePasswordResult,
   AiStreamEvent,
+  IncidentAiStats,
   StorageConnectionParams,
   StorageConfigInfo
 } from '../main/ipc/types'
@@ -50,7 +50,7 @@ import type {
   AiProviderSettings
 } from '../main/ipc/types'
 import type { IncidentAction } from '../main/incidents/types'
-import type { ServerMetrics, ServerInfo } from '../main/collectors/types'
+import type { ServerMetrics, ServerInfo, DatabaseInfo } from '../main/collectors/types'
 import type { StoredServer } from '../main/store/serverStore'
 
 // ---------------------------------------------------------------------------
@@ -122,7 +122,11 @@ export type {
 } from '../main/ipc/types'
 export type { EmailSettings, SaveEmailSettingsRequest } from '../main/ipc/types'
 export type { AuthSession, LoginResult, ChangePasswordResult } from '../main/ipc/types'
-export type { StorageConnectionParams, StorageConfigInfo, SchemaInitResult } from '../main/ipc/types'
+export type {
+  StorageConnectionParams,
+  StorageConfigInfo,
+  SchemaInitResult
+} from '../main/ipc/types'
 export type { ServerMetrics } from '../main/collectors/types'
 export type { ServerInfo } from '../main/collectors/types'
 export type {
@@ -141,6 +145,7 @@ export type {
   Incident,
   IncidentEvent,
   IncidentAction,
+  IncidentAiStats,
   IncidentAuditEntry,
   IncidentDetail,
   IncidentStatus,
@@ -567,6 +572,9 @@ const realApi = {
   getHistoryBulk: (): Promise<IpcResult<Record<string, ServerMetrics[]>>> =>
     ipcRenderer.invoke(IpcChannel.METRICS_HISTORY_BULK),
 
+  getDatabasesBulk: (): Promise<IpcResult<Record<string, DatabaseInfo[]>>> =>
+    ipcRenderer.invoke(IpcChannel.METRICS_DATABASES_BULK),
+
   onMetricsUpdated: (
     callback: (data: { serverId: string; metrics: ServerMetrics }) => void
   ): (() => void) => {
@@ -721,8 +729,7 @@ const realApi = {
   aiAgentStream: (
     question: string,
     history: Array<{ role: 'user' | 'assistant'; content: string }>
-  ): Promise<IpcResult<void>> =>
-    ipcRenderer.invoke(IpcChannel.AI_AGENT_STREAM, question, history),
+  ): Promise<IpcResult<void>> => ipcRenderer.invoke(IpcChannel.AI_AGENT_STREAM, question, history),
 
   aiAgentCancel: (): Promise<void> => ipcRenderer.invoke(IpcChannel.AI_AGENT_CANCEL),
 
@@ -754,6 +761,9 @@ const realApi = {
     countOpen: (): Promise<IpcResult<number>> =>
       ipcRenderer.invoke(IpcChannel.INCIDENTS_COUNT_OPEN),
 
+    aiStats: (): Promise<IpcResult<IncidentAiStats>> =>
+      ipcRenderer.invoke(IpcChannel.INCIDENTS_AI_STATS),
+
     exportPostmortem: (id: string): Promise<IpcResult<string>> =>
       ipcRenderer.invoke(IpcChannel.INCIDENTS_EXPORT_POSTMORTEM, id),
 
@@ -778,14 +788,24 @@ const realApi = {
     rejectAction: (req: { actionId: string; reason?: string }): Promise<IpcResult<null>> =>
       ipcRenderer.invoke(IpcChannel.INCIDENTS_REJECT_ACTION, req),
 
-    onAgentEvent: (callback: (payload: { incidentId: string; event: AiStreamEvent }) => void): (() => void) => {
-      const listener = (_e: IpcRendererEvent, payload: { incidentId: string; event: AiStreamEvent }) => callback(payload)
+    onAgentEvent: (
+      callback: (payload: { incidentId: string; event: AiStreamEvent }) => void
+    ): (() => void) => {
+      const listener = (
+        _e: IpcRendererEvent,
+        payload: { incidentId: string; event: AiStreamEvent }
+      ) => callback(payload)
       ipcRenderer.on(IpcChannel.INCIDENT_AGENT_EVENT, listener)
       return () => ipcRenderer.removeListener(IpcChannel.INCIDENT_AGENT_EVENT, listener)
     },
 
-    onAction: (callback: (payload: { incidentId: string; action: IncidentAction }) => void): (() => void) => {
-      const listener = (_e: IpcRendererEvent, payload: { incidentId: string; action: IncidentAction }) => callback(payload)
+    onAction: (
+      callback: (payload: { incidentId: string; action: IncidentAction }) => void
+    ): (() => void) => {
+      const listener = (
+        _e: IpcRendererEvent,
+        payload: { incidentId: string; action: IncidentAction }
+      ) => callback(payload)
       ipcRenderer.on(IpcChannel.INCIDENT_ACTION, listener)
       return () => ipcRenderer.removeListener(IpcChannel.INCIDENT_ACTION, listener)
     }
@@ -935,6 +955,9 @@ const mockApi = {
   getHistoryBulk: (): Promise<IpcResult<Record<string, ServerMetrics[]>>> =>
     Promise.resolve({ ok: true, data: {} }),
 
+  getDatabasesBulk: (): Promise<IpcResult<Record<string, DatabaseInfo[]>>> =>
+    Promise.resolve({ ok: true, data: {} }),
+
   onMetricsUpdated: (
     callback: (data: { serverId: string; metrics: ServerMetrics }) => void
   ): (() => void) => {
@@ -1075,7 +1098,10 @@ const mockApi = {
       return Promise.resolve({ ok: true, data: { success: true, server } })
     },
 
-    update: (id: string, patch: Partial<StoredServer>): Promise<IpcResult<{ success: boolean }>> => {
+    update: (
+      id: string,
+      patch: Partial<StoredServer>
+    ): Promise<IpcResult<{ success: boolean }>> => {
       mockStoredServers = mockStoredServers.map((s) => (s.id === id ? { ...s, ...patch } : s))
       return Promise.resolve({ ok: true, data: { success: true } })
     },
@@ -1154,23 +1180,34 @@ const mockApi = {
     question: string,
     history: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<IpcResult<void>> => {
-    void question; void history
+    void question
+    void history
     return Promise.resolve({ ok: true, data: undefined })
   },
 
   aiAgentCancel: (): Promise<void> => Promise.resolve(),
 
   onAiStreamEvent: (_cb: (event: AiStreamEvent) => void): (() => void) => {
-    return () => { /* no-op in mock */ }
+    return () => {
+      /* no-op in mock */
+    }
   },
 
   aiGetSettings: async (): Promise<IpcResult<AiProviderSettings>> => ({
     ok: true,
-    data: { provider: 'ollama', ollamaModel: 'llama3.2:3b', claudeModel: 'claude-haiku-4-5-20251001' }
+    data: {
+      provider: 'ollama',
+      ollamaModel: 'gemma4:e4b',
+      claudeModel: 'claude-haiku-4-5-20251001',
+      redactQueryText: true,
+      agentActionsEnabled: true
+    }
   }),
 
-  aiSaveSettings: async (_s: Partial<AiProviderSettings>): Promise<IpcResult<null>> =>
-    ({ ok: true, data: null }),
+  aiSaveSettings: async (_s: Partial<AiProviderSettings>): Promise<IpcResult<null>> => ({
+    ok: true,
+    data: null
+  }),
 
   aiCheckProvider: async (): Promise<IpcResult<boolean>> => ({ ok: true, data: false })
 }
@@ -1191,9 +1228,13 @@ if (isMock) {
 // can proxy each one cleanly (passing a plain variable can silently drop nested
 // objects in some Electron/electron-vite build configurations).
 const bridgeApi = {
+  runtimeVersions: () => ({ ...process.versions }),
   appVersion: () => realApi.appVersion(),
   scanSubnet: (o: ScanOptions) => api.scanSubnet(o),
-  cancelScan: () => (isMock ? Promise.resolve({ ok: true as const, data: { cancelled: true } }) : realApi.cancelScan()),
+  cancelScan: () =>
+    isMock
+      ? Promise.resolve({ ok: true as const, data: { cancelled: true } })
+      : realApi.cancelScan(),
   onScanProgress: (cb: (p: ScanProgress) => void) => api.onScanProgress(cb),
   addServerManual: (r: ManualServerRequest) => api.addServerManual(r),
   getServers: () => api.getServers(),
@@ -1210,6 +1251,7 @@ const bridgeApi = {
   acknowledgeAlert: (r: AcknowledgeAlertRequest) => api.acknowledgeAlert(r),
   getHistory: (r: HistoryRequest) => api.getHistory(r),
   getHistoryBulk: () => api.getHistoryBulk(),
+  getDatabasesBulk: () => api.getDatabasesBulk(),
   onMetricsUpdated: (cb: (d: { serverId: string; metrics: ServerMetrics }) => void) =>
     api.onMetricsUpdated(cb),
   onMetricsBatchUpdated: (
@@ -1308,15 +1350,12 @@ const bridgeApi = {
 
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', {})
     contextBridge.exposeInMainWorld('sqlSentinel', bridgeApi)
   } catch (error) {
     _log.error('contextBridge error:', error)
   }
 } else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
   // @ts-ignore (define in dts)
   window.api = {}
   // @ts-ignore (define in dts)

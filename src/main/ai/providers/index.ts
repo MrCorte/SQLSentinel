@@ -3,8 +3,10 @@ import { decrypt } from '../../store/safeStorageUtil'
 import { OllamaProvider } from './ollamaProvider'
 import { ClaudeProvider } from './claudeProvider'
 import type { LlmProvider } from './provider'
+import { normalizeOllamaModel } from './defaults'
 
 export type { LlmProvider, LlmRequest, LlmMessage, ToolDefinition } from './provider'
+export { DEFAULT_OLLAMA_MODEL } from './defaults'
 
 export type ProviderName = 'ollama' | 'claude'
 
@@ -21,7 +23,7 @@ function loadAiSettings(): AiProviderSettings {
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]))
   return {
     provider: (map['ai_provider'] as ProviderName) ?? 'ollama',
-    ollamaModel: map['ai_ollama_model'] ?? 'llama3.2:3b',
+    ollamaModel: normalizeOllamaModel(map['ai_ollama_model']),
     claudeApiKey: map['ai_claude_api_key'] ? decrypt(map['ai_claude_api_key']) : undefined,
     claudeModel: map['ai_claude_model'] ?? 'claude-haiku-4-5-20251001'
   }

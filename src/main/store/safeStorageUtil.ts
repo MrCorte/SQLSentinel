@@ -18,7 +18,7 @@ export class SafeStorageUnavailableError extends Error {
 }
 
 export function isAvailable(): boolean {
-  return safeStorage.isEncryptionAvailable()
+  return safeStorage?.isEncryptionAvailable?.() === true
 }
 
 export function encrypt(plain: string): string {
@@ -28,7 +28,7 @@ export function encrypt(plain: string): string {
     )
     throw new SafeStorageUnavailableError()
   }
-  return safeStorage.encryptString(plain).toString('base64')
+  return safeStorage!.encryptString(plain).toString('base64')
 }
 
 export function decrypt(stored: string): string {
@@ -38,7 +38,7 @@ export function decrypt(stored: string): string {
   // are hardened — reads must remain forgiving.
   if (!isAvailable()) return stored
   try {
-    return safeStorage.decryptString(Buffer.from(stored, 'base64'))
+    return safeStorage!.decryptString(Buffer.from(stored, 'base64'))
   } catch {
     // Not a ciphertext (legacy plaintext) or corrupted — return raw.
     return stored
@@ -48,7 +48,7 @@ export function decrypt(stored: string): string {
 export function isEncrypted(stored: string): boolean {
   if (!stored || !isAvailable()) return false
   try {
-    safeStorage.decryptString(Buffer.from(stored, 'base64'))
+    safeStorage!.decryptString(Buffer.from(stored, 'base64'))
     return true
   } catch {
     return false

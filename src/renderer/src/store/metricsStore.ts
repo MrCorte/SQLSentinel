@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { subscribeWithSelector } from 'zustand/middleware'
-import type { ServerMetrics, ServerHealthPayload } from '../../../preload/index'
+import type { ServerMetrics, ServerHealthPayload, DatabaseInfo } from '../../../preload/index'
 
 // Delta type for partial updates from main process
 export interface DeltaMetrics extends ServerMetrics {
@@ -97,6 +97,12 @@ interface MetricsStore {
    * builds the historyMap ring-buffers from all available snapshots.
    */
   seedFromHistory: (allHistory: Record<string, ServerMetrics[]>) => void
+  /**
+   * Pre-populates database lists at boot from the server_databases SQLite table.
+   * Fills servers that have no entry in metricsMap yet, and repairs entries
+   * that only have non-database metrics. Never overwrites a non-empty DB list.
+   */
+  seedFromDatabases: (databasesByServer: Record<string, DatabaseInfo[]>) => void
 }
 
 // ── Store implementation ───────────────────────────────────────────────────
@@ -162,6 +168,43 @@ export const useMetricsStore = create<MetricsStore>()(
         if (Object.keys(allHistory).length > 0) state.lastUpdate = new Date()
       }),
 
+    seedFromDatabases: (databasesByServer) =>
+      set((state) => {
+        for (const [sid, databases] of Object.entries(databasesByServer)) {
+          if (databases.length === 0) continue
+          const existing = state.metricsMap[sid]
+          if (existing) {
+            if (existing.databases.length === 0) {
+              existing.databases = databases
+              state.summaries[sid] = buildSummary(existing)
+            }
+            continue
+          }
+          const stub: ServerMetrics = {
+            collectedAt: new Date(0),
+            instanceInfo: {
+              version: '',
+              edition: '',
+              memoryUsedMb: 0,
+              memoryTargetMb: 0,
+              cpuUsagePercent: 0,
+              uptimeDays: 0,
+              logicalCpus: 0,
+              physicalCpus: 0
+            },
+            databases,
+            activeSessions: [],
+            topQueries: [],
+            backupStatus: [],
+            waitStats: [],
+            diskVolumes: [],
+            databaseFiles: []
+          }
+          state.metricsMap[sid] = stub
+          // Don't set summaries — KPI cards should stay blank until real data arrives
+        }
+      }),
+
     setMetrics: (serverId, m) =>
       set((state) => {
         applyFullSnapshot(state, serverId, m)
@@ -205,6 +248,13 @@ function pushHistoryPoint(state: Draft, serverId: string, m: ServerMetrics): voi
 }
 
 function applyFullSnapshot(state: Draft, serverId: string, m: ServerMetrics): void {
+  // If the new snapshot has no databases but the existing entry does, the
+  // queryDatabases query likely failed silently and returned []. Preserve the
+  // known database list so the UI doesn't flash to 0 on a transient failure.
+  const existing = state.metricsMap[serverId]
+  if (m.databases.length === 0 && existing && existing.databases.length > 0) {
+    m = { ...m, databases: existing.databases }
+  }
   state.metricsMap[serverId] = m
   state.summaries[serverId] = buildSummary(m)
   pushHistoryPoint(state, serverId, m)
@@ -218,8 +268,9 @@ function applyOne(state: Draft, serverId: string, delta: DeltaMetrics): void {
   }
   const existing = state.metricsMap[serverId]
   if (!existing) {
-    state.metricsMap[serverId] = delta
-    state.summaries[serverId] = buildSummary(delta)
+    // A delta is partial by contract. If the renderer missed the initial full
+    // snapshot, storing an orphan delta as complete data makes tabs like
+    // Databases appear empty when only non-DB fields changed.
     return
   }
   // Remove dropped databases (ghost-DB prevention)

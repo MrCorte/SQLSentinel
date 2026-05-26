@@ -24,6 +24,13 @@ vi.mock('../store/sqlserver/sessionsRepository', () => ({
   removeSession: mockRemoveSession
 }))
 
+const mockGetRawSetting = vi.fn().mockReturnValue(null)
+const mockSetRawSetting = vi.fn()
+vi.mock('../store/settings', () => ({
+  getRawSetting: mockGetRawSetting,
+  setRawSetting: mockSetRawSetting
+}))
+
 const mockBcryptCompare = vi.fn()
 const mockBcryptHash = vi.fn()
 const mockBcryptHashSync = vi.fn(() => '$2a$12$dummy.hash.computed.at.module.load.for.timing.defense.AB')
@@ -284,8 +291,9 @@ describe('authService', () => {
   // ── initDefaultAdmin ───────────────────────────────────────────────────────
 
   describe('initDefaultAdmin', () => {
-    it('creates admin user when the table is empty', async () => {
+    it('creates admin user with new random password when table is empty and no local backup', async () => {
       mockCountUsers.mockResolvedValue(0)
+      mockGetRawSetting.mockReturnValue(null)
       mockBcryptHash.mockResolvedValue('$adminhash')
       mockCreateUser.mockResolvedValue(undefined)
       await initDefaultAdmin()
@@ -294,6 +302,20 @@ describe('authService', () => {
       expect(call.username).toBe('admin')
       expect(call.role).toBe('admin')
       expect(call.mustChangePassword).toBe(true)
+      expect(mockSetRawSetting).toHaveBeenCalledWith('admin_bootstrap_hash', '$adminhash')
+    })
+
+    it('restores admin from local backup when table is empty but hash exists', async () => {
+      mockCountUsers.mockResolvedValue(0)
+      mockGetRawSetting.mockReturnValue('$existinghash')
+      mockCreateUser.mockResolvedValue(undefined)
+      await initDefaultAdmin()
+      expect(mockCreateUser).toHaveBeenCalledOnce()
+      const call = mockCreateUser.mock.calls[0][0]
+      expect(call.username).toBe('admin')
+      expect(call.password).toBe('$existinghash')
+      expect(call.mustChangePassword).toBe(false)
+      expect(mockBcryptHash).not.toHaveBeenCalled()
     })
 
     it('does not create user when table already has users', async () => {

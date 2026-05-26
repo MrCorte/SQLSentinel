@@ -1,9 +1,15 @@
 import { create } from 'zustand'
-import type { Incident, IncidentDetail, IncidentStatus } from '../../../preload/index'
+import type {
+  Incident,
+  IncidentAiStats,
+  IncidentDetail,
+  IncidentStatus
+} from '../../../preload/index'
 
 interface IncidentsStore {
   incidents: Incident[]
   openCount: number
+  aiStats: IncidentAiStats | null
   selectedId: string | null
   detail: IncidentDetail | null
   loadingDetail: boolean
@@ -11,6 +17,7 @@ interface IncidentsStore {
   setIncidents: (incidents: Incident[]) => void
   upsertIncident: (incident: Incident) => void
   setOpenCount: (n: number) => void
+  setAiStats: (stats: IncidentAiStats | null) => void
   setSelectedId: (id: string | null) => void
   setDetail: (detail: IncidentDetail | null) => void
   setLoadingDetail: (loading: boolean) => void
@@ -19,6 +26,7 @@ interface IncidentsStore {
 export const useIncidentsStore = create<IncidentsStore>((set) => ({
   incidents: [],
   openCount: 0,
+  aiStats: null,
   selectedId: null,
   detail: null,
   loadingDetail: false,
@@ -31,9 +39,7 @@ export const useIncidentsStore = create<IncidentsStore>((set) => ({
       if (idx === -1) {
         return {
           incidents: [incident, ...state.incidents],
-          openCount: isActiveStatus(incident.status)
-            ? state.openCount + 1
-            : state.openCount
+          openCount: isActiveStatus(incident.status) ? state.openCount + 1 : state.openCount
         }
       }
       const prev = state.incidents[idx]
@@ -46,6 +52,7 @@ export const useIncidentsStore = create<IncidentsStore>((set) => ({
     }),
 
   setOpenCount: (openCount) => set({ openCount }),
+  setAiStats: (aiStats) => set({ aiStats }),
   setSelectedId: (selectedId) => set({ selectedId, detail: null }),
   setDetail: (detail) => set({ detail }),
   setLoadingDetail: (loadingDetail) => set({ loadingDetail })
@@ -64,6 +71,12 @@ export function loadIncidents(filter?: { status?: IncidentStatus }): void {
 export function loadOpenCount(): void {
   window.sqlSentinel.incidents.countOpen().then((res) => {
     if (res.ok) useIncidentsStore.getState().setOpenCount(res.data)
+  })
+}
+
+export function loadAiStats(): void {
+  window.sqlSentinel.incidents.aiStats().then((res) => {
+    if (res.ok) useIncidentsStore.getState().setAiStats(res.data)
   })
 }
 

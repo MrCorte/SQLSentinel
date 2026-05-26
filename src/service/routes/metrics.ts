@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express'
-import * as metricsRepository from '../../main/store/metricsRepository'
+import * as metricsRepository from '../../main/store/sqlserver/metricsRepository'
 import { getHistoryAll } from '../../main/metricsWorker'
 
 export function createMetricsRouter(): Router {
@@ -11,9 +11,9 @@ export function createMetricsRouter(): Router {
   })
 
   // GET /api/metrics/:serverId/history?days=N
-  router.get('/:serverId/history', (req: Request, res: Response) => {
+  router.get('/:serverId/history', async (req: Request, res: Response) => {
     const days = parseInt((req.query['days'] as string) ?? '1', 10)
-    const rows = metricsRepository.findHistory(req.params['serverId'] as string, days)
+    const rows = await metricsRepository.findHistory(req.params['serverId'] as string, days)
     res.json({ ok: true, data: rows })
   })
 

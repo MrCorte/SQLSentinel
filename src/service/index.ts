@@ -1,11 +1,11 @@
-import { join } from 'node:path'
 import { loadOrCreateConfig } from './serviceConfig'
 import { createWsServer } from './wsServer'
 import { createHttpServer } from './httpServer'
-import { initDb } from '../main/store/database'
-import * as serverStore from '../main/store/serverStore'
+import * as serverStore from '../main/store/sqlserver/serverRepository'
 import { startWorker, setPushHandler } from '../main/metricsWorker'
-import { getSettings } from '../main/store/settings'
+import { getSettings } from '../main/store/sqlserver/settingsRepository'
+import { initStoragePool } from '../main/store/sqlserver/connection'
+import { getStorageConfig } from '../main/store/storageConfig'
 import { createLogger } from '../main/utils/logger'
 import type { WsClientMessage } from '../shared/serviceProtocol'
 import { setActiveServer } from '../main/metricsWorker'
@@ -17,18 +17,21 @@ async function main(): Promise<void> {
   const config = loadOrCreateConfig()
   log.info(`[service] Starting on port ${config.port}`)
 
-  // 2. Init SQLite
-  const dbPath = join(
-    process.env['APPDATA'] ?? process.env['HOME'] ?? '.',
-    'sqlsentinel',
-    'data.db'
-  )
-  initDb(dbPath)
-  log.info(`[service] Database: ${dbPath}`)
+  // 2. Init SQL Server storage pool — service shares the same storage config as
+  //    the Electron main process (read from %APPDATA%/sql-sentinel-storage-config.json).
+  const storageCfg = getStorageConfig()
+  if (!storageCfg) {
+    throw new Error(
+      'Storage not configured. Launch the Electron app once to run the storage wizard.'
+    )
+  }
+  await initStoragePool(storageCfg)
+  log.info(`[service] Storage pool connected (${storageCfg.host}:${storageCfg.port})`)
 
-  // 3. Run startup migrations
+  // 3. Load the server registry cache and run startup migrations
+  await serverStore.init()
   serverStore.migrateHostField()
-  serverStore.migrateEncryptCredentials()
+  await serverStore.migrateEncryptCredentials()
 
   // 4. Create HTTP server (needed by both Express and ws)
   const { httpServer } = createHttpServer(config.secret, {
@@ -53,7 +56,7 @@ async function main(): Promise<void> {
   })
 
   // 7. Start polling worker
-  const settings = getSettings()
+  const settings = await getSettings()
   void settings // suppress unused warning — used in future to pass retentionDays
   const servers = serverStore.getAll()
   if (servers.length > 0) {

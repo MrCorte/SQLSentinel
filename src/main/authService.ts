@@ -16,7 +16,7 @@ import {
   createSession,
   removeSession
 } from './store/sqlserver/sessionsRepository'
-import { getRawSetting, setRawSetting } from './store/settings'
+import { getRawSetting, setRawSetting } from './store/sqlserver/settingsRepository'
 import { createLogger } from './utils/logger'
 
 const log = createLogger('auth')
@@ -237,7 +237,7 @@ export async function changePassword(
 
   if (user.username === 'admin') {
     // Keep local backup hash in sync so restore after SQL Server reset uses the new password.
-    setRawSetting('admin_bootstrap_hash', hash)
+    await setRawSetting('admin_bootstrap_hash', hash)
 
     // H3: delete admin-bootstrap.txt — original plaintext is no longer valid.
     try {
@@ -314,9 +314,10 @@ export async function initDefaultAdmin(): Promise<void> {
   const count = await countUsers()
   if (count !== 0) return
 
-  // Check if admin was previously created — SQLite persists the hash so we can
-  // restore it if the SQL Server database is wiped (e.g. container recreated).
-  const storedHash = getRawSetting('admin_bootstrap_hash')
+  // Check if admin was previously created — the hash is persisted in dbo.settings
+  // so a wiped users table still allows the operator to log in. If the entire
+  // SQL Server database is dropped this fallback is gone too; rely on backups.
+  const storedHash = await getRawSetting('admin_bootstrap_hash')
   if (storedHash) {
     await createUser({
       id: randomUUID(),
@@ -338,8 +339,8 @@ export async function initDefaultAdmin(): Promise<void> {
     role: 'admin',
     mustChangePassword: true
   })
-  // Persist hash locally so it survives SQL Server resets
-  setRawSetting('admin_bootstrap_hash', hash)
+  // Persist hash in dbo.settings so wiping the users table alone can be recovered from
+  await setRawSetting('admin_bootstrap_hash', hash)
 
   const filePath = writeBootstrapCredentialsFile('admin', plaintext)
   if (filePath) {

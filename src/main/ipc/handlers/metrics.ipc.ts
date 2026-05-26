@@ -18,7 +18,7 @@ import {
 } from '../types'
 import type { ServerMetrics, DatabaseInfo } from '../../collectors/types'
 import { resolveConnection } from './servers.ipc'
-import { getAllGroupedByServer } from '../../store/serverDatabasesRepository'
+import { getAllGroupedByServer } from '../../store/sqlserver/serverDatabasesRepository'
 
 export function registerMetricsHandlers(): void {
   // WORKER_START — avvia il worker con intervallo e lista server.
@@ -94,14 +94,14 @@ export function registerMetricsHandlers(): void {
     }
   )
 
-  // METRICS_DATABASES_BULK — reads directly from SQLite server_databases table.
+  // METRICS_DATABASES_BULK — reads directly from dbo.server_databases.
   // No service dependency: always available at startup, returns the last known
   // database list per server so the renderer can show databases immediately.
   handle(
     IpcChannel.METRICS_DATABASES_BULK,
-    (): IpcResult<Record<string, DatabaseInfo[]>> => {
+    async (): Promise<IpcResult<Record<string, DatabaseInfo[]>>> => {
       try {
-        return { ok: true, data: getAllGroupedByServer() }
+        return { ok: true, data: await getAllGroupedByServer() }
       } catch (err) {
         log.error('[IPC] METRICS_DATABASES_BULK:', safeError(err))
         return { ok: false, error: safeError(err) }

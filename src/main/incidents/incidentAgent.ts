@@ -1,4 +1,4 @@
-import * as serverStore from '../store/serverStore'
+import * as serverStore from '../store/sqlserver/serverRepository'
 import * as repo from './repository'
 import { getProvider } from '../ai/providers'
 import { buildDiagnosticTools } from '../ai/diagnosticTools'
@@ -8,7 +8,7 @@ import type { DynamicStructuredTool } from '@langchain/core/tools'
 import type { AiStreamEvent } from '../ipc/types'
 import type { Incident } from './types'
 import { createLogger } from '../utils/logger'
-import { getDb } from '../store/database'
+import { getRawSetting } from '../store/sqlserver/settingsRepository'
 
 const log = createLogger('incident-agent')
 
@@ -47,11 +47,9 @@ function redactQueryTextFields(json: string): string {
   }
 }
 
-function loadSettings(): { redactQueryText: boolean } {
-  const row = getDb()
-    .prepare<[], { value: string }>(`SELECT value FROM settings WHERE key = 'ai_redact_query_text'`)
-    .get()
-  return { redactQueryText: row?.value !== 'false' }
+async function loadSettings(): Promise<{ redactQueryText: boolean }> {
+  const value = await getRawSetting('ai_redact_query_text')
+  return { redactQueryText: value !== 'false' }
 }
 
 function buildSystemPrompt(incident: Incident, serverLabel: string): string {
@@ -218,26 +216,28 @@ export async function runIncidentAgent(
   incidentId: string,
   opts: AgentRunOptions = {}
 ): Promise<AgentRunResult> {
-  const incident = repo.getIncidentById(incidentId)
-  if (!incident) {
-    log.warn(`runIncidentAgent: incident ${incidentId} not found`)
-    return { status: 'skipped', reason: 'incident_not_found' }
-  }
-
+  // Reserve the run slot synchronously *before* the first await — otherwise
+  // two callers could both pass the `activeAgentRuns.has` check while the
+  // first one is still awaiting getIncidentById, double-firing the agent.
   if (activeAgentRuns.has(incidentId)) {
-    repo.addEvent(incidentId, 'agent_run', { status: 'skipped', reason: 'already_running' })
+    await repo.addEvent(incidentId, 'agent_run', { status: 'skipped', reason: 'already_running' })
     return { status: 'skipped', reason: 'already_running' }
   }
-
   activeAgentRuns.add(incidentId)
 
   try {
+    const incident = await repo.getIncidentById(incidentId)
+    if (!incident) {
+      log.warn(`runIncidentAgent: incident ${incidentId} not found`)
+      return { status: 'skipped', reason: 'incident_not_found' }
+    }
+
     // Resolve server connection — needs decrypted credentials.
     const server = resolveIncidentServer(incident.serverId)
     if (!server) {
       const error = `Server ${incident.serverId} not found`
       log.warn(`runIncidentAgent: server ${incident.serverId} not found for incident ${incidentId}`)
-      repo.addEvent(incidentId, 'agent_run', { status: 'failed', error })
+      await repo.addEvent(incidentId, 'agent_run', { status: 'failed', error })
       opts.onEvent?.({ type: 'error', message: error })
       return { status: 'failed', error }
     }
@@ -245,9 +245,9 @@ export async function runIncidentAgent(
     const serverLabel = `${server.host}:${server.port}${server.instanceName ? `\\${server.instanceName}` : ''}`
 
     // Mark the incident as "investigating" as soon as the agent starts.
-    repo.setIncidentStatus(incidentId, 'investigating')
-    repo.addEvent(incidentId, 'status_change', { status: 'investigating' })
-    repo.addEvent(incidentId, 'agent_run', { status: 'running' })
+    await repo.setIncidentStatus(incidentId, 'investigating')
+    await repo.addEvent(incidentId, 'status_change', { status: 'investigating' })
+    await repo.addEvent(incidentId, 'agent_run', { status: 'running' })
     opts.onEvent?.({ type: 'status', status: 'running' })
 
     const conn = {
@@ -271,19 +271,19 @@ export async function runIncidentAgent(
 
     let provider
     try {
-      provider = getProvider()
+      provider = await getProvider()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       log.warn('runIncidentAgent: provider unavailable:', msg)
-      repo.addEvent(incidentId, 'llm_message', { error: msg })
-      repo.addEvent(incidentId, 'agent_run', { status: 'failed', error: msg })
+      await repo.addEvent(incidentId, 'llm_message', { error: msg })
+      await repo.addEvent(incidentId, 'agent_run', { status: 'failed', error: msg })
       opts.onEvent?.({ type: 'error', message: msg })
       return { status: 'failed', error: msg }
     }
 
     let finalText = ''
     const promptIdentifier = `${incident.id}:${incident.category}:${provider.name}:${provider.model}`
-    const { redactQueryText } = loadSettings()
+    const { redactQueryText } = await loadSettings()
     const shouldRedact = redactQueryText && provider.name === 'claude'
     const startedAt = Date.now()
     let toolCallCount = 0
@@ -294,7 +294,7 @@ export async function runIncidentAgent(
     if (diagnosticTools.length === 1 && actionTools.length === 0) {
       const tool = diagnosticTools[0]!
       toolCallCount += 1
-      repo.addEvent(incidentId, 'tool_call', { name: tool.name })
+      await repo.addEvent(incidentId, 'tool_call', { name: tool.name })
       opts.onEvent?.({ type: 'tool_start', name: tool.name })
       const toolStartedAt = Date.now()
       let output: string
@@ -345,7 +345,11 @@ export async function runIncidentAgent(
             } else if (ev.type === 'tool_start') {
               toolCallCount += 1
               toolStartTimes.set(ev.name, Date.now())
-              repo.addEvent(incidentId, 'tool_call', { name: ev.name })
+              // Stream callback is sync; persist the event in the background
+              // and surface failures via logger rather than blocking the stream.
+              repo.addEvent(incidentId, 'tool_call', { name: ev.name }).catch((e) =>
+                log.warn('addEvent(tool_call) failed:', e)
+              )
             } else if (ev.type === 'tool_end') {
               const elapsedMs = Date.now() - (toolStartTimes.get(ev.name) ?? Date.now())
               log.info(
@@ -380,14 +384,21 @@ export async function runIncidentAgent(
       runClosed = true
       const msg = err instanceof Error ? err.message : String(err)
       log.error('runIncidentAgent stream error:', msg)
-      repo.addEvent(incidentId, 'llm_message', { error: msg })
-      repo.addEvent(incidentId, 'agent_run', { status: 'failed', error: msg })
+      await repo.addEvent(incidentId, 'llm_message', { error: msg })
+      await repo.addEvent(incidentId, 'agent_run', { status: 'failed', error: msg })
       opts.onEvent?.({ type: 'error', message: msg })
-      repo.addAuditEntry(incidentId, provider.name, provider.model, promptIdentifier, finalText, {
-        durationMs: Date.now() - startedAt,
-        toolCallCount,
-        error: msg
-      })
+      await repo.addAuditEntry(
+        incidentId,
+        provider.name,
+        provider.model,
+        promptIdentifier,
+        finalText,
+        {
+          durationMs: Date.now() - startedAt,
+          toolCallCount,
+          error: msg
+        }
+      )
       return { status: 'failed', error: msg }
     }
 
@@ -405,21 +416,28 @@ export async function runIncidentAgent(
         .map((l) => l.trim())
         .find((l) => l.length > 0 && !l.startsWith('#')) ?? incident.category.replace(/_/g, ' ')
 
-    repo.setSummary(incidentId, summary)
-    repo.setRootCause(incidentId, rootCauseMd)
-    repo.addEvent(incidentId, 'llm_message', {
+    await repo.setSummary(incidentId, summary)
+    await repo.setRootCause(incidentId, rootCauseMd)
+    await repo.addEvent(incidentId, 'llm_message', {
       summary,
       rootCauseMd: rootCauseMd.slice(0, 500),
       recommendedFix: recommendedFix?.slice(0, 1000)
     })
-    repo.addEvent(incidentId, 'agent_run', { status: 'completed' })
+    await repo.addEvent(incidentId, 'agent_run', { status: 'completed' })
     opts.onEvent?.({ type: 'status', status: 'completed' })
 
     // Audit log — repository hashes prompt/response internally; we pass identifiers only.
-    repo.addAuditEntry(incidentId, provider.name, provider.model, promptIdentifier, finalText, {
-      durationMs: Date.now() - startedAt,
-      toolCallCount
-    })
+    await repo.addAuditEntry(
+      incidentId,
+      provider.name,
+      provider.model,
+      promptIdentifier,
+      finalText,
+      {
+        durationMs: Date.now() - startedAt,
+        toolCallCount
+      }
+    )
 
     log.info(`runIncidentAgent: completed for incident ${incidentId}`)
     return { status: 'completed' }

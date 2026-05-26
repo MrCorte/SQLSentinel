@@ -6,9 +6,9 @@
  */
 import { scanHost } from '../discovery/tcpScanner'
 import { collectMetrics, detectServerInfo } from '../collectors/sqlCollector'
-import * as serverStore from '../store/serverStore'
-import type { StoredServer } from '../store/serverStore'
-import { getAllCustomFields } from '../store/dbCustomFields'
+import * as serverStore from '../store/sqlserver/serverRepository'
+import type { StoredServer } from '../store/sqlserver/serverRepository'
+import { getAllCustomFields } from '../store/sqlserver/dbCustomFieldsRepository'
 import { resetAgent } from '../ai/langGraphAgent'
 import type { DiscoveredServer } from '../discovery/types'
 import type {
@@ -97,7 +97,7 @@ export async function addServerManual(req: ManualServerRequest): Promise<Discove
   // (cloud metadata, link-local SSRF targets, malformed strings).
   validateHostInput(req.ip, req.port)
   const probed = await scanHost(req.ip, req.port, 2000)
-  serverStore.upsertByIpPort({
+  await serverStore.upsertByIpPort({
     host: probed.ip,
     port: probed.port,
     instanceName: req.instanceName,
@@ -107,28 +107,33 @@ export async function addServerManual(req: ManualServerRequest): Promise<Discove
 }
 
 /** Removes a server by ip:port (legacy, used by Discovery context menu). */
-export function removeServer(req: RemoveServerRequest): void {
+export async function removeServer(req: RemoveServerRequest): Promise<void> {
   const existing = serverStore.getByIpPort(req.ip, req.port)
-  if (existing) serverStore.remove(existing.id)
+  if (existing) await serverStore.remove(existing.id)
 }
 
 /** Adds a server by params; strips credentials from returned server (C2). */
-export function addServer(params: Omit<StoredServer, 'id' | 'addedAt'>): ServerAddResult {
-  const result = serverStore.add(params)
+export async function addServer(
+  params: Omit<StoredServer, 'id' | 'addedAt'>
+): Promise<ServerAddResult> {
+  const result = await serverStore.add(params)
   if (result.server) result.server = serverStore.stripCredentials(result.server)
   return result
 }
 
 /** Updates a server by id and resets the AI agent (agent context may be stale). */
-export function updateServer(id: string, patch: Partial<StoredServer>): { success: boolean } {
-  serverStore.update(id, patch)
+export async function updateServer(
+  id: string,
+  patch: Partial<StoredServer>
+): Promise<{ success: boolean }> {
+  await serverStore.update(id, patch)
   resetAgent()
   return { success: true }
 }
 
 /** Removes a server by UUID and resets the AI agent. */
-export function removeServerById(id: string): void {
-  serverStore.remove(id)
+export async function removeServerById(id: string): Promise<void> {
+  await serverStore.remove(id)
   resetAgent()
 }
 
@@ -136,11 +141,11 @@ export function removeServerById(id: string): void {
  * Removes all mock servers (ids starting with 'mock-').
  * Returns counts for diagnostic logging.
  */
-export function clearMockServers(): { removed: number; remaining: number } {
+export async function clearMockServers(): Promise<{ removed: number; remaining: number }> {
   // No need to decrypt passwords just to inspect ids — use stripped view
   const before = serverStore.getAllStripped()
   const mocks = before.filter((s) => s.id.startsWith('mock-'))
-  mocks.forEach((s) => serverStore.remove(s.id))
+  for (const s of mocks) await serverStore.remove(s.id)
   const after = serverStore.getAllStripped()
   log.info(`[clearMocks] rimossi ${mocks.length} mock, rimasti: ${after.length}`)
   return { removed: mocks.length, remaining: after.length }
@@ -164,7 +169,7 @@ export async function collectMetricsWithCustomFields(
 ): Promise<ServerMetrics> {
   const metrics = await collectMetrics(resolveConnection(req))
   const sid = `${req.ip}:${req.port}`
-  const allCf = getAllCustomFields()
+  const allCf = await getAllCustomFields()
   return {
     ...metrics,
     databases: metrics.databases.map((db) => ({

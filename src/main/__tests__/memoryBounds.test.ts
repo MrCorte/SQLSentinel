@@ -11,7 +11,6 @@ import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
 // ── Renderer store imports (work in Node env — no DOM required) ───────────────
 import { useAlertsStore } from '../../renderer/src/store/alertsStore'
 import { useMetricsStore } from '../../renderer/src/store/metricsStore'
-import { cleanup as purgeOldSnapshots } from '../store/metricsRepository'
 import type { Alert } from '../../preload/index'
 import type { ServerMetrics } from '../collectors/types'
 
@@ -20,11 +19,24 @@ vi.mock('electron', () => ({
   BrowserWindow: { getAllWindows: vi.fn(() => []) }
 }))
 vi.mock('../collectors/sqlCollector', () => ({ collectMetrics: vi.fn() }))
-vi.mock('../store/dbCustomFields', () => ({ getAllCustomFields: vi.fn(() => ({})) }))
-// startWorker now calls loadHistoryFromDb → isolate the test from the DB for AREA 3 suites
-vi.mock('../store/serverStore')
-vi.mock('../store/settings', () => ({
-  getSettings: vi.fn(() => ({ retentionMinutes: 60 }))
+vi.mock('../store/sqlserver/dbCustomFieldsRepository', () => ({
+  getAllCustomFields: vi.fn(async () => ({}))
+}))
+// startWorker calls loadHistoryFromDb — isolate from the real pool for AREA 3 suites
+vi.mock('../store/sqlserver/serverRepository')
+vi.mock('../store/sqlserver/settingsRepository', () => ({
+  getSettings: vi.fn(async () => ({ retentionMinutes: 60 }))
+}))
+vi.mock('../store/sqlserver/metricsRepository', () => ({
+  cleanup: vi.fn(async () => {}),
+  findLastNBulk: vi.fn(async () => ({})),
+  batchSave: vi.fn(async () => {})
+}))
+vi.mock('../store/sqlserver/serverDatabasesRepository', () => ({
+  upsertDatabases: vi.fn(async () => {}),
+  deleteStale: vi.fn(async () => {}),
+  deleteByNames: vi.fn(async () => {}),
+  getAllGroupedByServer: vi.fn(async () => ({}))
 }))
 
 import { BrowserWindow } from 'electron'
@@ -37,7 +49,6 @@ import {
   __getJobForTest
 } from '../metricsWorker'
 import type { CollectMetricsRequest } from '../ipc/types'
-import { initDb as _initDb, closeDb as _closeDb } from '../store/database'
 
 // ── Costante da metricsWorker (deve coincidere) ───────────────────────────────
 const MAX_HISTORY = 5
@@ -97,7 +108,6 @@ async function runNCycles(n: number): Promise<void> {
 
 beforeEach(() => {
   vi.useFakeTimers()
-  _initDb(':memory:') // ensures getDb() is valid for loadHistoryFromDb → cleanup()
   __resetForTests()
   vi.mocked(BrowserWindow.getAllWindows).mockReturnValue([])
   vi.mocked(collectMetrics).mockReset()
@@ -105,7 +115,6 @@ beforeEach(() => {
 
 afterEach(() => {
   __resetForTests()
-  _closeDb()
   vi.useRealTimers()
 })
 
@@ -438,57 +447,7 @@ describe('AREA 5 — metricsStore: seedFromHistory', () => {
 })
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// AREA 5 — SQLite purge (metricsRepository.cleanup)
+// AREA 5 — retention cleanup is now covered by
+// src/main/store/__tests__/metricsRepository.bulk.test.ts against the SQL Server
+// repository. The legacy SQLite purge tests were removed with the migration.
 // ═══════════════════════════════════════════════════════════════════════════════
-
-import { initDb, closeDb, getDb } from '../store/database'
-import { save as saveSnapshot, findHistory } from '../store/metricsRepository'
-
-describe('AREA 5 — metricsRepository.cleanup (SQLite purge)', () => {
-  const SRV = 'srv-purge-test'
-
-  beforeEach(() => {
-    initDb(':memory:')
-    // Insert a server row (FK required for metrics_snapshots)
-    getDb()
-      .prepare(
-        `INSERT INTO servers (id, ip, port, use_windows_auth, added_at) VALUES (?, ?, ?, ?, ?)`
-      )
-      .run(SRV, '10.1.0.1', 1433, 0, new Date().toISOString())
-  })
-
-  afterEach(() => {
-    closeDb()
-  })
-
-  it('removes snapshots older than retentionDays', () => {
-    const old: ServerMetrics = {
-      ...makeServerMetrics(5, 100),
-      collectedAt: new Date(Date.now() - 40 * 86_400_000)
-    }
-    const recent: ServerMetrics = { ...makeServerMetrics(5, 100), collectedAt: new Date() }
-
-    saveSnapshot(SRV, old)
-    saveSnapshot(SRV, recent)
-
-    purgeOldSnapshots(30) // delete snapshots > 30 days old
-
-    const history = findHistory(SRV, 9999)
-    expect(history).toHaveLength(1)
-    // The remaining snapshot is the recent one
-    expect(new Date(history[0].collectedAt).getTime()).toBeGreaterThan(Date.now() - 86_400_000)
-  })
-
-  it('does not delete snapshots within the retention period', () => {
-    const recent: ServerMetrics = { ...makeServerMetrics(5, 100), collectedAt: new Date() }
-    saveSnapshot(SRV, recent)
-
-    purgeOldSnapshots(30)
-
-    expect(findHistory(SRV, 9999)).toHaveLength(1)
-  })
-
-  it('cleanup is idempotent on an empty table', () => {
-    expect(() => purgeOldSnapshots(30)).not.toThrow()
-  })
-})

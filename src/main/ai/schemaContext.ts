@@ -1,6 +1,6 @@
 import { createLogger } from '../utils/logger'
 import { getPool, invalidatePool } from '../collectors/connectionPool'
-import { getById } from '../store/serverStore'
+import { getById } from '../store/sqlserver/serverRepository'
 import type { ServerConnection } from '../collectors/types'
 
 const log = createLogger('schemaContext')

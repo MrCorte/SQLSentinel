@@ -97,14 +97,14 @@ export function buildActionTools(incidentId: string): DynamicStructuredTool[] {
       }),
       func: async ({ session_id, reason }) => {
         const tsql = buildActionSqlForExecution('kill_session', { session_id })
-        const action = repo.createAction(
+        const action = await repo.createAction(
           incidentId,
           'kill_session',
           { session_id },
           tsql,
           reason
         )
-        repo.addEvent(incidentId, 'action_proposed', { toolName: 'kill_session', actionId: action.id, session_id })
+        await repo.addEvent(incidentId, 'action_proposed', { toolName: 'kill_session', actionId: action.id, session_id })
         return JSON.stringify({ proposed: true, actionId: action.id, tsql })
       }
     }),
@@ -120,14 +120,14 @@ export function buildActionTools(incidentId: string): DynamicStructuredTool[] {
       }),
       func: async ({ db_name, table_name, reason }) => {
         const tsql = buildActionSqlForExecution('update_statistics', { db_name, table_name })
-        const action = repo.createAction(
+        const action = await repo.createAction(
           incidentId,
           'update_statistics',
           { db_name, table_name },
           tsql,
           reason
         )
-        repo.addEvent(incidentId, 'action_proposed', { toolName: 'update_statistics', actionId: action.id, db_name, table_name })
+        await repo.addEvent(incidentId, 'action_proposed', { toolName: 'update_statistics', actionId: action.id, db_name, table_name })
         return JSON.stringify({ proposed: true, actionId: action.id, tsql })
       }
     }),
@@ -148,14 +148,14 @@ export function buildActionTools(incidentId: string): DynamicStructuredTool[] {
           table_name,
           index_name
         })
-        const action = repo.createAction(
+        const action = await repo.createAction(
           incidentId,
           'rebuild_index',
           { db_name, table_name, index_name },
           tsql,
           reason
         )
-        repo.addEvent(incidentId, 'action_proposed', { toolName: 'rebuild_index', actionId: action.id, db_name, table_name, index_name })
+        await repo.addEvent(incidentId, 'action_proposed', { toolName: 'rebuild_index', actionId: action.id, db_name, table_name, index_name })
         return JSON.stringify({ proposed: true, actionId: action.id, tsql })
       }
     })

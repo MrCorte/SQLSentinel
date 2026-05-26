@@ -9,7 +9,7 @@ import {
   type AgentHistory
 } from '../../ai/langGraphAgent'
 import { getProvider } from '../../ai/providers'
-import { resetIndex, preWarmIndex } from '../../store/vecRepository'
+import { resetIndex, preWarmIndex } from '../../store/sqlserver/knowledgeRepository'
 import { getQueryEmbedding, packEmbedding } from '../../ai/embedder'
 import {
   addRow as addFeedbackRow,
@@ -41,7 +41,8 @@ import {
 export function registerKnowledgeHandlers(): void {
   handle(IpcChannel.AI_CHECK, async (): Promise<IpcResult<boolean>> => {
     try {
-      return { ok: true, data: await getProvider().health() }
+      const provider = await getProvider()
+      return { ok: true, data: await provider.health() }
     } catch (err) {
       return { ok: false, error: safeError(err) }
     }

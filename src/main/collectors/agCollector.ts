@@ -7,7 +7,7 @@ import type {
   AvailabilityDatabase,
   ServerConnection
 } from './types'
-import * as serverStore from '../store/serverStore'
+import * as serverStore from '../store/sqlserver/serverRepository'
 import { sanitizeSqlError } from './sqlCollector'
 import { getPool, invalidatePool } from './connectionPool'
 
@@ -188,7 +188,7 @@ export async function detectAndSyncReplicaRoles(
       match.agName !== patch.agName ||
       match.agRole !== patch.agRole
     ) {
-      serverStore.update(match.id, patch)
+      await serverStore.update(match.id, patch)
       updated.push({ ...match, ...patch })
     }
   }

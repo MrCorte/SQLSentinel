@@ -13,7 +13,7 @@ import {
   detectServer,
   collectMetricsWithCustomFields
 } from '../../services/ServerService'
-import * as serverStore from '../../store/serverStore'
+import * as serverStore from '../../store/sqlserver/serverRepository'
 import { serviceApi } from '../../serviceClient'
 import {
   IpcChannel,
@@ -30,12 +30,12 @@ import {
   type ServerInfo,
   type ServerBackupImportResult
 } from '../types'
-import type { StoredServer } from '../../store/serverStore'
+import type { StoredServer } from '../../store/sqlserver/serverRepository'
 import {
   exportForBackup,
   importFromBackup,
   writeAutoBackup
-} from '../../store/serverStore'
+} from '../../store/sqlserver/serverRepository'
 import type { ScanOptions } from '../../discovery/types'
 
 // Re-export resolveConnection so metrics.ipc.ts and system.ipc.ts can import it
@@ -112,7 +112,7 @@ export function registerServerHandlers(): void {
     IpcChannel.REMOVE_SERVER,
     async (_event: IpcMainInvokeEvent, req: RemoveServerRequest): Promise<RemoveServerResponse> => {
       try {
-        removeServer(req)
+        await removeServer(req)
         return { ok: true, data: null }
       } catch (err) {
         log.error('[IPC] REMOVE_SERVER:', safeError(err))
@@ -150,7 +150,7 @@ export function registerServerHandlers(): void {
           const res = await serviceApi.addServer(params)
           return res as IpcResult<ServerAddResult>
         }
-        const result = serverStore.add(params)
+        const result = await serverStore.add(params)
         if (result.server) result.server = serverStore.stripCredentials(result.server)
         return { ok: true, data: result }
       } catch (err) {
@@ -173,7 +173,7 @@ export function registerServerHandlers(): void {
           await serviceApi.updateServer(id, patch)
           return { ok: true, data: { success: true } }
         }
-        serverStore.update(id, patch)
+        await serverStore.update(id, patch)
         return { ok: true, data: { success: true } }
       } catch (err) {
         log.error('[IPC] SERVERS_UPDATE:', safeError(err))
@@ -191,7 +191,7 @@ export function registerServerHandlers(): void {
           await serviceApi.removeServer(id)
           return { ok: true, data: { success: true } }
         }
-        serverStore.remove(id)
+        await serverStore.remove(id)
         return { ok: true, data: { success: true } }
       } catch (err) {
         log.error('[IPC] SERVERS_REMOVE_BY_ID:', safeError(err))
@@ -203,9 +203,9 @@ export function registerServerHandlers(): void {
   // SERVERS_CLEAR_MOCKS — removes servers with id starting with 'mock-'
   handle(
     IpcChannel.SERVERS_CLEAR_MOCKS,
-    (): IpcResult<{ success: boolean; removed: number; remaining: number }> => {
+    async (): Promise<IpcResult<{ success: boolean; removed: number; remaining: number }>> => {
       try {
-        const { removed, remaining } = clearMockServers()
+        const { removed, remaining } = await clearMockServers()
         return { ok: true, data: { success: true, removed, remaining } }
       } catch (err) {
         log.error('[IPC] servers:clearMocks:', safeError(err))
@@ -297,7 +297,7 @@ export function registerServerHandlers(): void {
         if (canceled || filePaths.length === 0)
           return { ok: true, data: { imported: 0, skipped: 0, errors: [] } }
         const json = readFileSync(filePaths[0], 'utf8')
-        const result = importFromBackup(json)
+        const result = await importFromBackup(json)
         if (result.imported > 0) writeAutoBackup()
         return { ok: true, data: result }
       } catch (err) {

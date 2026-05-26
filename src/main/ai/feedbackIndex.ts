@@ -1,6 +1,5 @@
 import { createLogger } from '../utils/logger'
-import { cosineSimilarity } from '../store/vecRepository'
-import { getQueryEmbedding, unpackEmbedding } from './embedder'
+import { getQueryEmbedding, unpackEmbedding, cosineSimilarity } from './embedder'
 import { listEmbeddable } from '../store/sqlserver/aiFeedbackRepository'
 
 const log = createLogger('feedbackIndex')

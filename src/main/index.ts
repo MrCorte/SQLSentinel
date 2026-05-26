@@ -18,23 +18,23 @@ import {
   setPushHandler,
   restaggerAll
 } from './metricsWorker'
-import { app as electronApp } from 'electron'
-import { join as pathJoin } from 'node:path'
-import { initDbWithRecovery, closeDb } from './store/database'
 import { getStorageConfig } from './store/storageConfig'
 import { initStoragePool, closeStoragePool, getPool } from './store/sqlserver/connection'
 import { initSchema } from './store/sqlserver/database'
 import { cleanup as purgeOldSnapshots } from './store/sqlserver/metricsRepository'
-import { cleanup as purgeSqliteSnapshots } from './store/metricsRepository'
 import { getSettings } from './store/sqlserver/settingsRepository'
 import { migrateEncryptEmailPassword } from './store/sqlserver/emailSettingsRepository'
 import { removeExpiredSessions } from './store/sqlserver/sessionsRepository'
 import { isAvailable as safeStorageAvailable } from './store/safeStorageUtil'
 import { IpcChannel } from './ipc/types'
-import * as serverStore from './store/serverStore'
+import * as serverStore from './store/sqlserver/serverRepository'
 import { scanHost } from './discovery/tcpScanner'
 import { abortActiveStream, warmupModel } from './ai/langGraphAgent'
-import { preWarmIndex, warmupEmbedder } from './store/vecRepository'
+import {
+  preWarmIndex,
+  warmupEmbedder,
+  importKnowledgeIfEmpty
+} from './store/sqlserver/knowledgeRepository'
 import { preWarm as preWarmFeedbackIndex } from './ai/feedbackIndex'
 import { reloadDynamicTsqlMap } from './ai/langGraphAgent'
 import { safeError as redactError } from './utils/safeLog'
@@ -109,7 +109,7 @@ async function healthCheckAll(): Promise<void> {
             // Was marked unreachable — now back online. The transition is
             // operationally significant, so we WRITE the unreachable flag
             // synchronously and only buffer the lastSeen.
-            serverStore.update(server.id, {
+            await serverStore.update(server.id, {
               unreachable: false,
               unreachableSince: undefined
             })
@@ -126,7 +126,7 @@ async function healthCheckAll(): Promise<void> {
           if (!server.unreachable) {
             // First failure — mark as unreachable and notify renderer
             const since = new Date().toISOString()
-            serverStore.update(server.id, { unreachable: true, unreachableSince: since })
+            await serverStore.update(server.id, { unreachable: true, unreachableSince: since })
             mainWindow?.webContents.send(IpcChannel.SERVER_UNREACHABLE, {
               serverId: server.id,
               ip: addr,
@@ -238,39 +238,28 @@ app.on('second-instance', () => {
   }
 })
 
-// Track corruption-recovery state so the first window load can show a banner.
-let sqliteRecovered: { rotatedPath?: string } | null = null
-
 app.whenReady().then(async () => {
-  // Initialize SQLite (server registry) with corruption recovery.
-  const sqliteDir = electronApp.getPath('userData')
-  const sqliteDbPath = pathJoin(sqliteDir, 'data.db')
-  let initResult: ReturnType<typeof initDbWithRecovery>
-  try {
-    initResult = initDbWithRecovery(sqliteDbPath)
-  } catch (err) {
-    log.error('[main] Fatal: SQLite initialization failed — quitting:', err)
-    app.quit()
-    return
-  }
-  if (initResult.recoveredFromCorruption) {
-    sqliteRecovered = { rotatedPath: initResult.rotatedPath }
-    log.error(
-      `[main] data.db was corrupt — rotated to ${initResult.rotatedPath}, recreated empty. ` +
-        `Historical metrics are lost; server registry restored from electron-store.`
-    )
-  }
-  serverStore.migrateHostField()
-  serverStore.migrateEncryptCredentials()
-
-  // Initialize SQL Server storage pool
+  // Initialize SQL Server storage pool first — the server registry now lives
+  // there too, so we cannot load the cache (or run migrations) before the pool
+  // and schema are up.
   const storageCfg = getStorageConfig()
   if (storageCfg) {
     try {
       await initStoragePool(storageCfg)
       await initSchema()
+      await serverStore.init()
+      serverStore.migrateHostField()
+      await serverStore.migrateEncryptCredentials()
       await initDefaultAdmin()
       await migrateEncryptEmailPassword()
+      // One-shot import of the SQLite knowledge_base.db build artifact into
+      // the dbo.knowledge_* / dbo.dba_cards tables. Idempotent — skipped if
+      // the destination already has rows.
+      try {
+        await importKnowledgeIfEmpty()
+      } catch (err) {
+        log.warn('[main] knowledge base import failed:', redactError(err))
+      }
     } catch (err) {
       log.error('[main] Storage pool init failed:', redactError(err))
     }
@@ -291,15 +280,7 @@ app.whenReady().then(async () => {
       try {
         await purgeOldSnapshots(days)
       } catch (err) {
-        log.warn('[main] purgeOldSnapshots (mssql):', err)
-      }
-      // Local SQLite cache also needs the same retention applied — previously
-      // it was only invoked at worker startup, leaving the local table to grow
-      // unbounded across long-running deployments.
-      try {
-        await purgeSqliteSnapshots(days)
-      } catch (err) {
-        log.warn('[main] purgeSqliteSnapshots:', err)
+        log.warn('[main] purgeOldSnapshots:', err)
       }
       try {
         await removeExpiredSessions()
@@ -411,11 +392,6 @@ app.whenReady().then(async () => {
         })
       }
     }
-    // H7: surface SQLite recovery banner so the operator knows historical
-    // metrics are gone but the app is otherwise functional.
-    if (sqliteRecovered) {
-      mainWindow?.webContents.send('sqlite:recovered', sqliteRecovered)
-    }
   })
 
   // H8: power suspend/resume — without this, on resume every job's nextRun is
@@ -506,14 +482,6 @@ function cleanupResources(): void {
     serverStore.stopLastSeenFlushTimer()
   } catch (err) {
     log.warn('[main] flushLastSeenBuffer:', err)
-  }
-  // H6: graceful SQLite shutdown — checkpoint(TRUNCATE) + optimize + close.
-  // Must happen BEFORE the storage / monitored pools close because some store
-  // helpers may try to write a final state during their close callbacks.
-  try {
-    closeDb()
-  } catch (err) {
-    log.warn('[main] closeDb on shutdown:', err)
   }
   closeStoragePool().catch(() => {})
   closeAllPools().catch(() => {})

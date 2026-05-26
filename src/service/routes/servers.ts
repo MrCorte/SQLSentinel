@@ -1,8 +1,8 @@
 import { Router, type Request, type Response } from 'express'
-import * as serverStore from '../../main/store/serverStore'
+import * as serverStore from '../../main/store/sqlserver/serverRepository'
 import { syncServers, stopWorker } from '../../main/metricsWorker'
 import type { AddServerBody, UpdateServerBody, MigrateServersBody, ServiceResult } from '../../shared/serviceProtocol'
-import type { StoredServer } from '../../main/store/serverStore'
+import type { StoredServer } from '../../main/store/sqlserver/serverRepository'
 
 function toCollectRequest(s: StoredServer) {
   return {
@@ -37,9 +37,9 @@ export function createServersRouter(): Router {
   })
 
   // POST /api/servers
-  router.post('/', (req: Request, res: Response) => {
+  router.post('/', async (req: Request, res: Response) => {
     const body = req.body as AddServerBody
-    const result = serverStore.add(body)
+    const result = await serverStore.add(body)
     if (result.success && result.server) {
       refreshWorker()
       serverStore.writeAutoBackup()
@@ -50,30 +50,30 @@ export function createServersRouter(): Router {
   })
 
   // PUT /api/servers/:id
-  router.put('/:id', (req: Request, res: Response) => {
+  router.put('/:id', async (req: Request, res: Response) => {
     const patch = req.body as UpdateServerBody
-    serverStore.update(req.params['id'] as string, patch)
+    await serverStore.update(req.params['id'] as string, patch)
     refreshWorker()
     serverStore.writeAutoBackup()
     res.json({ ok: true, data: { success: true } })
   })
 
   // DELETE /api/servers/:id
-  router.delete('/:id', (req: Request, res: Response) => {
-    serverStore.remove(req.params['id'] as string)
+  router.delete('/:id', async (req: Request, res: Response) => {
+    await serverStore.remove(req.params['id'] as string)
     refreshWorker()
     serverStore.writeAutoBackup()
     res.json({ ok: true, data: { success: true } })
   })
 
   // POST /api/servers/migrate — bulk import from Electron (one-time migration)
-  router.post('/migrate', (req: Request, res: Response) => {
+  router.post('/migrate', async (req: Request, res: Response) => {
     const { servers } = req.body as MigrateServersBody
     let imported = 0
     for (const s of servers) {
       const existing = serverStore.getByIpPort(s.host, s.port)
       if (!existing) {
-        serverStore.add(s)
+        await serverStore.add(s)
         imported++
       }
     }

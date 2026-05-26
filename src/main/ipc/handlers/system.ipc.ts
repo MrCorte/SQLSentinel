@@ -331,12 +331,12 @@ export function registerSystemHandlers(): void {
 
   // EXPORT_CUSTOM_FIELDS — generates CSV of all DB custom fields
   handle(IpcChannel.EXPORT_CUSTOM_FIELDS, async (): Promise<IpcResult<string>> => {
-    return { ok: true, data: exportCustomFieldsCsv() }
+    return { ok: true, data: await exportCustomFieldsCsv() }
   })
 
   // EXPORT_INVENTORY — generates CSV of the server inventory
   handle(IpcChannel.EXPORT_INVENTORY, async (): Promise<IpcResult<string>> => {
-    return { ok: true, data: exportInventoryCsv() }
+    return { ok: true, data: await exportInventoryCsv() }
   })
 
   // EXPORT_ALERTS — generates CSV of historical alerts

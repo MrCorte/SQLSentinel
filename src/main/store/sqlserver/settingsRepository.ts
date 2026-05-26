@@ -48,6 +48,38 @@ export async function getSettings(): Promise<AppSettings> {
   }
 }
 
+/**
+ * Read a single setting row by key. Returns undefined if the row does not exist.
+ * Used by feature code (AI provider, incident agent) that owns its own keys
+ * outside the typed AppSettings surface.
+ */
+export async function getRawSetting(key: string): Promise<string | undefined> {
+  const r = await getPool()
+    .request()
+    .input('k', sql.NVarChar(200), key)
+    .query<{ value: string }>(`SELECT value FROM dbo.settings WHERE [key] = @k`)
+  return r.recordset[0]?.value
+}
+
+/** Read multiple settings keys in one round-trip. */
+export async function getRawSettings(keys: string[]): Promise<Record<string, string>> {
+  if (keys.length === 0) return {}
+  const req = getPool().request()
+  const placeholders = keys.map((k, i) => {
+    const name = `k${i}`
+    req.input(name, sql.NVarChar(200), k)
+    return `@${name}`
+  })
+  const r = await req.query<{ key: string; value: string }>(
+    `SELECT [key], value FROM dbo.settings WHERE [key] IN (${placeholders.join(',')})`
+  )
+  return Object.fromEntries(r.recordset.map((row) => [row.key, row.value]))
+}
+
+export async function setRawSetting(key: string, value: string): Promise<void> {
+  await upsertKey(getPool(), key, value)
+}
+
 export async function saveSettings(settings: Partial<AppSettings>): Promise<void> {
   const pool = getPool()
   if (settings.retentionMinutes != null)

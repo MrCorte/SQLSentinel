@@ -24,11 +24,14 @@ vi.mock('../store/sqlserver/sessionsRepository', () => ({
   removeSession: mockRemoveSession
 }))
 
-const mockGetRawSetting = vi.fn().mockReturnValue(null)
-const mockSetRawSetting = vi.fn()
-vi.mock('../store/settings', () => ({
+const mockGetRawSetting = vi.fn(async () => undefined)
+const mockSetRawSetting = vi.fn(async () => {})
+vi.mock('../store/sqlserver/settingsRepository', () => ({
   getRawSetting: mockGetRawSetting,
-  setRawSetting: mockSetRawSetting
+  setRawSetting: mockSetRawSetting,
+  getRawSettings: vi.fn(async () => ({})),
+  getSettings: vi.fn(async () => ({})),
+  saveSettings: vi.fn(async () => {})
 }))
 
 const mockBcryptCompare = vi.fn()
@@ -293,7 +296,7 @@ describe('authService', () => {
   describe('initDefaultAdmin', () => {
     it('creates admin user with new random password when table is empty and no local backup', async () => {
       mockCountUsers.mockResolvedValue(0)
-      mockGetRawSetting.mockReturnValue(null)
+      mockGetRawSetting.mockResolvedValue(undefined)
       mockBcryptHash.mockResolvedValue('$adminhash')
       mockCreateUser.mockResolvedValue(undefined)
       await initDefaultAdmin()
@@ -307,7 +310,7 @@ describe('authService', () => {
 
     it('restores admin from local backup when table is empty but hash exists', async () => {
       mockCountUsers.mockResolvedValue(0)
-      mockGetRawSetting.mockReturnValue('$existinghash')
+      mockGetRawSetting.mockResolvedValue('$existinghash')
       mockCreateUser.mockResolvedValue(undefined)
       await initDefaultAdmin()
       expect(mockCreateUser).toHaveBeenCalledOnce()

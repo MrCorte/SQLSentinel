@@ -9,17 +9,25 @@ vi.mock('electron', () => ({
   BrowserWindow: { getAllWindows: vi.fn(() => []) }
 }))
 vi.mock('../collectors/sqlCollector', () => ({ collectMetrics: vi.fn() }))
-vi.mock('../store/dbCustomFields', () => ({ getAllCustomFields: vi.fn(() => ({})) }))
+vi.mock('../store/sqlserver/dbCustomFieldsRepository', () => ({
+  getAllCustomFields: vi.fn(async () => ({}))
+}))
 // startWorker now calls loadHistoryFromDb → mock to isolate the test from the DB
-vi.mock('../store/metricsRepository', () => ({
-  cleanup: vi.fn(),
-  findLastNBulk: vi.fn(() => ({})),
-  batchSave: vi.fn()
+vi.mock('../store/sqlserver/metricsRepository', () => ({
+  cleanup: vi.fn(async () => {}),
+  findLastNBulk: vi.fn(async () => ({})),
+  batchSave: vi.fn(async () => {})
 }))
-vi.mock('../store/settings', () => ({
-  getSettings: vi.fn(() => ({ retentionMinutes: 60 }))
+vi.mock('../store/sqlserver/settingsRepository', () => ({
+  getSettings: vi.fn(async () => ({ retentionMinutes: 60 }))
 }))
-vi.mock('../store/serverStore')
+vi.mock('../store/sqlserver/serverDatabasesRepository', () => ({
+  upsertDatabases: vi.fn(async () => {}),
+  deleteStale: vi.fn(async () => {}),
+  deleteByNames: vi.fn(async () => {}),
+  getAllGroupedByServer: vi.fn(async () => ({}))
+}))
+vi.mock('../store/sqlserver/serverRepository')
 
 import { collectMetrics } from '../collectors/sqlCollector'
 import {
@@ -93,20 +101,24 @@ afterEach(() => {
 
 describe('AREA 1 — PollingManager', () => {
   describe('BATCH_SIZE', () => {
-    it('is never exceeded: 35 servers → collectMetrics called exactly 30 times (BATCH_SIZE=30)', () => {
+    it('is never exceeded: 35 servers → collectMetrics called exactly 30 times (BATCH_SIZE=30)', async () => {
       vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))
       const servers = Array.from({ length: 35 }, (_, i) => makeServer(`10.0.0.${i + 1}`))
       startWorker({ intervalSeconds: 60, servers })
-      // scheduleTick executes the first batch synchronously — at most BATCH_SIZE=30 jobs
+      // runJob now awaits getAllCustomFields before invoking the collector —
+      // drain microtasks so the first batch reaches collectMetrics. Fake timers
+      // are active, so setImmediate would hang; loop on Promise.resolve instead.
+      await drainJobCycle()
       expect(vi.mocked(collectMetrics)).toHaveBeenCalledTimes(30)
     })
 
-    it('with 5 servers exactly 5 jobs start (fewer than batch size)', () => {
+    it('with 5 servers exactly 5 jobs start (fewer than batch size)', async () => {
       vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))
       startWorker({
         intervalSeconds: 60,
         servers: Array.from({ length: 5 }, (_, i) => makeServer(`10.0.0.${i + 1}`))
       })
+      await drainJobCycle()
       expect(vi.mocked(collectMetrics)).toHaveBeenCalledTimes(5)
     })
   })
@@ -139,6 +151,10 @@ describe('AREA 1 — PollingManager', () => {
     it('does NOT trigger multiple fetches when called 5 times in 100 ms (debounce 300 ms)', async () => {
       vi.mocked(collectMetrics).mockReturnValue(new Promise(() => {}))
       startWorker({ intervalSeconds: 60, servers: [makeServer('10.0.0.1')] })
+      // Let the initial async runJob reach its hanging collectMetrics call
+      // before clearing the mock — otherwise the in-flight microtask leaks
+      // a fresh call into the post-clear assertion window.
+      await drainJobCycle()
       vi.mocked(collectMetrics).mockClear()
 
       // 5 rapid calls in 100 ms
@@ -316,6 +332,9 @@ describe('AREA 1 — PollingManager', () => {
       startWorker({ intervalSeconds: 60, servers: [makeServer('10.0.0.1')] })
       setActiveServer('10.0.0.1:1433') // creates activeDebounce
 
+      // Let the initial async runJob reach collectMetrics so the post-stop
+      // snapshot is taken against a settled state, not mid-microtask.
+      await drainJobCycle()
       const callsBefore = vi.mocked(collectMetrics).mock.calls.length
       stopWorker()
 

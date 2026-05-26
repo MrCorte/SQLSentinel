@@ -1,6 +1,6 @@
 import type { ServerMetrics } from '../main/collectors/types'
-import type { StoredServer } from '../main/store/serverStore'
-import type { AppSettings } from '../main/store/settings'
+import type { StoredServer } from '../main/store/sqlserver/serverRepository'
+import type { AppSettings } from '../main/store/sqlserver/settingsRepository'
 
 // ── HTTP response wrapper (mirrors IpcResult) ────────────────────────────────
 

@@ -2,23 +2,22 @@ import type { IpcMainInvokeEvent } from 'electron'
 import { handle, safeError, log } from '../handleWrapper'
 import { IpcChannel } from '../types'
 import type { IpcResult, AiProviderSettings, AiProviderName } from '../types'
-import { getDb } from '../../store/database'
+import { getRawSettings, setRawSetting } from '../../store/sqlserver/settingsRepository'
 import { encrypt, decrypt, isAvailable as safeStorageAvailable } from '../../store/safeStorageUtil'
 import { getProvider } from '../../ai/providers'
 import { normalizeOllamaModel } from '../../ai/providers/defaults'
 
-function loadRaw(): { map: Record<string, string> } {
-  const db = getDb()
-  const rows = db.prepare<[], { key: string; value: string }>('SELECT key, value FROM settings').all()
-  return { map: Object.fromEntries(rows.map((r) => [r.key, r.value])) }
-}
+const AI_SETTING_KEYS = [
+  'ai_provider',
+  'ai_ollama_model',
+  'ai_claude_api_key',
+  'ai_claude_model',
+  'ai_redact_query_text',
+  'ai_agent_actions_enabled'
+] as const
 
-function upsert(key: string, value: string): void {
-  getDb().prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value)
-}
-
-function readSettings(): AiProviderSettings {
-  const { map } = loadRaw()
+async function readSettings(): Promise<AiProviderSettings> {
+  const map = await getRawSettings(AI_SETTING_KEYS as unknown as string[])
   const provider = (map['ai_provider'] as AiProviderName) ?? 'ollama'
   const rawKey = map['ai_claude_api_key']
 
@@ -44,47 +43,56 @@ function readSettings(): AiProviderSettings {
 }
 
 export function registerAiSettingsHandlers(): void {
-  handle(IpcChannel.AI_GET_SETTINGS, (): IpcResult<AiProviderSettings> => {
+  handle(IpcChannel.AI_GET_SETTINGS, async (): Promise<IpcResult<AiProviderSettings>> => {
     try {
-      return { ok: true, data: readSettings() }
+      return { ok: true, data: await readSettings() }
     } catch (err) {
       log.error('[IPC] AI_GET_SETTINGS:', safeError(err))
       return { ok: false, error: safeError(err) }
     }
   })
 
-  handle(IpcChannel.AI_SAVE_SETTINGS, (
-    _event: IpcMainInvokeEvent,
-    settings: Partial<AiProviderSettings>
-  ): IpcResult<null> => {
-    try {
-      if (settings.provider != null) upsert('ai_provider', settings.provider)
-      if (settings.ollamaModel != null) upsert('ai_ollama_model', settings.ollamaModel.trim())
-      if (settings.claudeModel != null) upsert('ai_claude_model', settings.claudeModel.trim())
-      if (settings.redactQueryText != null) upsert('ai_redact_query_text', String(settings.redactQueryText))
-      if (settings.agentActionsEnabled != null) upsert('ai_agent_actions_enabled', String(settings.agentActionsEnabled))
+  handle(
+    IpcChannel.AI_SAVE_SETTINGS,
+    async (
+      _event: IpcMainInvokeEvent,
+      settings: Partial<AiProviderSettings>
+    ): Promise<IpcResult<null>> => {
+      try {
+        if (settings.provider != null) await setRawSetting('ai_provider', settings.provider)
+        if (settings.ollamaModel != null)
+          await setRawSetting('ai_ollama_model', settings.ollamaModel.trim())
+        if (settings.claudeModel != null)
+          await setRawSetting('ai_claude_model', settings.claudeModel.trim())
+        if (settings.redactQueryText != null)
+          await setRawSetting('ai_redact_query_text', String(settings.redactQueryText))
+        if (settings.agentActionsEnabled != null)
+          await setRawSetting('ai_agent_actions_enabled', String(settings.agentActionsEnabled))
 
-      if (settings.claudeApiKey != null && settings.claudeApiKey.trim() !== '') {
-        // Only update the stored key if it's a real value (not the masked placeholder).
-        const raw = settings.claudeApiKey.trim()
-        if (!raw.endsWith('…') && raw !== '••••••••') {
-          if (!safeStorageAvailable()) {
-            throw new Error('Secure storage unavailable — cannot store Claude API key safely. Launch the app as a logged-in user.')
+        if (settings.claudeApiKey != null && settings.claudeApiKey.trim() !== '') {
+          // Only update the stored key if it's a real value (not the masked placeholder).
+          const raw = settings.claudeApiKey.trim()
+          if (!raw.endsWith('…') && raw !== '••••••••') {
+            if (!safeStorageAvailable()) {
+              throw new Error(
+                'Secure storage unavailable — cannot store Claude API key safely. Launch the app as a logged-in user.'
+              )
+            }
+            await setRawSetting('ai_claude_api_key', encrypt(raw))
           }
-          upsert('ai_claude_api_key', encrypt(raw))
         }
-      }
 
-      return { ok: true, data: null }
-    } catch (err) {
-      log.error('[IPC] AI_SAVE_SETTINGS:', safeError(err))
-      return { ok: false, error: safeError(err) }
+        return { ok: true, data: null }
+      } catch (err) {
+        log.error('[IPC] AI_SAVE_SETTINGS:', safeError(err))
+        return { ok: false, error: safeError(err) }
+      }
     }
-  })
+  )
 
   handle(IpcChannel.AI_CHECK_PROVIDER, async (): Promise<IpcResult<boolean>> => {
     try {
-      const provider = getProvider()
+      const provider = await getProvider()
       const ok = await provider.health()
       return { ok: true, data: ok }
     } catch (err) {

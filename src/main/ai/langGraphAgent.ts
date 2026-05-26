@@ -1,9 +1,8 @@
 import type { AiStreamEvent } from '../ipc/types'
-import * as serverStore from '../store/serverStore'
-import * as metricsRepository from '../store/metricsRepository'
+import * as serverStore from '../store/sqlserver/serverRepository'
+import * as metricsRepository from '../store/sqlserver/metricsRepository'
 import { getAlerts } from '../metricsWorker'
-import { searchFts } from '../store/ftsRepository'
-import { semanticSearch, warmupEmbedder } from '../store/vecRepository'
+import { searchFts, semanticSearch, warmupEmbedder } from '../store/sqlserver/knowledgeRepository'
 import { findSimilar as findSimilarFeedback } from './feedbackIndex'
 import { listTsqlMapEntries } from '../store/sqlserver/aiFeedbackRepository'
 import { getCached, putCached } from './responseCache'
@@ -62,7 +61,7 @@ export interface AgentHistory {
 async function getServerMetricsImpl(): Promise<string> {
   const servers = serverStore.getAllStripped()
   const ids = servers.map((s) => s.id)
-  const bulk = metricsRepository.findLastNBulk(ids, 1)
+  const bulk = await metricsRepository.findLastNBulk(ids, 1)
   const result = servers.map((s) => {
     const snaps = bulk[s.id]
     const snap = snaps && snaps.length > 0 ? snaps[0] : undefined
@@ -97,7 +96,7 @@ async function getRecentAlertsImpl(): Promise<string> {
 async function getSlowQueriesImpl(): Promise<string> {
   const servers = serverStore.getAllStripped()
   const ids = servers.map((s) => s.id)
-  const bulk = metricsRepository.findLastNBulk(ids, 1)
+  const bulk = await metricsRepository.findLastNBulk(ids, 1)
   const queries = Object.entries(bulk).flatMap(([serverId, snaps]) => {
     const snap = snaps && snaps.length > 0 ? snaps[0] : undefined
     const srv = servers.find((s) => s.id === serverId)
@@ -356,7 +355,8 @@ async function knowledgeRetrievalImpl(query: string): Promise<KnowledgeRetrieval
     return { display: 'Knowledge base not available or no results found.', fused: [] }
   }
 
-  const ftsHits = searchFts(normalizeQueryForFts(query), 5).map((r) => ({
+  const ftsRaw = await searchFts(normalizeQueryForFts(query), 5)
+  const ftsHits = ftsRaw.map((r) => ({
     title: r.title,
     content: r.content
   }))
@@ -397,7 +397,7 @@ let _warmedUp = false
 export async function warmupModel(): Promise<void> {
   if (_warmedUp) return
   try {
-    const provider = getProvider()
+    const provider = await getProvider()
     if (provider.name !== 'ollama') {
       _warmedUp = true
       return
@@ -535,7 +535,7 @@ export async function langGraphStream(
 
   let provider
   try {
-    provider = getProvider()
+    provider = await getProvider()
   } catch (err) {
     onEvent({ type: 'error', message: err instanceof Error ? err.message : String(err) })
     return

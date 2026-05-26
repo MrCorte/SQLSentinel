@@ -1,6 +1,6 @@
 import { onIncidentAlert } from '../metricsWorker'
 import * as repository from './repository'
-import { getInstanceAliases } from '../store/serverStore'
+import { getInstanceAliases } from '../store/sqlserver/serverRepository'
 import { createLogger } from '../utils/logger'
 import type { Alert } from '../ipc/types'
 
@@ -29,16 +29,14 @@ export function setAgentRunner(fn: (id: string) => void): void {
 
 export function attachDetector(): void {
   onIncidentAlert((alert: Alert) => {
-    try {
-      handleAlert(alert)
-    } catch (err) {
+    handleAlert(alert).catch((err) => {
       log.error('[detector] failed to process alert:', err)
-    }
+    })
   })
   log.info('[detector] attached to alert pipeline')
 }
 
-function handleAlert(alert: Alert): void {
+async function handleAlert(alert: Alert): Promise<void> {
   const detectedAt = alert.detectedAt instanceof Date
     ? alert.detectedAt.getTime()
     : new Date(alert.detectedAt).getTime()
@@ -46,10 +44,10 @@ function handleAlert(alert: Alert): void {
   // Resolve all serverIds that point to the SAME SQL Server instance, so two
   // registrations of the same host:port:instanceName share one incident.
   const aliases = getInstanceAliases(alert.serverId)
-  const existing = repository.findActiveForInstance(aliases, alert.category)
+  const existing = await repository.findActiveForInstance(aliases, alert.category)
 
   if (existing) {
-    repository.addEvent(existing.id, 'alert_added', {
+    await repository.addEvent(existing.id, 'alert_added', {
       alertId: alert.id,
       severity: alert.severity,
       message: alert.message,
@@ -57,19 +55,19 @@ function handleAlert(alert: Alert): void {
     }, detectedAt)
 
     if ((SEVERITY_RANK[alert.severity] ?? 0) > (SEVERITY_RANK[existing.severity] ?? 0)) {
-      repository.escalateSeverity(existing.id, alert.severity)
+      await repository.escalateSeverity(existing.id, alert.severity)
     }
 
     log.info(`[detector] alert appended to incident ${existing.id} (${alert.category})`)
     _callback?.('updated', existing.id)
   } else {
-    const incident = repository.createIncident(
+    const incident = await repository.createIncident(
       alert.serverId,
       alert.category,
       alert.severity,
       detectedAt
     )
-    repository.addEvent(incident.id, 'alert_added', {
+    await repository.addEvent(incident.id, 'alert_added', {
       alertId: alert.id,
       severity: alert.severity,
       message: alert.message,

@@ -118,6 +118,155 @@ const TABLE_DDL: Array<{ name: string; sql: string }> = [
        promoted_hash CHAR(64)      NULL,
        created_at    DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME()
      )`
+  },
+  {
+    // Knowledge base — DBA reference cards. Imported one-shot from the
+    // knowledge_base.db SQLite artifact built by the knowledge-pipeline. Used
+    // as the highest-priority FTS hit for AI queries (exact T-SQL recipes).
+    name: 'dba_cards',
+    sql: `CREATE TABLE dbo.dba_cards (
+       slug         NVARCHAR(200) NOT NULL PRIMARY KEY,
+       title        NVARCHAR(500) NOT NULL,
+       tags         NVARCHAR(MAX) NOT NULL,
+       explanation  NVARCHAR(MAX) NOT NULL,
+       tsql_query   NVARCHAR(MAX) NOT NULL,
+       when_to_use  NVARCHAR(MAX) NOT NULL
+     )`
+  },
+  {
+    // Knowledge base — book chapters / general scripts.
+    name: 'knowledge_chunks',
+    sql: `CREATE TABLE dbo.knowledge_chunks (
+       id           INT           NOT NULL PRIMARY KEY,
+       title        NVARCHAR(500) NOT NULL,
+       content      NVARCHAR(MAX) NOT NULL,
+       tags         NVARCHAR(MAX) NOT NULL CONSTRAINT DF_knowledge_chunks_tags DEFAULT N'',
+       type_field   NVARCHAR(50)  NOT NULL CONSTRAINT DF_knowledge_chunks_type DEFAULT N'',
+       source_file  NVARCHAR(500) NOT NULL CONSTRAINT DF_knowledge_chunks_source DEFAULT N''
+     )`
+  },
+  {
+    // Knowledge base — nomic-embed-text (768-dim) chunk embeddings used for
+    // semantic search. Stored as VARBINARY (little-endian float32 stream)
+    // because not every target SQL Server has the 2025 vector type; the
+    // optional DiskANN index below upgrades to native VECTOR when available.
+    name: 'knowledge_embeddings',
+    sql: `CREATE TABLE dbo.knowledge_embeddings (
+       id         INT            NOT NULL PRIMARY KEY,
+       title      NVARCHAR(500)  NOT NULL,
+       chunk_idx  INT            NOT NULL,
+       text       NVARCHAR(MAX)  NOT NULL,
+       embedding  VARBINARY(MAX) NOT NULL
+     )`
+  },
+  {
+    // Monitored SQL Server registry — moved from the legacy electron-store JSON
+    // file. Identified by (host, port) which is also the unique key. CPU counts
+    // and AG roles are populated at runtime but persisted so we don't lose them
+    // across restarts. Credentials are stored as a safeStorage (DPAPI) base64 blob.
+    name: 'servers',
+    sql: `CREATE TABLE dbo.servers (
+       id                 NVARCHAR(36)  NOT NULL PRIMARY KEY,
+       host               NVARCHAR(253) NOT NULL,
+       port               INT           NOT NULL,
+       instance_name      NVARCHAR(200) NULL,
+       use_windows_auth   BIT           NOT NULL CONSTRAINT DF_servers_winauth DEFAULT 0,
+       username           NVARCHAR(200) NULL,
+       encrypted_password NVARCHAR(MAX) NULL,
+       added_at           NVARCHAR(50)  NOT NULL,
+       last_seen          NVARCHAR(50)  NULL,
+       unreachable        BIT           NOT NULL CONSTRAINT DF_servers_unreach DEFAULT 0,
+       unreachable_since  NVARCHAR(50)  NULL,
+       machine_name       NVARCHAR(200) NULL,
+       ag_group_id        NVARCHAR(36)  NULL,
+       ag_name            NVARCHAR(200) NULL,
+       ag_role            NVARCHAR(20)  NULL,
+       logical_cpus       INT           NULL,
+       physical_cpus      INT           NULL,
+       hosting_type       NVARCHAR(20)  NULL,
+       notes              NVARCHAR(MAX) NULL,
+       CONSTRAINT UQ_servers_host_port UNIQUE (host, port)
+     )`
+  },
+  {
+    // Persistent per-server database inventory — seeds metricsMap on boot so
+    // the database list is visible before the first polling cycle completes.
+    name: 'server_databases',
+    sql: `CREATE TABLE dbo.server_databases (
+       server_id       NVARCHAR(36)  NOT NULL,
+       name            NVARCHAR(200) NOT NULL,
+       state_desc      NVARCHAR(50)  NOT NULL CONSTRAINT DF_server_databases_state DEFAULT N'ONLINE',
+       recovery_model  NVARCHAR(20)  NOT NULL CONSTRAINT DF_server_databases_recovery DEFAULT N'SIMPLE',
+       size_mb         FLOAT         NOT NULL CONSTRAINT DF_server_databases_size DEFAULT 0,
+       log_size_mb     FLOAT         NOT NULL CONSTRAINT DF_server_databases_log_size DEFAULT 0,
+       compat_level    INT           NOT NULL CONSTRAINT DF_server_databases_compat DEFAULT 150,
+       is_encrypted    BIT           NOT NULL CONSTRAINT DF_server_databases_encrypted DEFAULT 0,
+       is_read_only    BIT           NOT NULL CONSTRAINT DF_server_databases_readonly DEFAULT 0,
+       owner           NVARCHAR(200) NOT NULL CONSTRAINT DF_server_databases_owner DEFAULT N'',
+       create_date     NVARCHAR(50)  NOT NULL CONSTRAINT DF_server_databases_create DEFAULT N'',
+       last_seen       BIGINT        NOT NULL CONSTRAINT DF_server_databases_seen DEFAULT 0,
+       CONSTRAINT PK_server_databases PRIMARY KEY (server_id, name)
+     )`
+  },
+  {
+    // Parent record for an incident detected from the alert pipeline. Children
+    // (events, actions, audit) cascade-delete with the parent so cleanup is atomic.
+    name: 'incidents',
+    sql: `CREATE TABLE dbo.incidents (
+       id            NVARCHAR(36)  NOT NULL PRIMARY KEY,
+       server_id     NVARCHAR(36)  NOT NULL,
+       category      NVARCHAR(50)  NOT NULL,
+       severity      NVARCHAR(20)  NOT NULL,
+       status        NVARCHAR(20)  NOT NULL CONSTRAINT DF_incidents_status DEFAULT N'open',
+       opened_at     BIGINT        NOT NULL,
+       resolved_at   BIGINT        NULL,
+       summary       NVARCHAR(MAX) NULL,
+       root_cause_md NVARCHAR(MAX) NULL
+     )`
+  },
+  {
+    name: 'incident_events',
+    sql: `CREATE TABLE dbo.incident_events (
+       id           NVARCHAR(36)  NOT NULL PRIMARY KEY,
+       incident_id  NVARCHAR(36)  NOT NULL REFERENCES dbo.incidents(id) ON DELETE CASCADE,
+       kind         NVARCHAR(50)  NOT NULL,
+       payload_json NVARCHAR(MAX) NOT NULL,
+       at           BIGINT        NOT NULL
+     )`
+  },
+  {
+    name: 'incident_actions',
+    sql: `CREATE TABLE dbo.incident_actions (
+       id               NVARCHAR(36)  NOT NULL PRIMARY KEY,
+       incident_id      NVARCHAR(36)  NOT NULL REFERENCES dbo.incidents(id) ON DELETE CASCADE,
+       tool_name        NVARCHAR(100) NOT NULL,
+       params_json      NVARCHAR(MAX) NOT NULL,
+       tsql_preview     NVARCHAR(MAX) NOT NULL,
+       explanation      NVARCHAR(MAX) NOT NULL,
+       status           NVARCHAR(20)  NOT NULL CONSTRAINT DF_incident_actions_status DEFAULT N'pending',
+       approved_by      NVARCHAR(200) NULL,
+       executed_at      BIGINT        NULL,
+       result_json      NVARCHAR(MAX) NULL,
+       rejection_reason NVARCHAR(MAX) NULL,
+       seq              BIGINT        NOT NULL IDENTITY(1,1)
+     )`
+  },
+  {
+    name: 'incident_audit',
+    sql: `CREATE TABLE dbo.incident_audit (
+       id              NVARCHAR(36)  NOT NULL PRIMARY KEY,
+       incident_id     NVARCHAR(36)  NOT NULL REFERENCES dbo.incidents(id) ON DELETE CASCADE,
+       provider        NVARCHAR(20)  NOT NULL,
+       model           NVARCHAR(100) NOT NULL,
+       prompt_hash     CHAR(64)      NOT NULL,
+       response_hash   CHAR(64)      NOT NULL,
+       tokens_in       INT           NULL,
+       tokens_out      INT           NULL,
+       duration_ms     INT           NULL,
+       tool_call_count INT           NULL,
+       error           NVARCHAR(MAX) NULL,
+       at              BIGINT        NOT NULL
+     )`
   }
 ]
 
@@ -152,6 +301,64 @@ const INDEX_DDL: Array<{ table: string; name: string; sql: string }> = [
     table: 'ai_feedback',
     name: 'IX_ai_feedback_rating',
     sql: `CREATE INDEX IX_ai_feedback_rating ON dbo.ai_feedback(rating)`
+  },
+  {
+    table: 'servers',
+    // Filtered: the tray + health pages only ever query unreachable=1.
+    // Indexing every row would waste space (and update I/O) on the typical
+    // healthy fleet where 95% of rows have unreachable=0.
+    name: 'IX_servers_unreachable',
+    sql: `CREATE INDEX IX_servers_unreachable ON dbo.servers(id)
+          WHERE unreachable = 1`
+  },
+  {
+    table: 'incidents',
+    // Filtered: countOpen + the "active incidents" widget only scan
+    // non-terminal statuses. resolved/archived rows are read by the
+    // detail screen via PK lookups instead.
+    name: 'IX_incidents_status_open',
+    sql: `CREATE INDEX IX_incidents_status_open ON dbo.incidents(opened_at DESC)
+          WHERE status NOT IN (N'resolved', N'archived')`
+  },
+  {
+    table: 'incidents',
+    // Non-filtered fallback for the detail screen that reads any single
+    // status (e.g. listing archived incidents on demand).
+    name: 'IX_incidents_status',
+    sql: `CREATE INDEX IX_incidents_status ON dbo.incidents(status)`
+  },
+  {
+    table: 'incidents',
+    name: 'IX_incidents_server',
+    sql: `CREATE INDEX IX_incidents_server ON dbo.incidents(server_id)`
+  },
+  {
+    table: 'incidents',
+    name: 'IX_incidents_opened',
+    sql: `CREATE INDEX IX_incidents_opened ON dbo.incidents(opened_at DESC)`
+  },
+  {
+    table: 'incident_events',
+    name: 'IX_incident_events_incident',
+    sql: `CREATE INDEX IX_incident_events_incident ON dbo.incident_events(incident_id, at)`
+  },
+  {
+    table: 'incident_actions',
+    name: 'IX_incident_actions_incident',
+    sql: `CREATE INDEX IX_incident_actions_incident ON dbo.incident_actions(incident_id, seq)`
+  },
+  {
+    // Filtered: getPendingActions is the only hot query on this column — and
+    // pending rows are a small minority of the table over time.
+    table: 'incident_actions',
+    name: 'IX_incident_actions_pending',
+    sql: `CREATE INDEX IX_incident_actions_pending ON dbo.incident_actions(incident_id)
+          WHERE status = N'pending'`
+  },
+  {
+    table: 'incident_audit',
+    name: 'IX_incident_audit_incident',
+    sql: `CREATE INDEX IX_incident_audit_incident ON dbo.incident_audit(incident_id, at)`
   }
 ]
 
@@ -165,6 +372,34 @@ const OPTIONAL_INDEX_DDL: Array<{ table: string; name: string; sql: string }> = 
           WITH (VECTOR_DISTANCE_FUNCTION = 'cosine')`
   }
 ]
+
+// ── Compression — tables that grow unboundedly or store large JSON blobs ────
+//
+// PAGE compression on rowstore tables typically reduces both data + index
+// pages 3-5x for JSON/text workloads. CPU cost on INSERT is small (~1-3%);
+// dramatic I/O reduction on the read paths (history charts, AG sync,
+// historical alert export). Cheaper than columnstore for our access pattern.
+const COMPRESSION_TARGETS: Array<{ table: string }> = [
+  { table: 'metrics_snapshots' },
+  { table: 'server_databases' },
+  { table: 'incident_events' },
+  { table: 'incident_actions' },
+  { table: 'incident_audit' },
+  { table: 'knowledge_chunks' },
+  { table: 'knowledge_embeddings' }
+]
+
+async function tableIsCompressed(name: string): Promise<boolean> {
+  const r = await getPool()
+    .request()
+    .query<{ cnt: number }>(
+      `SELECT COUNT(*) AS cnt FROM sys.partitions
+       WHERE object_id = OBJECT_ID(N'dbo.${name}')
+         AND index_id IN (0, 1)
+         AND data_compression > 0`
+    )
+  return r.recordset[0].cnt > 0
+}
 
 // Statistics on UNINDEXED columns used in WHERE predicates.
 // Note: indexed columns get auto-stats from the index — duplicating them adds maintenance
@@ -358,7 +593,26 @@ export async function initSchema(): Promise<SchemaInitResult> {
     }
   }
 
-  // 6. UPDATE STATISTICS — ONLY on tables we just created in this run.
+  // 6. Compression — apply PAGE compression to hot tables that grow large
+  //    over time. Skipped on Standard/Express editions older than 2016 SP1,
+  //    so failures are downgraded to warnings rather than aborting boot.
+  for (const { table } of COMPRESSION_TARGETS) {
+    if (!result.tables.includes(table)) continue
+    if (await tableIsCompressed(table)) continue
+    try {
+      await pool
+        .request()
+        .query(
+          `ALTER TABLE dbo.${table} REBUILD WITH (DATA_COMPRESSION = PAGE)`
+        )
+    } catch (err) {
+      result.warnings.push(
+        `Compression on '${table}' skipped: ${(err as Error).message}`
+      )
+    }
+  }
+
+  // 7. UPDATE STATISTICS — ONLY on tables we just created in this run.
   // Skipping on warm boot avoids a costly FULLSCAN of metrics_snapshots (potentially
   // millions of rows) on every startup; AUTO_UPDATE_STATISTICS handles drift.
   for (const tableName of newlyCreatedTables) {
@@ -369,7 +623,7 @@ export async function initSchema(): Promise<SchemaInitResult> {
     }
   }
 
-  // 7. Versioned migrations — append to MIGRATIONS array for forward changes.
+  // 8. Versioned migrations — append to MIGRATIONS array for forward changes.
   await runMigrations(result)
 
   return result

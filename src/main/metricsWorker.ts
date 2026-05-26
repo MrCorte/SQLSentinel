@@ -11,12 +11,12 @@ import type {
 } from './ipc/types'
 import { collectMetrics, collectMetricsCritical } from './collectors/sqlCollector'
 import { detectAndSyncReplicaRoles } from './collectors/agCollector'
-import * as serverStore from './store/serverStore'
-import * as metricsRepository from './store/metricsRepository'
-import * as serverDatabasesRepository from './store/serverDatabasesRepository'
-import { getSettings } from './store/settings'
+import * as serverStore from './store/sqlserver/serverRepository'
+import * as metricsRepository from './store/sqlserver/metricsRepository'
+import * as serverDatabasesRepository from './store/sqlserver/serverDatabasesRepository'
+import { getSettings } from './store/sqlserver/settingsRepository'
 import type { ServerMetrics } from './collectors/types'
-import { getAllCustomFields } from './store/dbCustomFields'
+import { getAllCustomFields } from './store/sqlserver/dbCustomFieldsRepository'
 import { shouldSendDelta } from './deltaUtils'
 
 export interface IntervalOverrides {
@@ -160,7 +160,7 @@ function enqueueBatchPush(sid: string, metrics: ServerMetrics): void {
 const failedBatches: metricsRepository.SaveItem[][] = []
 const MAX_FAILED_BATCHES = 5
 
-function flushSaveQueue(): void {
+async function flushSaveQueue(): Promise<void> {
   saveFlushTimer = null
   if (saveQueue.length === 0 && failedBatches.length === 0) return
 
@@ -180,9 +180,9 @@ function flushSaveQueue(): void {
   let anyFailed = false
   for (const batch of allBatches) {
     try {
-      metricsRepository.batchSave(batch)
+      await metricsRepository.batchSave(batch)
     } catch (err) {
-      log.error('[worker] SQLite batch save failed, will retry:', err)
+      log.error('[worker] batch save failed, will retry:', err)
       // Hold onto the batch for the next flush. Drop the OLDEST batch if we
       // exceed the retry budget so a permanently failing storage can't OOM us.
       if (failedBatches.length >= MAX_FAILED_BATCHES) {
@@ -204,8 +204,12 @@ function flushSaveQueue(): void {
 
   // If anything failed, schedule a retry on the next regular flush window.
   if (anyFailed && !saveFlushTimer) {
-    saveFlushTimer = setTimeout(flushSaveQueue, SAVE_FLUSH_MS)
+    saveFlushTimer = setTimeout(scheduleFlushSaveQueue, SAVE_FLUSH_MS)
   }
+}
+
+function scheduleFlushSaveQueue(): void {
+  void flushSaveQueue()
 }
 
 function queueSave(srv: CollectMetricsRequest, metrics: ServerMetrics): void {
@@ -221,27 +225,27 @@ function queueSave(srv: CollectMetricsRequest, metrics: ServerMetrics): void {
       clearTimeout(saveFlushTimer)
       saveFlushTimer = null
     }
-    flushSaveQueue()
+    void flushSaveQueue()
     return
   }
   if (!saveFlushTimer) {
-    saveFlushTimer = setTimeout(flushSaveQueue, SAVE_FLUSH_MS)
+    saveFlushTimer = setTimeout(scheduleFlushSaveQueue, SAVE_FLUSH_MS)
   }
 }
 
-function loadHistoryFromDb(servers: CollectMetricsRequest[]): void {
+async function loadHistoryFromDb(servers: CollectMetricsRequest[]): Promise<void> {
   // Deferred cleanup to next tick: with large DBs (months of snapshots) the
   // DELETE can block for 500ms-2s and delay the first polling cycle.
-  // cleanup is now async (yields between batches) — fire-and-forget so the
-  // history seed doesn't wait on it.
+  // cleanup yields between batches — fire-and-forget so the history seed
+  // doesn't wait on it.
   setImmediate(() => {
     void (async () => {
       try {
-        const retentionMinutes = getSettings().retentionMinutes
+        const retentionMinutes = (await getSettings()).retentionMinutes
         const retentionDays = retentionMinutes / (60 * 24)
         await metricsRepository.cleanup(retentionDays)
       } catch (err) {
-        log.warn('[worker] SQLite cleanup:', err)
+        log.warn('[worker] retention cleanup:', err)
       }
     })()
   })
@@ -262,13 +266,16 @@ function loadHistoryFromDb(servers: CollectMetricsRequest[]): void {
 
   if (recordIdToSid.size > 0) {
     try {
-      const allHistory = metricsRepository.findLastNBulk([...recordIdToSid.keys()], MAX_HISTORY)
+      const allHistory = await metricsRepository.findLastNBulk(
+        [...recordIdToSid.keys()],
+        MAX_HISTORY
+      )
       for (const [recordId, snapshots] of Object.entries(allHistory)) {
         const sid = recordIdToSid.get(recordId)
         if (sid && snapshots.length > 0) metricsHistory.set(sid, snapshots)
       }
     } catch (err) {
-      log.warn('[worker] SQLite load history bulk:', err)
+      log.warn('[worker] load history bulk:', err)
     }
   }
 }
@@ -444,7 +451,7 @@ function rebuildOpenAlertKeys(): void {
 // ---------------------------------------------------------------------------
 
 async function runJob(sid: string, job: PollJob): Promise<void> {
-  const allCustomFields = getAllCustomFields()
+  const allCustomFields = await getAllCustomFields()
 
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined
   // AbortController propagated to the collector: on timeout we close the pool immediately
@@ -505,18 +512,21 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     enqueueBatchPush(sid, delta)
     processAlerts(sid, enrichedMetrics)
 
-    // Persist database list to SQLite for instant availability on next startup.
+    // Persist database list for instant availability on next startup.
     // Full snapshot: upsert all + remove stale. Delta: upsert only changed + remove dropped.
     try {
       if (!delta.isDelta) {
-        serverDatabasesRepository.upsertDatabases(sid, enrichedMetrics.databases)
-        serverDatabasesRepository.deleteStale(sid, enrichedMetrics.databases.map((d) => d.name))
+        await serverDatabasesRepository.upsertDatabases(sid, enrichedMetrics.databases)
+        await serverDatabasesRepository.deleteStale(
+          sid,
+          enrichedMetrics.databases.map((d) => d.name)
+        )
       } else {
         if (delta.databases.length > 0) {
-          serverDatabasesRepository.upsertDatabases(sid, delta.databases)
+          await serverDatabasesRepository.upsertDatabases(sid, delta.databases)
         }
         if (delta.removedDbs?.length) {
-          serverDatabasesRepository.deleteByNames(sid, delta.removedDbs)
+          await serverDatabasesRepository.deleteByNames(sid, delta.removedDbs)
         }
       }
     } catch (err) {
@@ -533,7 +543,7 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
         srvRecord &&
         (srvRecord.logicalCpus !== logicalCpus || srvRecord.physicalCpus !== physicalCpus)
       ) {
-        serverStore.update(srvRecord.id, { logicalCpus, physicalCpus })
+        await serverStore.update(srvRecord.id, { logicalCpus, physicalCpus })
         pushToRenderer(IpcChannel.SERVER_CONFIG_UPDATED, [
           { ...srvRecord, logicalCpus, physicalCpus }
         ])
@@ -645,8 +655,12 @@ export function startWorker(req: WorkerStartRequest): void {
   stopWorker()
   activeIntervalMs = Math.max(30_000, Math.min(300_000, req.intervalSeconds * 1000))
   if (req.activeServerId) activeServerId = req.activeServerId
-  // Restore history from SQLite before scheduling any polls
-  loadHistoryFromDb(req.servers)
+  // Restore history before scheduling any polls — fire-and-forget so the
+  // first polling cycle can fire before the DB read completes. Stale history
+  // for ~1 cycle is acceptable; missing history would block dashboard load.
+  void loadHistoryFromDb(req.servers).catch((err) =>
+    log.warn('[worker] loadHistoryFromDb failed:', err)
+  )
   // Stagger initial polls across the full interval window (except for the
   // active server, which fires immediately so the dashboard shows fresh data).
   // Without this, all N servers would queue at Date.now() and only BATCH_SIZE
@@ -708,7 +722,7 @@ export function stopWorker(): void {
   if (saveFlushTimer) {
     clearTimeout(saveFlushTimer)
     saveFlushTimer = null
-    flushSaveQueue()
+    void flushSaveQueue()
   }
   jobs.clear()
   running = 0

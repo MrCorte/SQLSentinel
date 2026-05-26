@@ -16,15 +16,23 @@ vi.mock('electron', () => ({
   app: { isPackaged: false, getPath: () => '/tmp' }
 }))
 vi.mock('../collectors/sqlCollector', () => ({ collectMetrics: vi.fn() }))
-vi.mock('../store/dbCustomFields', () => ({ getAllCustomFields: vi.fn(() => ({})) }))
-vi.mock('../store/serverStore')
-vi.mock('../store/settings', () => ({
-  getSettings: vi.fn(() => ({ retentionMinutes: 60 }))
+vi.mock('../store/sqlserver/dbCustomFieldsRepository', () => ({
+  getAllCustomFields: vi.fn(async () => ({}))
 }))
-vi.mock('../store/metricsRepository', () => ({
-  cleanup: vi.fn(),
-  findLastNBulk: vi.fn(() => ({})),
-  batchSave: vi.fn()
+vi.mock('../store/sqlserver/serverRepository')
+vi.mock('../store/sqlserver/settingsRepository', () => ({
+  getSettings: vi.fn(async () => ({ retentionMinutes: 60 }))
+}))
+vi.mock('../store/sqlserver/metricsRepository', () => ({
+  cleanup: vi.fn(async () => {}),
+  findLastNBulk: vi.fn(async () => ({})),
+  batchSave: vi.fn(async () => {})
+}))
+vi.mock('../store/sqlserver/serverDatabasesRepository', () => ({
+  upsertDatabases: vi.fn(async () => {}),
+  deleteStale: vi.fn(async () => {}),
+  deleteByNames: vi.fn(async () => {}),
+  getAllGroupedByServer: vi.fn(async () => ({}))
 }))
 vi.mock('../collectors/agCollector', () => ({
   detectAndSyncReplicaRoles: vi.fn(() => Promise.resolve([]))

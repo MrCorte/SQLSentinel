@@ -1,5 +1,5 @@
-import * as serverStore from '../store/serverStore'
-import * as metricsRepository from '../store/metricsRepository'
+import * as serverStore from '../store/sqlserver/serverRepository'
+import * as metricsRepository from '../store/sqlserver/metricsRepository'
 import { getAlerts } from '../metricsWorker'
 
 export interface AiContext {
@@ -39,7 +39,7 @@ export async function gatherContext(): Promise<AiContext> {
   }))
 
   const ids = servers.map((s) => s.id)
-  const bulk = metricsRepository.findLastNBulk(ids, 1)
+  const bulk = await metricsRepository.findLastNBulk(ids, 1)
 
   const metrics = Object.entries(bulk)
     .filter(([, snaps]) => snaps.length > 0)

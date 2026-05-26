@@ -4,9 +4,9 @@
  * Extracts non-trivial CSV generation logic from system.ipc.ts so it can be
  * tested independently of the Electron IPC layer.
  */
-import { getAllCustomFields } from '../store/dbCustomFields'
+import { getAllCustomFields } from '../store/sqlserver/dbCustomFieldsRepository'
 import { getAlerts } from '../metricsWorker'
-import * as serverStore from '../store/serverStore'
+import * as serverStore from '../store/sqlserver/serverRepository'
 import type { DbCustomFields } from '../ipc/types'
 
 // ---------------------------------------------------------------------------
@@ -33,8 +33,8 @@ export function serverKey(ip: string, port: number): string {
 // ---------------------------------------------------------------------------
 
 /** Generates a CSV string of all custom DB fields (alias, referente). */
-export function exportCustomFieldsCsv(): string {
-  const all = getAllCustomFields()
+export async function exportCustomFieldsCsv(): Promise<string> {
+  const all = await getAllCustomFields()
   const rows = Object.entries(all).map(([key, fields]: [string, DbCustomFields]) => {
     const slash = key.indexOf('/')
     const serverId = slash >= 0 ? key.slice(0, slash) : key
@@ -45,8 +45,8 @@ export function exportCustomFieldsCsv(): string {
 }
 
 /** Generates a CSV string of the full server inventory with DB counts. */
-export function exportInventoryCsv(): string {
-  const all = getAllCustomFields()
+export async function exportInventoryCsv(): Promise<string> {
+  const all = await getAllCustomFields()
   const header = 'ip,port,reachable,added_at,databases'
   const rows = serverStore.getAllStripped().map((s) => {
     const sid = serverKey(s.host, s.port)

@@ -28,6 +28,11 @@ export interface AiRecommendations {
   items: AiRecommendationItem[]
 }
 
+export interface IncidentAiSections {
+  rootCause?: string
+  recommendedFix?: string
+}
+
 interface BuildAiWorkspaceSummaryInput {
   events: IncidentEvent[]
   actions: IncidentAction[]
@@ -47,15 +52,33 @@ function payloadValue(event: IncidentEvent, key: string): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
-function extractRecommendedFix(text?: string): string | undefined {
+export function parseIncidentAiSections(text?: string): IncidentAiSections {
   const source = text?.trim()
-  if (!source) return undefined
+  if (!source) return {}
 
-  const sectionMatch = source.match(
-    /##\s*Recommended Fix\s*\n([\s\S]*?)(?=\n##\s+|$)/i
+  const rootCauseMatch = source.match(/(?:^|\n)##\s*Root Cause\s*\n([\s\S]*?)(?=\n##\s+|$)/i)
+  const recommendedFixMatch = source.match(
+    /(?:^|\n)##\s*Recommended Fix\s*\n([\s\S]*?)(?=\n##\s+|$)/i
   )
-  if (sectionMatch?.[1]?.trim()) return sectionMatch[1].trim()
-  return undefined
+
+  const rootCause = rootCauseMatch?.[1]?.trim()
+  const recommendedFix = recommendedFixMatch?.[1]?.trim()
+
+  if (rootCause || recommendedFix) {
+    return {
+      rootCause:
+        rootCause ||
+        source
+          .slice(0, recommendedFixMatch?.index ?? source.length)
+          .trim()
+          .replace(/^##\s*Root Cause\s*/i, '')
+          .trim() ||
+        undefined,
+      recommendedFix: recommendedFix || undefined
+    }
+  }
+
+  return { rootCause: source }
 }
 
 export function buildAiWorkspaceSummary({
@@ -116,7 +139,9 @@ export function buildAiRecommendations({
   const payload = latestLlmMessage?.payload as Record<string, unknown> | undefined
   const rootCauseText =
     (typeof payload?.rootCauseMd === 'string' && payload.rootCauseMd.trim()) || rootCauseMd?.trim()
-  const recommendedFix = extractRecommendedFix(rootCauseText)
+  const recommendedFix =
+    (typeof payload?.recommendedFix === 'string' && payload.recommendedFix.trim()) ||
+    parseIncidentAiSections(rootCauseText).recommendedFix
   const note =
     recommendedFix ||
     (typeof payload?.summary === 'string' && payload.summary.trim()) ||

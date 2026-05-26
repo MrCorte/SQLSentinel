@@ -106,7 +106,7 @@ export const WAIT_STATS: WaitStatEntry[] = [
 ]
 
 const WAIT_TYPE_SET = new Set(WAIT_STATS.map((w) => w.type))
-const WAIT_KEYWORDS = ['wait', 'attesa', 'blocking', 'lock', 'latch', 'tempdb contention', 'parallelism', 'cxpacket']
+const WAIT_KEYWORDS = ['wait', 'attes', 'blocking', 'lock', 'latch', 'tempdb contention', 'parallelism', 'cxpacket']
 
 // Returns true if the question text or any of the surrounding context (e.g.
 // recent alert messages) mentions a known wait type or a wait-stats keyword.

@@ -16,8 +16,16 @@ interface Entry {
 
 const _cache = new Map<string, Entry>()
 
-export function getCached(question: string): string | null {
-  const key = hashQuestion(question)
+// Cache keys include the target server id (when present) so the cached
+// response — which embeds server-specific metrics/schema/alerts — is never
+// replayed for a different server.
+function makeKey(question: string, targetServerId?: string | null): string {
+  const qHash = hashQuestion(question)
+  return targetServerId ? `${targetServerId}::${qHash}` : `*::${qHash}`
+}
+
+export function getCached(question: string, targetServerId?: string | null): string | null {
+  const key = makeKey(question, targetServerId)
   const entry = _cache.get(key)
   if (!entry) return null
   if (Date.now() - entry.storedAt > TTL_MS) {
@@ -27,13 +35,13 @@ export function getCached(question: string): string | null {
   // Refresh LRU position
   _cache.delete(key)
   _cache.set(key, entry)
-  log.info(`cache hit key=${key.slice(0, 8)} age=${((Date.now() - entry.storedAt) / 1000).toFixed(1)}s`)
+  log.info(`cache hit key=${key.slice(0, 16)} age=${((Date.now() - entry.storedAt) / 1000).toFixed(1)}s`)
   return entry.response
 }
 
-export function putCached(question: string, response: string): void {
+export function putCached(question: string, response: string, targetServerId?: string | null): void {
   if (!response || response.trim().length < 20) return // don't cache empty / error blurbs
-  const key = hashQuestion(question)
+  const key = makeKey(question, targetServerId)
   if (_cache.size >= CACHE_MAX) {
     const oldest = _cache.keys().next().value
     if (oldest !== undefined) _cache.delete(oldest)
@@ -41,10 +49,13 @@ export function putCached(question: string, response: string): void {
   _cache.set(key, { response, storedAt: Date.now() })
 }
 
-// Invalidate when the user thumbs-up/down a response — they want the model
-// to potentially re-evaluate similar questions.
+// Invalidate every cached variant of the question (any server) — the user's
+// thumbs-up/down means the answer needs to be re-evaluated everywhere.
 export function invalidate(question: string): void {
-  _cache.delete(hashQuestion(question))
+  const qHash = hashQuestion(question)
+  for (const key of _cache.keys()) {
+    if (key.endsWith(`::${qHash}`)) _cache.delete(key)
+  }
 }
 
 export function clearCache(): void {

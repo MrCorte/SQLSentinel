@@ -50,50 +50,87 @@ export async function getTargetSchemaBlock(serverId: string): Promise<string | n
 
   try {
     const pool = await getPool(sc)
+    // sys.objects is per-current-database; the pool defaults to master where
+    // is_ms_shipped=0 returns nothing useful. We enumerate user DBs first and
+    // run a USE-prefixed query per database via sys.master_files joins.
+    // Single round-trip via dynamic SQL: build a UNION ALL across user DBs.
+    const dbList = await pool.request().query<{ name: string }>(`
+      SELECT name FROM sys.databases
+      WHERE database_id > 4
+        AND state_desc = 'ONLINE'
+        AND HAS_DBACCESS(name) = 1
+      ORDER BY name
+    `)
+    const dbNames = dbList.recordset.map((r) => r.name)
+    if (dbNames.length === 0) {
+      _cache.set(serverId, { text: '', fetchedAt: Date.now() })
+      return ''
+    }
+
+    // Build a UNION ALL across each user DB. Database names from sys.databases
+    // are safe to bracket-quote (they cannot contain `]` without `]]` escape
+    // which we guard against to be safe).
+    const safeNames = dbNames.filter((n) => !n.includes(']'))
+    const unionSql = safeNames
+      .map(
+        (db) => `
+        SELECT '${db.replace(/'/g, "''")}' AS database_name,
+               s.name AS schema_name,
+               o.name AS object_name,
+               o.type_desc AS object_type,
+               SUM(ISNULL(ps.used_page_count, 0)) AS pages
+        FROM [${db}].sys.objects o
+        INNER JOIN [${db}].sys.schemas s ON s.schema_id = o.schema_id
+        LEFT JOIN [${db}].sys.dm_db_partition_stats ps
+          ON ps.object_id = o.object_id AND ps.index_id IN (0, 1)
+        WHERE o.type IN ('U','V') AND o.is_ms_shipped = 0
+        GROUP BY s.name, o.name, o.type_desc`
+      )
+      .join('\nUNION ALL')
+
     const result = await pool.request().query<{
+      database_name: string
       schema_name: string
       object_name: string
       object_type: string
-      database_name: string
-    }>(`
-      SELECT TOP (${MAX_OBJECTS})
-        s.name      AS schema_name,
-        o.name      AS object_name,
-        o.type_desc AS object_type,
-        DB_NAME()   AS database_name
-      FROM sys.objects o
-      INNER JOIN sys.schemas s ON s.schema_id = o.schema_id
-      LEFT JOIN sys.dm_db_partition_stats ps
-        ON ps.object_id = o.object_id AND ps.index_id IN (0, 1)
-      WHERE o.type IN ('U','V')
-        AND o.is_ms_shipped = 0
-      GROUP BY s.name, o.name, o.type_desc
-      ORDER BY SUM(ISNULL(ps.used_page_count, 0)) DESC, o.name
-    `)
+      pages: number
+    }>(`SELECT TOP (${MAX_OBJECTS}) database_name, schema_name, object_name, object_type, pages
+        FROM (${unionSql}) AS x
+        ORDER BY pages DESC, database_name, object_name`)
     const rows = result.recordset
     if (rows.length === 0) {
       _cache.set(serverId, { text: '', fetchedAt: Date.now() })
       return ''
     }
-    const dbName = rows[0].database_name
-    const tables = rows.filter((r) => r.object_type === 'USER_TABLE')
-    const views = rows.filter((r) => r.object_type === 'VIEW')
-    const lines: string[] = [`Database: ${dbName}`]
-    if (tables.length > 0) {
-      lines.push(
-        `Tables (${tables.length}): ` +
-          tables.map((t) => `${t.schema_name}.${t.object_name}`).join(', ')
-      )
+
+    // Group by database for readability
+    type Row = (typeof rows)[number]
+    const byDb = new Map<string, Row[]>()
+    for (const r of rows) {
+      const arr = byDb.get(r.database_name) ?? []
+      arr.push(r)
+      byDb.set(r.database_name, arr)
     }
-    if (views.length > 0) {
-      lines.push(
-        `Views (${views.length}): ` +
-          views.map((v) => `${v.schema_name}.${v.object_name}`).join(', ')
-      )
+    const lines: string[] = []
+    for (const [db, objs] of byDb) {
+      const tables = objs.filter((o) => o.object_type === 'USER_TABLE')
+      const views = objs.filter((o) => o.object_type === 'VIEW')
+      const parts: string[] = [`[${db}]`]
+      if (tables.length > 0) {
+        parts.push(
+          `  tables: ` + tables.map((t) => `${t.schema_name}.${t.object_name}`).join(', ')
+        )
+      }
+      if (views.length > 0) {
+        parts.push(`  views: ` + views.map((v) => `${v.schema_name}.${v.object_name}`).join(', '))
+      }
+      lines.push(parts.join('\n'))
     }
     const text = lines.join('\n')
     _cache.set(serverId, { text, fetchedAt: Date.now() })
-    log.info(`fetched schema for ${serverId}: ${tables.length} tables, ${views.length} views`)
+    log.info(
+      `fetched schema for ${serverId}: ${rows.length} objects across ${byDb.size} DBs`
+    )
     return text
   } catch (err) {
     invalidatePool(sc)

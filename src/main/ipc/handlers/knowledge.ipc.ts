@@ -16,6 +16,7 @@ import {
   removeRow as removeFeedbackRow,
   preWarm as preWarmFeedbackIndex
 } from '../../ai/feedbackIndex'
+import { invalidate as invalidateResponseCache } from '../../ai/responseCache'
 import {
   insertFeedback,
   listAll as listAllFeedback,
@@ -125,6 +126,10 @@ export function registerKnowledgeHandlers(): void {
         if (input.rating === 1 && vec) {
           addFeedbackRow({ id, question: input.question, response: input.response, vec })
         }
+        // Drop any cached response for this question so a re-ask reflects the
+        // user's signal — especially important on 👎 where the cache would
+        // otherwise replay the (now disliked) answer for up to 10 minutes.
+        invalidateResponseCache(input.question)
         return { ok: true, data: id }
       } catch (err) {
         log.error('[IPC] AI_SAVE_FEEDBACK:', safeError(err))

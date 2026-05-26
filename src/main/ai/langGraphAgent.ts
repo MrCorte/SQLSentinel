@@ -521,8 +521,9 @@ export async function langGraphStream(
 ): Promise<void> {
   // Fast path: same question answered <10 min ago → replay the cached text.
   // Skipped when there's chat history (the question may depend on prior turns).
+  // Cache key includes the target server so cross-server replays are impossible.
   if (history.length === 0) {
-    const cached = getCached(question)
+    const cached = getCached(question, options?.targetServerId)
     if (cached) {
       onEvent({ type: 'tool_start', name: 'cached_response' })
       onEvent({ type: 'tool_end', name: 'cached_response', output: '(replayed from cache)' })
@@ -697,7 +698,7 @@ export async function langGraphStream(
         if (controller.signal.aborted || _activeAbortController !== controller) return
         if (event.type === 'token') streamedBuffer += event.text
         if (event.type === 'done' && history.length === 0 && streamedBuffer.length > 0) {
-          putCached(question, streamedBuffer)
+          putCached(question, streamedBuffer, options?.targetServerId)
         }
         onEvent(event)
       }

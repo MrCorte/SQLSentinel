@@ -26,9 +26,11 @@ interface IndexEntry {
 
 let _entries: IndexEntry[] = []
 let _loaded = false
+// Single-flight guard: concurrent callers (startup + first findSimilar) share
+// the same Promise instead of each firing its own listEmbeddable() query.
+let _inflight: Promise<void> | null = null
 
-export async function preWarm(): Promise<void> {
-  if (_loaded) return
+async function doPreWarm(): Promise<void> {
   try {
     const rows = await listEmbeddable()
     _entries = rows
@@ -44,6 +46,17 @@ export async function preWarm(): Promise<void> {
   } catch (err) {
     // Storage may not be configured yet on first boot — try again later
     log.warn('preWarm failed:', err instanceof Error ? err.message : String(err))
+  }
+}
+
+export async function preWarm(): Promise<void> {
+  if (_loaded) return
+  if (_inflight) return _inflight
+  _inflight = doPreWarm()
+  try {
+    await _inflight
+  } finally {
+    _inflight = null
   }
 }
 
@@ -93,6 +106,7 @@ export function removeRow(id: string): void {
 export function reset(): void {
   _entries = []
   _loaded = false
+  _inflight = null
 }
 
 export function size(): number {

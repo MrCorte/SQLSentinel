@@ -1,18 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// langGraphStream calls getLlm().stream() directly — mock ChatOllama, not the agent.
-const mockLlmStream = vi.fn()
-const mockLlmInvoke = vi.fn()
-vi.mock('@langchain/ollama', () => {
-  // Real class — getLlm() does `new ChatOllama(...)`. A vi.fn returning an
-  // object literal is not a constructor and would crash at instantiation.
-  class ChatOllama {
-    stream = mockLlmStream
-    invoke = mockLlmInvoke
-  }
-  return { ChatOllama }
-})
-vi.mock('@langchain/langgraph/prebuilt', () => ({ createReactAgent: vi.fn() }))
+const mockProviderStream = vi.fn()
+const mockProviderHealth = vi.fn(async () => true)
+vi.mock('../providers', () => ({
+  getProvider: vi.fn(() => ({
+    name: 'claude',
+    model: 'claude-test',
+    health: mockProviderHealth,
+    stream: mockProviderStream
+  }))
+}))
 vi.mock('../../store/serverStore', () => ({
   getAll: vi.fn(() => []),
   getAllStripped: vi.fn(() => [])
@@ -20,48 +17,47 @@ vi.mock('../../store/serverStore', () => ({
 vi.mock('../../store/metricsRepository', () => ({ findLastNBulk: vi.fn(() => ({})) }))
 vi.mock('../../metricsWorker', () => ({ getAlerts: vi.fn(() => []) }))
 vi.mock('../../store/ftsRepository', () => ({ searchFts: vi.fn(() => []) }))
-// Ollama health: assume reachable so the stream proceeds past the gate.
-vi.mock('../ollama', () => ({
-  OLLAMA_HOST: 'http://localhost:11434',
-  checkOllamaHealth: vi.fn(async () => true)
-}))
-
-import { langGraphStream, abortActiveStream } from '../langGraphAgent'
+vi.mock('../../store/vecRepository', () => ({ semanticSearch: vi.fn(async () => [
+  { title: 'Mock Semantic', text: 'Relevant semantic result.', score: 0.82 }
+]) }))
+import { langGraphAsk, langGraphStream, abortActiveStream } from '../langGraphAgent'
 import type { AiStreamEvent } from '../../ipc/types'
-
-function makeLlmStream(texts: string[]): AsyncIterable<{ content: string }> {
-  return {
-    [Symbol.asyncIterator]() {
-      let i = 0
-      return {
-        async next() {
-          if (i >= texts.length) return { done: true, value: undefined }
-          return { done: false, value: { content: texts[i++] } }
-        }
-      }
-    }
-  }
-}
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockProviderHealth.mockResolvedValue(true)
+  mockProviderStream.mockImplementation(async (req) => {
+    req.onEvent({ type: 'token', text: 'Hello world' })
+    req.onEvent({ type: 'done' })
+  })
 })
 
 describe('langGraphStream', () => {
-  it('emits token events for LLM output', async () => {
-    mockLlmStream.mockReturnValue(makeLlmStream(['Hello', ' world']))
+  it('langGraphAsk returns text from the configured provider path', async () => {
+    const answer = await langGraphAsk('test', [])
 
+    expect(answer).toBe('Hello world')
+    expect(mockProviderStream).toHaveBeenCalledOnce()
+  })
+
+  it('emits token events for LLM output', async () => {
     const events: AiStreamEvent[] = []
     await langGraphStream('test', [], (e) => events.push(e))
 
-    expect(events).toContainEqual({ type: 'token', text: 'Hello' })
-    expect(events).toContainEqual({ type: 'token', text: ' world' })
+    expect(events).toContainEqual({ type: 'token', text: 'Hello world' })
     expect(events[events.length - 1]).toEqual({ type: 'done' })
   })
 
-  it('emits tool_start and tool_end for the three parallel tools', async () => {
-    mockLlmStream.mockReturnValue(makeLlmStream([]))
+  it('streams through the configured provider instead of hardcoded Ollama', async () => {
+    const events: AiStreamEvent[] = []
+    await langGraphStream('test', [], (e) => events.push(e))
 
+    expect(mockProviderHealth).toHaveBeenCalledOnce()
+    expect(mockProviderStream).toHaveBeenCalledOnce()
+    expect(mockProviderStream.mock.calls[0][0].systemPrompt).toContain('SQL Server DBA assistant')
+  })
+
+  it('emits tool_start and tool_end for all six parallel tools', async () => {
     const events: AiStreamEvent[] = []
     await langGraphStream('test', [], (e) => events.push(e))
 
@@ -69,49 +65,36 @@ describe('langGraphStream', () => {
     expect(toolNames).toContain('get_server_metrics')
     expect(toolNames).toContain('get_recent_alerts')
     expect(toolNames).toContain('search_sql_documentation')
+    expect(toolNames).toContain('get_slow_queries')
+    expect(toolNames).toContain('get_server_notes')
+    expect(toolNames).toContain('semantic_knowledge_search')
+  })
+
+  it('injects <<SEMANTIC_DOCS>> block when semantic search returns results', async () => {
+    await langGraphStream('blocking query', [], () => {})
+
+    const systemPrompt = mockProviderStream.mock.calls[0][0].systemPrompt as string
+    expect(systemPrompt).toContain('<<SEMANTIC_DOCS>>')
+    expect(systemPrompt).toContain('Mock Semantic')
   })
 
   it('emits error event when LLM stream throws', async () => {
-    mockLlmStream.mockReturnValue({
-      [Symbol.asyncIterator]() {
-        return {
-          next: async () => {
-            throw new Error('Ollama down')
-          }
-        }
-      }
+    mockProviderStream.mockImplementation(async () => {
+      throw new Error('Provider down')
     })
 
     const events: AiStreamEvent[] = []
     await langGraphStream('test', [], (e) => events.push(e))
 
-    expect(events.find((e) => e.type === 'error')).toMatchObject({ type: 'error', message: 'Ollama down' })
+    expect(events.find((e) => e.type === 'error')).toMatchObject({ type: 'error', message: 'Provider down' })
   })
 
   it('stops emitting tokens once abortActiveStream() is called mid-stream', async () => {
-    let aborted = false
-    mockLlmStream.mockReturnValue({
-      [Symbol.asyncIterator]() {
-        let i = 0
-        return {
-          async next() {
-            // After the first chunk, abort and yield more chunks: the loop must
-            // break and the subsequent content must NOT surface as token events.
-            if (i === 0) {
-              i++
-              return { done: false, value: { content: 'before' } }
-            }
-            if (!aborted) {
-              aborted = true
-              abortActiveStream()
-            }
-            if (i < 5) {
-              i++
-              return { done: false, value: { content: 'after' } }
-            }
-            return { done: true, value: undefined }
-          }
-        }
+    mockProviderStream.mockImplementation(async (req) => {
+      req.onEvent({ type: 'token', text: 'before' })
+      abortActiveStream()
+      if (!req.signal.aborted) {
+        req.onEvent({ type: 'token', text: 'after' })
       }
     })
 

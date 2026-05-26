@@ -125,6 +125,10 @@ def ingest(db_path: Path, reset: bool = False) -> None:
                 time.sleep(2)
                 continue
 
+            if len(embeddings) != len(texts):
+                logger.error("Ollama returned %d embeddings for %d texts — skipping batch", len(embeddings), len(texts))
+                continue
+
             rows_to_insert = [
                 (title, chunk_idx, text, pack_embedding(emb))
                 for (title, chunk_idx, text), emb in zip(batch, embeddings)

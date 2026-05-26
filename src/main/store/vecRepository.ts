@@ -112,7 +112,7 @@ export async function semanticSearch(query: string, topK = 3): Promise<VecResult
   }))
 
   scored.sort((a, b) => b.score - a.score)
-  return scored.slice(0, topK)
+  return scored.filter((r) => r.score >= 0.35).slice(0, topK)
 }
 
 export function resetIndex(): void {

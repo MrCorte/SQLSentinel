@@ -59,7 +59,15 @@ export function ThumbsRow({
   return (
     <Box
       data-message-id={messageId}
-      sx={{ display: 'inline-flex', gap: 0.5, alignItems: 'center', mt: 0.5, opacity: 0.7 }}
+      sx={{
+        display: 'inline-flex',
+        gap: 0.5,
+        alignItems: 'center',
+        mt: 0.5,
+        opacity: 0.85,
+        transition: 'opacity 0.15s',
+        '&:hover': { opacity: 1 }
+      }}
     >
       <Tooltip title="Mark as helpful — stored locally for future few-shot examples">
         <span>
@@ -68,11 +76,12 @@ export function ThumbsRow({
             disabled={disabled}
             onClick={() => rate(1)}
             aria-label="thumbs up"
+            sx={{ color: currentRating === 1 ? 'success.main' : 'text.secondary' }}
           >
             {currentRating === 1 ? (
-              <ThumbUpIcon fontSize="inherit" />
+              <ThumbUpIcon fontSize="small" />
             ) : (
-              <ThumbUpAltOutlinedIcon fontSize="inherit" />
+              <ThumbUpAltOutlinedIcon fontSize="small" />
             )}
           </IconButton>
         </span>
@@ -84,11 +93,12 @@ export function ThumbsRow({
             disabled={disabled}
             onClick={() => rate(-1)}
             aria-label="thumbs down"
+            sx={{ color: currentRating === -1 ? 'error.main' : 'text.secondary' }}
           >
             {currentRating === -1 ? (
-              <ThumbDownIcon fontSize="inherit" />
+              <ThumbDownIcon fontSize="small" />
             ) : (
-              <ThumbDownAltOutlinedIcon fontSize="inherit" />
+              <ThumbDownAltOutlinedIcon fontSize="small" />
             )}
           </IconButton>
         </span>

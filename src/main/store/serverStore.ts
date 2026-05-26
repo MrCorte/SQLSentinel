@@ -211,6 +211,27 @@ export function getById(id: string): StoredServer | undefined {
   return match ? withDecryptedPassword(match) : undefined
 }
 
+/**
+ * Returns every server-store id that resolves to the same SQL Server instance
+ * (host + port + instanceName) as the given id. Used by the incident detector
+ * to dedupe alerts across duplicate registrations of the same physical instance.
+ * The result always contains at least the input id (when found).
+ */
+export function getInstanceAliases(id: string): string[] {
+  const raw = store.get('servers', [])
+  const me = raw.find((s) => s.id === id)
+  if (!me) return [id]
+  const host = me.host ?? me.ip
+  const port = me.port
+  const inst = me.instanceName ?? ''
+  return raw
+    .filter(
+      (s) =>
+        (s.host ?? s.ip) === host && s.port === port && (s.instanceName ?? '') === inst
+    )
+    .map((s) => s.id)
+}
+
 export function getByIpPort(host: string, port: number): StoredServer | undefined {
   const raw = store.get('servers', [])
   const match = raw.find((s) => (s.host ?? s.ip) === host && s.port === port)

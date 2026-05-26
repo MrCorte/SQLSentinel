@@ -1,11 +1,15 @@
 import { onIncidentAlert } from '../metricsWorker'
 import * as repository from './repository'
+import { getInstanceAliases } from '../store/serverStore'
 import { createLogger } from '../utils/logger'
 import type { Alert } from '../ipc/types'
 
 const log = createLogger('incident-detector')
 
-const GROUPING_WINDOW_MS = 15 * 60 * 1000
+// Dedup is now scoped to "the same SQL Server instance" (host:port:instanceName)
+// and "any active status" (open / investigating / awaiting_approval). A new alert
+// only spawns a fresh incident when no active one exists for that instance+category.
+// Resolved/archived incidents are explicitly NOT resurrected — they stay closed.
 
 const SEVERITY_RANK: Record<string, number> = { WARNING: 1, CRITICAL: 2 }
 
@@ -39,9 +43,12 @@ function handleAlert(alert: Alert): void {
     ? alert.detectedAt.getTime()
     : new Date(alert.detectedAt).getTime()
 
-  const existing = repository.findOpenByServerAndCategory(alert.serverId, alert.category)
+  // Resolve all serverIds that point to the SAME SQL Server instance, so two
+  // registrations of the same host:port:instanceName share one incident.
+  const aliases = getInstanceAliases(alert.serverId)
+  const existing = repository.findActiveForInstance(aliases, alert.category)
 
-  if (existing && detectedAt - existing.openedAt < GROUPING_WINDOW_MS) {
+  if (existing) {
     repository.addEvent(existing.id, 'alert_added', {
       alertId: alert.id,
       severity: alert.severity,

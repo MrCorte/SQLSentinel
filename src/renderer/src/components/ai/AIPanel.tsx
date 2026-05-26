@@ -285,24 +285,32 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
             const priorUser = isAssistant
               ? [...messages.slice(0, i)].reverse().find((m) => m.role === 'user')
               : null
-            const canRate = isAssistant && priorUser && providerSettings
+            // Show thumbs whenever we have an assistant reply paired with a
+            // prior user question. Fall back to sensible defaults if the
+            // provider settings haven't loaded yet — better than hiding.
+            const canRate = Boolean(isAssistant && priorUser)
+            const providerName = providerSettings?.provider ?? 'ollama'
+            const modelName =
+              providerSettings == null
+                ? 'unknown'
+                : providerSettings.provider === 'claude'
+                  ? providerSettings.claudeModel
+                  : providerSettings.ollamaModel
             return (
-              <Box key={msg.id}>
+              <Box key={msg.id} sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
                 <MessageBubble role={msg.role} content={msg.content} />
                 {canRate && (
-                  <ThumbsRow
-                    messageId={msg.id}
-                    question={priorUser!.content}
-                    response={msg.content}
-                    provider={providerSettings!.provider}
-                    model={
-                      providerSettings!.provider === 'claude'
-                        ? providerSettings!.claudeModel
-                        : providerSettings!.ollamaModel
-                    }
-                    currentRating={feedbackByMessageId[msg.id]}
-                    onSaved={(rating) => setFeedback(msg.id, rating)}
-                  />
+                  <Box sx={{ display: 'flex', justifyContent: 'flex-start', pl: 0.5 }}>
+                    <ThumbsRow
+                      messageId={msg.id}
+                      question={priorUser!.content}
+                      response={msg.content}
+                      provider={providerName}
+                      model={modelName}
+                      currentRating={feedbackByMessageId[msg.id]}
+                      onSaved={(rating) => setFeedback(msg.id, rating)}
+                    />
+                  </Box>
                 )}
               </Box>
             )

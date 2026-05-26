@@ -274,6 +274,39 @@ export function findOpenByServerAndCategory(
   return row ? rowToIncident(row) : null
 }
 
+/**
+ * Finds any "active" incident (open / investigating / awaiting_approval) for
+ * the same SQL Server instance (i.e. any of the given server-id aliases) and
+ * category. Used by the detector to dedupe alerts across server records that
+ * point to the same physical instance, and across status changes.
+ *
+ * @param serverIds  All server-store IDs that resolve to the same SQL Server
+ *                   instance (host:port:instanceName). Must contain at least one.
+ * @param category   Alert category to match.
+ */
+export function findActiveForInstance(
+  serverIds: string[],
+  category: AlertCategory
+): Incident | null {
+  if (serverIds.length === 0) return null
+  const db = stmts() // ensures _db is initialised; throw-through if not
+  void db
+  // Build the IN-list placeholder string. serverIds come from serverStore
+  // (UUIDs), never user input — but we keep them as bound parameters anyway.
+  const placeholders = serverIds.map(() => '?').join(',')
+  const sql = `SELECT * FROM incidents
+               WHERE server_id IN (${placeholders})
+                 AND category = ?
+                 AND status IN ('open','investigating','awaiting_approval')
+               ORDER BY opened_at DESC
+               LIMIT 1`
+  // Prepared per call; for typical instance sets (1-4 server records) the
+  // re-prepare cost is negligible vs. an IPC round trip.
+  const params: (string | AlertCategory)[] = [...serverIds, category]
+  const row = _db!.prepare<typeof params, IncidentRow>(sql).get(...params)
+  return row ? rowToIncident(row) : null
+}
+
 export function setIncidentStatus(id: string, status: IncidentStatus, resolvedAt?: number): void {
   stmts().updateStatus.run(
     status,

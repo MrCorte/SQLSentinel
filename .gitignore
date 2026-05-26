@@ -18,3 +18,7 @@ data/*.pdf
 docs/~$*
 docs/superpowers/
 docs/*.docx
+
+# Built locally / shipped via electron-builder extraResources — not in git
+knowledge-pipeline/knowledge_base.db
+knowledge-pipeline/__pycache__/

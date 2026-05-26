@@ -57,24 +57,23 @@ describe('langGraphStream', () => {
     expect(mockProviderStream.mock.calls[0][0].systemPrompt).toContain('SQL Server DBA assistant')
   })
 
-  it('emits tool_start and tool_end for all six parallel tools', async () => {
+  it('emits tool_start and tool_end for all five parallel tools', async () => {
     const events: AiStreamEvent[] = []
     await langGraphStream('test', [], (e) => events.push(e))
 
     const toolNames = events.filter((e) => e.type === 'tool_start').map((e) => (e as { type: 'tool_start'; name: string }).name)
     expect(toolNames).toContain('get_server_metrics')
     expect(toolNames).toContain('get_recent_alerts')
-    expect(toolNames).toContain('search_sql_documentation')
+    expect(toolNames).toContain('knowledge_retrieval')
     expect(toolNames).toContain('get_slow_queries')
     expect(toolNames).toContain('get_server_notes')
-    expect(toolNames).toContain('semantic_knowledge_search')
   })
 
-  it('injects <<SEMANTIC_DOCS>> block when semantic search returns results', async () => {
+  it('injects <<KNOWLEDGE>> block when semantic search returns results', async () => {
     await langGraphStream('blocking query', [], () => {})
 
     const systemPrompt = mockProviderStream.mock.calls[0][0].systemPrompt as string
-    expect(systemPrompt).toContain('<<SEMANTIC_DOCS>>')
+    expect(systemPrompt).toContain('<<KNOWLEDGE>>')
     expect(systemPrompt).toContain('Mock Semantic')
   })
 

@@ -34,6 +34,9 @@ import { IpcChannel } from './ipc/types'
 import * as serverStore from './store/serverStore'
 import { scanHost } from './discovery/tcpScanner'
 import { abortActiveStream, warmupModel } from './ai/langGraphAgent'
+import { preWarmIndex, warmupEmbedder } from './store/vecRepository'
+import { preWarm as preWarmFeedbackIndex } from './ai/feedbackIndex'
+import { reloadDynamicTsqlMap } from './ai/langGraphAgent'
 import { safeError as redactError } from './utils/safeLog'
 import { createLogger } from './utils/logger'
 import { connect, onStatusChange, serviceApi } from './serviceClient'
@@ -379,6 +382,12 @@ app.whenReady().then(async () => {
 
   // Pre-load the LLM into Ollama memory so the first AI query is fast
   warmupModel()
+  preWarmIndex()
+  warmupEmbedder()
+  // Load AI feedback (positive thumbs-up examples) and dynamic T-SQL map overlay
+  // — best-effort: they depend on SQL Server storage being configured.
+  preWarmFeedbackIndex().catch(() => {})
+  reloadDynamicTsqlMap().catch(() => {})
 
   setPushHandler((channel, data) => {
     BrowserWindow.getAllWindows().forEach((w) => {

@@ -38,6 +38,7 @@ import type { ThemeMode } from '../context/ThemeContext'
 import { createLogger } from '../utils/logger'
 import { notify } from '../store/notifyStore'
 import { PasswordField } from '../components/ui/PasswordField'
+import { AITrainingSection } from '../components/ai/AITrainingSection'
 import { StorageSetupPage } from './StorageSetupPage'
 import type { StorageConfigInfo, AiProviderSettings, AiProviderName } from '../../../preload/index'
 
@@ -1042,6 +1043,9 @@ export function Settings(): React.JSX.Element {
 
       {/* Card — AI Provider */}
       <AiProviderCard />
+
+      {/* Card — AI Training (feedback, promotion candidates, T-SQL map overlay) */}
+      <AITrainingSection />
 
       {/* Card — Storage Database */}
       <Card variant="outlined">

@@ -85,6 +85,39 @@ const TABLE_DDL: Array<{ name: string; sql: string }> = [
        text        NVARCHAR(MAX) NOT NULL,
        embedding   vector(1536)  NOT NULL
      )`
+  },
+  {
+    // User-collected thumbs up/down on AI assistant responses. Positive rows
+    // feed dynamic few-shot examples back into the system prompt. Embedding is
+    // VARBINARY (not vector(1536)) because nomic-embed-text is 768-dim.
+    name: 'ai_feedback',
+    sql: `CREATE TABLE dbo.ai_feedback (
+       id            NVARCHAR(36)  NOT NULL PRIMARY KEY DEFAULT LOWER(CONVERT(NVARCHAR(36), NEWID())),
+       question      NVARCHAR(2000) NOT NULL,
+       response      NVARCHAR(MAX) NOT NULL,
+       question_hash CHAR(64)      NOT NULL,
+       rating        SMALLINT      NOT NULL,
+       embedding     VARBINARY(MAX) NULL,
+       provider      NVARCHAR(20)  NOT NULL,
+       model         NVARCHAR(100) NOT NULL,
+       incident_id   NVARCHAR(36)  NULL,
+       created_at    DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
+       created_by    NVARCHAR(100) NULL
+     )`
+  },
+  {
+    // Dynamic overlay on the hardcoded TSQL_MAP — promoted patterns the user
+    // has approved via the Settings UI. lookupTsqlMap checks this table first.
+    name: 'ai_tsql_map',
+    sql: `CREATE TABLE dbo.ai_tsql_map (
+       id            NVARCHAR(36)  NOT NULL PRIMARY KEY DEFAULT LOWER(CONVERT(NVARCHAR(36), NEWID())),
+       key_name      NVARCHAR(100) NOT NULL UNIQUE,
+       aliases       NVARCHAR(MAX) NOT NULL,
+       tsql          NVARCHAR(MAX) NOT NULL,
+       promoted_from NVARCHAR(36)  NULL,
+       promoted_hash CHAR(64)      NULL,
+       created_at    DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME()
+     )`
   }
 ]
 
@@ -109,6 +142,16 @@ const INDEX_DDL: Array<{ table: string; name: string; sql: string }> = [
     table: 'rag_chunks',
     name: 'IX_rag_chunks_doc',
     sql: `CREATE INDEX IX_rag_chunks_doc ON dbo.rag_chunks(document_id)`
+  },
+  {
+    table: 'ai_feedback',
+    name: 'IX_ai_feedback_hash',
+    sql: `CREATE INDEX IX_ai_feedback_hash ON dbo.ai_feedback(question_hash)`
+  },
+  {
+    table: 'ai_feedback',
+    name: 'IX_ai_feedback_rating',
+    sql: `CREATE INDEX IX_ai_feedback_rating ON dbo.ai_feedback(rating)`
   }
 ]
 

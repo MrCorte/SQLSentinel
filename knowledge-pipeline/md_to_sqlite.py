@@ -383,4 +383,20 @@ def sync_single_note(md_path: Path, db_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 if __name__ == '__main__':
-    sync_vault_to_sqlite(VAULT_DIR, DB_PATH)
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Sync markdown notes into the SQLite knowledge base.')
+    parser.add_argument(
+        '--source-dir',
+        type=Path,
+        default=VAULT_DIR,
+        help=f'Directory to walk (recursively) for .md files. Default: {VAULT_DIR}',
+    )
+    parser.add_argument(
+        '--db',
+        type=Path,
+        default=DB_PATH,
+        help=f'Destination SQLite database. Default: {DB_PATH}',
+    )
+    args = parser.parse_args()
+    sync_vault_to_sqlite(args.source_dir, args.db)

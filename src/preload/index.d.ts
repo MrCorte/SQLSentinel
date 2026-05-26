@@ -563,6 +563,55 @@ export interface AiProviderSettings {
   agentActionsEnabled: boolean
 }
 
+export interface AiFeedbackSaveInput {
+  question: string
+  response: string
+  rating: 1 | -1
+  provider: string
+  model: string
+  incidentId?: string | null
+}
+
+export interface AiFeedbackRecord {
+  id: string
+  question: string
+  response: string
+  rating: 1 | -1
+  provider: string
+  model: string
+  incidentId: string | null
+  createdAt: string
+  createdBy: string | null
+  hasEmbedding: boolean
+}
+
+export interface PromotionCandidateDto {
+  questionHash: string
+  exampleQuestion: string
+  upvotes: number
+  bestResponse: string
+  latestProvider: string
+  latestModel: string
+}
+
+export interface TsqlMapEntryDto {
+  id: string
+  keyName: string
+  aliases: string[]
+  tsql: string
+  promotedFrom: string | null
+  promotedHash: string | null
+  createdAt: string
+  origin: 'builtin' | 'promoted'
+}
+
+export interface PromoteToTsqlMapInput {
+  keyName: string
+  aliases: string[]
+  tsql: string
+  promotedHash: string
+}
+
 export interface SqlSentinelAPI {
   runtimeVersions(): RuntimeVersions
   appVersion(): Promise<IpcResult<{ version: string }>>
@@ -649,13 +698,21 @@ export interface SqlSentinelAPI {
   ): Promise<IpcResult<string>>
   aiAgentStream(
     question: string,
-    history: Array<{ role: 'user' | 'assistant'; content: string }>
+    history: Array<{ role: 'user' | 'assistant'; content: string }>,
+    options?: { targetServerId?: string }
   ): Promise<IpcResult<void>>
   aiAgentCancel(): Promise<void>
   onAiStreamEvent(callback: (event: AiStreamEvent) => void): () => void
   aiGetSettings(): Promise<IpcResult<AiProviderSettings>>
   aiSaveSettings(settings: Partial<AiProviderSettings>): Promise<IpcResult<null>>
   aiCheckProvider(): Promise<IpcResult<boolean>>
+  aiSaveFeedback(input: AiFeedbackSaveInput): Promise<IpcResult<string>>
+  aiListFeedback(): Promise<IpcResult<AiFeedbackRecord[]>>
+  aiDeleteFeedback(id: string): Promise<IpcResult<void>>
+  aiListPromotionCandidates(): Promise<IpcResult<PromotionCandidateDto[]>>
+  aiPromoteToTsqlMap(input: PromoteToTsqlMapInput): Promise<IpcResult<string>>
+  aiListTsqlMap(): Promise<IpcResult<TsqlMapEntryDto[]>>
+  aiDeleteTsqlMapEntry(id: string): Promise<IpcResult<void>>
   incidents: {
     list(req?: { status?: IncidentStatus }): Promise<IpcResult<Incident[]>>
     get(id: string): Promise<IpcResult<IncidentDetail>>

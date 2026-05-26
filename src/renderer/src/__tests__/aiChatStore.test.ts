@@ -72,3 +72,41 @@ describe('aiChatStore streaming state', () => {
     expect(state.toolSteps).toHaveLength(0)
   })
 })
+
+describe('aiChatStore feedback', () => {
+  it('addMessage assigns a stable id when none is provided', () => {
+    const s = getStore()
+    s.addMessage({ role: 'user', content: 'hi', ts: 1 })
+    const msg = getStore().messages[0]
+    expect(msg.id).toBeTruthy()
+    expect(typeof msg.id).toBe('string')
+  })
+
+  it('setFeedback updates feedbackByMessageId', () => {
+    const s = getStore()
+    s.addMessage({ role: 'assistant', content: 'ans', ts: 1 })
+    const msg = getStore().messages[0]
+    s.setFeedback(msg.id, 1)
+    expect(getStore().feedbackByMessageId[msg.id]).toBe(1)
+    s.setFeedback(msg.id, -1)
+    expect(getStore().feedbackByMessageId[msg.id]).toBe(-1)
+  })
+
+  it('clear resets feedbackByMessageId', () => {
+    const s = getStore()
+    s.addMessage({ role: 'assistant', content: 'a', ts: 1 })
+    s.setFeedback(getStore().messages[0].id, 1)
+    s.clear()
+    expect(getStore().feedbackByMessageId).toEqual({})
+  })
+
+  it('finalizeStreaming produces messages with stable ids', () => {
+    const s = getStore()
+    s.startStreaming()
+    s.appendToken('hello')
+    s.finalizeStreaming()
+    const msg = getStore().messages[0]
+    expect(msg.id).toBeTruthy()
+    expect(msg.role).toBe('assistant')
+  })
+})

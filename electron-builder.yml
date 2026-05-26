@@ -20,6 +20,8 @@ extraResources:
     to: scripts/install-service.cjs
   - from: scripts/uninstall-service.cjs
     to: scripts/uninstall-service.cjs
+  - from: knowledge-pipeline/knowledge_base.db
+    to: knowledge_base.db
 win:
   executableName: sqlsentinel
 nsis:

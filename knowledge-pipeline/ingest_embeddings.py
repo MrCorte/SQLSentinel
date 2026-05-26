@@ -32,6 +32,8 @@ OLLAMA_EMBED_URL = "http://127.0.0.1:11434/api/embed"
 EMBED_MODEL = "nomic-embed-text"
 BATCH_SIZE = 16
 CHUNK_SIZE = 600  # characters per chunk when splitting long content
+CHUNK_OVERLAP = 100  # trailing chars of chunk N prepended to chunk N+1 — preserves
+                    #   context across boundaries (e.g. T-SQL queries split mid-statement)
 
 DDL = """
 CREATE TABLE IF NOT EXISTS knowledge_embeddings (
@@ -50,19 +52,30 @@ def pack_embedding(vec: list[float]) -> bytes:
     return struct.pack(f'{len(vec)}f', *vec)
 
 
-def split_chunks(text: str, size: int = CHUNK_SIZE) -> list[str]:
+def split_chunks(text: str, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
     paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
-    chunks: list[str] = []
+    raw: list[str] = []
     current = ""
     for para in paragraphs:
         if len(current) + len(para) > size and current:
-            chunks.append(current.strip())
+            raw.append(current.strip())
             current = para
         else:
             current = f"{current}\n\n{para}" if current else para
     if current:
-        chunks.append(current.strip())
-    return chunks or [text[:size]]
+        raw.append(current.strip())
+    if not raw:
+        return [text[:size]]
+
+    # Prepend the trailing `overlap` chars of chunk N to chunk N+1 so semantic
+    # context (e.g. mid-paragraph T-SQL) isn't lost at the boundary.
+    if overlap <= 0 or len(raw) == 1:
+        return raw
+    out = [raw[0]]
+    for i in range(1, len(raw)):
+        tail = raw[i - 1][-overlap:]
+        out.append(f"{tail}\n\n{raw[i]}")
+    return out
 
 
 def embed_batch(texts: list[str]) -> list[list[float]]:
@@ -133,6 +146,9 @@ def ingest(db_path: Path, reset: bool = False) -> None:
                 (title, chunk_idx, text, pack_embedding(emb))
                 for (title, chunk_idx, text), emb in zip(batch, embeddings)
             ]
+            # INSERT OR IGNORE: skips rows whose (title, chunk_idx) already exists.
+            # If you need to refresh embeddings (e.g. after changing the model or
+            # chunk strategy), re-run with --reset to drop and rebuild the table.
             conn.executemany(
                 "INSERT OR IGNORE INTO knowledge_embeddings (title, chunk_idx, text, embedding) VALUES (?, ?, ?, ?)",
                 rows_to_insert,

@@ -3,6 +3,41 @@
 All relevant changes are documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Unreleased]
+
+### Added
+- **Response cache** — same question answered <10 min ago is replayed from an in-memory LRU (50 entries) without round-tripping the LLM. FAQ queries now return in <1ms instead of 3-5s
+- **Schema awareness** — when an AI question targets a specific server, top-100 tables/views are fetched (with 10-min cache per server) and injected as `<<TARGET_SCHEMA>>`. Stops the model from inventing table/column names
+- **Wait stats reference** — curated 40-entry table covering LCK/PAGEIOLATCH/WRITELOG/HADR/etc. with meaning + fix hint per wait type. Auto-injected when alerts/question mention waits or specific wait types
+- **AI feedback loop** — thumbs up/down on assistant responses in AI Panel and Incident Detail Drawer; positive examples persisted to `dbo.ai_feedback` with the question's embedding and used as dynamic `<<PAST_EXAMPLES>>` few-shot blocks in the system prompt (top-2 by cosine, threshold 0.6)
+- **T-SQL map promotion** — when a question pattern accumulates ≥3 thumbs-up, Settings → AI Training surfaces it as a promotion candidate; a one-click dialog adds the T-SQL to a dynamic `dbo.ai_tsql_map` overlay queried by `lookupTsqlMap` before the hardcoded `TSQL_MAP_BUILTIN`
+- **Settings → AI Training** section: Examples list (filter all/up/down, delete), Promotion candidates (≥3 upvotes, promote dialog), Active T-SQL map (built-in vs promoted, revert promoted)
+- Shared `embedder.ts` module — `getQueryEmbedding` and `warmupEmbedder` extracted from `vecRepository` so the feedback index reuses the same 100-entry LRU cache and 5s timeout logic
+- `feedbackIndex.ts` — in-memory positive-feedback index loaded at startup; `findSimilar` + `addRow` / `removeRow` keep it fresh without app restart
+- 23 new tests: `hashQuestion` normalization, `feedbackIndex.findSimilar` (identical, orthogonal, empty, error paths), `addRow`/`removeRow`, `aiChatStore.setFeedback` + stable message ids
+- Local RAG via Ollama `nomic-embed-text` (768-dim) — `knowledge-pipeline/ingest_embeddings.py` ingests wiki chunks into `knowledge_embeddings` SQLite table
+- `vecRepository`: in-memory cosine-similarity index with eager `preWarmIndex()` at startup so the first AI query doesn't block the main thread
+- `vecRepository`: LRU cache (100 entries) for query embeddings — repeated queries skip the Ollama round-trip
+- `vecRepository.warmupEmbedder()` called at startup so the first semantic search doesn't pay the embedder load
+- `langGraphAgent`: hybrid retrieval — FTS + semantic results fused with Reciprocal Rank Fusion (k=60), surfaced as a single `<<KNOWLEDGE>>` block to small local models
+- IPC `ai:vecReload` — dev helper to refresh the in-memory index after re-running the ingest script
+- Tests: `vecRepository` now covers non-2xx response, malformed JSON, empty embeddings array, score threshold filter, and query cache reuse
+- `ingest_embeddings.py`: chunk overlap (100 chars) preserves semantic context across boundaries (e.g. T-SQL split mid-statement)
+- `md_to_sqlite.py --source-dir <path>` CLI flag — point the ingest at any markdown vault without env-var gymnastics
+
+### Changed
+- Ollama provider locked to deterministic decoding for the DBA assistant: `temperature=0`, `topP=0.5`, `topK=20`, `repeatPenalty=1.1`, `seed=42`, plus stop tokens to prevent the model from echoing context markers
+- System prompt: added `<<KNOWLEDGE>>` to the whitelist of T-SQL sources and a few-shot example for response style
+- Cosine score threshold raised from 0.35 → 0.5 (better calibrated for `nomic-embed-text` on DBA content) — reduces noise in the LLM prompt
+- Context block ordering: live server state first, retrieval & predefined queries last (small models weight content closer to the query more)
+- Retrieval logging: `semanticSearch` now logs query, top score, hit count for debugging
+
+### Fixed
+- `vecRepository.getQueryEmbedding`: added 5s `AbortController` timeout so a hung Ollama no longer stalls agent pre-fetch indefinitely
+- `vecRepository`: Ollama host imported from shared `ai/ollama.ts` constant instead of being re-hardcoded
+- `vecRepository`: removed test-only zero-padding branch from production code (test mock now uses realistic 768-dim vectors)
+- `knowledge_base.db` (41 MB) removed from git tracking; shipped via electron-builder `extraResources` for packaged builds, regenerated locally by devs via `ingest_embeddings.py`
+
 ## [1.0.0] - 2026-04-28
 
 ### Changed

@@ -29,6 +29,7 @@ import {
   buildAiWorkspaceSummary,
   type AiRecommendationItem
 } from './aiWorkspace'
+import { ThumbsRow } from '../ai/ThumbsRow'
 
 const DRAWER_WIDTH = 480
 
@@ -64,6 +65,7 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
   const tokenBufRef = useRef('')
   const [pendingActions, setPendingActions] = useState<IncidentAction[]>([])
   const [actionBusy, setActionBusy] = useState<string | null>(null) // actionId being approved/rejected
+  const [incidentFeedback, setIncidentFeedback] = useState<Record<string, 1 | -1>>({})
 
   useEffect(() => {
     if (open && selectedId) {
@@ -300,14 +302,31 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
               )}
             </Box>
 
-            {incident.summary && (
-              <Box>
-                <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, mb: 0.5 }}>
-                  Summary
-                </Typography>
-                <Typography sx={{ fontSize: 13 }}>{incident.summary}</Typography>
-              </Box>
-            )}
+            {incident.summary && (() => {
+              const lastAudit = detail?.audit?.[detail.audit.length - 1]
+              return (
+                <Box>
+                  <Typography sx={{ fontSize: 11, color: tokens.color.textMuted, mb: 0.5 }}>
+                    Summary
+                  </Typography>
+                  <Typography sx={{ fontSize: 13 }}>{incident.summary}</Typography>
+                  {lastAudit && (
+                    <ThumbsRow
+                      messageId={`incident-${incident.id}-summary`}
+                      question={`Incident analysis: ${incident.category}`}
+                      response={incident.summary}
+                      provider={lastAudit.provider}
+                      model={lastAudit.model}
+                      incidentId={incident.id}
+                      currentRating={incidentFeedback[incident.id]}
+                      onSaved={(rating) =>
+                        setIncidentFeedback((prev) => ({ ...prev, [incident.id]: rating }))
+                      }
+                    />
+                  )}
+                </Box>
+              )
+            })()}
 
             {aiWorkspace && (
               <Box

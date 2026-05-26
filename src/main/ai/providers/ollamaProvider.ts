@@ -40,10 +40,19 @@ export class OllamaProvider implements LlmProvider {
       this._llm = new ChatOllama({
         model: this.model,
         baseUrl: OLLAMA_HOST,
+        // Cold, deterministic output: greedy decoding with a tight sampling pool.
+        // Goal is precise T-SQL copied from the RAG context, no creative prose.
         temperature: 0,
+        topP: 0.5,
+        topK: 20,
+        repeatPenalty: 1.1,
+        seed: 42,
         numPredict: 1024,
         numCtx: 8192,
-        keepAlive: '30m'
+        keepAlive: '30m',
+        // Stop the model if it tries to echo the context markers or
+        // hallucinate a new conversation turn.
+        stop: ['<<END_', '\n\nUser:', '\n\nAssistant:']
       })
     }
     return this._llm

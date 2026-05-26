@@ -40,7 +40,12 @@ import type {
   AiStreamEvent,
   IncidentAiStats,
   StorageConnectionParams,
-  StorageConfigInfo
+  StorageConfigInfo,
+  AiFeedbackSaveInput,
+  AiFeedbackRecord,
+  PromotionCandidateDto,
+  PromoteToTsqlMapInput,
+  TsqlMapEntryDto
 } from '../main/ipc/types'
 import type {
   Incident,
@@ -140,7 +145,16 @@ export type {
   DatabaseFile
 } from '../main/collectors/types'
 export type { StoredServer } from '../main/store/serverStore'
-export type { AiStreamEvent, AiProviderSettings, AiProviderName } from '../main/ipc/types'
+export type {
+  AiStreamEvent,
+  AiProviderSettings,
+  AiProviderName,
+  AiFeedbackSaveInput,
+  AiFeedbackRecord,
+  PromotionCandidateDto,
+  TsqlMapEntryDto,
+  PromoteToTsqlMapInput
+} from '../main/ipc/types'
 export type {
   Incident,
   IncidentEvent,
@@ -728,8 +742,10 @@ const realApi = {
 
   aiAgentStream: (
     question: string,
-    history: Array<{ role: 'user' | 'assistant'; content: string }>
-  ): Promise<IpcResult<void>> => ipcRenderer.invoke(IpcChannel.AI_AGENT_STREAM, question, history),
+    history: Array<{ role: 'user' | 'assistant'; content: string }>,
+    options?: { targetServerId?: string }
+  ): Promise<IpcResult<void>> =>
+    ipcRenderer.invoke(IpcChannel.AI_AGENT_STREAM, question, history, options),
 
   aiAgentCancel: (): Promise<void> => ipcRenderer.invoke(IpcChannel.AI_AGENT_CANCEL),
 
@@ -747,6 +763,21 @@ const realApi = {
 
   aiCheckProvider: (): Promise<IpcResult<boolean>> =>
     ipcRenderer.invoke(IpcChannel.AI_CHECK_PROVIDER),
+
+  aiSaveFeedback: (input: AiFeedbackSaveInput): Promise<IpcResult<string>> =>
+    ipcRenderer.invoke(IpcChannel.AI_SAVE_FEEDBACK, input),
+  aiListFeedback: (): Promise<IpcResult<AiFeedbackRecord[]>> =>
+    ipcRenderer.invoke(IpcChannel.AI_LIST_FEEDBACK),
+  aiDeleteFeedback: (id: string): Promise<IpcResult<void>> =>
+    ipcRenderer.invoke(IpcChannel.AI_DELETE_FEEDBACK, id),
+  aiListPromotionCandidates: (): Promise<IpcResult<PromotionCandidateDto[]>> =>
+    ipcRenderer.invoke(IpcChannel.AI_LIST_PROMOTION_CANDIDATES),
+  aiPromoteToTsqlMap: (input: PromoteToTsqlMapInput): Promise<IpcResult<string>> =>
+    ipcRenderer.invoke(IpcChannel.AI_PROMOTE_TO_TSQL_MAP, input),
+  aiListTsqlMap: (): Promise<IpcResult<TsqlMapEntryDto[]>> =>
+    ipcRenderer.invoke(IpcChannel.AI_LIST_TSQL_MAP),
+  aiDeleteTsqlMapEntry: (id: string): Promise<IpcResult<void>> =>
+    ipcRenderer.invoke(IpcChannel.AI_DELETE_TSQL_MAP_ENTRY, id),
 
   incidents: {
     list: (req?: IncidentListRequest): Promise<IpcResult<Incident[]>> =>
@@ -1178,14 +1209,24 @@ const mockApi = {
 
   aiAgentStream: (
     question: string,
-    history: Array<{ role: 'user' | 'assistant'; content: string }>
+    history: Array<{ role: 'user' | 'assistant'; content: string }>,
+    options?: { targetServerId?: string }
   ): Promise<IpcResult<void>> => {
     void question
     void history
+    void options
     return Promise.resolve({ ok: true, data: undefined })
   },
 
   aiAgentCancel: (): Promise<void> => Promise.resolve(),
+
+  aiSaveFeedback: async (_input: AiFeedbackSaveInput): Promise<IpcResult<string>> => ({ ok: true, data: 'mock-id' }),
+  aiListFeedback: async (): Promise<IpcResult<AiFeedbackRecord[]>> => ({ ok: true, data: [] }),
+  aiDeleteFeedback: async (_id: string): Promise<IpcResult<void>> => ({ ok: true, data: undefined }),
+  aiListPromotionCandidates: async (): Promise<IpcResult<PromotionCandidateDto[]>> => ({ ok: true, data: [] }),
+  aiPromoteToTsqlMap: async (_input: PromoteToTsqlMapInput): Promise<IpcResult<string>> => ({ ok: true, data: 'mock-id' }),
+  aiListTsqlMap: async (): Promise<IpcResult<TsqlMapEntryDto[]>> => ({ ok: true, data: [] }),
+  aiDeleteTsqlMapEntry: async (_id: string): Promise<IpcResult<void>> => ({ ok: true, data: undefined }),
 
   onAiStreamEvent: (_cb: (event: AiStreamEvent) => void): (() => void) => {
     return () => {
@@ -1318,13 +1359,24 @@ const bridgeApi = {
   aiCheck: () => realApi.aiCheck(),
   aiAgentAsk: (q: string, h: Array<{ role: 'user' | 'assistant'; content: string }>) =>
     realApi.aiAgentAsk(q, h),
-  aiAgentStream: (q: string, h: Array<{ role: 'user' | 'assistant'; content: string }>) =>
-    realApi.aiAgentStream(q, h),
+  aiAgentStream: (
+    q: string,
+    h: Array<{ role: 'user' | 'assistant'; content: string }>,
+    options?: { targetServerId?: string }
+  ) =>
+    realApi.aiAgentStream(q, h, options),
   aiAgentCancel: () => realApi.aiAgentCancel(),
   onAiStreamEvent: (cb: (e: AiStreamEvent) => void) => realApi.onAiStreamEvent(cb),
   aiGetSettings: () => realApi.aiGetSettings(),
   aiSaveSettings: (s: Partial<AiProviderSettings>) => realApi.aiSaveSettings(s),
   aiCheckProvider: () => realApi.aiCheckProvider(),
+  aiSaveFeedback: (i: AiFeedbackSaveInput) => realApi.aiSaveFeedback(i),
+  aiListFeedback: () => realApi.aiListFeedback(),
+  aiDeleteFeedback: (id: string) => realApi.aiDeleteFeedback(id),
+  aiListPromotionCandidates: () => realApi.aiListPromotionCandidates(),
+  aiPromoteToTsqlMap: (i: PromoteToTsqlMapInput) => realApi.aiPromoteToTsqlMap(i),
+  aiListTsqlMap: () => realApi.aiListTsqlMap(),
+  aiDeleteTsqlMapEntry: (id: string) => realApi.aiDeleteTsqlMapEntry(id),
   incidents: realApi.incidents,
   getServiceStatus: () => ipcRenderer.invoke(IpcChannel.SERVICE_STATUS_GET),
   storage: {

@@ -88,6 +88,16 @@ export enum IpcChannel {
   AI_GET_SETTINGS = 'ai:getSettings',
   AI_SAVE_SETTINGS = 'ai:saveSettings',
   AI_CHECK_PROVIDER = 'ai:checkProvider',
+  // Vector index — dev helper to reload the in-memory embeddings after re-ingest
+  AI_VEC_RELOAD = 'ai:vecReload',
+  // AI feedback (thumbs up/down) + dynamic TSQL map
+  AI_SAVE_FEEDBACK              = 'ai:saveFeedback',
+  AI_LIST_FEEDBACK              = 'ai:listFeedback',
+  AI_DELETE_FEEDBACK            = 'ai:deleteFeedback',
+  AI_LIST_PROMOTION_CANDIDATES  = 'ai:listPromotionCandidates',
+  AI_PROMOTE_TO_TSQL_MAP        = 'ai:promoteToTsqlMap',
+  AI_LIST_TSQL_MAP              = 'ai:listTsqlMap',
+  AI_DELETE_TSQL_MAP_ENTRY      = 'ai:deleteTsqlMapEntry',
   // Storage connection management
   STORAGE_GET_CONFIG = 'storage:get-config',
   STORAGE_TEST_CONNECTION = 'storage:test-connection',
@@ -112,6 +122,56 @@ export enum IpcChannel {
 
 /** Unified result envelope — never throw raw errors to the renderer. */
 export type IpcResult<T> = { ok: true; data: T } | { ok: false; error: string }
+
+// AI feedback wire types (mirrored in preload/index.d.ts)
+export interface AiFeedbackSaveInput {
+  question: string
+  response: string
+  rating: 1 | -1
+  provider: string
+  model: string
+  incidentId?: string | null
+}
+
+export interface AiFeedbackRecord {
+  id: string
+  question: string
+  response: string
+  rating: 1 | -1
+  provider: string
+  model: string
+  incidentId: string | null
+  createdAt: string
+  createdBy: string | null
+  hasEmbedding: boolean
+}
+
+export interface PromotionCandidateDto {
+  questionHash: string
+  exampleQuestion: string
+  upvotes: number
+  bestResponse: string
+  latestProvider: string
+  latestModel: string
+}
+
+export interface TsqlMapEntryDto {
+  id: string
+  keyName: string
+  aliases: string[]
+  tsql: string
+  promotedFrom: string | null
+  promotedHash: string | null
+  createdAt: string
+  origin: 'builtin' | 'promoted'
+}
+
+export interface PromoteToTsqlMapInput {
+  keyName: string
+  aliases: string[]
+  tsql: string
+  promotedHash: string
+}
 
 export type AiProviderName = 'ollama' | 'claude'
 

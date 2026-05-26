@@ -19,6 +19,8 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import CancelIcon from '@mui/icons-material/Cancel'
 import { tokens } from '../../styles/tokens'
 import { useAiChatStore } from '../../store/aiChatStore'
+import { useAppStore } from '../../store/appStore'
+import { ThumbsRow } from './ThumbsRow'
 import type { ToolStep } from '../../store/aiChatStore'
 import type { AiProviderSettings } from '../../../../preload/index'
 
@@ -48,7 +50,9 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
     addToolStep,
     completeToolStep,
     finalizeStreaming,
-    resetStreaming
+    resetStreaming,
+    feedbackByMessageId,
+    setFeedback
   } = useAiChatStore()
   const [input, setInput] = useState('')
   // Health state: 'unknown' before the first probe, 'ok' / 'down' afterwards.
@@ -143,7 +147,8 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
     unsubscribeRef.current = unsubscribe
 
     try {
-      const result = await window.sqlSentinel.aiAgentStream(text, history)
+      const targetServerId = useAppStore.getState().selectedServerId ?? undefined
+      const result = await window.sqlSentinel.aiAgentStream(text, history, { targetServerId })
       if (!result.ok) {
         unsubscribeRef.current?.()
         unsubscribeRef.current = null
@@ -274,9 +279,34 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
           {/* Welcome bubble */}
           <MessageBubble role="assistant" content={WELCOME_MESSAGE} />
 
-          {messages.map((msg, i) => (
-            <MessageBubble key={i} role={msg.role} content={msg.content} />
-          ))}
+          {messages.map((msg, i) => {
+            const isAssistant = msg.role === 'assistant'
+            // Walk back to find the user question this assistant message answers.
+            const priorUser = isAssistant
+              ? [...messages.slice(0, i)].reverse().find((m) => m.role === 'user')
+              : null
+            const canRate = isAssistant && priorUser && providerSettings
+            return (
+              <Box key={msg.id}>
+                <MessageBubble role={msg.role} content={msg.content} />
+                {canRate && (
+                  <ThumbsRow
+                    messageId={msg.id}
+                    question={priorUser!.content}
+                    response={msg.content}
+                    provider={providerSettings!.provider}
+                    model={
+                      providerSettings!.provider === 'claude'
+                        ? providerSettings!.claudeModel
+                        : providerSettings!.ollamaModel
+                    }
+                    currentRating={feedbackByMessageId[msg.id]}
+                    onSaved={(rating) => setFeedback(msg.id, rating)}
+                  />
+                )}
+              </Box>
+            )
+          })}
 
           {/* Tool timeline — shown while agent is calling tools */}
           {toolSteps.length > 0 && <ToolTimeline steps={toolSteps} />}

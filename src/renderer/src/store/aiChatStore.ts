@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
 export interface AiMessage {
+  id: string
   role: 'user' | 'assistant'
   content: string
   ts: number
@@ -12,12 +13,21 @@ export interface ToolStep {
   output?: string
 }
 
+function newId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID()
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 interface AiChatStore {
   messages: AiMessage[]
   loading: boolean
   streamingText: string
   toolSteps: ToolStep[]
-  addMessage: (msg: AiMessage) => void
+  /** Per-message feedback rating (1 = thumbs up, -1 = thumbs down). Volatile. */
+  feedbackByMessageId: Record<string, 1 | -1>
+  addMessage: (msg: Omit<AiMessage, 'id'> & { id?: string }) => void
   setLoading: (v: boolean) => void
   clear: () => void
   startStreaming: () => void
@@ -26,6 +36,7 @@ interface AiChatStore {
   completeToolStep: (name: string, output: string) => void
   finalizeStreaming: () => void
   resetStreaming: (error: string) => void
+  setFeedback: (id: string, rating: 1 | -1) => void
 }
 
 export const useAiChatStore = create<AiChatStore>((set, get) => ({
@@ -33,10 +44,13 @@ export const useAiChatStore = create<AiChatStore>((set, get) => ({
   loading: false,
   streamingText: '',
   toolSteps: [],
+  feedbackByMessageId: {},
 
-  addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
+  addMessage: (msg) =>
+    set((s) => ({ messages: [...s.messages, { id: msg.id ?? newId(), ...msg }] })),
   setLoading: (loading) => set({ loading }),
-  clear: () => set({ messages: [], loading: false, streamingText: '', toolSteps: [] }),
+  clear: () =>
+    set({ messages: [], loading: false, streamingText: '', toolSteps: [], feedbackByMessageId: {} }),
 
   startStreaming: () => set({ streamingText: '', toolSteps: [] }),
 
@@ -57,7 +71,7 @@ export const useAiChatStore = create<AiChatStore>((set, get) => ({
     const content = streamingText || (toolSteps.length > 0 ? '*(no text response)*' : '')
     if (!content) return
     set((s) => ({
-      messages: [...s.messages, { role: 'assistant', content, ts: Date.now() }],
+      messages: [...s.messages, { id: newId(), role: 'assistant', content, ts: Date.now() }],
       streamingText: '',
       toolSteps: []
     }))
@@ -68,6 +82,7 @@ export const useAiChatStore = create<AiChatStore>((set, get) => ({
       messages: [
         ...s.messages,
         {
+          id: newId(),
           role: 'assistant',
           content: `Error: ${error}\n\nMake sure Ollama is running:\n  ollama serve\n  ollama pull gemma4:e4b`,
           ts: Date.now()
@@ -75,5 +90,8 @@ export const useAiChatStore = create<AiChatStore>((set, get) => ({
       ],
       streamingText: '',
       toolSteps: []
-    }))
+    })),
+
+  setFeedback: (id, rating) =>
+    set((s) => ({ feedbackByMessageId: { ...s.feedbackByMessageId, [id]: rating } }))
 }))

@@ -12,13 +12,13 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 
 # Source folder containing PDF files to convert
-PDF_DIR: Path = Path(os.environ.get('KB_PDF_DIR', r'C:\Projects\Claude\Projects\SQLSentinel\data'))
+PDF_DIR: Path = Path(os.environ.get('KB_PDF_DIR', str(Path.home() / 'Documents/Projects/DEV/SQLSentinel/data')))
 
 # Obsidian vault subfolder where .md notes are written
-VAULT_DIR: Path = Path(os.environ.get('KB_VAULT_DIR', r'C:\Projects\volt\SQL\SQL\wiki'))
+VAULT_DIR: Path = Path(os.environ.get('KB_VAULT_DIR', str(Path.home() / 'Documents/Projects/Obsidian/wiki')))
 
 # SQLite database used by SQL Sentinel's AI agent
-DB_PATH: Path = Path(os.environ.get('KB_DB_PATH', r'C:\Projects\Claude\Projects\SQLSentinel\knowledge-pipeline\knowledge_base.db'))
+DB_PATH: Path = Path(os.environ.get('KB_DB_PATH', str(Path.home() / 'Documents/Projects/DEV/SQLSentinel/knowledge-pipeline/knowledge_base.db')))
 
 # ---------------------------------------------------------------------------
 # Logging

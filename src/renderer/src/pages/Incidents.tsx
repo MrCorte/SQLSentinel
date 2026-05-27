@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
@@ -35,7 +35,28 @@ const STATUS_COLOR: Record<string, 'default' | 'warning' | 'error' | 'success' |
   archived: 'default'
 }
 
-const COLUMNS: GridColDef<Incident>[] = [
+interface IncidentGroupRow {
+  id: string
+  latestIncidentId: string
+  serverId: string
+  category: Incident['category']
+  severity: Incident['severity']
+  status: IncidentStatus
+  openedAt: number
+  windowStartAt: number
+  resolvedAt?: number
+  occurrences: number
+}
+
+const STATUS_PRIORITY: Record<IncidentStatus, number> = {
+  open: 5,
+  investigating: 4,
+  awaiting_approval: 3,
+  resolved: 2,
+  archived: 1
+}
+
+const COLUMNS: GridColDef<IncidentGroupRow>[] = [
   {
     field: 'severity',
     headerName: 'Severity',
@@ -82,8 +103,23 @@ const COLUMNS: GridColDef<Incident>[] = [
     valueFormatter: (value: string) => value.replace(/_/g, ' ')
   },
   {
+    field: 'occurrences',
+    headerName: 'Occurrences',
+    width: 120
+  },
+  {
+    field: 'windowStartAt',
+    headerName: 'Time window',
+    width: 280,
+    renderCell: ({ row }) => (
+      <Typography sx={{ fontSize: 12 }}>
+        {formatTimeWindow(row.windowStartAt, row.openedAt)}
+      </Typography>
+    )
+  },
+  {
     field: 'openedAt',
-    headerName: 'Opened',
+    headerName: 'Latest',
     width: 160,
     valueFormatter: (value: number) => new Date(value).toLocaleString()
   },
@@ -102,6 +138,60 @@ const STATUS_FILTERS: Array<{ label: string; value: IncidentStatus | 'all' }> = 
   { label: 'All', value: 'all' }
 ]
 
+function groupIncidents(incidents: Incident[]): IncidentGroupRow[] {
+  const groups = new Map<string, IncidentGroupRow>()
+
+  for (const incident of incidents) {
+    const key = `${incident.serverId}::${incident.category}`
+    const current = groups.get(key)
+    if (!current) {
+      groups.set(key, {
+        id: key,
+        latestIncidentId: incident.id,
+        serverId: incident.serverId,
+        category: incident.category,
+        severity: incident.severity,
+        status: incident.status,
+        openedAt: incident.openedAt,
+        windowStartAt: incident.openedAt,
+        resolvedAt: incident.resolvedAt,
+        occurrences: 1
+      })
+      continue
+    }
+
+    current.occurrences += 1
+    current.windowStartAt = Math.min(current.windowStartAt, incident.openedAt)
+
+    if (incident.openedAt > current.openedAt) {
+      current.openedAt = incident.openedAt
+      current.latestIncidentId = incident.id
+    }
+
+    if (incident.severity === 'CRITICAL') {
+      current.severity = 'CRITICAL'
+    }
+
+    if (STATUS_PRIORITY[incident.status] > STATUS_PRIORITY[current.status]) {
+      current.status = incident.status
+    }
+
+    if (current.resolvedAt && incident.resolvedAt) {
+      current.resolvedAt = Math.max(current.resolvedAt, incident.resolvedAt)
+    } else {
+      current.resolvedAt = undefined
+    }
+  }
+
+  return [...groups.values()]
+}
+
+function formatTimeWindow(startAt: number, endAt: number): string {
+  const start = new Date(startAt).toLocaleString()
+  const end = new Date(endAt).toLocaleString()
+  return start === end ? start : `${start} - ${end}`
+}
+
 export function Incidents(): React.JSX.Element {
   const { incidents, selectedId, aiStats } = useIncidentsStore(
     useShallow((s) => ({ incidents: s.incidents, selectedId: s.selectedId, aiStats: s.aiStats }))
@@ -109,6 +199,7 @@ export function Incidents(): React.JSX.Element {
   const setSelectedId = useIncidentsStore((s) => s.setSelectedId)
   const [statusFilter, setStatusFilter] = useState<IncidentStatus | 'all'>('open')
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const groupedIncidents = useMemo(() => groupIncidents(incidents), [incidents])
 
   useEffect(() => {
     const filter = statusFilter === 'all' ? undefined : { status: statusFilter }
@@ -134,8 +225,8 @@ export function Incidents(): React.JSX.Element {
   }, [])
 
   const handleRowClick = useCallback(
-    (params: GridRowParams<Incident>) => {
-      setSelectedId(params.row.id)
+    (params: GridRowParams<IncidentGroupRow>) => {
+      setSelectedId(params.row.latestIncidentId)
       setDrawerOpen(true)
     },
     [setSelectedId]
@@ -167,7 +258,7 @@ export function Incidents(): React.JSX.Element {
       {/* Grid */}
       <Box sx={{ flex: 1, minHeight: 0 }}>
         <DataGrid
-          rows={incidents}
+          rows={groupedIncidents}
           columns={COLUMNS}
           getRowId={(row) => row.id}
           onRowClick={handleRowClick}

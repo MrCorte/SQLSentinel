@@ -23,13 +23,18 @@
 - **Inventory** — composable filters, custom DB fields (alias, owner), CSV export
 - **Alerts** — offline DBs, expired backups, blocked sessions, CPU/memory thresholds; email + Windows toast
 - **Discovery** — CIDR subnet scan or manual `host:port:instance`; server groups with drag-and-drop
-- **AI Assistant** — LangGraph agent with live server context; RAG knowledge base from PDF/Markdown docs stored with `vector(1536)` embeddings and DiskANN similarity search
+- **AI Assistant** — LangGraph agent over Claude or local Ollama with live server context, read-only diagnostic tools, and human-approval gates for write actions
+- **Incident agent** — autonomous root-cause analysis on detected incidents, with audited prompts/responses and per-action approval workflow
+- **RAG knowledge base** — PDF/Markdown DBA docs stored as `vector(1536)` embeddings with DiskANN cosine search; per-user thumbs-up/down feedback feeds a `nomic-embed-text` (768-dim) similarity index that promotes recurring approved answers into a dynamic T-SQL recipe map
+- **Response cache** — schema-aware deterministic cache for AI replies (lower latency, lower token spend on repeated questions)
 
 <p align="center">
   <img src="img/wiki.jpg" alt="RAG Knowledge Base graph" width="480" />
 </p>
 
 - **Background polling** — keeps running in the tray; Light/Full mode; Start with Windows
+
+> **Storage migrated to SQL Server 2025.** Earlier builds used SQLite (`better-sqlite3`) and `electron-store` JSON files for metrics history, server registry, knowledge base, AI feedback, sessions, and incidents. Everything now lives in a single SQL Server 2025 database — required for native `vector(1536)` + DiskANN. The legacy `knowledge_base.db` SQLite file is kept only as a one-shot build artifact imported into `dbo.knowledge_*` on first boot.
 
 ---
 

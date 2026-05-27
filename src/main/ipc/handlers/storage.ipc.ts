@@ -96,9 +96,12 @@ export function registerStorageHandlers(): void {
     ): Promise<IpcResult<SchemaInitResult>> => {
       try {
         validateConnectionParams(params)
-        // Verify the connection before doing anything else.
-        await testConnection(params)
-        // Build the live pool from raw params.
+        // No explicit testConnection here: initStoragePoolFromParams opens
+        // the pool with the same credentials and would surface the same auth
+        // / network failures. The wizard's separate STORAGE_TEST_CONNECTION
+        // already validated the connection from the UI side, so this
+        // pre-flight check was a duplicate TLS+TDS handshake (~500ms-1.5s on
+        // remote SQL Servers) burnt for no extra safety.
         await initStoragePoolFromParams(params)
 
         // Persistence ordering: save the config BEFORE running schema +

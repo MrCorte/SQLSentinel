@@ -13,6 +13,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **`findPromotionCandidates` — `NOT IN` → `NOT EXISTS`** — safer NULL semantics + seek-friendly plan against the new filtered index.
 - **Top-queries collector bounded scan** — `queryTopQueries` now filters `qs.last_execution_time > DATEADD(MINUTE, -60, GETUTCDATE())`, so the `TOP 20 ORDER BY` over `dm_exec_query_stats` no longer triggers a `CROSS APPLY sys.dm_exec_sql_text` on every cached plan (100k+ on busy instances).
 
+### Performance — boot path
+- **Single-round-trip schema snapshot** — `initSchema()` used to issue ~38 separate `EXISTS` queries (one per table / index / stats / compression target) to decide what to create. Replaced with one `UNION ALL` query that returns the full set of dbo objects in a single round-trip — boot warm path drops by ~1s on remote SQL Servers (30ms RTT × 38 → ~30ms).
+- **Removed duplicate `testConnection` in `STORAGE_SAVE_CONFIG`** — the wizard already validates the connection via `STORAGE_TEST_CONNECTION`, and `initStoragePoolFromParams` would surface the same failure modes. Saves one full TLS+TDS handshake (~500ms-1.5s on remote setup).
+- **Parallel post-init migrations** — `migrateEncryptCredentials`, `initDefaultAdmin`, and `migrateEncryptEmailPassword` touch disjoint tables and now run via `Promise.all` after `serverStore.init()`. Saves ~200-500ms.
+- **Deferred RAG knowledge import** — `importKnowledgeIfEmpty` no longer blocks `app.whenReady`; it runs via `setImmediate` after `createWindow`, so the login screen paints immediately even on first boot when the SQLite build artifact has ~8k chunks to import.
+
 ### Removed
 - Dropped unused statistics `ST_db_custom_fields_alias` / `_referente` — those columns are never part of a WHERE clause, so the auto-update overhead was pure waste. Migration 2 removes them on existing installs.
 

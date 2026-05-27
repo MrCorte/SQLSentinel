@@ -409,18 +409,6 @@ const COMPRESSION_TARGETS: Array<{ table: string }> = [
   { table: 'knowledge_embeddings' }
 ]
 
-async function tableIsCompressed(name: string): Promise<boolean> {
-  const r = await getPool()
-    .request()
-    .query<{ cnt: number }>(
-      `SELECT COUNT(*) AS cnt FROM sys.partitions
-       WHERE object_id = OBJECT_ID(N'dbo.${name}')
-         AND index_id IN (0, 1)
-         AND data_compression > 0`
-    )
-  return r.recordset[0].cnt > 0
-}
-
 // Statistics on UNINDEXED columns used in WHERE predicates.
 // Note: indexed columns get auto-stats from the index — duplicating them adds maintenance
 // overhead with no benefit, so we only cover columns not already referenced by an index.
@@ -431,31 +419,79 @@ const STATISTICS_DDL: Array<{ table: string; name: string; sql: string }> = []
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-async function tableExists(name: string): Promise<boolean> {
-  const r = await getPool()
-    .request()
-    .query<{ cnt: number }>(
-      `SELECT COUNT(*) AS cnt FROM sys.tables WHERE name = N'${name}' AND schema_id = SCHEMA_ID(N'dbo')`
-    )
-  return r.recordset[0].cnt > 0
+/**
+ * Snapshot of the schema's current state, fetched in a single round-trip.
+ * `initSchema()` consults these Sets instead of issuing one EXISTS query per
+ * object — on a warm boot that's ~38 round-trips collapsed into 1, dropping
+ * boot latency by ~1s on a remote SQL Server (typical 30ms RTT).
+ *
+ * Composite keys for indexes/stats are formatted `${table}.${name}` so a
+ * legacy index that happens to share a name across two tables (rare but
+ * possible) is still disambiguated correctly.
+ */
+interface SchemaSnapshot {
+  tables: Set<string>
+  indexes: Set<string>
+  stats: Set<string>
+  compressedTables: Set<string>
 }
 
-async function indexExists(table: string, name: string): Promise<boolean> {
-  const r = await getPool()
-    .request()
-    .query<{ cnt: number }>(
-      `SELECT COUNT(*) AS cnt FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.${table}') AND name = N'${name}'`
-    )
-  return r.recordset[0].cnt > 0
-}
+async function loadSchemaSnapshot(): Promise<SchemaSnapshot> {
+  // One round-trip via UNION ALL — each row carries a `kind` tag that drives
+  // dispatch into the matching Set. The `t1` / `t2` shape lets indexes and
+  // stats share rows with tables/compression without forcing NULL casts.
+  const r = await getPool().request().query<{
+    kind: 'T' | 'I' | 'S' | 'C'
+    t1: string
+    t2: string | null
+  }>(`
+    SELECT 'T' AS kind, t.name AS t1, CAST(NULL AS sysname) AS t2
+    FROM sys.tables t
+    WHERE t.schema_id = SCHEMA_ID(N'dbo')
+    UNION ALL
+    SELECT 'I', i.name, t.name
+    FROM sys.indexes i
+    JOIN sys.tables t ON t.object_id = i.object_id
+    WHERE t.schema_id = SCHEMA_ID(N'dbo')
+      AND i.name IS NOT NULL
+    UNION ALL
+    SELECT 'S', s.name, t.name
+    FROM sys.stats s
+    JOIN sys.tables t ON t.object_id = s.object_id
+    WHERE t.schema_id = SCHEMA_ID(N'dbo')
+    UNION ALL
+    SELECT 'C', t.name, NULL
+    FROM sys.tables t
+    JOIN sys.partitions p ON p.object_id = t.object_id
+    WHERE t.schema_id = SCHEMA_ID(N'dbo')
+      AND p.index_id IN (0, 1)
+      AND p.data_compression > 0
+    GROUP BY t.name
+  `)
 
-async function statExists(table: string, name: string): Promise<boolean> {
-  const r = await getPool()
-    .request()
-    .query<{ cnt: number }>(
-      `SELECT COUNT(*) AS cnt FROM sys.stats WHERE object_id = OBJECT_ID(N'dbo.${table}') AND name = N'${name}'`
-    )
-  return r.recordset[0].cnt > 0
+  const snap: SchemaSnapshot = {
+    tables: new Set(),
+    indexes: new Set(),
+    stats: new Set(),
+    compressedTables: new Set()
+  }
+  for (const row of r.recordset) {
+    switch (row.kind) {
+      case 'T':
+        snap.tables.add(row.t1)
+        break
+      case 'I':
+        snap.indexes.add(`${row.t2}.${row.t1}`)
+        break
+      case 'S':
+        snap.stats.add(`${row.t2}.${row.t1}`)
+        break
+      case 'C':
+        snap.compressedTables.add(row.t1)
+        break
+    }
+  }
+  return snap
 }
 
 // ── Schema migration framework ──────────────────────────────────────────────
@@ -626,6 +662,10 @@ export async function initSchema(): Promise<SchemaInitResult> {
   const result: SchemaInitResult = { tables: [], indexes: [], statistics: [], warnings: [] }
   const newlyCreatedTables: string[] = []
 
+  // Single-round-trip metadata snapshot. Replaces 38+ per-object EXISTS
+  // queries that used to dominate warm-boot latency on remote SQL Servers.
+  const snap = await loadSchemaSnapshot()
+
   // 1. Database-level settings — idempotent; failures surface as warnings.
   for (const { name, sql } of DB_SETTINGS) {
     try {
@@ -637,8 +677,7 @@ export async function initSchema(): Promise<SchemaInitResult> {
 
   // 2. Tables — track which were actually created so we know whether to refresh stats later.
   for (const { name, sql } of TABLE_DDL) {
-    const exists = await tableExists(name)
-    if (exists) {
+    if (snap.tables.has(name)) {
       result.tables.push(name)
       continue
     }
@@ -646,6 +685,7 @@ export async function initSchema(): Promise<SchemaInitResult> {
       await pool.request().query(sql)
       result.tables.push(name)
       newlyCreatedTables.push(name)
+      snap.tables.add(name)
     } catch (err) {
       throw new Error(`initSchema: failed to create table '${name}': ${(err as Error).message}`)
     }
@@ -658,7 +698,7 @@ export async function initSchema(): Promise<SchemaInitResult> {
 
   // 3. Required indexes
   for (const { table, name, sql } of INDEX_DDL) {
-    if (await indexExists(table, name)) {
+    if (snap.indexes.has(`${table}.${name}`)) {
       result.indexes.push(name)
       continue
     }
@@ -672,7 +712,7 @@ export async function initSchema(): Promise<SchemaInitResult> {
 
   // 4. Optional indexes — graceful skip (e.g., DiskANN on non-2025 instances)
   for (const { table, name, sql } of OPTIONAL_INDEX_DDL) {
-    if (await indexExists(table, name)) {
+    if (snap.indexes.has(`${table}.${name}`)) {
       result.indexes.push(name)
       continue
     }
@@ -686,7 +726,7 @@ export async function initSchema(): Promise<SchemaInitResult> {
 
   // 5. Statistics on unindexed predicate columns
   for (const { table, name, sql } of STATISTICS_DDL) {
-    if (await statExists(table, name)) {
+    if (snap.stats.has(`${table}.${name}`)) {
       result.statistics.push(name)
       continue
     }
@@ -701,9 +741,12 @@ export async function initSchema(): Promise<SchemaInitResult> {
   // 6. Compression — apply PAGE compression to hot tables that grow large
   //    over time. Skipped on Standard/Express editions older than 2016 SP1,
   //    so failures are downgraded to warnings rather than aborting boot.
+  //    Compression state is taken from the snapshot for existing tables;
+  //    tables created in step 2 are not yet in the snapshot but are empty,
+  //    so REBUILD is instant — no benefit to checking first.
   for (const { table } of COMPRESSION_TARGETS) {
     if (!result.tables.includes(table)) continue
-    if (await tableIsCompressed(table)) continue
+    if (snap.compressedTables.has(table)) continue
     try {
       await pool
         .request()

@@ -249,17 +249,25 @@ app.whenReady().then(async () => {
       await initSchema()
       await serverStore.init()
       serverStore.migrateHostField()
-      await serverStore.migrateEncryptCredentials()
-      await initDefaultAdmin()
-      await migrateEncryptEmailPassword()
+      // These three only touch their own tables (servers, users,
+      // email_settings respectively) and only depend on serverStore.init()
+      // having populated the cache — they can run concurrently to overlap
+      // their network round-trips on remote SQL Servers.
+      await Promise.all([
+        serverStore.migrateEncryptCredentials(),
+        initDefaultAdmin(),
+        migrateEncryptEmailPassword()
+      ])
       // One-shot import of the SQLite knowledge_base.db build artifact into
       // the dbo.knowledge_* / dbo.dba_cards tables. Idempotent — skipped if
-      // the destination already has rows.
-      try {
-        await importKnowledgeIfEmpty()
-      } catch (err) {
-        log.warn('[main] knowledge base import failed:', redactError(err))
-      }
+      // the destination already has rows. Deferred to run after createWindow
+      // so it doesn't block the login screen; the renderer's AI Assistant is
+      // the only consumer and isn't reachable until after login.
+      setImmediate(() => {
+        importKnowledgeIfEmpty().catch((err) => {
+          log.warn('[main] knowledge base import failed:', redactError(err))
+        })
+      })
     } catch (err) {
       log.error('[main] Storage pool init failed:', redactError(err))
     }

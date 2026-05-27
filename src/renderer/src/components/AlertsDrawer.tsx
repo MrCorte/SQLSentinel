@@ -188,9 +188,10 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all')
   const [dedup, setDedup] = useState<boolean>(() => {
     try {
-      return sessionStorage.getItem('sqlsentinel:alerts:dedup') === '1'
+      const stored = sessionStorage.getItem('sqlsentinel:alerts:dedup')
+      return stored === null ? true : stored === '1'
     } catch {
-      return false
+      return true
     }
   })
   const setDedupPersist = (next: boolean): void => {

@@ -188,7 +188,7 @@ export function useHomeDashboard(onNavigateToServer: (id: string) => void): Home
     const _seen = new Set<string>()
     const recentAlerts = _sortedAlerts
       .filter((a) => {
-        const k = `${a.serverId}::${a.category}::${a.message}`
+        const k = `${a.serverId}::${a.category}`
         if (_seen.has(k)) return false
         _seen.add(k)
         return true

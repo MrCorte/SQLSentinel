@@ -228,12 +228,9 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
 
   const dedupedOpen = useMemo(() => {
     if (!dedup) return filteredOpen
-    const ONE_HOUR = 60 * 60 * 1000
-    const now = Date.now()
     const groups = new Map<string, Array<Alert>>()
     for (const a of filteredOpen) {
-      const ts = new Date(a.detectedAt).getTime()
-      const key = now - ts < ONE_HOUR ? `${a.serverId}::${a.category}::${a.message}` : `solo:${a.id}`
+      const key = `${a.serverId}::${a.category}`
       const list = groups.get(key) ?? []
       list.push(a)
       groups.set(key, list)

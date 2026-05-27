@@ -9,8 +9,9 @@
 #
 # App connection (storage wizard defaults):
 #   Host: localhost  Port: 1437  Database: SQLSentinelDB
-#   User: sqlsentinel_app        Password: App@Sentinel2025
-#   sa:   Sentinel@SQLSentinel1
+#   User: ${SQLSENTINEL_APP_USER}        Password: ${SQLSENTINEL_APP_PASSWORD}
+#   User: ${SQLSENTINEL_DOCK_USER}       Password: ${SQLSENTINEL_DOCK_PASSWORD}
+#   sa:   ${SQLSENTINEL_STORAGE_SA_PASSWORD}
 #
 # Usage:
 #   docker compose up -d
@@ -24,7 +25,7 @@ services:
     container_name: sqlsentinel-storage
     environment:
       ACCEPT_EULA: 'Y'
-      MSSQL_SA_PASSWORD: 'Sentinel@SQLSentinel1'
+      MSSQL_SA_PASSWORD: ${SQLSENTINEL_STORAGE_SA_PASSWORD:?Set SQLSENTINEL_STORAGE_SA_PASSWORD in .env}
       MSSQL_PID: 'Developer'
       MSSQL_MEMORY_LIMIT_MB: '1536'
     ports:
@@ -36,7 +37,7 @@ services:
       test:
         [
           'CMD-SHELL',
-          "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Sentinel@SQLSentinel1' -Q 'SELECT 1' -b -C 2>/dev/null"
+          "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -C 2>/dev/null"
         ]
       interval: 15s
       timeout: 10s
@@ -52,8 +53,16 @@ services:
         condition: service_healthy
     volumes:
       - ./docker/init/sentinel.sql:/init/sentinel.sql:ro
+    environment:
+      SQLSENTINEL_STORAGE_SA_PASSWORD: ${SQLSENTINEL_STORAGE_SA_PASSWORD:?Set SQLSENTINEL_STORAGE_SA_PASSWORD in .env}
+      SQLSENTINEL_DOCK_USER: ${SQLSENTINEL_DOCK_USER:?Set SQLSENTINEL_DOCK_USER in .env}
+      SQLSENTINEL_DOCK_PASSWORD: ${SQLSENTINEL_DOCK_PASSWORD:?Set SQLSENTINEL_DOCK_PASSWORD in .env}
+      SQLSENTINEL_APP_USER: ${SQLSENTINEL_APP_USER:?Set SQLSENTINEL_APP_USER in .env}
+      SQLSENTINEL_APP_PASSWORD: ${SQLSENTINEL_APP_PASSWORD:?Set SQLSENTINEL_APP_PASSWORD in .env}
+      SQLSENTINEL_MONITOR_USER: ${SQLSENTINEL_MONITOR_USER:?Set SQLSENTINEL_MONITOR_USER in .env}
+      SQLSENTINEL_MONITOR_PASSWORD: ${SQLSENTINEL_MONITOR_PASSWORD:?Set SQLSENTINEL_MONITOR_PASSWORD in .env}
     command: >
-      bash -c "/opt/mssql-tools18/bin/sqlcmd -S sql-sentinel,1433 -U sa -P 'Sentinel@SQLSentinel1' -i /init/sentinel.sql -b -C"
+      bash -c "/opt/mssql-tools18/bin/sqlcmd -S sql-sentinel,1433 -U sa -P \"$$SQLSENTINEL_STORAGE_SA_PASSWORD\" -v DockUser=\"$$SQLSENTINEL_DOCK_USER\" DockPassword=\"$$SQLSENTINEL_DOCK_PASSWORD\" AppUser=\"$$SQLSENTINEL_APP_USER\" AppPassword=\"$$SQLSENTINEL_APP_PASSWORD\" MonitorUser=\"$$SQLSENTINEL_MONITOR_USER\" MonitorPassword=\"$$SQLSENTINEL_MONITOR_PASSWORD\" -i /init/sentinel.sql -b -C"
     restart: 'no'
 
 volumes:

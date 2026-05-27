@@ -19,6 +19,7 @@ import type { AddServerFormData } from '../components/AddServerDialog'
 import { useDiscovery } from '../hooks/useDiscovery'
 import type { DiscoveryRow } from '../hooks/useDiscovery'
 import { useServersStore } from '../store/serversStore'
+import { notify } from '../store/notifyStore'
 
 // -----------------------------------------------------------------------
 // Parsing porte da stringa "1433,1434" → [1433, 1434]
@@ -36,7 +37,8 @@ function parsePorts(input: string): number[] {
 // -----------------------------------------------------------------------
 
 export function Discovery(): React.JSX.Element {
-  const { servers, isScanning, progress, error, scan, cancelScan, addServer } = useDiscovery()
+  const { servers, isScanning, progress, error, scan, cancelScan, rememberManualServer } =
+    useDiscovery()
   const setServerGroup = useGroupsStore((s) => s.setServerGroup)
   const setServerAlias = useGroupsStore((s) => s.setServerAlias)
   const savedServers = useServersStore((s) => s.servers)
@@ -87,14 +89,6 @@ export function Discovery(): React.JSX.Element {
   }
 
   const handleDialogSave = async (data: AddServerFormData): Promise<void> => {
-    await addServer({
-      ip: data.ip,
-      port: data.port,
-      instanceName: data.instanceName || undefined,
-      useWindowsAuth: data.useWindowsAuth,
-      username: data.username || undefined,
-      password: data.password || undefined
-    })
     const result = await useServersStore.getState().addServer({
       host: data.ip,
       port: data.port,
@@ -105,6 +99,18 @@ export function Discovery(): React.JSX.Element {
       password: data.password || undefined,
       hostingType: data.hostingType
     })
+    if (!result.success) {
+      notify.error(result.reason ?? 'Could not add server.', 'Add server failed')
+      return
+    }
+    rememberManualServer({
+      ip: data.ip,
+      port: data.port,
+      instanceName: data.instanceName || undefined,
+      useWindowsAuth: data.useWindowsAuth,
+      username: data.username || undefined,
+      password: data.password || undefined
+    })
     // Use server UUID for group/alias keys; fall back to ip:port key for group (still keyed that way)
     const newServer =
       result?.server ??
@@ -114,6 +120,7 @@ export function Discovery(): React.JSX.Element {
     const sid = `${data.ip}:${data.port}`
     if (data.groupId) setServerGroup(sid, data.groupId)
     if (data.alias?.trim() && newServer) setServerAlias(newServer.id, data.alias.trim())
+    notify.success(`Server ${sid} added`, 'Server added')
     setDialogOpen(false)
   }
 

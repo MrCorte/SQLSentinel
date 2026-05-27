@@ -43,7 +43,10 @@ export function createServersRouter(): Router {
     if (result.success && result.server) {
       refreshWorker()
       serverStore.writeAutoBackup()
-      res.status(201).json({ ok: true, data: serverStore.stripCredentials(result.server) })
+      res.status(201).json({
+        ok: true,
+        data: { ...result, server: serverStore.stripCredentials(result.server) }
+      })
     } else {
       res.status(409).json({ ok: false, error: result.reason ?? 'add failed' })
     }

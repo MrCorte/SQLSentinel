@@ -1,6 +1,28 @@
 -- Staging server: 2 databases, mirrors prod schema, moderate data
 -- Tests: mid-size server, index fragmentation scenario
 
+USE master;
+GO
+
+DECLARE @dockLogin sysname = N'$(DockUser)';
+DECLARE @dockPassword NVARCHAR(128) = N'$(DockPassword)';
+IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = @dockLogin)
+BEGIN
+    DECLARE @sql NVARCHAR(MAX) =
+        N'CREATE LOGIN ' + QUOTENAME(@dockLogin) +
+        N' WITH PASSWORD = ' + QUOTENAME(@dockPassword, '''') +
+        N', CHECK_POLICY = ON';
+    EXEC(@sql);
+END
+GO
+IF IS_SRVROLEMEMBER(N'sysadmin', @dockLogin) <> 1
+BEGIN
+    DECLARE @roleSql NVARCHAR(MAX) =
+        N'ALTER SERVER ROLE sysadmin ADD MEMBER ' + QUOTENAME(@dockLogin);
+    EXEC(@roleSql);
+END
+GO
+
 IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = 'StagingAppDB')
     CREATE DATABASE StagingAppDB;
 GO

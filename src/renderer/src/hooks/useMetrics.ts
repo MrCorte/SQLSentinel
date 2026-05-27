@@ -52,6 +52,7 @@ export function useMetrics(connection: CollectMetricsRequest | null, options?: U
 
   /** Called by Dashboard when a push metric arrives via onMetricsUpdated */
   const receiveMetrics = useCallback((m: ServerMetrics) => {
+    setError(null)
     setMetrics(m)
   }, [])
 

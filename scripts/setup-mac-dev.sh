@@ -81,6 +81,26 @@ fi
 ensure_docker_running
 ensure_node_22
 
+required_env=(
+  SQLSENTINEL_DOCK_USER
+  SQLSENTINEL_DOCK_PASSWORD
+  SQLSENTINEL_APP_USER
+  SQLSENTINEL_APP_PASSWORD
+  SQLSENTINEL_MONITOR_USER
+  SQLSENTINEL_MONITOR_PASSWORD
+  SQLSENTINEL_STORAGE_SA_PASSWORD
+  SQLSENTINEL_PROD_SA_PASSWORD
+  SQLSENTINEL_DEV_SA_PASSWORD
+  SQLSENTINEL_STAGING_SA_PASSWORD
+  SQLSENTINEL_DR_SA_PASSWORD
+)
+for var in "${required_env[@]}"; do
+  if [[ -z "${!var:-}" ]]; then
+    echo "ERROR: $var is required. Copy .env.example to .env and export the values before running this script."
+    exit 1
+  fi
+done
+
 if [[ "$WITH_OLLAMA" == "1" ]] && ! command -v ollama &>/dev/null; then
   echo "Installing Ollama..."
   require_brew_formula ollama
@@ -92,7 +112,7 @@ docker compose -f docker/docker-compose.yml up -d
 
 echo "  Waiting for SQL Server 2025 (storage) to be healthy..."
 until docker compose -f docker/docker-compose.yml exec sql-sentinel \
-  /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Sentinel@SQLSentinel1' -Q 'SELECT 1' -b -C &>/dev/null; do
+  /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$SQLSENTINEL_STORAGE_SA_PASSWORD" -Q 'SELECT 1' -b -C &>/dev/null; do
   printf '.'
   sleep 3
 done
@@ -127,8 +147,8 @@ echo "    npm run dev"
 echo ""
 echo "    Storage database (SQL Server 2025):"
 echo "      Host: localhost   Port: 1437"
-echo "      App user:  sqlsentinel_app / App@Sentinel2025"
-echo "      SA:        sa              / Sentinel@SQLSentinel1"
+echo "      App user:  ${SQLSENTINEL_APP_USER} / <hidden>"
+echo "      SA:        sa / <hidden>"
 echo ""
 echo "    Monitored test servers (Azure SQL Edge):"
 echo "      prod-sql     localhost:1433"

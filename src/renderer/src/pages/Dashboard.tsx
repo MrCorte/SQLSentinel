@@ -13,7 +13,14 @@ import {
   IconButton,
   LinearProgress,
   Skeleton,
-  Tooltip
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControlLabel,
+  Switch
 } from '@mui/material'
 import { alpha } from '@mui/material/styles'
 import EditIcon from '@mui/icons-material/Edit'
@@ -33,6 +40,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { getServerDisplayName } from '../types/index'
 import { tokens } from '../styles/tokens'
 import { selectDisplayMetrics } from '../utils/selectDisplayMetrics'
+import { PasswordField } from '../components/ui/PasswordField'
 
 // -----------------------------------------------------------------------
 // Helpers
@@ -51,6 +59,23 @@ function toCollectRequest(server: StoredServer): CollectMetricsRequest {
     username: server.username,
     password: server.password
   }
+}
+
+function isAuthenticationError(message: string | null): boolean {
+  if (!message) return false
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes('login failed') ||
+    normalized.includes('untrusted domain') ||
+    normalized.includes('integrated authentication') ||
+    normalized.includes('windows authentication')
+  )
+}
+
+interface CredentialsForm {
+  useWindowsAuth: boolean
+  username: string
+  password: string
 }
 
 // -----------------------------------------------------------------------
@@ -83,6 +108,14 @@ export function Dashboard(): React.JSX.Element {
   const [editingAlias, setEditingAlias] = useState(false)
   const [aliasInput, setAliasInput] = useState('')
   const aliasInputRef = useRef<HTMLInputElement | null>(null)
+  const [credentialsOpen, setCredentialsOpen] = useState(false)
+  const [credentialsForm, setCredentialsForm] = useState<CredentialsForm>({
+    useWindowsAuth: true,
+    username: '',
+    password: ''
+  })
+  const [credentialsSaving, setCredentialsSaving] = useState(false)
+  const [credentialsError, setCredentialsError] = useState<string | null>(null)
 
   const connection = useMemo(
     () => (selectedServer ? toCollectRequest(selectedServer) : null),
@@ -181,6 +214,66 @@ export function Dashboard(): React.JSX.Element {
       setRetriggering(false)
     }
   }, [selectedServer, updateServer, receiveMetrics])
+
+  const openCredentialsDialog = useCallback((): void => {
+    if (!selectedServer) return
+    setCredentialsForm({
+      useWindowsAuth: selectedServer.useWindowsAuth,
+      username: selectedServer.username ?? '',
+      password: ''
+    })
+    setCredentialsError(null)
+    setCredentialsOpen(true)
+  }, [selectedServer])
+
+  const handleSaveCredentialsAndRetry = useCallback(async (): Promise<void> => {
+    if (!selectedServer) return
+    const username = credentialsForm.username.trim()
+    if (!credentialsForm.useWindowsAuth && !username) {
+      setCredentialsError('Username required for SQL Server authentication')
+      return
+    }
+
+    setCredentialsSaving(true)
+    setCredentialsError(null)
+    try {
+      const patch: Partial<StoredServer> = {
+        useWindowsAuth: credentialsForm.useWindowsAuth,
+        username: credentialsForm.useWindowsAuth ? undefined : username,
+        password: credentialsForm.useWindowsAuth ? undefined : credentialsForm.password
+      }
+      await updateServer(selectedServer.id, patch)
+
+      const retryConnection: CollectMetricsRequest = {
+        ip: selectedServer.ip ?? selectedServer.host,
+        port: selectedServer.port,
+        instanceName: selectedServer.instanceName,
+        useWindowsAuth: credentialsForm.useWindowsAuth,
+        username: credentialsForm.useWindowsAuth ? undefined : username,
+        password: credentialsForm.useWindowsAuth ? undefined : credentialsForm.password
+      }
+      const result = await window.sqlSentinel.collectMetrics(retryConnection)
+      if (!result.ok) {
+        setCredentialsError(result.error)
+        return
+      }
+
+      const key = `${retryConnection.ip}:${retryConnection.port}`
+      useMetricsStore.getState().setMetrics(key, result.data)
+      pushSnapshot(key, result.data)
+      receiveMetrics(result.data)
+      await updateServer(selectedServer.id, {
+        unreachable: false,
+        unreachableSince: undefined,
+        lastSeen: new Date().toISOString()
+      })
+      setCredentialsOpen(false)
+    } catch (err) {
+      setCredentialsError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setCredentialsSaving(false)
+    }
+  }, [credentialsForm, pushSnapshot, receiveMetrics, selectedServer, updateServer])
 
   return (
     <Box
@@ -363,7 +456,92 @@ export function Dashboard(): React.JSX.Element {
             </Box>
           )}
 
-          {error && <Alert severity="error">{error}</Alert>}
+          {error && (
+            <Alert
+              severity="error"
+              action={
+                isAuthenticationError(error) ? (
+                  <Button color="inherit" size="small" onClick={openCredentialsDialog}>
+                    Update credentials
+                  </Button>
+                ) : undefined
+              }
+            >
+              {error}
+            </Alert>
+          )}
+
+          <Dialog
+            open={credentialsOpen}
+            onClose={() => {
+              if (!credentialsSaving) setCredentialsOpen(false)
+            }}
+            fullWidth
+            maxWidth="xs"
+          >
+            <DialogTitle>Update server credentials</DialogTitle>
+            <DialogContent>
+              <Stack spacing={2} sx={{ mt: 1 }}>
+                {credentialsError && <Alert severity="error">{credentialsError}</Alert>}
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={credentialsForm.useWindowsAuth}
+                      onChange={(event) =>
+                        setCredentialsForm((prev) => ({
+                          ...prev,
+                          useWindowsAuth: event.target.checked
+                        }))
+                      }
+                    />
+                  }
+                  label="Windows Authentication"
+                />
+                {!credentialsForm.useWindowsAuth && (
+                  <>
+                    <TextField
+                      label="Username"
+                      value={credentialsForm.username}
+                      onChange={(event) =>
+                        setCredentialsForm((prev) => ({
+                          ...prev,
+                          username: event.target.value
+                        }))
+                      }
+                      fullWidth
+                      autoFocus
+                    />
+                    <PasswordField
+                      label="Password"
+                      value={credentialsForm.password}
+                      onChange={(event) =>
+                        setCredentialsForm((prev) => ({
+                          ...prev,
+                          password: event.target.value
+                        }))
+                      }
+                      fullWidth
+                    />
+                  </>
+                )}
+              </Stack>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setCredentialsOpen(false)} disabled={credentialsSaving}>
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                onClick={handleSaveCredentialsAndRetry}
+                disabled={credentialsSaving}
+                startIcon={
+                  credentialsSaving ? <CircularProgress size={14} color="inherit" /> : undefined
+                }
+              >
+                {credentialsSaving ? 'Retrying...' : 'Save and retry'}
+              </Button>
+            </DialogActions>
+          </Dialog>
 
           {(() => {
             // Stale-while-revalidate: use fresh metrics if available,

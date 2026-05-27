@@ -67,7 +67,7 @@ On first launch, a wizard appears before the login screen. Enter the SQL Server 
 | Host | `localhost` | |
 | Port | `1437` | non-default to avoid collision with monitored instances |
 | Database | `SQLSentinelDB` | created automatically |
-| Username | `sqlsentinel_app` | |
+| Username | from `SQLSENTINEL_APP_USER` | no committed default |
 | Encrypt (TLS) | off | enable for remote/production |
 | Trust cert | on | allow self-signed certificates |
 
@@ -105,7 +105,8 @@ npm run build:win  # Windows .exe + NSIS installer
 ### Docker (development storage database)
 
 ```bash
-docker run -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=App@Sentinel2025 \
+export SQLSENTINEL_STORAGE_SA_PASSWORD='<generate-strong-password>'
+docker run -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD="$SQLSENTINEL_STORAGE_SA_PASSWORD" \
   -p 1437:1433 --platform linux/amd64 \
   mcr.microsoft.com/mssql/server:2025-latest
 ```

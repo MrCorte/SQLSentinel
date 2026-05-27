@@ -10,12 +10,18 @@
 #   docker compose down           — stop
 #   docker compose down -v        — stop + wipe all data
 #
-# SQLSentinel connections (all use: sa / <password below>):
-#   Production   localhost:1433
-#   Development  localhost:1434
-#   Staging      localhost:1435
-#   DR / Replica localhost:1436
-#   Storage DB   localhost:1437  (SQL Server 2025 — app persistence backend)
+# SQLSentinel Docker login (created by sql-init; sysadmin for local testing).
+# Set passwords in a local, uncommitted .env file. See ../.env.example.
+#   User: ${SQLSENTINEL_DOCK_USER}
+#   Password: ${SQLSENTINEL_DOCK_PASSWORD}
+#
+# SQLSentinel connections:
+#   Production   localhost:1433  ${SQLSENTINEL_DOCK_USER} / ${SQLSENTINEL_DOCK_PASSWORD}
+#   Development  localhost:1434  ${SQLSENTINEL_DOCK_USER} / ${SQLSENTINEL_DOCK_PASSWORD}
+#   Staging      localhost:1435  ${SQLSENTINEL_DOCK_USER} / ${SQLSENTINEL_DOCK_PASSWORD}
+#   DR / Replica localhost:1436  ${SQLSENTINEL_DOCK_USER} / ${SQLSENTINEL_DOCK_PASSWORD}
+#   Storage DB   localhost:1437  ${SQLSENTINEL_DOCK_USER} / ${SQLSENTINEL_DOCK_PASSWORD}
+#   Storage DB   localhost:1437  ${SQLSENTINEL_APP_USER} / ${SQLSENTINEL_APP_PASSWORD}
 #
 # Test databases:
 #   sql-prod:     AppDB, ReportingDB, ArchiveDB
@@ -36,7 +42,7 @@ services:
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
-      MSSQL_SA_PASSWORD: "Prod@SQLSentinel1"
+      MSSQL_SA_PASSWORD: ${SQLSENTINEL_PROD_SA_PASSWORD:?Set SQLSENTINEL_PROD_SA_PASSWORD in .env}
       MSSQL_MEMORY_LIMIT_MB: "1024"
     volumes:
       - sql-prod-data:/var/opt/mssql
@@ -58,7 +64,7 @@ services:
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
-      MSSQL_SA_PASSWORD: "Dev@SQLSentinel1"
+      MSSQL_SA_PASSWORD: ${SQLSENTINEL_DEV_SA_PASSWORD:?Set SQLSENTINEL_DEV_SA_PASSWORD in .env}
       MSSQL_MEMORY_LIMIT_MB: "768"
     volumes:
       - sql-dev-data:/var/opt/mssql
@@ -80,7 +86,7 @@ services:
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
-      MSSQL_SA_PASSWORD: "Staging@SQLSentinel1"
+      MSSQL_SA_PASSWORD: ${SQLSENTINEL_STAGING_SA_PASSWORD:?Set SQLSENTINEL_STAGING_SA_PASSWORD in .env}
       MSSQL_MEMORY_LIMIT_MB: "768"
     volumes:
       - sql-staging-data:/var/opt/mssql
@@ -102,7 +108,7 @@ services:
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
-      MSSQL_SA_PASSWORD: "DR@SQLSentinel1"
+      MSSQL_SA_PASSWORD: ${SQLSENTINEL_DR_SA_PASSWORD:?Set SQLSENTINEL_DR_SA_PASSWORD in .env}
       MSSQL_MEMORY_LIMIT_MB: "768"
     volumes:
       - sql-dr-data:/var/opt/mssql
@@ -127,12 +133,12 @@ services:
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
-      MSSQL_SA_PASSWORD: "Sentinel@SQLSentinel1"
+      MSSQL_SA_PASSWORD: ${SQLSENTINEL_STORAGE_SA_PASSWORD:?Set SQLSENTINEL_STORAGE_SA_PASSWORD in .env}
       MSSQL_MEMORY_LIMIT_MB: "1536"
     volumes:
       - sql-sentinel-data:/var/opt/mssql
     healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Sentinel@SQLSentinel1' -Q 'SELECT 1' -b -C 2>/dev/null"]
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -C 2>/dev/null"]
       interval: 15s
       timeout: 10s
       retries: 12
@@ -154,13 +160,25 @@ services:
       sql-sentinel: { condition: service_healthy }
     volumes:
       - ./init:/init:ro
+    environment:
+      SQLSENTINEL_DOCK_USER: ${SQLSENTINEL_DOCK_USER:?Set SQLSENTINEL_DOCK_USER in .env}
+      SQLSENTINEL_DOCK_PASSWORD: ${SQLSENTINEL_DOCK_PASSWORD:?Set SQLSENTINEL_DOCK_PASSWORD in .env}
+      SQLSENTINEL_APP_USER: ${SQLSENTINEL_APP_USER:?Set SQLSENTINEL_APP_USER in .env}
+      SQLSENTINEL_APP_PASSWORD: ${SQLSENTINEL_APP_PASSWORD:?Set SQLSENTINEL_APP_PASSWORD in .env}
+      SQLSENTINEL_MONITOR_USER: ${SQLSENTINEL_MONITOR_USER:?Set SQLSENTINEL_MONITOR_USER in .env}
+      SQLSENTINEL_MONITOR_PASSWORD: ${SQLSENTINEL_MONITOR_PASSWORD:?Set SQLSENTINEL_MONITOR_PASSWORD in .env}
+      SQLSENTINEL_PROD_SA_PASSWORD: ${SQLSENTINEL_PROD_SA_PASSWORD:?Set SQLSENTINEL_PROD_SA_PASSWORD in .env}
+      SQLSENTINEL_DEV_SA_PASSWORD: ${SQLSENTINEL_DEV_SA_PASSWORD:?Set SQLSENTINEL_DEV_SA_PASSWORD in .env}
+      SQLSENTINEL_STAGING_SA_PASSWORD: ${SQLSENTINEL_STAGING_SA_PASSWORD:?Set SQLSENTINEL_STAGING_SA_PASSWORD in .env}
+      SQLSENTINEL_DR_SA_PASSWORD: ${SQLSENTINEL_DR_SA_PASSWORD:?Set SQLSENTINEL_DR_SA_PASSWORD in .env}
+      SQLSENTINEL_STORAGE_SA_PASSWORD: ${SQLSENTINEL_STORAGE_SA_PASSWORD:?Set SQLSENTINEL_STORAGE_SA_PASSWORD in .env}
     command: >
       bash -c "
-        echo '→ Initializing sql-prod...'     && /opt/mssql-tools18/bin/sqlcmd -S sql-prod,1433     -U sa -P 'Prod@SQLSentinel1'     -i /init/prod.sql     -b -C &&
-        echo '→ Initializing sql-dev...'      && /opt/mssql-tools18/bin/sqlcmd -S sql-dev,1433      -U sa -P 'Dev@SQLSentinel1'      -i /init/dev.sql      -b -C &&
-        echo '→ Initializing sql-staging...'  && /opt/mssql-tools18/bin/sqlcmd -S sql-staging,1433  -U sa -P 'Staging@SQLSentinel1'  -i /init/staging.sql  -b -C &&
-        echo '→ Initializing sql-dr...'       && /opt/mssql-tools18/bin/sqlcmd -S sql-dr,1433       -U sa -P 'DR@SQLSentinel1'       -i /init/dr.sql       -b -C &&
-        echo '→ Initializing sql-sentinel...' && /opt/mssql-tools18/bin/sqlcmd -S sql-sentinel,1433 -U sa -P 'Sentinel@SQLSentinel1' -i /init/sentinel.sql -b -C &&
+        echo '→ Initializing sql-prod...'     && /opt/mssql-tools18/bin/sqlcmd -S sql-prod,1433     -U sa -P \"$$SQLSENTINEL_PROD_SA_PASSWORD\"     -v DockUser=\"$$SQLSENTINEL_DOCK_USER\" DockPassword=\"$$SQLSENTINEL_DOCK_PASSWORD\" -i /init/prod.sql     -b -C &&
+        echo '→ Initializing sql-dev...'      && /opt/mssql-tools18/bin/sqlcmd -S sql-dev,1433      -U sa -P \"$$SQLSENTINEL_DEV_SA_PASSWORD\"      -v DockUser=\"$$SQLSENTINEL_DOCK_USER\" DockPassword=\"$$SQLSENTINEL_DOCK_PASSWORD\" -i /init/dev.sql      -b -C &&
+        echo '→ Initializing sql-staging...'  && /opt/mssql-tools18/bin/sqlcmd -S sql-staging,1433  -U sa -P \"$$SQLSENTINEL_STAGING_SA_PASSWORD\"  -v DockUser=\"$$SQLSENTINEL_DOCK_USER\" DockPassword=\"$$SQLSENTINEL_DOCK_PASSWORD\" -i /init/staging.sql  -b -C &&
+        echo '→ Initializing sql-dr...'       && /opt/mssql-tools18/bin/sqlcmd -S sql-dr,1433       -U sa -P \"$$SQLSENTINEL_DR_SA_PASSWORD\"       -v DockUser=\"$$SQLSENTINEL_DOCK_USER\" DockPassword=\"$$SQLSENTINEL_DOCK_PASSWORD\" -i /init/dr.sql       -b -C &&
+        echo '→ Initializing sql-sentinel...' && /opt/mssql-tools18/bin/sqlcmd -S sql-sentinel,1433 -U sa -P \"$$SQLSENTINEL_STORAGE_SA_PASSWORD\" -v DockUser=\"$$SQLSENTINEL_DOCK_USER\" DockPassword=\"$$SQLSENTINEL_DOCK_PASSWORD\" AppUser=\"$$SQLSENTINEL_APP_USER\" AppPassword=\"$$SQLSENTINEL_APP_PASSWORD\" MonitorUser=\"$$SQLSENTINEL_MONITOR_USER\" MonitorPassword=\"$$SQLSENTINEL_MONITOR_PASSWORD\" -i /init/sentinel.sql -b -C &&
         echo '✓ All databases initialized.'
       "
     restart: "no"

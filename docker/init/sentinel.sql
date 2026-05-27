@@ -12,12 +12,33 @@
 --
 -- App connection:
 --   Host: localhost   Port: 1437
---   Login (app):  sqlsentinel_app / App@Sentinel2025
---   Login (sa):   sa              / Sentinel@SQLSentinel1
+--   Login (app):  ${SQLSENTINEL_APP_USER} / ${SQLSENTINEL_APP_PASSWORD}
+--   Login (admin): ${SQLSENTINEL_DOCK_USER} / ${SQLSENTINEL_DOCK_PASSWORD}
+--   Login (sa):   sa              / ${SQLSENTINEL_STORAGE_SA_PASSWORD}
 
 -- ── Part 1: Persistence database ───────────────────────────────────────────
 
 USE master;
+GO
+
+DECLARE @dockLogin sysname = N'$(DockUser)';
+DECLARE @dockPassword NVARCHAR(128) = N'$(DockPassword)';
+IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = @dockLogin)
+BEGIN
+    DECLARE @dockSql NVARCHAR(MAX) =
+        N'CREATE LOGIN ' + QUOTENAME(@dockLogin) +
+        N' WITH PASSWORD = ' + QUOTENAME(@dockPassword, '''') +
+        N', CHECK_POLICY = ON';
+    EXEC(@dockSql);
+END
+GO
+DECLARE @dockLogin sysname = N'$(DockUser)';
+IF IS_SRVROLEMEMBER(N'sysadmin', @dockLogin) <> 1
+BEGIN
+    DECLARE @dockRoleSql NVARCHAR(MAX) =
+        N'ALTER SERVER ROLE sysadmin ADD MEMBER ' + QUOTENAME(@dockLogin);
+    EXEC(@dockRoleSql);
+END
 GO
 
 IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = N'SQLSentinelDB')
@@ -28,13 +49,29 @@ USE SQLSentinelDB;
 GO
 
 -- App login — least privilege: only needs this database
-IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'sqlsentinel_app')
-    CREATE LOGIN sqlsentinel_app WITH PASSWORD = N'App@Sentinel2025', CHECK_POLICY = OFF;
+DECLARE @appLogin sysname = N'$(AppUser)';
+DECLARE @appPassword NVARCHAR(128) = N'$(AppPassword)';
+IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = @appLogin)
+BEGIN
+    DECLARE @appLoginSql NVARCHAR(MAX) =
+        N'CREATE LOGIN ' + QUOTENAME(@appLogin) +
+        N' WITH PASSWORD = ' + QUOTENAME(@appPassword, '''') +
+        N', CHECK_POLICY = ON';
+    EXEC(@appLoginSql);
+END
 GO
-IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'sqlsentinel_app')
-    CREATE USER sqlsentinel_app FOR LOGIN sqlsentinel_app;
+DECLARE @appLogin sysname = N'$(AppUser)';
+IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = @appLogin)
+BEGIN
+    DECLARE @appUserSql NVARCHAR(MAX) =
+        N'CREATE USER ' + QUOTENAME(@appLogin) + N' FOR LOGIN ' + QUOTENAME(@appLogin);
+    EXEC(@appUserSql);
+END
 GO
-ALTER ROLE db_owner ADD MEMBER sqlsentinel_app;
+DECLARE @appLogin sysname = N'$(AppUser)';
+DECLARE @appRoleSql NVARCHAR(MAX) =
+    N'ALTER ROLE db_owner ADD MEMBER ' + QUOTENAME(@appLogin);
+EXEC(@appRoleSql);
 GO
 
 -- settings
@@ -160,25 +197,48 @@ GO
 -- Monitor login (read-only access to DMVs)
 USE master;
 GO
-IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'sqlsentinel_monitor')
-    CREATE LOGIN sqlsentinel_monitor WITH PASSWORD = N'Monitor@Sentinel2025', CHECK_POLICY = OFF;
+DECLARE @monitorLogin sysname = N'$(MonitorUser)';
+DECLARE @monitorPassword NVARCHAR(128) = N'$(MonitorPassword)';
+IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = @monitorLogin)
+BEGIN
+    DECLARE @monitorLoginSql NVARCHAR(MAX) =
+        N'CREATE LOGIN ' + QUOTENAME(@monitorLogin) +
+        N' WITH PASSWORD = ' + QUOTENAME(@monitorPassword, '''') +
+        N', CHECK_POLICY = ON';
+    EXEC(@monitorLoginSql);
+END
 GO
-GRANT VIEW SERVER STATE TO sqlsentinel_monitor;
-GRANT VIEW ANY DATABASE TO sqlsentinel_monitor;
+DECLARE @monitorLogin sysname = N'$(MonitorUser)';
+DECLARE @monitorGrantSql NVARCHAR(MAX) =
+    N'GRANT VIEW SERVER STATE TO ' + QUOTENAME(@monitorLogin) + N'; ' +
+    N'GRANT VIEW ANY DATABASE TO ' + QUOTENAME(@monitorLogin) + N';';
+EXEC(@monitorGrantSql);
 GO
 USE SentinelAppDB;
 GO
-IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'sqlsentinel_monitor')
-    CREATE USER sqlsentinel_monitor FOR LOGIN sqlsentinel_monitor;
+DECLARE @monitorLogin sysname = N'$(MonitorUser)';
+IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = @monitorLogin)
+BEGIN
+    DECLARE @monitorUserSql NVARCHAR(MAX) =
+        N'CREATE USER ' + QUOTENAME(@monitorLogin) + N' FOR LOGIN ' + QUOTENAME(@monitorLogin);
+    EXEC(@monitorUserSql);
+END
 GO
-EXEC sp_addrolemember N'db_datareader', N'sqlsentinel_monitor';
+DECLARE @monitorLogin sysname = N'$(MonitorUser)';
+EXEC sp_addrolemember N'db_datareader', @monitorLogin;
 GO
 USE msdb;
 GO
-IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'sqlsentinel_monitor')
-    CREATE USER sqlsentinel_monitor FOR LOGIN sqlsentinel_monitor;
+DECLARE @monitorLogin sysname = N'$(MonitorUser)';
+IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = @monitorLogin)
+BEGIN
+    DECLARE @monitorMsdbUserSql NVARCHAR(MAX) =
+        N'CREATE USER ' + QUOTENAME(@monitorLogin) + N' FOR LOGIN ' + QUOTENAME(@monitorLogin);
+    EXEC(@monitorMsdbUserSql);
+END
 GO
-EXEC sp_addrolemember N'db_datareader', N'sqlsentinel_monitor';
+DECLARE @monitorLogin sysname = N'$(MonitorUser)';
+EXEC sp_addrolemember N'db_datareader', @monitorLogin;
 GO
 
 USE SentinelAppDB;

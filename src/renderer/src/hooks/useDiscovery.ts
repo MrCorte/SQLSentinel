@@ -1,10 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import type {
-  DiscoveredServer,
-  ScanOptions,
-  ScanProgress,
-  ManualServerRequest
-} from '../../../preload/index'
+import type { DiscoveredServer, ScanOptions, ScanProgress } from '../../../preload/index'
 import { notify } from '../store/notifyStore'
 
 // sessionStorage key — survives tab navigation but not app restart, which is
@@ -104,28 +99,23 @@ export function useDiscovery() {
   }, [])
 
   /**
-   * Adds (or updates) a manual server.
-   * Runs a TCP probe to verify reachability, then updates the server list.
+   * Mirrors a successfully persisted manual server into the discovery table.
+   * Persistence is handled by serversStore.addServer; this helper must not call
+   * legacy addServerManual because that path writes an incomplete record.
    */
-  const addServer = useCallback(async (params: AddServerParams): Promise<void> => {
-    setError(null)
-    const req: ManualServerRequest = {
+  const rememberManualServer = useCallback((params: AddServerParams): void => {
+    const key = `${params.ip}:${params.port}`
+    const newRow: DiscoveryRow = {
       ip: params.ip,
       port: params.port,
-      ...(params.instanceName ? { instanceName: params.instanceName } : {})
+      reachable: true,
+      responseTimeMs: 0,
+      discoveredAt: new Date(),
+      discoveryType: 'manual'
     }
-
-    const result = await window.sqlSentinel.addServerManual(req)
-    if (result.ok) {
-      const newRow: DiscoveryRow = { ...result.data, discoveryType: 'manual' }
-      const key = `${params.ip}:${params.port}`
-      setServers((prev) => [...prev.filter((s) => `${s.ip}:${s.port}` !== key), newRow])
-      notify.success(`Server ${key} added`, 'Server added')
-    } else {
-      setError(result.error)
-      notify.error(result.error, 'Add server failed')
-    }
+    setError(null)
+    setServers((prev) => [...prev.filter((s) => `${s.ip}:${s.port}` !== key), newRow])
   }, [])
 
-  return { servers, isScanning, progress, error, scan, cancelScan, addServer }
+  return { servers, isScanning, progress, error, scan, cancelScan, rememberManualServer }
 }

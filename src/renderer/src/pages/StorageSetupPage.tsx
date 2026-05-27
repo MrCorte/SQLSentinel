@@ -38,7 +38,7 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
     host: 'localhost',
     port: '1437', // non-default port — avoids collision with monitored SQL Server instances
     database: 'SQLSentinelDB',
-    username: 'sqlsentinel_app',
+    username: '',
     password: '',
     encrypt: false,
     trustServerCertificate: true

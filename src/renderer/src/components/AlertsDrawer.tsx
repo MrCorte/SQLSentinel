@@ -233,7 +233,7 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
     const groups = new Map<string, Array<Alert>>()
     for (const a of filteredOpen) {
       const ts = new Date(a.detectedAt).getTime()
-      const key = now - ts < ONE_HOUR ? `${a.serverId}::${a.category}` : `solo:${a.id}`
+      const key = now - ts < ONE_HOUR ? `${a.serverId}::${a.category}::${a.message}` : `solo:${a.id}`
       const list = groups.get(key) ?? []
       list.push(a)
       groups.set(key, list)

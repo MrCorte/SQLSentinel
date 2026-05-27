@@ -182,8 +182,17 @@ export function useHomeDashboard(onNavigateToServer: (id: string) => void): Home
     const hasCpuData = cpuData.some((d) => d.hasData)
     const cpuChartHeight = Math.max(180, cpuData.length * 40)
 
-    const recentAlerts = [...activeAlerts]
-      .sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime())
+    const _sortedAlerts = [...activeAlerts].sort(
+      (a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime()
+    )
+    const _seen = new Set<string>()
+    const recentAlerts = _sortedAlerts
+      .filter((a) => {
+        const k = `${a.serverId}::${a.category}::${a.message}`
+        if (_seen.has(k)) return false
+        _seen.add(k)
+        return true
+      })
       .slice(0, 10)
 
     const offlineDbs: OfflineDb[] = servers.flatMap((s) => {

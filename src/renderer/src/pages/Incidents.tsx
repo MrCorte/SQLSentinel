@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import Box from '@mui/material/Box'
 import Typography from '@mui/material/Typography'
 import Chip from '@mui/material/Chip'
@@ -22,6 +22,8 @@ import {
 import { IncidentDetailDrawer } from '../components/incidents/IncidentDetailDrawer'
 import type { Incident, IncidentAiStats, IncidentStatus } from '../../../preload/index'
 
+type IncidentRow = Incident & { _count: number }
+
 const SEVERITY_COLOR: Record<string, string> = {
   CRITICAL: tokens.color.danger,
   WARNING: tokens.color.warning
@@ -35,23 +37,32 @@ const STATUS_COLOR: Record<string, 'default' | 'warning' | 'error' | 'success' |
   archived: 'default'
 }
 
-const COLUMNS: GridColDef<Incident>[] = [
+const COLUMNS: GridColDef<IncidentRow>[] = [
   {
     field: 'severity',
     headerName: 'Severity',
     width: 100,
-    renderCell: ({ value }) => (
-      <Chip
-        label={value as string}
-        size="small"
-        sx={{
-          bgcolor: SEVERITY_COLOR[value as string] ?? tokens.color.textMuted,
-          color: '#fff',
-          fontWeight: 600,
-          fontSize: 11,
-          height: 20
-        }}
-      />
+    renderCell: ({ row }) => (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+        <Chip
+          label={row.severity}
+          size="small"
+          sx={{
+            bgcolor: SEVERITY_COLOR[row.severity] ?? tokens.color.textMuted,
+            color: '#fff',
+            fontWeight: 600,
+            fontSize: 11,
+            height: 20
+          }}
+        />
+        {row._count > 1 && (
+          <Chip
+            label={`×${row._count}`}
+            size="small"
+            sx={{ height: 18, fontSize: 10, fontWeight: 700 }}
+          />
+        )}
+      </Box>
     )
   },
   {
@@ -133,8 +144,24 @@ export function Incidents(): React.JSX.Element {
     }
   }, [])
 
+  const rows = useMemo<IncidentRow[]>(() => {
+    const groups = new Map<string, Incident[]>()
+    for (const inc of incidents) {
+      const key = `${inc.serverId}::${inc.category}`
+      const list = groups.get(key) ?? []
+      list.push(inc)
+      groups.set(key, list)
+    }
+    const out: IncidentRow[] = []
+    for (const list of groups.values()) {
+      list.sort((a, b) => b.openedAt - a.openedAt)
+      out.push({ ...list[0], _count: list.length })
+    }
+    return out
+  }, [incidents])
+
   const handleRowClick = useCallback(
-    (params: GridRowParams<Incident>) => {
+    (params: GridRowParams<IncidentRow>) => {
       setSelectedId(params.row.id)
       setDrawerOpen(true)
     },
@@ -167,7 +194,7 @@ export function Incidents(): React.JSX.Element {
       {/* Grid */}
       <Box sx={{ flex: 1, minHeight: 0 }}>
         <DataGrid
-          rows={incidents}
+          rows={rows}
           columns={COLUMNS}
           getRowId={(row) => row.id}
           onRowClick={handleRowClick}

@@ -36,12 +36,21 @@ const TABLE_DDL: Array<{ name: string; sql: string }> = [
     sql: `CREATE TABLE dbo.db_custom_fields (id NVARCHAR(400) NOT NULL PRIMARY KEY, alias NVARCHAR(200) NULL, referente NVARCHAR(200) NULL)`
   },
   {
+    // Time-series table — clustered on (server_id, collected_at DESC) so the
+    // dominant access pattern (latest-N per server, history range scans) does
+    // a single clustered seek with no key lookup. Cluster is intentionally
+    // non-unique: SQL Server appends a 4-byte uniquifier only on the rare
+    // same-millisecond collision, which is cheaper than carrying the 36-byte
+    // id column in every NCI row locator. id keeps a non-clustered UNIQUE
+    // index for the data-model uniqueness contract.
     name: 'metrics_snapshots',
     sql: `CREATE TABLE dbo.metrics_snapshots (
-       id           NVARCHAR(36)  NOT NULL PRIMARY KEY,
+       id           NVARCHAR(36)  NOT NULL,
        server_id    NVARCHAR(36)  NOT NULL,
        collected_at DATETIME2     NOT NULL,
-       metrics_json NVARCHAR(MAX) NOT NULL
+       metrics_json NVARCHAR(MAX) NOT NULL,
+       CONSTRAINT PK_metrics_snapshots PRIMARY KEY NONCLUSTERED (id),
+       INDEX CX_metrics_server_collected CLUSTERED (server_id, collected_at DESC)
      )`
   },
   {
@@ -273,11 +282,10 @@ const TABLE_DDL: Array<{ name: string; sql: string }> = [
 // ── Required indexes ─────────────────────────────────────────────────────────
 const INDEX_DDL: Array<{ table: string; name: string; sql: string }> = [
   {
-    table: 'metrics_snapshots',
-    name: 'IX_metrics_server_collected',
-    sql: `CREATE INDEX IX_metrics_server_collected ON dbo.metrics_snapshots(server_id, collected_at DESC)`
-  },
-  {
+    // Cleanup-path index: the retention job filters purely on collected_at, so
+    // a covering NCI on that single column keeps DELETE batches off the
+    // clustered index. (The clustered key on (server_id, collected_at DESC, id)
+    // covers all read paths, no separate read NCI needed.)
     table: 'metrics_snapshots',
     name: 'IX_metrics_cleanup',
     sql: `CREATE INDEX IX_metrics_cleanup ON dbo.metrics_snapshots(collected_at)`
@@ -298,9 +306,21 @@ const INDEX_DDL: Array<{ table: string; name: string; sql: string }> = [
     sql: `CREATE INDEX IX_ai_feedback_hash ON dbo.ai_feedback(question_hash)`
   },
   {
+    // Filtered: every hot query (findPromotionCandidates GROUP BY hash,
+    // listEmbeddable scan, feedbackIndex preWarm) starts from rating = 1.
+    // Replaces the old IX_ai_feedback_rating which was non-selective (only
+    // two possible values) and forced key-lookups on every match.
     table: 'ai_feedback',
-    name: 'IX_ai_feedback_rating',
-    sql: `CREATE INDEX IX_ai_feedback_rating ON dbo.ai_feedback(rating)`
+    name: 'IX_ai_feedback_pos',
+    sql: `CREATE INDEX IX_ai_feedback_pos ON dbo.ai_feedback(question_hash) WHERE rating = 1`
+  },
+  {
+    // Filtered: NULL hashes are unpromoted candidates and never queried;
+    // promoted_hash IS NOT NULL is the only predicate that hits this column.
+    table: 'ai_tsql_map',
+    name: 'IX_ai_tsql_map_promoted_hash',
+    sql: `CREATE INDEX IX_ai_tsql_map_promoted_hash ON dbo.ai_tsql_map(promoted_hash)
+          WHERE promoted_hash IS NOT NULL`
   },
   {
     table: 'servers',
@@ -404,18 +424,10 @@ async function tableIsCompressed(name: string): Promise<boolean> {
 // Statistics on UNINDEXED columns used in WHERE predicates.
 // Note: indexed columns get auto-stats from the index — duplicating them adds maintenance
 // overhead with no benefit, so we only cover columns not already referenced by an index.
-const STATISTICS_DDL: Array<{ table: string; name: string; sql: string }> = [
-  {
-    table: 'db_custom_fields',
-    name: 'ST_db_custom_fields_alias',
-    sql: `CREATE STATISTICS ST_db_custom_fields_alias ON dbo.db_custom_fields(alias)`
-  },
-  {
-    table: 'db_custom_fields',
-    name: 'ST_db_custom_fields_referente',
-    sql: `CREATE STATISTICS ST_db_custom_fields_referente ON dbo.db_custom_fields(referente)`
-  }
-]
+// Empty for now: previous entries on db_custom_fields(alias/referente) were
+// removed because those columns are never part of a WHERE — the auto-stats
+// were pure maintenance overhead. The legacy stats are dropped by migration 2.
+const STATISTICS_DDL: Array<{ table: string; name: string; sql: string }> = []
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -466,14 +478,102 @@ interface Migration {
 }
 
 const MIGRATIONS: Migration[] = [
-  // No migrations yet — the bootstrap CREATE TABLE statements above cover v1.
-  // Example for the next schema bump:
-  //   {
-  //     id: 1,
-  //     description: 'Add notes column to users',
-  //     sql: `IF COL_LENGTH('dbo.users', 'notes') IS NULL
-  //           ALTER TABLE dbo.users ADD notes NVARCHAR(1000) NULL;`
-  //   },
+  {
+    id: 1,
+    description: 'Re-cluster metrics_snapshots on (server_id, collected_at DESC)',
+    // Existing installs created the table with `id NVARCHAR(36) PRIMARY KEY`
+    // which defaulted to a CLUSTERED PK on a random UUID — causing constant
+    // page splits and forcing key-lookups on every history read. This
+    // migration converts those installs to the new layout: clustered on the
+    // time-series access path with id moved to a non-clustered UNIQUE PK.
+    // Idempotent: short-circuits when the old PK is already gone.
+    //
+    // ONLINE=ON keeps the table writable during the rebuild on Enterprise/
+    // Developer/Azure editions. On Standard/Express the option is rejected
+    // with msg 1969 / 40549; the TRY/CATCH retries OFFLINE which blocks
+    // writes for the duration of the rebuild (typically minutes on a multi-GB
+    // table). Migration is recorded as applied only after both branches
+    // succeed, so a partial failure re-runs cleanly at the next boot.
+    sql: `
+      IF EXISTS (SELECT 1 FROM sys.indexes
+                 WHERE object_id = OBJECT_ID(N'dbo.metrics_snapshots')
+                   AND name = N'IX_metrics_server_collected')
+        DROP INDEX IX_metrics_server_collected ON dbo.metrics_snapshots;
+
+      DECLARE @pk SYSNAME;
+      SELECT @pk = kc.name
+      FROM sys.key_constraints kc
+      JOIN sys.indexes i ON i.object_id = kc.parent_object_id AND i.index_id = kc.unique_index_id
+      JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+      JOIN sys.columns c ON c.object_id = i.object_id AND c.column_id = ic.column_id
+      WHERE kc.parent_object_id = OBJECT_ID(N'dbo.metrics_snapshots')
+        AND kc.type = 'PK'
+        AND i.type_desc = 'CLUSTERED'
+        AND c.name = N'id'
+        AND (SELECT COUNT(*) FROM sys.index_columns
+             WHERE object_id = i.object_id AND index_id = i.index_id) = 1;
+
+      IF @pk IS NOT NULL
+        EXEC ('ALTER TABLE dbo.metrics_snapshots DROP CONSTRAINT ' + QUOTENAME(@pk));
+
+      IF NOT EXISTS (SELECT 1 FROM sys.indexes
+                     WHERE object_id = OBJECT_ID(N'dbo.metrics_snapshots')
+                       AND name = N'CX_metrics_server_collected')
+      BEGIN
+        BEGIN TRY
+          CREATE CLUSTERED INDEX CX_metrics_server_collected
+            ON dbo.metrics_snapshots(server_id, collected_at DESC)
+            WITH (DATA_COMPRESSION = PAGE, ONLINE = ON);
+        END TRY
+        BEGIN CATCH
+          -- ONLINE=ON unavailable (Standard/Express, or older 2014-): fall
+          -- back to a blocking offline rebuild. Any other error re-throws.
+          IF ERROR_NUMBER() IN (1969, 40549, 11402)
+            CREATE CLUSTERED INDEX CX_metrics_server_collected
+              ON dbo.metrics_snapshots(server_id, collected_at DESC)
+              WITH (DATA_COMPRESSION = PAGE);
+          ELSE
+            ;THROW;
+        END CATCH
+      END
+
+      IF NOT EXISTS (SELECT 1 FROM sys.key_constraints
+                     WHERE parent_object_id = OBJECT_ID(N'dbo.metrics_snapshots')
+                       AND type = 'PK')
+        ALTER TABLE dbo.metrics_snapshots
+          ADD CONSTRAINT PK_metrics_snapshots PRIMARY KEY NONCLUSTERED (id);
+    `
+  },
+  {
+    id: 2,
+    description: 'Drop unused statistics on db_custom_fields(alias, referente)',
+    // Those columns are never part of a WHERE clause; the legacy stats kept
+    // getting auto-updated for nothing. Safe to drop on any install.
+    sql: `
+      IF EXISTS (SELECT 1 FROM sys.stats
+                 WHERE object_id = OBJECT_ID(N'dbo.db_custom_fields')
+                   AND name = N'ST_db_custom_fields_alias')
+        DROP STATISTICS dbo.db_custom_fields.ST_db_custom_fields_alias;
+
+      IF EXISTS (SELECT 1 FROM sys.stats
+                 WHERE object_id = OBJECT_ID(N'dbo.db_custom_fields')
+                   AND name = N'ST_db_custom_fields_referente')
+        DROP STATISTICS dbo.db_custom_fields.ST_db_custom_fields_referente;
+    `
+  },
+  {
+    id: 3,
+    description: 'Replace IX_ai_feedback_rating with filtered IX_ai_feedback_pos',
+    // The legacy non-filtered index on rating had two distinct values, so the
+    // optimiser preferred a scan anyway. The new filtered index is a single
+    // page on most installs and serves the only hot query path (rating = 1).
+    sql: `
+      IF EXISTS (SELECT 1 FROM sys.indexes
+                 WHERE object_id = OBJECT_ID(N'dbo.ai_feedback')
+                   AND name = N'IX_ai_feedback_rating')
+        DROP INDEX IX_ai_feedback_rating ON dbo.ai_feedback;
+    `
+  }
 ]
 
 async function ensureMigrationsTable(): Promise<void> {
@@ -551,6 +651,11 @@ export async function initSchema(): Promise<SchemaInitResult> {
     }
   }
 
+  // 2b. Versioned migrations — run BEFORE indexes/compression so structural
+  // changes (e.g., dropping a legacy clustered PK in migration 1) don't
+  // conflict with the idempotent index DDL below.
+  await runMigrations(result)
+
   // 3. Required indexes
   for (const { table, name, sql } of INDEX_DDL) {
     if (await indexExists(table, name)) {
@@ -622,9 +727,6 @@ export async function initSchema(): Promise<SchemaInitResult> {
       // Non-fatal: empty tables or permission gap
     }
   }
-
-  // 8. Versioned migrations — append to MIGRATIONS array for forward changes.
-  await runMigrations(result)
 
   return result
 }

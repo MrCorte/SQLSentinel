@@ -9,11 +9,17 @@ export interface SessionRow {
   expires_at: number
 }
 
+// Token length must match the PK column type (NVARCHAR(64)) exactly — binding
+// NVarChar(500) here triggers an implicit conversion on the server side and
+// disables the clustered PK seek, turning every authenticated IPC call into a
+// table scan.
+const TOKEN_LEN = 64
+
 export async function createSession(session: SessionRow): Promise<void> {
   const pool = getPool()
   await pool
     .request()
-    .input('token', sql.NVarChar(500), session.token)
+    .input('token', sql.NVarChar(TOKEN_LEN), session.token)
     .input('user_id', sql.NVarChar(36), session.user_id)
     .input('username', sql.NVarChar(200), session.username)
     .input('role', sql.NVarChar(50), session.role)
@@ -28,7 +34,7 @@ export async function findSessionByToken(token: string): Promise<SessionRow | nu
   const now = Math.floor(Date.now() / 1000)
   const r = await pool
     .request()
-    .input('token', sql.NVarChar(500), token)
+    .input('token', sql.NVarChar(TOKEN_LEN), token)
     .input('now', sql.BigInt, now)
     .query<SessionRow>(
       `SELECT token, user_id, username, role, expires_at FROM dbo.sessions WHERE token = @token AND expires_at > @now`
@@ -40,7 +46,7 @@ export async function removeSession(token: string): Promise<void> {
   const pool = getPool()
   await pool
     .request()
-    .input('token', sql.NVarChar(500), token)
+    .input('token', sql.NVarChar(TOKEN_LEN), token)
     .query(`DELETE FROM dbo.sessions WHERE token = @token`)
 }
 

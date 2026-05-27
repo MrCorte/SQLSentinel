@@ -331,6 +331,11 @@ async function querySessions(pool: mssql.ConnectionPool): Promise<SessionInfo[]>
  * Source: sys.dm_exec_query_stats CROSS APPLY sys.dm_exec_sql_text
  */
 async function queryTopQueries(pool: mssql.ConnectionPool): Promise<QueryInfo[]> {
+  // Bound to the last hour of plan cache: dm_exec_query_stats is unindexed so
+  // the scan still touches every cached plan, but the recency predicate
+  // prunes rows before the CROSS APPLY to dm_exec_sql_text — the expensive
+  // part of the query on busy instances (100k+ plans). The UI displays
+  // "currently hot" queries anyway, so the filter changes nothing user-visible.
   const sql = `
     SELECT TOP 20
       SUBSTRING(
@@ -347,6 +352,7 @@ async function queryTopQueries(pool: mssql.ConnectionPool): Promise<QueryInfo[]>
       qs.total_logical_reads / NULLIF(qs.execution_count, 0)          AS avg_logical_reads
     FROM sys.dm_exec_query_stats qs
     CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) qt
+    WHERE qs.last_execution_time > DATEADD(MINUTE, -60, GETUTCDATE())
     ORDER BY qs.total_elapsed_time DESC
   `
 
@@ -475,6 +481,12 @@ interface DatabaseFileRow {
  * Source: sys.master_files CROSS APPLY sys.dm_os_volume_stats
  */
 async function queryDiskVolumes(pool: mssql.ConnectionPool): Promise<DiskVolume[]> {
+  // Must call dm_os_volume_stats for EVERY (database_id, file_id) pair: data
+  // and log files of the same DB are commonly placed on different drives (the
+  // standard D:\data + L:\log split), so deduping at the master_files level
+  // would silently drop entire volumes from the result. dm_os_volume_stats is
+  // an in-memory DMV — per-call cost is negligible and the outer DISTINCT on
+  // mount_point collapses duplicates.
   const sql = `
     SELECT DISTINCT
       vs.volume_mount_point,

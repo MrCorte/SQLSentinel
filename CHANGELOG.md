@@ -6,6 +6,17 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Performance
+- **`metrics_snapshots` re-clustered on `(server_id, collected_at DESC)`** — the previous schema had `id NVARCHAR(36) PRIMARY KEY` defaulting to a clustered index on a random UUID, causing constant page-splits on insert and forcing key-lookups for every history read. The new layout makes the dominant access paths (`findLatest`, `findHistory`, `findLastNBulk`) single clustered seeks; `id` survives as a non-clustered UNIQUE PK. The cluster key intentionally omits `id` — SQL Server appends a 4-byte uniquifier only on the rare same-millisecond collision, which is cheaper than carrying the 36-byte UUID in every NCI row locator (~360 MB saved per 10M rows on a typical install). Migration 1 converts existing installs idempotently and tries `ONLINE = ON` first, falling back to an offline rebuild on Standard/Express.
+- **`sessions.token` type-bind fix** — `sessionsRepository` was binding `NVarChar(500)` against a `NVARCHAR(64)` PK column, triggering an implicit conversion that disabled the PK seek and made every authenticated IPC call a table scan. Now bound at the exact column width.
+- **`ai_feedback` filtered index** — replaced the non-selective `IX_ai_feedback_rating` (only two distinct values) with filtered `IX_ai_feedback_pos (question_hash) WHERE rating = 1`. Covers `findPromotionCandidates`'s grouping and `listEmbeddable`'s scan directly.
+- **`ai_tsql_map.promoted_hash` index** — new filtered NCI `WHERE promoted_hash IS NOT NULL` eliminates the table scan in `findPromotionCandidates`' anti-join.
+- **`findPromotionCandidates` — `NOT IN` → `NOT EXISTS`** — safer NULL semantics + seek-friendly plan against the new filtered index.
+- **Top-queries collector bounded scan** — `queryTopQueries` now filters `qs.last_execution_time > DATEADD(MINUTE, -60, GETUTCDATE())`, so the `TOP 20 ORDER BY` over `dm_exec_query_stats` no longer triggers a `CROSS APPLY sys.dm_exec_sql_text` on every cached plan (100k+ on busy instances).
+
+### Removed
+- Dropped unused statistics `ST_db_custom_fields_alias` / `_referente` — those columns are never part of a WHERE clause, so the auto-update overhead was pure waste. Migration 2 removes them on existing installs.
+
+### Performance (previous batch)
 - **PAGE compression on hot tables** — `ALTER TABLE ... REBUILD WITH (DATA_COMPRESSION = PAGE)` is now applied to `metrics_snapshots`, `server_databases`, `incident_events`, `incident_actions`, `incident_audit`, `knowledge_chunks`, `knowledge_embeddings` at boot (idempotent: `sys.partitions.data_compression` checked first). Typical 3-5× I/O reduction on read paths (history charts, AG sync, post-mortem export) for ~1-3% extra CPU on INSERTs. Failures (older editions) downgrade to warnings, not boot aborts.
 - **Filtered indexes** replace full B-trees on predicates with skewed selectivity:
   - `IX_servers_unreachable` → filtered `WHERE unreachable = 1` (95%+ of rows in a healthy fleet are skipped).

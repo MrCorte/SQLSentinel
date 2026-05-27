@@ -30,6 +30,7 @@ interface IncidentRow {
   resolved_at: string | number | null
   summary: string | null
   root_cause_md: string | null
+  group_count?: number
 }
 
 interface IncidentEventRow {
@@ -95,7 +96,8 @@ function rowToIncident(row: IncidentRow): Incident {
     openedAt: toNum(row.opened_at),
     resolvedAt: toNumOrNull(row.resolved_at) ?? undefined,
     summary: row.summary ?? undefined,
-    rootCauseMd: row.root_cause_md ?? undefined
+    rootCauseMd: row.root_cause_md ?? undefined,
+    count: row.group_count
   }
 }
 
@@ -175,9 +177,26 @@ export async function listIncidents(filter?: { status?: IncidentStatus }): Promi
   let sqlText: string
   if (filter?.status) {
     req.input('status', sql.NVarChar(20), filter.status)
-    sqlText = `SELECT TOP 200 * FROM dbo.incidents WHERE status = @status ORDER BY opened_at DESC`
+    sqlText = `
+      WITH ranked AS (
+        SELECT *,
+          ROW_NUMBER() OVER (PARTITION BY server_id, category ORDER BY opened_at DESC) AS rn,
+          COUNT(*) OVER (PARTITION BY server_id, category) AS group_count
+        FROM dbo.incidents
+        WHERE status = @status
+      )
+      SELECT TOP 200 id, server_id, category, severity, status, opened_at, resolved_at, summary, root_cause_md, group_count
+      FROM ranked WHERE rn = 1 ORDER BY opened_at DESC`
   } else {
-    sqlText = `SELECT TOP 200 * FROM dbo.incidents ORDER BY opened_at DESC`
+    sqlText = `
+      WITH ranked AS (
+        SELECT *,
+          ROW_NUMBER() OVER (PARTITION BY server_id, category ORDER BY opened_at DESC) AS rn,
+          COUNT(*) OVER (PARTITION BY server_id, category) AS group_count
+        FROM dbo.incidents
+      )
+      SELECT TOP 200 id, server_id, category, severity, status, opened_at, resolved_at, summary, root_cause_md, group_count
+      FROM ranked WHERE rn = 1 ORDER BY opened_at DESC`
   }
   const r = await req.query<IncidentRow>(sqlText)
   return r.recordset.map(rowToIncident)

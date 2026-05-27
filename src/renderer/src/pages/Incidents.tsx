@@ -144,21 +144,10 @@ export function Incidents(): React.JSX.Element {
     }
   }, [])
 
-  const rows = useMemo<IncidentRow[]>(() => {
-    const groups = new Map<string, Incident[]>()
-    for (const inc of incidents) {
-      const key = `${inc.serverId}::${inc.category}`
-      const list = groups.get(key) ?? []
-      list.push(inc)
-      groups.set(key, list)
-    }
-    const out: IncidentRow[] = []
-    for (const list of groups.values()) {
-      list.sort((a, b) => b.openedAt - a.openedAt)
-      out.push({ ...list[0], _count: list.length })
-    }
-    return out
-  }, [incidents])
+  const rows = useMemo<IncidentRow[]>(
+    () => incidents.map((inc) => ({ ...inc, _count: inc.count ?? 1 })),
+    [incidents]
+  )
 
   const handleRowClick = useCallback(
     (params: GridRowParams<IncidentRow>) => {

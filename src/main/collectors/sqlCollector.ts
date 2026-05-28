@@ -583,18 +583,45 @@ export async function detectServerInfo(connection: ServerConnection): Promise<Se
   let pool: mssql.ConnectionPool | null = null
   try {
     pool = await mssql.connect(config)
-    const result = await pool.request().query<{
-      machine_name: string
-      instance_name: string | null
-    }>(`
-      SELECT
-        CAST(SERVERPROPERTY('MachineName')  AS NVARCHAR(128)) AS machine_name,
-        CAST(SERVERPROPERTY('InstanceName') AS NVARCHAR(128)) AS instance_name
-    `)
-    const row = result.recordset[0]
+    const [serverRes, agRes] = await Promise.allSettled([
+      pool.request().query<{ machine_name: string; instance_name: string | null }>(`
+        SELECT
+          CAST(SERVERPROPERTY('MachineName')  AS NVARCHAR(128)) AS machine_name,
+          CAST(SERVERPROPERTY('InstanceName') AS NVARCHAR(128)) AS instance_name
+      `),
+      pool.request().query<{ ag_name: string; group_id: string; role_desc: string }>(`
+        SELECT TOP 1
+          ag.name                              AS ag_name,
+          CAST(ag.group_id AS NVARCHAR(36))    AS group_id,
+          ISNULL(ars.role_desc, 'RESOLVING')   AS role_desc
+        FROM sys.availability_groups ag
+        JOIN sys.availability_replicas ar
+          ON ag.group_id = ar.group_id
+        LEFT JOIN sys.dm_hadr_availability_replica_states ars
+          ON ar.replica_id = ars.replica_id
+        WHERE ars.is_local = 1
+      `)
+    ])
+
+    const row =
+      serverRes.status === 'fulfilled' ? serverRes.value.recordset[0] : undefined
+    const agRow =
+      agRes.status === 'fulfilled' ? agRes.value.recordset[0] : undefined
+
+    const rawRole = agRow?.role_desc
+    const agRole =
+      rawRole === 'PRIMARY' || rawRole === 'SECONDARY' || rawRole === 'RESOLVING'
+        ? rawRole
+        : undefined
+
     return {
       machineName: row?.machine_name ?? '',
-      instanceName: row?.instance_name ?? null
+      instanceName: row?.instance_name ?? null,
+      ...(agRole !== undefined && {
+        agRole,
+        agName: agRow?.ag_name,
+        agGroupId: agRow?.group_id
+      })
     }
   } finally {
     await pool?.close()

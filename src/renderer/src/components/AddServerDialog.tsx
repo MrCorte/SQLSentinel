@@ -127,12 +127,19 @@ export interface AddServerFormData {
   groupId?: string
   alias?: string
   hostingType: ServerHostingType
+  agRole?: 'PRIMARY' | 'SECONDARY' | 'RESOLVING'
+  agName?: string
+  agGroupId?: string
 }
 
 interface Props {
   open: boolean
   initialIp?: string
   initialPort?: number
+  initialInstanceName?: string
+  initialUseWindowsAuth?: boolean
+  initialUsername?: string
+  initialPassword?: string
   onClose: () => void
   onSave: (data: AddServerFormData) => void
 }
@@ -159,6 +166,10 @@ export function AddServerDialog({
   open,
   initialIp,
   initialPort,
+  initialInstanceName,
+  initialUseWindowsAuth,
+  initialUsername,
+  initialPassword,
   onClose,
   onSave
 }: Props): React.JSX.Element {
@@ -166,6 +177,11 @@ export function AddServerDialog({
   const [errors, setErrors] = useState<FormErrors>({})
   const [testState, setTestState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [testLabel, setTestLabel] = useState('')
+  const [agBadge, setAgBadge] = useState<{
+    role: 'PRIMARY' | 'SECONDARY' | 'RESOLVING'
+    agName: string
+    agGroupId: string
+  } | null>(null)
 
   const groups = useGroupsStore((state) => state.groups)
   const sortedGroups = [...groups].sort((a, b) => a.order - b.order)
@@ -176,11 +192,16 @@ export function AddServerDialog({
         ...EMPTY_FORM,
         ip: initialIp ?? '',
         port: initialPort ?? 1433,
+        instanceName: initialInstanceName ?? '',
+        useWindowsAuth: initialUseWindowsAuth ?? true,
+        username: initialUsername ?? '',
+        password: initialPassword ?? '',
         groupId: sortedGroups[0]?.id
       })
       setErrors({})
       setTestState('idle')
       setTestLabel('')
+      setAgBadge(null)
       if (initialIp && /^\d{1,3}(\.\d{1,3}){3}$/.test(initialIp.trim())) {
         const ip = initialIp.trim()
         const port = initialPort ?? 1433
@@ -241,13 +262,21 @@ export function AddServerDialog({
         setTestLabel(result.error)
         return
       }
-      const { machineName, instanceName } = result.data
+      const { machineName, instanceName, agRole, agName, agGroupId } = result.data
       setForm((prev) => ({
         ...prev,
         machineName,
         instanceName: prev.instanceName?.trim() ? prev.instanceName : (instanceName ?? ''),
-        alias: prev.alias?.trim() ? prev.alias : machineName
+        alias: prev.alias?.trim() ? prev.alias : machineName,
+        agRole,
+        agName,
+        agGroupId
       }))
+      if (agRole && agName && agGroupId) {
+        setAgBadge({ role: agRole, agName, agGroupId })
+      } else {
+        setAgBadge(null)
+      }
       const label = instanceName ? `${machineName}\\${instanceName}` : machineName
       setTestState('success')
       setTestLabel(label)
@@ -341,6 +370,23 @@ export function AddServerDialog({
               color="success"
               variant="outlined"
             />
+          )}
+          {testState === 'success' && agBadge && (
+            <Chip
+              label={
+                agBadge.role === 'PRIMARY'
+                  ? `AG Primary — ${agBadge.agName}`
+                  : agBadge.role === 'SECONDARY'
+                    ? `AG Secondary — ${agBadge.agName}`
+                    : `AG Resolving — ${agBadge.agName}`
+              }
+              size="small"
+              color={agBadge.role === 'PRIMARY' ? 'primary' : agBadge.role === 'SECONDARY' ? 'warning' : 'default'}
+              variant="outlined"
+            />
+          )}
+          {testState === 'success' && !agBadge && (
+            <Chip label="Standalone" size="small" variant="outlined" />
           )}
           {testState === 'error' && (() => {
             const { title, hints } = parseConnectionError(testLabel)

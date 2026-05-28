@@ -28,6 +28,7 @@ const Inventory = lazy(() =>
 )
 import { AlertsDrawer } from './components/AlertsDrawer'
 import { GlobalSnackbar } from './components/GlobalSnackbar'
+import { AgReplicaSuggestionDialog } from './components/AgReplicaSuggestionDialog'
 import { HomeDashboard } from './components/HomeDashboard'
 import { WorkerProvider } from './context/WorkerContext'
 import { useWorker } from './context/useWorker'
@@ -563,6 +564,7 @@ function App(): React.JSX.Element {
         <CssBaseline />
         {/* Mounted at the root so any store/component can call notify.error(...) */}
         <GlobalSnackbar />
+        <AgReplicaSuggestionDialog />
         <Suspense fallback={null}>
           {storageState === 'loading' ? null : storageState === 'setup' ? (
             <StorageSetupPage initialError={storageError} onConfigured={handleStorageConfigured} />

@@ -103,7 +103,10 @@ export function Discovery(): React.JSX.Element {
       useWindowsAuth: data.useWindowsAuth,
       username: data.username || undefined,
       password: data.password || undefined,
-      hostingType: data.hostingType
+      hostingType: data.hostingType,
+      agRole: data.agRole,
+      agName: data.agName,
+      agGroupId: data.agGroupId
     })
     // Use server UUID for group/alias keys; fall back to ip:port key for group (still keyed that way)
     const newServer =

@@ -195,11 +195,12 @@ export function invalidatePool(conn: ServerConnection): void {
 }
 
 /**
- * Close every cached pool. Called from the main process shutdown handler.
- * Sets the shutting-down flag so any in-flight getPool rejects rather than
- * leaking a fresh pool that escapes the close.
+ * Close every cached pool.
+ * @param permanent - true when the process is quitting (keeps shuttingDown=true);
+ *                    false (default) for resume-from-sleep, where new pools must
+ *                    be allowed afterwards.
  */
-export async function closeAllPools(): Promise<void> {
+export async function closeAllPools(permanent = false): Promise<void> {
   shuttingDown = true
   if (sweepTimer) {
     clearInterval(sweepTimer)
@@ -214,6 +215,7 @@ export async function closeAllPools(): Promise<void> {
     ...pools.map((entry) => entry.closing ?? entry.pool.close()),
     ...pendingConnects
   ])
+  if (!permanent) shuttingDown = false
 }
 
 /** For diagnostics / tests. */

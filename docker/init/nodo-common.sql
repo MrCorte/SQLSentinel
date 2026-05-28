@@ -8,10 +8,11 @@ BEGIN
     DECLARE @sql NVARCHAR(MAX) =
         N'CREATE LOGIN ' + QUOTENAME(@dockLogin) +
         N' WITH PASSWORD = ' + QUOTENAME(@dockPassword, '''') +
-        N', CHECK_POLICY = ON';
+        N', CHECK_POLICY = OFF';
     EXEC(@sql);
 END
 GO
+DECLARE @dockLogin sysname = N'$(DockUser)';
 IF IS_SRVROLEMEMBER(N'sysadmin', @dockLogin) <> 1
 BEGIN
     DECLARE @roleSql NVARCHAR(MAX) =
@@ -27,7 +28,7 @@ BEGIN
     DECLARE @loginSql NVARCHAR(MAX) =
         N'CREATE LOGIN ' + QUOTENAME(@agLogin) +
         N' WITH PASSWORD = ' + QUOTENAME(@agPassword, '''') +
-        N', CHECK_POLICY = ON';
+        N', CHECK_POLICY = OFF';
     EXEC(@loginSql);
 END
 GO

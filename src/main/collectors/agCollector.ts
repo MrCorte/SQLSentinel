@@ -153,19 +153,24 @@ export async function detectAndSyncReplicaRoles(
   const allServers = serverStore.getAllStripped()
   const updated: serverStore.StoredServer[] = []
 
-  // Build a host→server lookup once. Two-tier index:
+  // Build a host→server lookup once. Three-tier index:
   //  1. exact host match (lowercased)
-  //  2. substring fallback for legacy entries where host has FQDN suffix
+  //  2. machineName match — handles Docker/localhost where host='localhost' but
+  //     machineName='nodo1' matches the AG replica_server_name
+  //  3. substring fallback for legacy entries where host has FQDN suffix
   // Avoids the previous O(N) .find() inside the replica loop.
   const byExactHost = new Map<string, serverStore.StoredServer>()
+  const byMachineName = new Map<string, serverStore.StoredServer>()
   for (const s of allServers) {
     byExactHost.set((s.host ?? '').toLowerCase(), s)
+    if (s.machineName) byMachineName.set(s.machineName.toLowerCase(), s)
   }
 
   for (const replica of replicas) {
     // Hostname matching: strip instance suffix, compare case-insensitive
     const replicaBase = replica.replicaHost.split('\\')[0].toLowerCase()
     let match = byExactHost.get(replicaBase)
+    if (!match) match = byMachineName.get(replicaBase)
     if (!match) {
       // Substring fallback (rare path) — only walks the array when exact miss.
       match = allServers.find((s) => {

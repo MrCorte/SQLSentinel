@@ -523,20 +523,26 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
       log.warn('[worker] persist server_databases:', err)
     }
 
-    // CPU count persistence — save logicalCpus/physicalCpus to electron-store if changed.
-    // These values rarely change (only on hardware upgrade) so the write is infrequent.
-    const { logicalCpus, physicalCpus } = enrichedMetrics.instanceInfo
-    if (logicalCpus > 0) {
-      // CPU update doesn't need the password — use stripped lookup to skip DPAPI.
+    // CPU count + machineName persistence — save to electron-store if changed.
+    // These values rarely change so writes are infrequent.
+    // machineName is critical for AG replica matching when host='localhost'.
+    const { logicalCpus, physicalCpus, machineName } = enrichedMetrics.instanceInfo
+    if (logicalCpus > 0 || machineName) {
+      // Stripped lookup skips DPAPI decryption — no credentials needed here.
       const srvRecord = serverStore.getStrippedByIpPort(job.server.ip, job.server.port)
-      if (
-        srvRecord &&
-        (srvRecord.logicalCpus !== logicalCpus || srvRecord.physicalCpus !== physicalCpus)
-      ) {
-        serverStore.update(srvRecord.id, { logicalCpus, physicalCpus })
-        pushToRenderer(IpcChannel.SERVER_CONFIG_UPDATED, [
-          { ...srvRecord, logicalCpus, physicalCpus }
-        ])
+      if (srvRecord) {
+        const patch: Partial<typeof srvRecord> = {}
+        if (logicalCpus > 0 && (srvRecord.logicalCpus !== logicalCpus || srvRecord.physicalCpus !== physicalCpus)) {
+          patch.logicalCpus = logicalCpus
+          patch.physicalCpus = physicalCpus
+        }
+        if (machineName && srvRecord.machineName !== machineName) {
+          patch.machineName = machineName
+        }
+        if (Object.keys(patch).length > 0) {
+          serverStore.update(srvRecord.id, patch)
+          pushToRenderer(IpcChannel.SERVER_CONFIG_UPDATED, [{ ...srvRecord, ...patch }])
+        }
       }
     }
 

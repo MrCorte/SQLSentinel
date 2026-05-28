@@ -34,6 +34,7 @@ interface InstanceInfoRow {
   uptime_days: number
   logical_cpu_count: number
   physical_cpu_count: number
+  machine_name: string | null
 }
 
 interface DatabaseInfoRow {
@@ -200,7 +201,8 @@ async function queryInstanceInfo(pool: mssql.ConnectionPool): Promise<InstanceIn
       ), 0)                                      AS cpu_usage_percent,
       DATEDIFF(DAY, osi.sqlserver_start_time, GETDATE()) AS uptime_days,
       osi.cpu_count                                      AS logical_cpu_count,
-      osi.cpu_count / NULLIF(osi.hyperthread_ratio, 0)    AS physical_cpu_count
+      osi.cpu_count / NULLIF(osi.hyperthread_ratio, 0)    AS physical_cpu_count,
+      CAST(SERVERPROPERTY('MachineName') AS NVARCHAR(128)) AS machine_name
     FROM sys.dm_os_process_memory pm
     CROSS JOIN sys.dm_os_sys_info osi
   `
@@ -216,7 +218,8 @@ async function queryInstanceInfo(pool: mssql.ConnectionPool): Promise<InstanceIn
     cpuUsagePercent: Number(row.cpu_usage_percent),
     uptimeDays: Number(row.uptime_days),
     logicalCpus: Number(row.logical_cpu_count) || 0,
-    physicalCpus: Number(row.physical_cpu_count) || 0
+    physicalCpus: Number(row.physical_cpu_count) || 0,
+    machineName: row.machine_name ?? undefined
   }
 }
 

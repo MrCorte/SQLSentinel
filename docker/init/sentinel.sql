@@ -28,7 +28,7 @@ BEGIN
     DECLARE @dockSql NVARCHAR(MAX) =
         N'CREATE LOGIN ' + QUOTENAME(@dockLogin) +
         N' WITH PASSWORD = ' + QUOTENAME(@dockPassword, '''') +
-        N', CHECK_POLICY = ON';
+        N', CHECK_POLICY = OFF';
     EXEC(@dockSql);
 END
 GO
@@ -56,7 +56,7 @@ BEGIN
     DECLARE @appLoginSql NVARCHAR(MAX) =
         N'CREATE LOGIN ' + QUOTENAME(@appLogin) +
         N' WITH PASSWORD = ' + QUOTENAME(@appPassword, '''') +
-        N', CHECK_POLICY = ON';
+        N', CHECK_POLICY = OFF';
     EXEC(@appLoginSql);
 END
 GO
@@ -204,7 +204,7 @@ BEGIN
     DECLARE @monitorLoginSql NVARCHAR(MAX) =
         N'CREATE LOGIN ' + QUOTENAME(@monitorLogin) +
         N' WITH PASSWORD = ' + QUOTENAME(@monitorPassword, '''') +
-        N', CHECK_POLICY = ON';
+        N', CHECK_POLICY = OFF';
     EXEC(@monitorLoginSql);
 END
 GO

@@ -17,6 +17,7 @@ function buildConfig(params: {
     server: params.host,
     port: params.port,
     database: params.database,
+    connectionTimeout: 15000,
     requestTimeout: 30000,
     // Storage pool sizing: default mssql max is 10. With multiple dashboard
     // tabs (charts + bulk + alerts) plus the worker save queue and the cleanup
@@ -65,7 +66,7 @@ export async function initStoragePoolFromParams(params: {
     await _pool.close().catch(() => {})
     _pool = null
   }
-  _pool = await mssql.connect(buildConfig(params))
+  _pool = await new mssql.ConnectionPool(buildConfig(params)).connect()
 }
 
 export function getPool(): mssql.ConnectionPool {
@@ -104,12 +105,13 @@ export async function testConnection(params: {
     )
   })
 
-  const connect = mssql.connect({
+  const pool = new mssql.ConnectionPool({
     ...cfg,
     connectionTimeout: TIMEOUT_MS,
     requestTimeout: TIMEOUT_MS,
     options: { ...cfg.options, connectTimeout: TIMEOUT_MS }
   })
+  const connect = pool.connect()
 
   // If timeout wins the race, the connect promise is still in flight.
   // When it eventually resolves, close the pool so the TCP connection

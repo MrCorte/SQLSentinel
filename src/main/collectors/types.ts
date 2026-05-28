@@ -26,6 +26,7 @@ export interface InstanceInfo {
   uptimeDays: number
   logicalCpus: number // cpu_count from sys.dm_os_sys_info (includes HT threads)
   physicalCpus: number // cpu_count / hyperthread_ratio
+  machineName?: string // SERVERPROPERTY('MachineName') — used for AG replica matching
 }
 
 export interface DatabaseInfo {

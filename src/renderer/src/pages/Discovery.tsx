@@ -249,19 +249,39 @@ export function Discovery(): React.JSX.Element {
             inputProps={{ min: 1, max: 200 }}
             sx={{ width: 130 }}
           />
-          <Stack direction="row" spacing={1} sx={{ pt: 0.5 }}>
-            {isScanning ? (
-              <Button variant="contained" color="error" onClick={cancelScan}>
-                Cancel Scan
+          <Stack direction="column" spacing={1} sx={{ pt: 0.5 }}>
+            <Stack direction="row" spacing={1}>
+              {isScanning ? (
+                <Button variant="contained" color="error" onClick={cancelScan}>
+                  Cancel Scan
+                </Button>
+              ) : (
+                <Button variant="contained" onClick={handleScan}>
+                  Start Scan
+                </Button>
+              )}
+              <Button variant="outlined" onClick={openDialogManual} disabled={isScanning}>
+                Add Manually
               </Button>
-            ) : (
-              <Button variant="contained" onClick={handleScan}>
-                Start Scan
+            </Stack>
+            <Stack direction="row" spacing={1}>
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => { setCidr('127.0.0.1/32'); setPortsInput('1433,1434,1435,1436') }}
+                disabled={isScanning}
+              >
+                Preset: Localhost / Docker
               </Button>
-            )}
-            <Button variant="outlined" onClick={openDialogManual} disabled={isScanning}>
-              Add Manually
-            </Button>
+              <Button
+                size="small"
+                variant="text"
+                onClick={() => { setCidr('192.168.1.0/24'); setPortsInput('1433,1434') }}
+                disabled={isScanning}
+              >
+                Preset: LAN
+              </Button>
+            </Stack>
           </Stack>
         </Stack>
       </Paper>

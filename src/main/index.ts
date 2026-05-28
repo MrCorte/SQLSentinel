@@ -397,25 +397,43 @@ app.whenReady().then(async () => {
 
   createWindow()
 
-  // Notify renderer of storage readiness after the window loads
+  // Notify renderer of storage readiness after the window loads.
+  // If startup pool init failed (e.g. containers not yet ready), retry here
+  // before falling back to the setup page.
   mainWindow?.webContents.on('did-finish-load', () => {
-    if (!storageCfg) {
-      mainWindow?.webContents.send('storage:not-configured', {})
-    } else {
-      try {
-        getPool()
-        mainWindow?.webContents.send('storage:configured', {})
-      } catch {
-        mainWindow?.webContents.send('storage:not-configured', {
-          error: 'Could not connect to storage database'
-        })
+    void (async () => {
+      if (!storageCfg) {
+        mainWindow?.webContents.send('storage:not-configured', {})
+      } else {
+        let poolReady = false
+        try {
+          getPool()
+          poolReady = true
+        } catch {
+          // Pool init failed at startup — retry now that the window has loaded
+          try {
+            await initStoragePool(storageCfg)
+            await initSchema()
+            await initDefaultAdmin()
+            poolReady = true
+          } catch (err) {
+            log.error('[main] Storage reconnect on did-finish-load failed:', redactError(err))
+          }
+        }
+        if (poolReady) {
+          mainWindow?.webContents.send('storage:configured', {})
+        } else {
+          mainWindow?.webContents.send('storage:not-configured', {
+            error: 'Could not connect to storage database'
+          })
+        }
       }
-    }
-    // H7: surface SQLite recovery banner so the operator knows historical
-    // metrics are gone but the app is otherwise functional.
-    if (sqliteRecovered) {
-      mainWindow?.webContents.send('sqlite:recovered', sqliteRecovered)
-    }
+      // H7: surface SQLite recovery banner so the operator knows historical
+      // metrics are gone but the app is otherwise functional.
+      if (sqliteRecovered) {
+        mainWindow?.webContents.send('sqlite:recovered', sqliteRecovered)
+      }
+    })()
   })
 
   // H8: power suspend/resume — without this, on resume every job's nextRun is
@@ -516,7 +534,7 @@ function cleanupResources(): void {
     log.warn('[main] closeDb on shutdown:', err)
   }
   closeStoragePool().catch(() => {})
-  closeAllPools().catch(() => {})
+  closeAllPools(true).catch(() => {})
 }
 
 app.on('window-all-closed', () => {

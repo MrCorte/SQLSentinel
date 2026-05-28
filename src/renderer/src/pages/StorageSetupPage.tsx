@@ -32,6 +32,23 @@ interface Props {
 }
 
 const AUTO_NAVIGATE_SECONDS = 5
+const IPC_TIMEOUT_MS = 15000
+
+function withTimeout<T>(promise: Promise<T>, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(message)), IPC_TIMEOUT_MS)
+    promise.then(
+      (value) => {
+        clearTimeout(timeout)
+        resolve(value)
+      },
+      (err) => {
+        clearTimeout(timeout)
+        reject(err)
+      }
+    )
+  })
+}
 
 export function StorageSetupPage({ initialError, onConfigured }: Props): React.JSX.Element {
   const [form, setForm] = useState<FormState>({
@@ -122,54 +139,70 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
   const handleTest = useCallback(async () => {
     setTesting(true)
     setError(null)
-    const port = Number(form.port)
-    if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      setError('Port must be a number between 1 and 65535')
-      setTesting(false)
-      return
-    }
-    const result = await window.sqlSentinel.storage.testConnection({
-      host: form.host,
-      port,
-      database: form.database,
-      username: form.username,
-      password: form.password,
-      encrypt: form.encrypt,
-      trustServerCertificate: form.trustServerCertificate
-    })
-    if (!alive.current) return
-    setTesting(false)
-    if (result.ok) {
-      setTested(true)
-    } else {
-      setError(result.error ?? 'Connection failed')
+    try {
+      const port = Number(form.port)
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        setError('Port must be a number between 1 and 65535')
+        return
+      }
+      const result = await withTimeout(
+        window.sqlSentinel.storage.testConnection({
+          host: form.host,
+          port,
+          database: form.database,
+          username: form.username,
+          password: form.password,
+          encrypt: form.encrypt,
+          trustServerCertificate: form.trustServerCertificate
+        }),
+        'Connection test timed out after 15 seconds'
+      )
+      if (!alive.current) return
+      if (result.ok) {
+        setTested(true)
+      } else {
+        setError(result.error ?? 'Connection failed')
+      }
+    } catch (err) {
+      if (!alive.current) return
+      setError(err instanceof Error ? err.message : 'Connection failed')
+    } finally {
+      if (alive.current) setTesting(false)
     }
   }, [form])
 
   const handleSave = useCallback(async () => {
     setSaving(true)
     setError(null)
-    const port = Number(form.port)
-    if (!Number.isInteger(port) || port < 1 || port > 65535) {
-      setError('Port must be a number between 1 and 65535')
-      setSaving(false)
-      return
-    }
-    const result = await window.sqlSentinel.storage.saveConfig({
-      host: form.host,
-      port,
-      database: form.database,
-      username: form.username,
-      password: form.password,
-      encrypt: form.encrypt,
-      trustServerCertificate: form.trustServerCertificate
-    })
-    if (!alive.current) return
-    setSaving(false)
-    if (result.ok) {
-      setSetupResult(result.data)
-    } else {
-      setError(result.error ?? 'Save failed')
+    try {
+      const port = Number(form.port)
+      if (!Number.isInteger(port) || port < 1 || port > 65535) {
+        setError('Port must be a number between 1 and 65535')
+        return
+      }
+      const result = await withTimeout(
+        window.sqlSentinel.storage.saveConfig({
+          host: form.host,
+          port,
+          database: form.database,
+          username: form.username,
+          password: form.password,
+          encrypt: form.encrypt,
+          trustServerCertificate: form.trustServerCertificate
+        }),
+        'Save timed out after 15 seconds'
+      )
+      if (!alive.current) return
+      if (result.ok) {
+        setSetupResult(result.data)
+      } else {
+        setError(result.error ?? 'Save failed')
+      }
+    } catch (err) {
+      if (!alive.current) return
+      setError(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      if (alive.current) setSaving(false)
     }
   }, [form])
 
@@ -303,7 +336,7 @@ export function StorageSetupPage({ initialError, onConfigured }: Props): React.J
             <Button variant="outlined" onClick={handleTest} disabled={testing || saving}>
               {testing ? <CircularProgress size={16} /> : 'Test Connection'}
             </Button>
-            <Button variant="contained" onClick={handleSave} disabled={!tested || saving}>
+            <Button variant="contained" onClick={handleSave} disabled={saving}>
               {saving ? <CircularProgress size={16} /> : 'Save & Continue'}
             </Button>
           </Stack>

@@ -235,6 +235,8 @@ export interface Alert {
   category: AlertCategory
   severity: AlertSeverity
   message: string
+  /** Actionable hint shown below the alert message in the UI */
+  suggestion?: string
   detectedAt: Date
   acknowledgedAt: Date | null
 }

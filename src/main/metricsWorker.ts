@@ -324,13 +324,19 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
   const alerts: Alert[] = []
   const now = new Date()
 
-  function make(category: AlertCategory, severity: AlertSeverity, message: string): Alert {
+  function make(
+    category: AlertCategory,
+    severity: AlertSeverity,
+    message: string,
+    suggestion?: string
+  ): Alert {
     return {
       id: nextAlertId(),
       serverId: sid,
       category,
       severity,
       message,
+      suggestion,
       detectedAt: now,
       acknowledgedAt: null
     }
@@ -377,24 +383,45 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
 
   // Spazio disco volumi
   const diskVolumes = metrics.diskVolumes ?? []
+  const databaseFiles = metrics.databaseFiles ?? []
   const criticalVolumes = diskVolumes.filter((v) => v.free_pct < 10)
   const warnVolumes = diskVolumes.filter((v) => v.free_pct >= 10 && v.free_pct < 30)
+
+  // Returns a shrink suggestion listing the top files with reclaimable space on the given volumes
+  function shrinkSuggestion(volumes: typeof diskVolumes): string | undefined {
+    const mounts = volumes.map((v) => v.volume_mount_point.toLowerCase())
+    const candidates = databaseFiles
+      .filter((f) => {
+        const path = f.physical_name.toLowerCase()
+        return f.free_mb > 0 && mounts.some((m) => path.startsWith(m))
+      })
+      .sort((a, b) => b.free_mb - a.free_mb)
+      .slice(0, 5)
+    if (candidates.length === 0) return undefined
+    const list = candidates
+      .map((f) => `${f.database_name}/${f.file_name} (${(f.free_mb / 1024).toFixed(1)} GB free)`)
+      .join(', ')
+    return `Consider SHRINKFILE on: ${list}`
+  }
 
   if (criticalVolumes.length > 0) {
     const desc = criticalVolumes
       .map((v) => `${v.volume_mount_point} (${v.free_pct.toFixed(1)}% free)`)
       .join(', ')
-    alerts.push(make('disk_space_low', 'CRITICAL', `Volume space critical: ${desc}`))
+    alerts.push(
+      make('disk_space_low', 'CRITICAL', `Volume space critical: ${desc}`, shrinkSuggestion(criticalVolumes))
+    )
   }
   if (warnVolumes.length > 0) {
     const desc = warnVolumes
       .map((v) => `${v.volume_mount_point} (${v.free_pct.toFixed(1)}% free)`)
       .join(', ')
-    alerts.push(make('disk_space_low', 'WARNING', `Volume space running low: ${desc}`))
+    alerts.push(
+      make('disk_space_low', 'WARNING', `Volume space running low: ${desc}`, shrinkSuggestion(warnVolumes))
+    )
   }
 
   // Autogrowth disabled with low available space
-  const databaseFiles = metrics.databaseFiles ?? []
   const noGrowthLowSpace = databaseFiles.filter((f) => f.growth === 0 && f.free_mb < 100)
   if (noGrowthLowSpace.length > 0) {
     const desc = noGrowthLowSpace

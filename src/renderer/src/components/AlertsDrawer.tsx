@@ -35,7 +35,7 @@ type VirtualItem =
 // Estimated heights for virtualizer sizing
 const ROW_HEIGHT_HEADER = 32
 const ROW_HEIGHT_DIVIDER = 17
-const ROW_HEIGHT_ALERT = 90
+const ROW_HEIGHT_ALERT = 104
 
 function categoryLabel(cat: Alert['category']): string {
   switch (cat) {
@@ -155,11 +155,24 @@ function AlertRow({
           display: 'block',
           fontSize: tokens.font.sizeSm,
           color: tokens.color.textPrimary,
-          mb: 0.5
+          mb: alert.suggestion ? 0.25 : 0.5
         }}
       >
         {alert.message}
       </Typography>
+      {alert.suggestion && (
+        <Typography
+          sx={{
+            display: 'block',
+            fontSize: tokens.font.sizeXs,
+            color: tokens.color.textMuted,
+            fontStyle: 'italic',
+            mb: 0.5
+          }}
+        >
+          {alert.suggestion}
+        </Typography>
+      )}
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Typography
           component="span"

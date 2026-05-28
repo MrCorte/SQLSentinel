@@ -278,5 +278,5 @@ export const useAgStore = create<AgStore>((set, get) => ({
     })
   },
 
-  clear: () => set({ agGroups: {}, agDetails: {} })
+  clear: () => set({ agGroups: {}, agDetails: {}, pendingAgSuggestions: [] })
 }))

@@ -292,8 +292,8 @@ BEGIN
     INSERT INTO dbo.Servers (Hostname, Port, Environment) VALUES
         (N'sql-prod',    1433, N'Production'),
         (N'sql-dev',     1433, N'Development'),
-        (N'sql-staging', 1433, N'Staging'),
-        (N'sql-dr',      1433, N'DR');
+        (N'nodo1',       1433, N'Always On Primary'),
+        (N'nodo2',       1433, N'Always On Secondary');
 
     DECLARE @s INT = 0;
     WHILE @s < 200

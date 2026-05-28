@@ -1,8 +1,9 @@
 # SQLSentinel — Test Environment
 #
-# sql-prod/dev/staging/dr  — Azure SQL Edge, monitored targets
-# sql-sentinel             — SQL Server 2025 (amd64), SQLSentinel persistence backend
-#                            vector(1536) support required for RAG chunks
+# sql-prod/dev              — Azure SQL Edge, monitored standalone targets
+# nodo1/nodo2               — SQL Server Linux, Always On AG lab replicas
+# sql-sentinel              — SQL Server 2025 (amd64), SQLSentinel persistence backend
+#                             vector(1536) support required for RAG chunks
 #
 # Usage:
 #   docker compose up -d          — start all containers
@@ -18,19 +19,32 @@
 # SQLSentinel connections:
 #   Production   localhost:1433  ${SQLSENTINEL_DOCK_USER} / ${SQLSENTINEL_DOCK_PASSWORD}
 #   Development  localhost:1434  ${SQLSENTINEL_DOCK_USER} / ${SQLSENTINEL_DOCK_PASSWORD}
-#   Staging      localhost:1435  ${SQLSENTINEL_DOCK_USER} / ${SQLSENTINEL_DOCK_PASSWORD}
-#   DR / Replica localhost:1436  ${SQLSENTINEL_DOCK_USER} / ${SQLSENTINEL_DOCK_PASSWORD}
+#   nodo1 / AG Primary   localhost:1435  ${SQLSENTINEL_DOCK_USER} / ${SQLSENTINEL_DOCK_PASSWORD}
+#   nodo2 / AG Secondary localhost:1436  ${SQLSENTINEL_DOCK_USER} / ${SQLSENTINEL_DOCK_PASSWORD}
 #   Storage DB   localhost:1437  ${SQLSENTINEL_DOCK_USER} / ${SQLSENTINEL_DOCK_PASSWORD}
 #   Storage DB   localhost:1437  ${SQLSENTINEL_APP_USER} / ${SQLSENTINEL_APP_PASSWORD}
 #
 # Test databases:
 #   sql-prod:     AppDB, ReportingDB, ArchiveDB
 #   sql-dev:      DevAppDB, TestDB
-#   sql-staging:  StagingAppDB, StagingReportingDB
-#   sql-dr:       AppDB_DR, AppDB_DR_Archive
+#   nodo1/nodo2:  SQLSentinelAON AG with AonAppDB, AonReportingDB
 #   sql-sentinel: SQLSentinelDB, SentinelAppDB
 
 services:
+
+  # SQL Server 2019+ containers run as non-root (UID 10001). The shared AG
+  # certificate volume must be writable by that user before nodo1/nodo2 start.
+  ag-permissions:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    container_name: sqlsentinel-ag-permissions
+    user: "0:0"
+    volumes:
+      - sql-ag-certs:/var/opt/mssql/ag-certs
+    command: >
+      bash -c "chown -R 10001:0 /var/opt/mssql/ag-certs &&
+               chmod -R g=u /var/opt/mssql/ag-certs"
+    restart: "no"
 
   # ── Production ─────────────────────────────────────────────────────────────
   sql-prod:
@@ -76,48 +90,60 @@ services:
       start_period: 40s
     restart: unless-stopped
 
-  # ── Staging ────────────────────────────────────────────────────────────────
-  sql-staging:
-    image: mcr.microsoft.com/azure-sql-edge:latest
-    container_name: sqlsentinel-staging
-    hostname: sql-staging
+  # ── Always On nodo1 ───────────────────────────────────────────────────────
+  nodo1:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    container_name: sqlsentinel-nodo1
+    hostname: nodo1
+    depends_on:
+      ag-permissions: { condition: service_completed_successfully }
     ports:
       - "1435:1433"
+      - "50221:5022"
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
-      MSSQL_SA_PASSWORD: ${SQLSENTINEL_STAGING_SA_PASSWORD:?Set SQLSENTINEL_STAGING_SA_PASSWORD in .env}
+      MSSQL_SA_PASSWORD: ${SQLSENTINEL_NODO1_SA_PASSWORD:?Set SQLSENTINEL_NODO1_SA_PASSWORD in .env}
       MSSQL_MEMORY_LIMIT_MB: "768"
     volumes:
-      - sql-staging-data:/var/opt/mssql
+      - sql-nodo1-data:/var/opt/mssql
+      - sql-ag-certs:/var/opt/mssql/ag-certs
+      - ./mssql-hadr.conf:/var/opt/mssql/mssql.conf:ro
     healthcheck:
-      test: ["CMD-SHELL", "timeout 3 bash -lc 'cat < /dev/null > /dev/tcp/localhost/1433'"]
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -C 2>/dev/null"]
       interval: 15s
       timeout: 10s
       retries: 12
-      start_period: 40s
+      start_period: 60s
     restart: unless-stopped
 
-  # ── DR / Replica ───────────────────────────────────────────────────────────
-  sql-dr:
-    image: mcr.microsoft.com/azure-sql-edge:latest
-    container_name: sqlsentinel-dr
-    hostname: sql-dr
+  # ── Always On nodo2 ───────────────────────────────────────────────────────
+  nodo2:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    container_name: sqlsentinel-nodo2
+    hostname: nodo2
+    depends_on:
+      ag-permissions: { condition: service_completed_successfully }
     ports:
       - "1436:1433"
+      - "50222:5022"
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
-      MSSQL_SA_PASSWORD: ${SQLSENTINEL_DR_SA_PASSWORD:?Set SQLSENTINEL_DR_SA_PASSWORD in .env}
+      MSSQL_SA_PASSWORD: ${SQLSENTINEL_NODO2_SA_PASSWORD:?Set SQLSENTINEL_NODO2_SA_PASSWORD in .env}
       MSSQL_MEMORY_LIMIT_MB: "768"
     volumes:
-      - sql-dr-data:/var/opt/mssql
+      - sql-nodo2-data:/var/opt/mssql
+      - sql-ag-certs:/var/opt/mssql/ag-certs
+      - ./mssql-hadr.conf:/var/opt/mssql/mssql.conf:ro
     healthcheck:
-      test: ["CMD-SHELL", "timeout 3 bash -lc 'cat < /dev/null > /dev/tcp/localhost/1433'"]
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -C 2>/dev/null"]
       interval: 15s
       timeout: 10s
       retries: 12
-      start_period: 40s
+      start_period: 60s
     restart: unless-stopped
 
   # ── SQLSentinel persistence backend (SQL Server 2025) ─────────────────────
@@ -155,8 +181,8 @@ services:
     depends_on:
       sql-prod:     { condition: service_healthy }
       sql-dev:      { condition: service_healthy }
-      sql-staging:  { condition: service_healthy }
-      sql-dr:       { condition: service_healthy }
+      nodo1:        { condition: service_healthy }
+      nodo2:        { condition: service_healthy }
       sql-sentinel: { condition: service_healthy }
     volumes:
       - ./init:/init:ro
@@ -169,23 +195,18 @@ services:
       SQLSENTINEL_MONITOR_PASSWORD: ${SQLSENTINEL_MONITOR_PASSWORD:?Set SQLSENTINEL_MONITOR_PASSWORD in .env}
       SQLSENTINEL_PROD_SA_PASSWORD: ${SQLSENTINEL_PROD_SA_PASSWORD:?Set SQLSENTINEL_PROD_SA_PASSWORD in .env}
       SQLSENTINEL_DEV_SA_PASSWORD: ${SQLSENTINEL_DEV_SA_PASSWORD:?Set SQLSENTINEL_DEV_SA_PASSWORD in .env}
-      SQLSENTINEL_STAGING_SA_PASSWORD: ${SQLSENTINEL_STAGING_SA_PASSWORD:?Set SQLSENTINEL_STAGING_SA_PASSWORD in .env}
-      SQLSENTINEL_DR_SA_PASSWORD: ${SQLSENTINEL_DR_SA_PASSWORD:?Set SQLSENTINEL_DR_SA_PASSWORD in .env}
+      SQLSENTINEL_NODO1_SA_PASSWORD: ${SQLSENTINEL_NODO1_SA_PASSWORD:?Set SQLSENTINEL_NODO1_SA_PASSWORD in .env}
+      SQLSENTINEL_NODO2_SA_PASSWORD: ${SQLSENTINEL_NODO2_SA_PASSWORD:?Set SQLSENTINEL_NODO2_SA_PASSWORD in .env}
       SQLSENTINEL_STORAGE_SA_PASSWORD: ${SQLSENTINEL_STORAGE_SA_PASSWORD:?Set SQLSENTINEL_STORAGE_SA_PASSWORD in .env}
-    command: >
-      bash -c "
-        echo '→ Initializing sql-prod...'     && /opt/mssql-tools18/bin/sqlcmd -S sql-prod,1433     -U sa -P \"$$SQLSENTINEL_PROD_SA_PASSWORD\"     -v DockUser=\"$$SQLSENTINEL_DOCK_USER\" DockPassword=\"$$SQLSENTINEL_DOCK_PASSWORD\" -i /init/prod.sql     -b -C &&
-        echo '→ Initializing sql-dev...'      && /opt/mssql-tools18/bin/sqlcmd -S sql-dev,1433      -U sa -P \"$$SQLSENTINEL_DEV_SA_PASSWORD\"      -v DockUser=\"$$SQLSENTINEL_DOCK_USER\" DockPassword=\"$$SQLSENTINEL_DOCK_PASSWORD\" -i /init/dev.sql      -b -C &&
-        echo '→ Initializing sql-staging...'  && /opt/mssql-tools18/bin/sqlcmd -S sql-staging,1433  -U sa -P \"$$SQLSENTINEL_STAGING_SA_PASSWORD\"  -v DockUser=\"$$SQLSENTINEL_DOCK_USER\" DockPassword=\"$$SQLSENTINEL_DOCK_PASSWORD\" -i /init/staging.sql  -b -C &&
-        echo '→ Initializing sql-dr...'       && /opt/mssql-tools18/bin/sqlcmd -S sql-dr,1433       -U sa -P \"$$SQLSENTINEL_DR_SA_PASSWORD\"       -v DockUser=\"$$SQLSENTINEL_DOCK_USER\" DockPassword=\"$$SQLSENTINEL_DOCK_PASSWORD\" -i /init/dr.sql       -b -C &&
-        echo '→ Initializing sql-sentinel...' && /opt/mssql-tools18/bin/sqlcmd -S sql-sentinel,1433 -U sa -P \"$$SQLSENTINEL_STORAGE_SA_PASSWORD\" -v DockUser=\"$$SQLSENTINEL_DOCK_USER\" DockPassword=\"$$SQLSENTINEL_DOCK_PASSWORD\" AppUser=\"$$SQLSENTINEL_APP_USER\" AppPassword=\"$$SQLSENTINEL_APP_PASSWORD\" MonitorUser=\"$$SQLSENTINEL_MONITOR_USER\" MonitorPassword=\"$$SQLSENTINEL_MONITOR_PASSWORD\" -i /init/sentinel.sql -b -C &&
-        echo '✓ All databases initialized.'
-      "
+      SQLSENTINEL_AG_CERT_PASSWORD: ${SQLSENTINEL_AG_CERT_PASSWORD:?Set SQLSENTINEL_AG_CERT_PASSWORD in .env}
+      SQLSENTINEL_AG_ENDPOINT_PASSWORD: ${SQLSENTINEL_AG_ENDPOINT_PASSWORD:?Set SQLSENTINEL_AG_ENDPOINT_PASSWORD in .env}
+    command: bash /init/init-all.sh
     restart: "no"
 
 volumes:
   sql-prod-data:
   sql-dev-data:
-  sql-staging-data:
-  sql-dr-data:
+  sql-nodo1-data:
+  sql-nodo2-data:
   sql-sentinel-data:
+  sql-ag-certs:

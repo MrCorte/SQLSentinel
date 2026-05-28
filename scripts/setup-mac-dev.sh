@@ -91,8 +91,10 @@ required_env=(
   SQLSENTINEL_STORAGE_SA_PASSWORD
   SQLSENTINEL_PROD_SA_PASSWORD
   SQLSENTINEL_DEV_SA_PASSWORD
-  SQLSENTINEL_STAGING_SA_PASSWORD
-  SQLSENTINEL_DR_SA_PASSWORD
+  SQLSENTINEL_NODO1_SA_PASSWORD
+  SQLSENTINEL_NODO2_SA_PASSWORD
+  SQLSENTINEL_AG_CERT_PASSWORD
+  SQLSENTINEL_AG_ENDPOINT_PASSWORD
 )
 for var in "${required_env[@]}"; do
   if [[ -z "${!var:-}" ]]; then
@@ -150,11 +152,11 @@ echo "      Host: localhost   Port: 1437"
 echo "      App user:  ${SQLSENTINEL_APP_USER} / <hidden>"
 echo "      SA:        sa / <hidden>"
 echo ""
-echo "    Monitored test servers (Azure SQL Edge):"
+echo "    Monitored test servers:"
 echo "      prod-sql     localhost:1433"
 echo "      dev-sql      localhost:1434"
-echo "      staging-sql  localhost:1435"
-echo "      dr-sql       localhost:1436"
+echo "      nodo1 AG     localhost:1435"
+echo "      nodo2 AG     localhost:1436"
 if [[ "$WITH_OLLAMA" == "1" ]]; then
   echo ""
   echo "    Ollama model: gemma4:e4b"

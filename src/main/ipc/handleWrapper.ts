@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, app } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { isAuthenticated, isMustChangePassword } from '../authService'
 import { getStorageConfig } from '../store/storageConfig'
@@ -8,9 +8,8 @@ import { createLogger } from '../utils/logger'
 const log = createLogger('ipc')
 export { log }
 
-// Auth bypass in dev: only when SQLSENTINEL_DEV_BYPASS_AUTH=1 is set explicitly.
-// Previously tied to !app.isPackaged, which left QA/preview builds wide-open.
-const DEV_BYPASS_AUTH = process.env.SQLSENTINEL_DEV_BYPASS_AUTH === '1'
+// Auth bypass in dev: only when not packaged AND env var set explicitly.
+const DEV_BYPASS_AUTH = !app.isPackaged && process.env.SQLSENTINEL_DEV_BYPASS_AUTH === '1'
 
 // Canali esenti dal check auth: usati prima del login o che implementano il login stesso.
 // SETTINGS_GET esente per permettere il caricamento del tema prima del login.

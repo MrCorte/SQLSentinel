@@ -250,6 +250,16 @@ async function loadVecIndex(): Promise<{ title: string; text: string; vec: Float
     vec: unpackEmbedding(row.embedding)
   }))
   log.info(`[knowledge] loaded ${_vecIndex.length} embedding chunks`)
+  // Flat JS cosine search is O(n) per query. Above ~5 000 chunks the per-query
+  // latency becomes noticeable; above ~20 000 it dominates inference time.
+  // At that scale, migrate to an HNSW index or a dedicated vector store.
+  const VEC_SCALE_WARN = 5_000
+  if (_vecIndex.length > VEC_SCALE_WARN) {
+    log.warn(
+      `[knowledge] ${_vecIndex.length} embedding chunks loaded into memory — ` +
+        `flat cosine search degrades past ${VEC_SCALE_WARN}; consider HNSW or pgvector`
+    )
+  }
   return _vecIndex
 }
 

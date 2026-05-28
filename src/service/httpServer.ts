@@ -1,4 +1,4 @@
-import express, { type Request, type Response, type NextFunction } from 'express'
+import express, { type Request, type Response, type NextFunction, type ErrorRequestHandler } from 'express'
 import { createServer } from 'node:http'
 import type { WsServerHandle } from './wsServer'
 import { createServersRouter } from './routes/servers'
@@ -13,6 +13,15 @@ import type { ServiceHealth } from '../shared/serviceProtocol'
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX = 200
 const rateBuckets = new Map<string, { count: number; resetAt: number }>()
+
+// Evict expired buckets every 5 minutes to prevent unbounded Map growth if
+// the bind address is ever misconfigured and multiple IPs connect.
+setInterval(() => {
+  const now = Date.now()
+  for (const [ip, bucket] of rateBuckets) {
+    if (now >= bucket.resetAt) rateBuckets.delete(ip)
+  }
+}, 5 * 60_000).unref()
 
 function rateLimit(req: Request, res: Response, next: NextFunction): void {
   const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown'
@@ -121,6 +130,14 @@ export function createHttpServer(secret: string, wsHandle: WsServerHandle) {
   app.use('/api/metrics', createMetricsRouter())
   app.use('/api/settings', createSettingsRouter())
   app.use('/api/alerts', createAlertsRouter())
+
+  // Catch-all error handler: prevents unhandled exceptions from leaking stack
+  // traces or crashing the process. Routes that throw will land here.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+    res.status(500).json({ ok: false, error: 'Internal server error' })
+  }
+  app.use(errorHandler)
 
   const httpServer = createServer(app)
   return { app, httpServer }

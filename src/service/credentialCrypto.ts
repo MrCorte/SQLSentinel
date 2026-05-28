@@ -4,8 +4,17 @@ const ALGO = 'aes-256-gcm'
 const SALT = 'sqlsentinel-credential-v1'
 const KEY_LEN = 32
 
+// scryptSync is intentionally slow (N=16384). The secret is constant for the
+// lifetime of the service process, so cache the derived key after the first call.
+let _cachedSecret: string | null = null
+let _cachedKey: Buffer | null = null
+
 function deriveKey(secret: string): Buffer {
-  return scryptSync(secret, SALT, KEY_LEN)
+  if (secret !== _cachedSecret) {
+    _cachedKey = scryptSync(secret, SALT, KEY_LEN)
+    _cachedSecret = secret
+  }
+  return _cachedKey!
 }
 
 /** Encrypts plaintext. Output format: base64(iv[12] + authTag[16] + ciphertext) */

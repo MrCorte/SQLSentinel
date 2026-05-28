@@ -45,7 +45,13 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
       const map = historyMapRef.current
       const existing = map.get(serverId) ?? []
       const newPoint = metricsToHistoryPoint(m)
-      map.set(serverId, [...existing, newPoint].slice(-maxPoints))
+      // Avoid double-allocation: only spread+slice when under cap, otherwise shift oldest
+      map.set(
+        serverId,
+        existing.length < maxPoints
+          ? [...existing, newPoint]
+          : [...existing.slice(existing.length - maxPoints + 1), newPoint]
+      )
       if (document.hidden) {
         const idx = pendingBatchRef.current.findIndex((e) => e.serverId === serverId)
         if (idx >= 0) pendingBatchRef.current[idx].metrics = m
@@ -64,7 +70,12 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
       for (const { serverId, metrics: m } of batch) {
         const existing = map.get(serverId) ?? []
         const newPoint = metricsToHistoryPoint(m)
-        map.set(serverId, [...existing, newPoint].slice(-maxPoints))
+        map.set(
+          serverId,
+          existing.length < maxPoints
+            ? [...existing, newPoint]
+            : [...existing.slice(existing.length - maxPoints + 1), newPoint]
+        )
       }
       if (document.hidden) {
         // Replace pending entries for each server with the latest snapshot

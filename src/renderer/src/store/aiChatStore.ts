@@ -13,6 +13,22 @@ export interface ToolStep {
   output?: string
 }
 
+const SAFE_AI_ERROR_PATTERNS = [
+  /network/i,
+  /timeout/i,
+  /connection refused/i,
+  /cancelled/i,
+  /model not found/i,
+  /context length/i,
+  /rate limit/i,
+  /overloaded/i
+]
+
+function sanitizeAiError(raw: string): string {
+  if (SAFE_AI_ERROR_PATTERNS.some((p) => p.test(raw))) return `Error: ${raw}`
+  return 'Error: AI provider error. Check your provider settings and try again.'
+}
+
 function newId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID()
@@ -77,20 +93,24 @@ export const useAiChatStore = create<AiChatStore>((set, get) => ({
     }))
   },
 
-  resetStreaming: (error) =>
+  resetStreaming: (error) => {
+    // Sanitize before rendering: raw provider errors may contain API keys,
+    // connection strings, or internal stack traces from the main process.
+    const safe = sanitizeAiError(error)
     set((s) => ({
       messages: [
         ...s.messages,
         {
           id: newId(),
           role: 'assistant',
-          content: `Error: ${error}\n\nMake sure Ollama is running:\n  ollama serve\n  ollama pull gemma4:e4b`,
+          content: `${safe}\n\nMake sure Ollama is running:\n  ollama serve\n  ollama pull gemma4:e4b`,
           ts: Date.now()
         }
       ],
       streamingText: '',
       toolSteps: []
-    })),
+    }))
+  },
 
   setFeedback: (id, rating) =>
     set((s) => ({ feedbackByMessageId: { ...s.feedbackByMessageId, [id]: rating } }))

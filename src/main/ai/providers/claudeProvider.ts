@@ -53,7 +53,9 @@ export class ClaudeProvider implements LlmProvider {
   private async getClient(): Promise<AnthropicSDK> {
     if (!this._client) {
       const Anthropic = await getSdkClass()
-      this._client = new Anthropic({ apiKey: this.apiKey })
+      // maxRetries: SDK-managed exponential backoff for 429 / 5xx responses.
+      // timeout: aligned with our per-stream AbortController (300 s).
+      this._client = new Anthropic({ apiKey: this.apiKey, maxRetries: 3, timeout: 300_000 })
     }
     return this._client
   }

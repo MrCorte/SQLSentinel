@@ -5,12 +5,15 @@
 #                            vector(1536) support required for RAG chunks
 #
 # Usage:
+#   cp docker/.env.example docker/.env   # first time only — set your passwords
 #   docker compose up -d          — start all containers
 #   docker compose up -d sql-init — run DB init (after first start)
 #   docker compose down           — stop
 #   docker compose down -v        — stop + wipe all data
 #
-# SQLSentinel connections (all use: sa / <password below>):
+# Passwords are read from docker/.env (gitignored). See docker/.env.example.
+#
+# SQLSentinel connections (all use: sa / <password from .env>):
 #   Production   localhost:1433
 #   Development  localhost:1434
 #   Staging      localhost:1435
@@ -33,10 +36,12 @@ services:
     hostname: sql-prod
     ports:
       - "1433:1433"
+    env_file:
+      - docker/.env
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
-      MSSQL_SA_PASSWORD: "Prod@SQLSentinel1"
+      MSSQL_SA_PASSWORD: "${SA_PASSWORD_PROD}"
       MSSQL_MEMORY_LIMIT_MB: "1024"
     volumes:
       - sql-prod-data:/var/opt/mssql
@@ -55,10 +60,12 @@ services:
     hostname: sql-dev
     ports:
       - "1434:1433"
+    env_file:
+      - docker/.env
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
-      MSSQL_SA_PASSWORD: "Dev@SQLSentinel1"
+      MSSQL_SA_PASSWORD: "${SA_PASSWORD_DEV}"
       MSSQL_MEMORY_LIMIT_MB: "768"
     volumes:
       - sql-dev-data:/var/opt/mssql
@@ -77,10 +84,12 @@ services:
     hostname: sql-staging
     ports:
       - "1435:1433"
+    env_file:
+      - docker/.env
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
-      MSSQL_SA_PASSWORD: "Staging@SQLSentinel1"
+      MSSQL_SA_PASSWORD: "${SA_PASSWORD_STAGING}"
       MSSQL_MEMORY_LIMIT_MB: "768"
     volumes:
       - sql-staging-data:/var/opt/mssql
@@ -99,10 +108,12 @@ services:
     hostname: sql-dr
     ports:
       - "1436:1433"
+    env_file:
+      - docker/.env
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
-      MSSQL_SA_PASSWORD: "DR@SQLSentinel1"
+      MSSQL_SA_PASSWORD: "${SA_PASSWORD_DR}"
       MSSQL_MEMORY_LIMIT_MB: "768"
     volumes:
       - sql-dr-data:/var/opt/mssql
@@ -124,15 +135,17 @@ services:
     hostname: sql-sentinel
     ports:
       - "1437:1433"
+    env_file:
+      - docker/.env
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
-      MSSQL_SA_PASSWORD: "Sentinel@SQLSentinel1"
+      MSSQL_SA_PASSWORD: "${SA_PASSWORD_SENTINEL}"
       MSSQL_MEMORY_LIMIT_MB: "1536"
     volumes:
       - sql-sentinel-data:/var/opt/mssql
     healthcheck:
-      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'Sentinel@SQLSentinel1' -Q 'SELECT 1' -b -C 2>/dev/null"]
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -b -C 2>/dev/null"]
       interval: 15s
       timeout: 10s
       retries: 12
@@ -152,15 +165,23 @@ services:
       sql-staging:  { condition: service_healthy }
       sql-dr:       { condition: service_healthy }
       sql-sentinel: { condition: service_healthy }
+    env_file:
+      - docker/.env
+    environment:
+      SA_PASSWORD_PROD: "${SA_PASSWORD_PROD}"
+      SA_PASSWORD_DEV: "${SA_PASSWORD_DEV}"
+      SA_PASSWORD_STAGING: "${SA_PASSWORD_STAGING}"
+      SA_PASSWORD_DR: "${SA_PASSWORD_DR}"
+      SA_PASSWORD_SENTINEL: "${SA_PASSWORD_SENTINEL}"
     volumes:
       - ./init:/init:ro
     command: >
       bash -c "
-        echo '→ Initializing sql-prod...'     && /opt/mssql-tools18/bin/sqlcmd -S sql-prod,1433     -U sa -P 'Prod@SQLSentinel1'     -i /init/prod.sql     -b -C &&
-        echo '→ Initializing sql-dev...'      && /opt/mssql-tools18/bin/sqlcmd -S sql-dev,1433      -U sa -P 'Dev@SQLSentinel1'      -i /init/dev.sql      -b -C &&
-        echo '→ Initializing sql-staging...'  && /opt/mssql-tools18/bin/sqlcmd -S sql-staging,1433  -U sa -P 'Staging@SQLSentinel1'  -i /init/staging.sql  -b -C &&
-        echo '→ Initializing sql-dr...'       && /opt/mssql-tools18/bin/sqlcmd -S sql-dr,1433       -U sa -P 'DR@SQLSentinel1'       -i /init/dr.sql       -b -C &&
-        echo '→ Initializing sql-sentinel...' && /opt/mssql-tools18/bin/sqlcmd -S sql-sentinel,1433 -U sa -P 'Sentinel@SQLSentinel1' -i /init/sentinel.sql -b -C &&
+        echo '→ Initializing sql-prod...'     && /opt/mssql-tools18/bin/sqlcmd -S sql-prod,1433     -U sa -P \"$SA_PASSWORD_PROD\"     -i /init/prod.sql     -b -C &&
+        echo '→ Initializing sql-dev...'      && /opt/mssql-tools18/bin/sqlcmd -S sql-dev,1433      -U sa -P \"$SA_PASSWORD_DEV\"      -i /init/dev.sql      -b -C &&
+        echo '→ Initializing sql-staging...'  && /opt/mssql-tools18/bin/sqlcmd -S sql-staging,1433  -U sa -P \"$SA_PASSWORD_STAGING\"  -i /init/staging.sql  -b -C &&
+        echo '→ Initializing sql-dr...'       && /opt/mssql-tools18/bin/sqlcmd -S sql-dr,1433       -U sa -P \"$SA_PASSWORD_DR\"       -i /init/dr.sql       -b -C &&
+        echo '→ Initializing sql-sentinel...' && /opt/mssql-tools18/bin/sqlcmd -S sql-sentinel,1433 -U sa -P \"$SA_PASSWORD_SENTINEL\" -i /init/sentinel.sql -b -C &&
         echo '✓ All databases initialized.'
       "
     restart: "no"

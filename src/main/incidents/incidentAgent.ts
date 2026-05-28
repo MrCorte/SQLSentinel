@@ -185,6 +185,10 @@ export function isIncidentAgentRunning(incidentId: string): boolean {
   return activeAgentRuns.has(incidentId)
 }
 
+export function getActiveAgentCount(): number {
+  return activeAgentRuns.size
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, ac: AbortController): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined
   const timeoutPromise = new Promise<never>((_, reject) => {

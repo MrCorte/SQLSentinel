@@ -63,6 +63,11 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
   const bottomRef = useRef<HTMLDivElement>(null)
   const mountedRef = useRef(true)
   const unsubscribeRef = useRef<(() => void) | null>(null)
+  // Token batching: accumulate tokens between animation frames so 30-80 tokens/sec
+  // from the LLM collapse into at most ~60 store updates/sec (one per frame) instead
+  // of one Zustand setState per token.
+  const tokenBufRef = useRef('')
+  const tokenRafRef = useRef<number | null>(null)
 
   useEffect(() => {
     mountedRef.current = true
@@ -120,10 +125,19 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
       .messages.slice(-6)
       .map((m) => ({ role: m.role, content: m.content }))
 
+    const flushTokens = (): void => {
+      tokenRafRef.current = null
+      if (tokenBufRef.current) {
+        appendToken(tokenBufRef.current)
+        tokenBufRef.current = ''
+      }
+    }
+
     const unsubscribe = window.sqlSentinel.onAiStreamEvent((ev: AiStreamEvent) => {
       if (!mountedRef.current) return
       if (ev.type === 'token') {
-        appendToken(ev.text)
+        tokenBufRef.current += ev.text
+        if (!tokenRafRef.current) tokenRafRef.current = requestAnimationFrame(flushTokens)
       } else if (ev.type === 'tool_start') {
         addToolStep(ev.name)
       } else if (ev.type === 'tool_end') {
@@ -131,11 +145,15 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
       } else if (ev.type === 'done') {
         unsubscribeRef.current?.()
         unsubscribeRef.current = null
+        if (tokenRafRef.current) { cancelAnimationFrame(tokenRafRef.current); tokenRafRef.current = null }
+        flushTokens()
         finalizeStreaming()
         if (mountedRef.current) setLoading(false)
       } else if (ev.type === 'error') {
         unsubscribeRef.current?.()
         unsubscribeRef.current = null
+        if (tokenRafRef.current) { cancelAnimationFrame(tokenRafRef.current); tokenRafRef.current = null }
+        flushTokens()
         if (ev.message === 'Cancelled') {
           finalizeStreaming()
         } else {

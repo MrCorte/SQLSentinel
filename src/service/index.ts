@@ -60,18 +60,20 @@ async function main(): Promise<void> {
   void settings // suppress unused warning — used in future to pass retentionDays
   const servers = serverStore.getAll()
   if (servers.length > 0) {
-    startWorker({
-      servers: servers.map((s) => ({
-        ip: s.host,
-        port: s.port,
-        instanceName: s.instanceName,
-        useWindowsAuth: s.useWindowsAuth,
-        username: s.username,
-        password: s.password
-      })),
-      intervalSeconds: 60
-    })
-    log.info(`[service] Worker started — monitoring ${servers.length} server(s)`)
+    // Never log the full server object — it contains plaintext credentials.
+    // Log only host:port for traceability.
+    const targets = servers.map((s) => ({
+      ip: s.host,
+      port: s.port,
+      instanceName: s.instanceName,
+      useWindowsAuth: s.useWindowsAuth,
+      username: s.username,
+      password: s.password
+    }))
+    log.info(
+      `[service] Worker starting — monitoring: ${servers.map((s) => `${s.host}:${s.port}`).join(', ')}`
+    )
+    startWorker({ servers: targets, intervalSeconds: 60 })
   }
 
   // 8. Start listening

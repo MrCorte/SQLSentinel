@@ -36,9 +36,8 @@ jobs:
       - name: Tests
         run: npm test -- --run
 
-      - name: Lint (non-blocking)
+      - name: Lint
         run: npm run lint
-        continue-on-error: true
 
   build:
     needs: verify

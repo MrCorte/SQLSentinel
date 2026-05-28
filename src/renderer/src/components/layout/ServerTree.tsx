@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback, useRef } from 'react'
 import { Box, Typography, IconButton, Tooltip, Menu, MenuItem, Divider } from '@mui/material'
 import SettingsIcon from '@mui/icons-material/Settings'
 import { SidebarSearch } from '../features/sidebar/SidebarSearch'
@@ -165,18 +165,50 @@ export function ServerTree({
 
   const totalServerCount = servers.length
 
+  const TREE_MIN = 140
+  const TREE_MAX = 480
+  const STORAGE_KEY = 'sqlsentinel:sidebarWidth'
+
+  const [treeWidth, setTreeWidth] = useState<number>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    const parsed = saved ? parseInt(saved, 10) : NaN
+    return isNaN(parsed) ? tokens.size.serverTreeWidth : Math.min(TREE_MAX, Math.max(TREE_MIN, parsed))
+  })
+
+  const currentWidth = useRef(treeWidth)
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = currentWidth.current
+
+    const onMove = (ev: MouseEvent) => {
+      const next = Math.min(TREE_MAX, Math.max(TREE_MIN, startWidth + ev.clientX - startX))
+      currentWidth.current = next
+      setTreeWidth(next)
+    }
+    const onUp = () => {
+      localStorage.setItem(STORAGE_KEY, String(currentWidth.current))
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }, [])
+
   return (
     <Box
       sx={{
-        width: tokens.size.serverTreeWidth,
-        minWidth: tokens.size.serverTreeWidth,
+        width: treeWidth,
+        minWidth: treeWidth,
         height: '100%',
         bgcolor: tokens.color.bgBase,
         borderRight: `1px solid ${tokens.color.bgBorder}`,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        flexShrink: 0
+        flexShrink: 0,
+        position: 'relative'
       }}
     >
       {/* Header */}
@@ -307,6 +339,21 @@ export function ServerTree({
         onToggleMachineCollapse={toggleMachineCollapse}
         onContextMenu={handleContextMenu}
         onAgContextMenu={handleAgContextMenu}
+      />
+
+      {/* Resize handle */}
+      <Box
+        onMouseDown={handleMouseDown}
+        sx={{
+          position: 'absolute',
+          top: 0,
+          right: -3,
+          width: 6,
+          height: '100%',
+          cursor: 'col-resize',
+          zIndex: 10,
+          '&:hover': { bgcolor: 'primary.main', opacity: 0.5 }
+        }}
       />
     </Box>
   )

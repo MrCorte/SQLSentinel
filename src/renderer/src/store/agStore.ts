@@ -39,6 +39,16 @@ export interface AgDetail {
 /** Callback type for writing AG metadata back to a server record. Injected by callers to avoid a circular store dependency. */
 export type OnUpdateServer = (id: string, patch: Partial<StoredServer>) => void
 
+export interface AgReplicaSuggestion {
+  agName: string
+  missingReplicas: Array<{ replica_server_name: string; role_desc: AgRole }>
+  sourceCredentials: {
+    useWindowsAuth: boolean
+    username?: string
+    password?: string
+  }
+}
+
 interface AgStore {
   /** Map of ag_name → AgGroupState (sidebar display) */
   agGroups: Record<string, AgGroupState>
@@ -65,6 +75,10 @@ interface AgStore {
   removeServer(serverId: string): void
   /** Clear all AG state (e.g. on store reset) */
   clear(): void
+  /** Unmonitored AG replicas discovered when a server was added */
+  pendingAgSuggestions: AgReplicaSuggestion[]
+  /** Remove the suggestion for a given AG name (user dismissed or finished adding) */
+  clearAgSuggestion(agName: string): void
 }
 
 // ---------------------------------------------------------------------------
@@ -74,6 +88,11 @@ interface AgStore {
 export const useAgStore = create<AgStore>((set, get) => ({
   agGroups: {},
   agDetails: {},
+  pendingAgSuggestions: [],
+  clearAgSuggestion: (agName) =>
+    set((state) => ({
+      pendingAgSuggestions: state.pendingAgSuggestions.filter((s) => s.agName !== agName)
+    })),
 
   detectAgsForServer: async (serverId, connection, allServers, onUpdateServer) => {
     if (!window.sqlSentinel?.ag?.getGroups) return
@@ -89,6 +108,7 @@ export const useAgStore = create<AgStore>((set, get) => ({
       const replicas = replicasRes.ok ? replicasRes.data : []
 
       const updates: Record<string, AgGroupState> = {}
+      const newSuggestions: AgReplicaSuggestion[] = []
 
       for (const ag of groups) {
         const agReplicas = replicas.filter((r) => r.ag_name === ag.ag_name)
@@ -142,6 +162,28 @@ export const useAgStore = create<AgStore>((set, get) => ({
           })
         }
 
+        // Identify replicas not yet added as monitored servers
+        const missingReplicas = agReplicas
+          .filter((r) => {
+            const nameBase = r.replica_server_name.split('\\')[0].toLowerCase()
+            return !allServers.some((s) => {
+              const addr = (s.ip ?? s.host ?? '').toLowerCase()
+              return addr === nameBase || nameBase.includes(addr) || addr.includes(nameBase)
+            })
+          })
+          .map((r) => ({ replica_server_name: r.replica_server_name, role_desc: r.role_desc }))
+        if (missingReplicas.length > 0) {
+          newSuggestions.push({
+            agName: ag.ag_name,
+            missingReplicas,
+            sourceCredentials: {
+              useWindowsAuth: connection.useWindowsAuth,
+              username: connection.username,
+              password: connection.password
+            }
+          })
+        }
+
         updates[ag.ag_name] = {
           id: ag.group_id,
           ag_name: ag.ag_name,
@@ -151,9 +193,16 @@ export const useAgStore = create<AgStore>((set, get) => ({
         }
       }
 
-      set((state) => ({
-        agGroups: { ...state.agGroups, ...updates }
-      }))
+      set((state) => {
+        let suggestions = state.pendingAgSuggestions
+        for (const s of newSuggestions) {
+          suggestions = [...suggestions.filter((x) => x.agName !== s.agName), s]
+        }
+        return {
+          agGroups: { ...state.agGroups, ...updates },
+          pendingAgSuggestions: suggestions
+        }
+      })
     } catch (err) {
       // Server not in AG or insufficient permissions — silent
       log.debug('detectAgsForServer: no AG or error', (err as Error).message)

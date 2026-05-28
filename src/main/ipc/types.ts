@@ -235,6 +235,8 @@ export interface Alert {
   category: AlertCategory
   severity: AlertSeverity
   message: string
+  /** Actionable hint shown below the alert message in the UI */
+  suggestion?: string
   detectedAt: Date
   acknowledgedAt: Date | null
 }
@@ -351,17 +353,17 @@ export type CollectMetricsResponse = IpcResult<ServerMetrics>
 
 // --- Persistent server store types ---
 
-export type { StoredServer } from '../store/serverStore'
+export type { StoredServer } from '../store/sqlserver/serverRepository'
 
 export interface ServerAddResult {
   success: boolean
   reason?: string
-  server?: import('../store/serverStore').StoredServer
+  server?: import('../store/sqlserver/serverRepository').StoredServer
 }
 
 export interface UpdateServerRequest {
   id: string
-  patch: Partial<import('../store/serverStore').StoredServer>
+  patch: Partial<import('../store/sqlserver/serverRepository').StoredServer>
 }
 
 export interface ServerUnreachableEvent {

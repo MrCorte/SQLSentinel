@@ -9,7 +9,7 @@ vi.mock('nodemailer', () => ({
 
 // --- Mock emailSettings store ---
 const mockGetEmailSettings = vi.fn()
-vi.mock('../store/emailSettings', () => ({
+vi.mock('../store/sqlserver/emailSettingsRepository', () => ({
   getEmailSettings: mockGetEmailSettings
 }))
 
@@ -44,7 +44,7 @@ describe('sendAlertEmail', () => {
   })
 
   it('does nothing when emailEnabled=false', async () => {
-    mockGetEmailSettings.mockReturnValue(makeSettings({ emailEnabled: false }))
+    mockGetEmailSettings.mockResolvedValue(makeSettings({ emailEnabled: false }))
     const { sendAlertEmail, __resetEmailDedupForTests } = await import('../emailService')
     __resetEmailDedupForTests()
     await sendAlertEmail(testAlert)
@@ -53,7 +53,7 @@ describe('sendAlertEmail', () => {
 
   it('does nothing when smtpHost is empty', async () => {
     vi.resetModules()
-    mockGetEmailSettings.mockReturnValue(makeSettings({ smtpHost: '' }))
+    mockGetEmailSettings.mockResolvedValue(makeSettings({ smtpHost: '' }))
     const { sendAlertEmail, __resetEmailDedupForTests } = await import('../emailService')
     __resetEmailDedupForTests()
     await sendAlertEmail(testAlert)
@@ -62,7 +62,7 @@ describe('sendAlertEmail', () => {
 
   it('does nothing when recipients list is empty', async () => {
     vi.resetModules()
-    mockGetEmailSettings.mockReturnValue(makeSettings({ emailRecipients: [] }))
+    mockGetEmailSettings.mockResolvedValue(makeSettings({ emailRecipients: [] }))
     const { sendAlertEmail, __resetEmailDedupForTests } = await import('../emailService')
     __resetEmailDedupForTests()
     await sendAlertEmail(testAlert)
@@ -71,7 +71,7 @@ describe('sendAlertEmail', () => {
 
   it('sends email when all conditions are met', async () => {
     vi.resetModules()
-    mockGetEmailSettings.mockReturnValue(makeSettings())
+    mockGetEmailSettings.mockResolvedValue(makeSettings())
     const { sendAlertEmail, __resetEmailDedupForTests } = await import('../emailService')
     __resetEmailDedupForTests()
     await sendAlertEmail(testAlert)
@@ -87,7 +87,7 @@ describe('sendAlertEmail', () => {
 
   it('deduplicates: does not re-send within 15 minutes', async () => {
     vi.resetModules()
-    mockGetEmailSettings.mockReturnValue(makeSettings())
+    mockGetEmailSettings.mockResolvedValue(makeSettings())
     const { sendAlertEmail, __resetEmailDedupForTests } = await import('../emailService')
     __resetEmailDedupForTests()
     await sendAlertEmail(testAlert)
@@ -97,7 +97,7 @@ describe('sendAlertEmail', () => {
 
   it('sends for WARNING alerts (email is not CRITICAL-only)', async () => {
     vi.resetModules()
-    mockGetEmailSettings.mockReturnValue(makeSettings())
+    mockGetEmailSettings.mockResolvedValue(makeSettings())
     const { sendAlertEmail, __resetEmailDedupForTests } = await import('../emailService')
     __resetEmailDedupForTests()
     await sendAlertEmail({ ...testAlert, severity: 'WARNING' })
@@ -112,7 +112,7 @@ describe('sendTestEmail', () => {
 
   it('returns { ok: false } when smtpHost is empty', async () => {
     vi.resetModules()
-    mockGetEmailSettings.mockReturnValue(makeSettings({ smtpHost: '' }))
+    mockGetEmailSettings.mockResolvedValue(makeSettings({ smtpHost: '' }))
     const { sendTestEmail } = await import('../emailService')
     const result = await sendTestEmail()
     expect(result.ok).toBe(false)
@@ -121,7 +121,7 @@ describe('sendTestEmail', () => {
 
   it('returns { ok: false } when recipients is empty', async () => {
     vi.resetModules()
-    mockGetEmailSettings.mockReturnValue(makeSettings({ emailRecipients: [] }))
+    mockGetEmailSettings.mockResolvedValue(makeSettings({ emailRecipients: [] }))
     const { sendTestEmail } = await import('../emailService')
     const result = await sendTestEmail()
     expect(result.ok).toBe(false)
@@ -129,7 +129,7 @@ describe('sendTestEmail', () => {
 
   it('returns { ok: true } when sendMail succeeds', async () => {
     vi.resetModules()
-    mockGetEmailSettings.mockReturnValue(makeSettings())
+    mockGetEmailSettings.mockResolvedValue(makeSettings())
     mockSendMail.mockResolvedValue({ messageId: 'ok' })
     const { sendTestEmail } = await import('../emailService')
     const result = await sendTestEmail()
@@ -139,7 +139,7 @@ describe('sendTestEmail', () => {
 
   it('returns { ok: false } when sendMail throws', async () => {
     vi.resetModules()
-    mockGetEmailSettings.mockReturnValue(makeSettings())
+    mockGetEmailSettings.mockResolvedValue(makeSettings())
     mockSendMail.mockRejectedValue(new Error('SMTP connection refused'))
     const { sendTestEmail } = await import('../emailService')
     const result = await sendTestEmail()

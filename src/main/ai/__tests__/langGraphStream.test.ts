@@ -10,16 +10,21 @@ vi.mock('../providers', () => ({
     stream: mockProviderStream
   }))
 }))
-vi.mock('../../store/serverStore', () => ({
+vi.mock('../../store/sqlserver/serverRepository', () => ({
   getAll: vi.fn(() => []),
   getAllStripped: vi.fn(() => [])
 }))
-vi.mock('../../store/metricsRepository', () => ({ findLastNBulk: vi.fn(() => ({})) }))
+vi.mock('../../store/sqlserver/metricsRepository', () => ({
+  findLastNBulk: vi.fn(async () => ({}))
+}))
 vi.mock('../../metricsWorker', () => ({ getAlerts: vi.fn(() => []) }))
-vi.mock('../../store/ftsRepository', () => ({ searchFts: vi.fn(() => []) }))
-vi.mock('../../store/vecRepository', () => ({ semanticSearch: vi.fn(async () => [
-  { title: 'Mock Semantic', text: 'Relevant semantic result.', score: 0.82 }
-]) }))
+vi.mock('../../store/sqlserver/knowledgeRepository', () => ({
+  searchFts: vi.fn(async () => []),
+  semanticSearch: vi.fn(async () => [
+    { title: 'Mock Semantic', text: 'Relevant semantic result.', score: 0.82 }
+  ]),
+  warmupEmbedder: vi.fn(async () => {})
+}))
 import { langGraphAsk, langGraphStream, abortActiveStream } from '../langGraphAgent'
 import type { AiStreamEvent } from '../../ipc/types'
 

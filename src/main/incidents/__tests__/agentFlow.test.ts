@@ -13,29 +13,33 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Module mocks — hoisted before any import that triggers module resolution
 // ---------------------------------------------------------------------------
 
-vi.mock('../../store/serverStore', () => ({
+vi.mock('../../store/sqlserver/serverRepository', () => ({
   getById: vi.fn(),
   getByIpPort: vi.fn()
 }))
 
+// The SUT awaits repository calls AND uses fire-and-forget `.catch()` on the
+// returned promise inside the stream callback. Default `vi.fn()` returns
+// undefined, which would break the `.catch()` chain — so every repo mock
+// returns a resolved promise out of the box.
 vi.mock('../repository', () => ({
-  getIncidentById: vi.fn(),
-  setIncidentStatus: vi.fn(),
-  addEvent: vi.fn(),
-  setSummary: vi.fn(),
-  setRootCause: vi.fn(),
-  addAuditEntry: vi.fn(),
-  createAction: vi.fn()
+  getIncidentById: vi.fn(async () => null),
+  setIncidentStatus: vi.fn(async () => {}),
+  addEvent: vi.fn(async () => undefined),
+  setSummary: vi.fn(async () => {}),
+  setRootCause: vi.fn(async () => {}),
+  addAuditEntry: vi.fn(async () => undefined),
+  createAction: vi.fn(async () => undefined)
 }))
 
 vi.mock('../../ai/providers', () => ({
   getProvider: vi.fn()
 }))
 
-vi.mock('../../store/database', () => ({
-  getDb: vi.fn(() => ({
-    prepare: vi.fn(() => ({ get: vi.fn(() => null), all: vi.fn(() => []) }))
-  }))
+vi.mock('../../store/sqlserver/settingsRepository', () => ({
+  getRawSetting: vi.fn(async () => undefined),
+  getRawSettings: vi.fn(async () => ({})),
+  setRawSetting: vi.fn(async () => {})
 }))
 
 vi.mock('../../ai/diagnosticTools', () => ({
@@ -53,7 +57,7 @@ import {
   selectDiagnosticToolsForIncident
 } from '../incidentAgent'
 import { toolDefinitionFromDynamicTool } from '../incidentAgent'
-import * as serverStore from '../../store/serverStore'
+import * as serverStore from '../../store/sqlserver/serverRepository'
 import * as repo from '../repository'
 import * as providers from '../../ai/providers'
 import * as diagnosticTools from '../../ai/diagnosticTools'
@@ -134,7 +138,7 @@ describe('runIncidentAgent — early-exit guards', () => {
   })
 
   it('returns without action when incident not found', async () => {
-    vi.mocked(repo.getIncidentById).mockReturnValue(null)
+    vi.mocked(repo.getIncidentById).mockResolvedValue(null)
     await expect(runIncidentAgent('inc-missing')).resolves.toEqual({
       status: 'skipped',
       reason: 'incident_not_found'
@@ -143,7 +147,7 @@ describe('runIncidentAgent — early-exit guards', () => {
   })
 
   it('returns without action when server not found', async () => {
-    vi.mocked(repo.getIncidentById).mockReturnValue(FAKE_INCIDENT)
+    vi.mocked(repo.getIncidentById).mockResolvedValue(FAKE_INCIDENT)
     vi.mocked(serverStore.getById).mockReturnValue(null)
     await expect(runIncidentAgent('inc-test-001')).resolves.toEqual({
       status: 'failed',
@@ -153,11 +157,9 @@ describe('runIncidentAgent — early-exit guards', () => {
   })
 
   it('logs error event and returns when provider throws', async () => {
-    vi.mocked(repo.getIncidentById).mockReturnValue(FAKE_INCIDENT)
+    vi.mocked(repo.getIncidentById).mockResolvedValue(FAKE_INCIDENT)
     vi.mocked(serverStore.getById).mockReturnValue(FAKE_SERVER)
-    vi.mocked(providers.getProvider).mockImplementation(() => {
-      throw new Error('No provider configured')
-    })
+    vi.mocked(providers.getProvider).mockRejectedValue(new Error('No provider configured'))
     await runIncidentAgent('inc-test-001')
     expect(repo.addEvent).toHaveBeenCalledWith('inc-test-001', 'llm_message', {
       error: 'No provider configured'
@@ -166,7 +168,7 @@ describe('runIncidentAgent — early-exit guards', () => {
   })
 
   it('resolves incidents whose serverId is stored as host:port', async () => {
-    vi.mocked(repo.getIncidentById).mockReturnValue({
+    vi.mocked(repo.getIncidentById).mockResolvedValue({
       ...FAKE_INCIDENT,
       serverId: 'localhost:1434'
     })
@@ -176,7 +178,7 @@ describe('runIncidentAgent — early-exit guards', () => {
       host: 'localhost',
       port: 1434
     })
-    vi.mocked(providers.getProvider).mockReturnValue(makeFakeProvider())
+    vi.mocked(providers.getProvider).mockResolvedValue(makeFakeProvider())
 
     await expect(runIncidentAgent('inc-test-001')).resolves.toEqual({ status: 'completed' })
 
@@ -188,10 +190,10 @@ describe('runIncidentAgent — early-exit guards', () => {
 describe('runIncidentAgent — status lifecycle', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(repo.getIncidentById).mockReturnValue(FAKE_INCIDENT)
+    vi.mocked(repo.getIncidentById).mockResolvedValue(FAKE_INCIDENT)
     vi.mocked(serverStore.getById).mockReturnValue(FAKE_SERVER)
-    vi.mocked(providers.getProvider).mockReturnValue(makeFakeProvider())
-    vi.mocked(repo.createAction).mockReturnValue(FAKE_ACTION)
+    vi.mocked(providers.getProvider).mockResolvedValue(makeFakeProvider())
+    vi.mocked(repo.createAction).mockResolvedValue(FAKE_ACTION)
   })
 
   it('sets incident status to investigating', async () => {
@@ -213,12 +215,12 @@ describe('runIncidentAgent — status lifecycle', () => {
       schema: { shape: {} },
       invoke: vi.fn().mockResolvedValue('[{"database_name":"AppDB"}]')
     }
-    vi.mocked(repo.getIncidentById).mockReturnValue({
+    vi.mocked(repo.getIncidentById).mockResolvedValue({
       ...FAKE_INCIDENT,
       category: 'backup_overdue'
     })
     vi.mocked(diagnosticTools.buildDiagnosticTools).mockReturnValue([diagnosticTool as never])
-    vi.mocked(providers.getProvider).mockReturnValue({
+    vi.mocked(providers.getProvider).mockResolvedValue({
       name: 'ollama' as const,
       model: 'gemma4:e4b',
       health: async () => true,
@@ -243,19 +245,19 @@ describe('runIncidentAgent — status lifecycle', () => {
 describe('runIncidentAgent — root cause & summary parsing', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(repo.getIncidentById).mockReturnValue(FAKE_INCIDENT)
+    vi.mocked(repo.getIncidentById).mockResolvedValue(FAKE_INCIDENT)
     vi.mocked(serverStore.getById).mockReturnValue(FAKE_SERVER)
-    vi.mocked(repo.createAction).mockReturnValue(FAKE_ACTION)
+    vi.mocked(repo.createAction).mockResolvedValue(FAKE_ACTION)
   })
 
   it('extracts summary from first non-empty line before ## Root Cause', async () => {
-    vi.mocked(providers.getProvider).mockReturnValue(makeFakeProvider())
+    vi.mocked(providers.getProvider).mockResolvedValue(makeFakeProvider())
     await runIncidentAgent('inc-test-001')
     expect(repo.setSummary).toHaveBeenCalledWith('inc-test-001', 'High CPU caused by blocking.')
   })
 
   it('extracts root cause text from ## Root Cause section', async () => {
-    vi.mocked(providers.getProvider).mockReturnValue(makeFakeProvider())
+    vi.mocked(providers.getProvider).mockResolvedValue(makeFakeProvider())
     await runIncidentAgent('inc-test-001')
     expect(repo.setRootCause).toHaveBeenCalledWith(
       'inc-test-001',
@@ -264,7 +266,7 @@ describe('runIncidentAgent — root cause & summary parsing', () => {
   })
 
   it('does not persist the recommended fix inside root cause text', async () => {
-    vi.mocked(providers.getProvider).mockReturnValue(
+    vi.mocked(providers.getProvider).mockResolvedValue(
       makeFakeProvider({
         finalText:
           'Backups are overdue.\n\n## Root Cause\nThe backup job has no successful full backup history.\n\n## Recommended Fix\nReview SQL Agent job history and run a manual full backup.'
@@ -280,7 +282,7 @@ describe('runIncidentAgent — root cause & summary parsing', () => {
   })
 
   it('falls back to category (underscores → spaces) when no text before ## Root Cause', async () => {
-    vi.mocked(providers.getProvider).mockReturnValue(
+    vi.mocked(providers.getProvider).mockResolvedValue(
       makeFakeProvider({ finalText: '## Root Cause\nBlocking detected.' })
     )
     await runIncidentAgent('inc-test-001')
@@ -289,7 +291,7 @@ describe('runIncidentAgent — root cause & summary parsing', () => {
   })
 
   it('uses full text as root cause when ## Root Cause section is absent', async () => {
-    vi.mocked(providers.getProvider).mockReturnValue(
+    vi.mocked(providers.getProvider).mockResolvedValue(
       makeFakeProvider({ finalText: 'No clear root cause identified.' })
     )
     await runIncidentAgent('inc-test-001')
@@ -303,10 +305,10 @@ describe('runIncidentAgent — root cause & summary parsing', () => {
 describe('runIncidentAgent — audit trail', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(repo.getIncidentById).mockReturnValue(FAKE_INCIDENT)
+    vi.mocked(repo.getIncidentById).mockResolvedValue(FAKE_INCIDENT)
     vi.mocked(serverStore.getById).mockReturnValue(FAKE_SERVER)
-    vi.mocked(providers.getProvider).mockReturnValue(makeFakeProvider())
-    vi.mocked(repo.createAction).mockReturnValue(FAKE_ACTION)
+    vi.mocked(providers.getProvider).mockResolvedValue(makeFakeProvider())
+    vi.mocked(repo.createAction).mockResolvedValue(FAKE_ACTION)
   })
 
   it('creates audit entry with provider name and model after stream completes', async () => {
@@ -325,7 +327,7 @@ describe('runIncidentAgent — audit trail', () => {
   })
 
   it('records tool call count in the audit telemetry', async () => {
-    vi.mocked(providers.getProvider).mockReturnValue(makeFakeProvider({ callKillSession: true }))
+    vi.mocked(providers.getProvider).mockResolvedValue(makeFakeProvider({ callKillSession: true }))
     await runIncidentAgent('inc-test-001')
     expect(repo.addAuditEntry).toHaveBeenCalledWith(
       'inc-test-001',
@@ -350,7 +352,7 @@ describe('runIncidentAgent — audit trail', () => {
   })
 
   it('logs stream error as llm_message event without calling setSummary', async () => {
-    vi.mocked(providers.getProvider).mockReturnValue(
+    vi.mocked(providers.getProvider).mockResolvedValue(
       makeFakeProvider({ throwStream: 'Stream timeout' })
     )
     await runIncidentAgent('inc-test-001')
@@ -373,7 +375,7 @@ describe('runIncidentAgent — audit trail', () => {
   })
 
   it('fails a hung provider run after the configured timeout', async () => {
-    vi.mocked(providers.getProvider).mockReturnValue({
+    vi.mocked(providers.getProvider).mockResolvedValue({
       name: 'ollama' as const,
       model: 'llama3',
       health: async () => true,
@@ -409,7 +411,7 @@ describe('runIncidentAgent — audit trail', () => {
 
   it('allows slow local model runs past two minutes before the default timeout', async () => {
     vi.useFakeTimers()
-    vi.mocked(providers.getProvider).mockReturnValue({
+    vi.mocked(providers.getProvider).mockResolvedValue({
       name: 'ollama' as const,
       model: 'gemma4:e4b',
       health: async () => true,
@@ -443,7 +445,7 @@ describe('runIncidentAgent — audit trail', () => {
         release = resolve
       })
     })
-    vi.mocked(providers.getProvider).mockReturnValue({
+    vi.mocked(providers.getProvider).mockResolvedValue({
       name: 'ollama' as const,
       model: 'llama3',
       health: async () => true,
@@ -459,7 +461,9 @@ describe('runIncidentAgent — audit trail', () => {
       status: 'skipped',
       reason: 'already_running'
     })
-    expect(stream).toHaveBeenCalledTimes(1)
+    // Drain microtasks until the first run reaches provider.stream() —
+    // repository/provider lookups added async steps before stream invocation.
+    await vi.waitFor(() => expect(stream).toHaveBeenCalledTimes(1))
 
     release()
     await first
@@ -470,16 +474,16 @@ describe('runIncidentAgent — audit trail', () => {
 describe('runIncidentAgent — action proposal flow', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(repo.getIncidentById).mockReturnValue({
+    vi.mocked(repo.getIncidentById).mockResolvedValue({
       ...FAKE_INCIDENT,
       category: 'blocking_sessions'
     })
     vi.mocked(serverStore.getById).mockReturnValue(FAKE_SERVER)
-    vi.mocked(repo.createAction).mockReturnValue(FAKE_ACTION)
+    vi.mocked(repo.createAction).mockResolvedValue(FAKE_ACTION)
   })
 
   it('logs tool_call event when provider fires tool_start', async () => {
-    vi.mocked(providers.getProvider).mockReturnValue({
+    vi.mocked(providers.getProvider).mockResolvedValue({
       name: 'ollama' as const,
       model: 'llama3',
       health: async () => true,
@@ -496,7 +500,7 @@ describe('runIncidentAgent — action proposal flow', () => {
   })
 
   it('stores a pending action via createAction when kill_session tool is invoked', async () => {
-    vi.mocked(providers.getProvider).mockReturnValue(makeFakeProvider({ callKillSession: true }))
+    vi.mocked(providers.getProvider).mockResolvedValue(makeFakeProvider({ callKillSession: true }))
     await runIncidentAgent('inc-test-001')
     expect(repo.createAction).toHaveBeenCalledWith(
       'inc-test-001',
@@ -508,7 +512,7 @@ describe('runIncidentAgent — action proposal flow', () => {
   })
 
   it('logs action_proposed event including toolName and actionId', async () => {
-    vi.mocked(providers.getProvider).mockReturnValue(makeFakeProvider({ callKillSession: true }))
+    vi.mocked(providers.getProvider).mockResolvedValue(makeFakeProvider({ callKillSession: true }))
     await runIncidentAgent('inc-test-001')
     expect(repo.addEvent).toHaveBeenCalledWith(
       'inc-test-001',
@@ -523,7 +527,7 @@ describe('runIncidentAgent — action proposal flow', () => {
 
   it('wraps unknown tool result in TOOL_OUTPUT markers', async () => {
     let capturedOutput = ''
-    vi.mocked(providers.getProvider).mockReturnValue({
+    vi.mocked(providers.getProvider).mockResolvedValue({
       name: 'ollama' as const,
       model: 'llama3',
       health: async () => true,

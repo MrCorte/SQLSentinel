@@ -8,10 +8,15 @@ const log = createLogger('responseCache')
 // 2nd-Nth hit from a ~5s LLM call into <1ms.
 const CACHE_MAX = 50
 const TTL_MS = 10 * 60 * 1000
+// Answers the user explicitly approved (thumbs-up) are cached longer because
+// they are known-good. A fresh re-ask will re-populate the cache with the
+// approved answer at this TTL, so the user sees the same quality response.
+const TTL_APPROVED_MS = 60 * 60 * 1000
 
 interface Entry {
   response: string
   storedAt: number
+  ttlMs: number
 }
 
 const _cache = new Map<string, Entry>()
@@ -28,7 +33,7 @@ export function getCached(question: string, targetServerId?: string | null): str
   const key = makeKey(question, targetServerId)
   const entry = _cache.get(key)
   if (!entry) return null
-  if (Date.now() - entry.storedAt > TTL_MS) {
+  if (Date.now() - entry.storedAt > entry.ttlMs) {
     _cache.delete(key)
     return null
   }
@@ -46,7 +51,24 @@ export function putCached(question: string, response: string, targetServerId?: s
     const oldest = _cache.keys().next().value
     if (oldest !== undefined) _cache.delete(oldest)
   }
-  _cache.set(key, { response, storedAt: Date.now() })
+  _cache.set(key, { response, storedAt: Date.now(), ttlMs: TTL_MS })
+}
+
+// Cache an approved (thumbs-up) answer with a 1-hour TTL so frequently asked
+// questions whose answers the user has validated don't expire after 10 minutes.
+export function putCachedApproved(
+  question: string,
+  response: string,
+  targetServerId?: string | null
+): void {
+  if (!response || response.trim().length < 20) return
+  const key = makeKey(question, targetServerId)
+  if (_cache.size >= CACHE_MAX) {
+    const oldest = _cache.keys().next().value
+    if (oldest !== undefined) _cache.delete(oldest)
+  }
+  _cache.set(key, { response, storedAt: Date.now(), ttlMs: TTL_APPROVED_MS })
+  log.info(`approved cache key=${key.slice(0, 16)} ttl=60min`)
 }
 
 // Invalidate every cached variant of the question (any server) — the user's

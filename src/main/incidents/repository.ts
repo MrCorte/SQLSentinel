@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createHash } from 'node:crypto'
-import type Database from 'better-sqlite3'
-import { getDb } from '../store/database'
+import * as sql from 'mssql'
+import { getPool } from '../store/sqlserver/connection'
 import type {
   Incident,
   IncidentEvent,
@@ -17,7 +17,7 @@ import type { AlertCategory, AlertSeverity } from '../ipc/types'
 import { buildIncidentAiStats } from './aiStats'
 
 // ---------------------------------------------------------------------------
-// Row shapes (SQLite → TypeScript)
+// Row shapes (SQL Server → TypeScript)
 // ---------------------------------------------------------------------------
 
 interface IncidentRow {
@@ -26,10 +26,11 @@ interface IncidentRow {
   category: string
   severity: string
   status: string
-  opened_at: number
-  resolved_at: number | null
+  opened_at: string | number
+  resolved_at: string | number | null
   summary: string | null
   root_cause_md: string | null
+  group_count?: number
 }
 
 interface IncidentEventRow {
@@ -37,7 +38,7 @@ interface IncidentEventRow {
   incident_id: string
   kind: string
   payload_json: string
-  at: number
+  at: string | number
 }
 
 interface IncidentActionRow {
@@ -49,7 +50,7 @@ interface IncidentActionRow {
   explanation: string
   status: string
   approved_by: string | null
-  executed_at: number | null
+  executed_at: string | number | null
   result_json: string | null
   rejection_reason: string | null
 }
@@ -66,12 +67,24 @@ interface IncidentAuditRow {
   duration_ms: number | null
   tool_call_count: number | null
   error: string | null
-  at: number
+  at: string | number
 }
 
 // ---------------------------------------------------------------------------
 // Row → domain mappers
 // ---------------------------------------------------------------------------
+
+// mssql may return BIGINT columns as string when values exceed Number.MAX_SAFE_INTEGER.
+// Epoch-millis fits in a Number for the next ~285k years, but we normalise defensively.
+function toNum(v: string | number | null | undefined): number {
+  if (v == null) return 0
+  return typeof v === 'number' ? v : Number(v)
+}
+
+function toNumOrNull(v: string | number | null | undefined): number | null {
+  if (v == null) return null
+  return typeof v === 'number' ? v : Number(v)
+}
 
 function rowToIncident(row: IncidentRow): Incident {
   return {
@@ -80,10 +93,11 @@ function rowToIncident(row: IncidentRow): Incident {
     category: row.category as AlertCategory,
     severity: row.severity as AlertSeverity,
     status: row.status as IncidentStatus,
-    openedAt: row.opened_at,
-    resolvedAt: row.resolved_at ?? undefined,
+    openedAt: toNum(row.opened_at),
+    resolvedAt: toNumOrNull(row.resolved_at) ?? undefined,
     summary: row.summary ?? undefined,
-    rootCauseMd: row.root_cause_md ?? undefined
+    rootCauseMd: row.root_cause_md ?? undefined,
+    count: row.group_count
   }
 }
 
@@ -93,7 +107,7 @@ function rowToEvent(row: IncidentEventRow): IncidentEvent {
     incidentId: row.incident_id,
     kind: row.kind as IncidentEventKind,
     payload: JSON.parse(row.payload_json) as unknown,
-    at: row.at
+    at: toNum(row.at)
   }
 }
 
@@ -107,7 +121,7 @@ function rowToAction(row: IncidentActionRow): IncidentAction {
     explanation: row.explanation,
     status: row.status as ActionStatus,
     approvedBy: row.approved_by ?? undefined,
-    executedAt: row.executed_at ?? undefined,
+    executedAt: toNumOrNull(row.executed_at) ?? undefined,
     result: row.result_json != null ? (JSON.parse(row.result_json) as unknown) : undefined,
     rejectionReason: row.rejection_reason ?? undefined
   }
@@ -126,152 +140,90 @@ function rowToAudit(row: IncidentAuditRow): IncidentAuditEntry {
     durationMs: row.duration_ms ?? undefined,
     toolCallCount: row.tool_call_count ?? undefined,
     error: row.error ?? undefined,
-    at: row.at
+    at: toNum(row.at)
   }
-}
-
-// ---------------------------------------------------------------------------
-// Prepared statement cache (same pattern as metricsRepository)
-// ---------------------------------------------------------------------------
-
-let _db: Database.Database | null = null
-let _stmts: ReturnType<typeof buildStmts> | null = null
-
-function buildStmts(db: Database.Database) {
-  return {
-    insertIncident: db.prepare<[string, string, string, string, number]>(
-      `INSERT INTO incidents (id, server_id, category, severity, status, opened_at)
-       VALUES (?, ?, ?, ?, 'open', ?)`
-    ),
-    findAllIncidents: db.prepare<[], IncidentRow>(
-      `SELECT * FROM incidents ORDER BY opened_at DESC LIMIT 200`
-    ),
-    findIncidentsByStatus: db.prepare<[string], IncidentRow>(
-      `SELECT * FROM incidents WHERE status = ? ORDER BY opened_at DESC LIMIT 200`
-    ),
-    findIncidentById: db.prepare<[string], IncidentRow>('SELECT * FROM incidents WHERE id = ?'),
-    findOpenByServerAndCategory: db.prepare<[string, string], IncidentRow>(
-      `SELECT * FROM incidents
-       WHERE server_id = ? AND category = ? AND status = 'open'
-       ORDER BY opened_at DESC
-       LIMIT 1`
-    ),
-    updateStatus: db.prepare<[string, number | null, string]>(
-      `UPDATE incidents SET status = ?, resolved_at = ? WHERE id = ?`
-    ),
-    updateSeverity: db.prepare<[string, string]>('UPDATE incidents SET severity = ? WHERE id = ?'),
-    updateSummary: db.prepare<[string, string]>('UPDATE incidents SET summary = ? WHERE id = ?'),
-    updateRootCause: db.prepare<[string, string]>(
-      'UPDATE incidents SET root_cause_md = ? WHERE id = ?'
-    ),
-    countOpen: db.prepare<[], { count: number }>(
-      `SELECT COUNT(*) AS count FROM incidents WHERE status NOT IN ('resolved', 'archived')`
-    ),
-
-    insertEvent: db.prepare<[string, string, string, string, number]>(
-      `INSERT INTO incident_events (id, incident_id, kind, payload_json, at)
-       VALUES (?, ?, ?, ?, ?)`
-    ),
-    findEvents: db.prepare<[string], IncidentEventRow>(
-      'SELECT * FROM incident_events WHERE incident_id = ? ORDER BY at ASC'
-    ),
-
-    insertAction: db.prepare<[string, string, string, string, string, string]>(
-      `INSERT INTO incident_actions (id, incident_id, tool_name, params_json, tsql_preview, explanation)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    ),
-    findActions: db.prepare<[string], IncidentActionRow>(
-      'SELECT * FROM incident_actions WHERE incident_id = ? ORDER BY rowid ASC'
-    ),
-    findAllActions: db.prepare<[], IncidentActionRow>(
-      'SELECT * FROM incident_actions ORDER BY rowid ASC'
-    ),
-    findPendingActions: db.prepare<[string], IncidentActionRow>(
-      `SELECT * FROM incident_actions WHERE incident_id = ? AND status = 'pending'`
-    ),
-    findActionById: db.prepare<[string], IncidentActionRow>(
-      'SELECT * FROM incident_actions WHERE id = ?'
-    ),
-    updateActionStatus: db.prepare<
-      [string, string | null, number | null, string | null, string | null, string]
-    >(
-      `UPDATE incident_actions
-       SET status = ?, approved_by = ?, executed_at = ?, result_json = ?, rejection_reason = ?
-       WHERE id = ?`
-    ),
-
-    insertAudit: db.prepare<
-      [
-        string,
-        string,
-        string,
-        string,
-        string,
-        string,
-        number | null,
-        number | null,
-        number | null,
-        number | null,
-        string | null,
-        number
-      ]
-    >(
-      `INSERT INTO incident_audit
-         (id, incident_id, provider, model, prompt_hash, response_hash, tokens_in, tokens_out, duration_ms, tool_call_count, error, at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ),
-    findAudit: db.prepare<[string], IncidentAuditRow>(
-      'SELECT * FROM incident_audit WHERE incident_id = ? ORDER BY at ASC'
-    ),
-    findAllAudit: db.prepare<[], IncidentAuditRow>('SELECT * FROM incident_audit ORDER BY at ASC'),
-    countApprovedForIncident: db.prepare<[string], { count: number }>(
-      `SELECT COUNT(*) AS count FROM incident_actions
-       WHERE incident_id = ? AND status IN ('executed', 'approved')`
-    )
-  }
-}
-
-function stmts() {
-  const db = getDb()
-  if (_stmts && _db === db) return _stmts
-  _db = db
-  _stmts = buildStmts(db)
-  return _stmts
 }
 
 // ---------------------------------------------------------------------------
 // Public API — incidents
 // ---------------------------------------------------------------------------
 
-export function createIncident(
+export async function createIncident(
   serverId: string,
   category: AlertCategory,
   severity: AlertSeverity,
   openedAt: number
-): Incident {
+): Promise<Incident> {
   const id = randomUUID()
-  stmts().insertIncident.run(id, serverId, category, severity, openedAt)
-  return getIncidentById(id)!
+  await getPool()
+    .request()
+    .input('id', sql.NVarChar(36), id)
+    .input('server_id', sql.NVarChar(36), serverId)
+    .input('category', sql.NVarChar(50), category)
+    .input('severity', sql.NVarChar(20), severity)
+    .input('opened_at', sql.BigInt, openedAt)
+    .query(
+      `INSERT INTO dbo.incidents (id, server_id, category, severity, status, opened_at)
+       VALUES (@id, @server_id, @category, @severity, N'open', @opened_at)`
+    )
+  const created = await getIncidentById(id)
+  if (!created) throw new Error(`createIncident: failed to read back ${id}`)
+  return created
 }
 
-export function listIncidents(filter?: { status?: IncidentStatus }): Incident[] {
-  const rows = filter?.status
-    ? stmts().findIncidentsByStatus.all(filter.status)
-    : stmts().findAllIncidents.all()
-  return rows.map(rowToIncident)
+export async function listIncidents(filter?: { status?: IncidentStatus }): Promise<Incident[]> {
+  const pool = getPool()
+  const req = pool.request()
+  let sqlText: string
+  if (filter?.status) {
+    req.input('status', sql.NVarChar(20), filter.status)
+    sqlText = `
+      WITH ranked AS (
+        SELECT *,
+          ROW_NUMBER() OVER (PARTITION BY server_id, category ORDER BY opened_at DESC) AS rn,
+          COUNT(*) OVER (PARTITION BY server_id, category) AS group_count
+        FROM dbo.incidents
+        WHERE status = @status
+      )
+      SELECT TOP 200 id, server_id, category, severity, status, opened_at, resolved_at, summary, root_cause_md, group_count
+      FROM ranked WHERE rn = 1 ORDER BY opened_at DESC`
+  } else {
+    sqlText = `
+      WITH ranked AS (
+        SELECT *,
+          ROW_NUMBER() OVER (PARTITION BY server_id, category ORDER BY opened_at DESC) AS rn,
+          COUNT(*) OVER (PARTITION BY server_id, category) AS group_count
+        FROM dbo.incidents
+      )
+      SELECT TOP 200 id, server_id, category, severity, status, opened_at, resolved_at, summary, root_cause_md, group_count
+      FROM ranked WHERE rn = 1 ORDER BY opened_at DESC`
+  }
+  const r = await req.query<IncidentRow>(sqlText)
+  return r.recordset.map(rowToIncident)
 }
 
-export function getIncidentById(id: string): Incident | null {
-  const row = stmts().findIncidentById.get(id)
-  return row ? rowToIncident(row) : null
+export async function getIncidentById(id: string): Promise<Incident | null> {
+  const r = await getPool()
+    .request()
+    .input('id', sql.NVarChar(36), id)
+    .query<IncidentRow>(`SELECT * FROM dbo.incidents WHERE id = @id`)
+  return r.recordset[0] ? rowToIncident(r.recordset[0]) : null
 }
 
-export function findOpenByServerAndCategory(
+export async function findOpenByServerAndCategory(
   serverId: string,
   category: AlertCategory
-): Incident | null {
-  const row = stmts().findOpenByServerAndCategory.get(serverId, category)
-  return row ? rowToIncident(row) : null
+): Promise<Incident | null> {
+  const r = await getPool()
+    .request()
+    .input('server_id', sql.NVarChar(36), serverId)
+    .input('category', sql.NVarChar(50), category)
+    .query<IncidentRow>(
+      `SELECT TOP 1 * FROM dbo.incidents
+       WHERE server_id = @server_id AND category = @category AND status = N'open'
+       ORDER BY opened_at DESC`
+    )
+  return r.recordset[0] ? rowToIncident(r.recordset[0]) : null
 }
 
 /**
@@ -284,129 +236,231 @@ export function findOpenByServerAndCategory(
  *                   instance (host:port:instanceName). Must contain at least one.
  * @param category   Alert category to match.
  */
-export function findActiveForInstance(
+export async function findActiveForInstance(
   serverIds: string[],
   category: AlertCategory
-): Incident | null {
+): Promise<Incident | null> {
   if (serverIds.length === 0) return null
-  const db = stmts() // ensures _db is initialised; throw-through if not
-  void db
-  // Build the IN-list placeholder string. serverIds come from serverStore
-  // (UUIDs), never user input — but we keep them as bound parameters anyway.
-  const placeholders = serverIds.map(() => '?').join(',')
-  const sql = `SELECT * FROM incidents
-               WHERE server_id IN (${placeholders})
-                 AND category = ?
-                 AND status IN ('open','investigating','awaiting_approval')
-               ORDER BY opened_at DESC
-               LIMIT 1`
-  // Prepared per call; for typical instance sets (1-4 server records) the
-  // re-prepare cost is negligible vs. an IPC round trip.
-  const params: (string | AlertCategory)[] = [...serverIds, category]
-  const row = _db!.prepare<typeof params, IncidentRow>(sql).get(...params)
-  return row ? rowToIncident(row) : null
-}
-
-export function setIncidentStatus(id: string, status: IncidentStatus, resolvedAt?: number): void {
-  stmts().updateStatus.run(
-    status,
-    status === 'resolved' || status === 'archived' ? (resolvedAt ?? Date.now()) : null,
-    id
+  const req = getPool().request()
+  // Build named placeholders for the IN-list — never interpolate raw values.
+  const placeholders = serverIds.map((id, i) => {
+    const name = `sid${i}`
+    req.input(name, sql.NVarChar(36), id)
+    return `@${name}`
+  })
+  req.input('category', sql.NVarChar(50), category)
+  const r = await req.query<IncidentRow>(
+    `SELECT TOP 1 * FROM dbo.incidents
+     WHERE server_id IN (${placeholders.join(',')})
+       AND category = @category
+       AND status IN (N'open', N'investigating', N'awaiting_approval')
+     ORDER BY opened_at DESC`
   )
+  return r.recordset[0] ? rowToIncident(r.recordset[0]) : null
 }
 
-export function escalateSeverity(id: string, severity: AlertSeverity): void {
-  stmts().updateSeverity.run(severity, id)
+export async function setIncidentStatus(
+  id: string,
+  status: IncidentStatus,
+  resolvedAt?: number
+): Promise<void> {
+  const resolved =
+    status === 'resolved' || status === 'archived' ? (resolvedAt ?? Date.now()) : null
+  await getPool()
+    .request()
+    .input('id', sql.NVarChar(36), id)
+    .input('status', sql.NVarChar(20), status)
+    .input('resolved_at', sql.BigInt, resolved)
+    .query(`UPDATE dbo.incidents SET status = @status, resolved_at = @resolved_at WHERE id = @id`)
 }
 
-export function setSummary(id: string, summary: string): void {
-  stmts().updateSummary.run(summary, id)
+export async function escalateSeverity(id: string, severity: AlertSeverity): Promise<void> {
+  await getPool()
+    .request()
+    .input('id', sql.NVarChar(36), id)
+    .input('severity', sql.NVarChar(20), severity)
+    .query(`UPDATE dbo.incidents SET severity = @severity WHERE id = @id`)
 }
 
-export function setRootCause(id: string, rootCauseMd: string): void {
-  stmts().updateRootCause.run(rootCauseMd, id)
+export async function setSummary(id: string, summary: string): Promise<void> {
+  await getPool()
+    .request()
+    .input('id', sql.NVarChar(36), id)
+    .input('summary', sql.NVarChar(sql.MAX), summary)
+    .query(`UPDATE dbo.incidents SET summary = @summary WHERE id = @id`)
 }
 
-export function countOpen(): number {
-  return stmts().countOpen.get()?.count ?? 0
+export async function setRootCause(id: string, rootCauseMd: string): Promise<void> {
+  await getPool()
+    .request()
+    .input('id', sql.NVarChar(36), id)
+    .input('root_cause_md', sql.NVarChar(sql.MAX), rootCauseMd)
+    .query(`UPDATE dbo.incidents SET root_cause_md = @root_cause_md WHERE id = @id`)
+}
+
+export async function countOpen(): Promise<number> {
+  const r = await getPool()
+    .request()
+    .query<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM dbo.incidents WHERE status NOT IN (N'resolved', N'archived')`
+    )
+  return r.recordset[0]?.count ?? 0
 }
 
 // ---------------------------------------------------------------------------
 // Public API — events
 // ---------------------------------------------------------------------------
 
-export function addEvent(
+export async function addEvent(
   incidentId: string,
   kind: IncidentEventKind,
   payload: unknown,
-  at = Date.now()
-): IncidentEvent {
+  at: number = Date.now()
+): Promise<IncidentEvent> {
   const id = randomUUID()
-  stmts().insertEvent.run(id, incidentId, kind, JSON.stringify(payload), at)
+  const payloadJson = JSON.stringify(payload)
+  await getPool()
+    .request()
+    .input('id', sql.NVarChar(36), id)
+    .input('incident_id', sql.NVarChar(36), incidentId)
+    .input('kind', sql.NVarChar(50), kind)
+    .input('payload_json', sql.NVarChar(sql.MAX), payloadJson)
+    .input('at', sql.BigInt, at)
+    .query(
+      `INSERT INTO dbo.incident_events (id, incident_id, kind, payload_json, at)
+       VALUES (@id, @incident_id, @kind, @payload_json, @at)`
+    )
   return { id, incidentId, kind, payload, at }
 }
 
-export function getEvents(incidentId: string): IncidentEvent[] {
-  return stmts().findEvents.all(incidentId).map(rowToEvent)
+export async function getEvents(incidentId: string): Promise<IncidentEvent[]> {
+  const r = await getPool()
+    .request()
+    .input('incident_id', sql.NVarChar(36), incidentId)
+    .query<IncidentEventRow>(
+      `SELECT * FROM dbo.incident_events WHERE incident_id = @incident_id ORDER BY at ASC`
+    )
+  return r.recordset.map(rowToEvent)
 }
 
 // ---------------------------------------------------------------------------
 // Public API — actions
 // ---------------------------------------------------------------------------
 
-export function createAction(
+export async function createAction(
   incidentId: string,
   toolName: string,
   params: Record<string, unknown>,
   tsqlPreview: string,
   explanation: string
-): IncidentAction {
+): Promise<IncidentAction> {
   const id = randomUUID()
-  stmts().insertAction.run(
+  await getPool()
+    .request()
+    .input('id', sql.NVarChar(36), id)
+    .input('incident_id', sql.NVarChar(36), incidentId)
+    .input('tool_name', sql.NVarChar(100), toolName)
+    .input('params_json', sql.NVarChar(sql.MAX), JSON.stringify(params))
+    .input('tsql_preview', sql.NVarChar(sql.MAX), tsqlPreview)
+    .input('explanation', sql.NVarChar(sql.MAX), explanation)
+    .query(
+      `INSERT INTO dbo.incident_actions (id, incident_id, tool_name, params_json, tsql_preview, explanation)
+       VALUES (@id, @incident_id, @tool_name, @params_json, @tsql_preview, @explanation)`
+    )
+  const created = await getActionById(id)
+  if (!created) throw new Error(`createAction: failed to read back ${id}`)
+  return created
+}
+
+export async function getActions(incidentId: string): Promise<IncidentAction[]> {
+  const r = await getPool()
+    .request()
+    .input('incident_id', sql.NVarChar(36), incidentId)
+    .query<IncidentActionRow>(
+      `SELECT * FROM dbo.incident_actions WHERE incident_id = @incident_id ORDER BY seq ASC`
+    )
+  return r.recordset.map(rowToAction)
+}
+
+export async function getPendingActions(incidentId: string): Promise<IncidentAction[]> {
+  const r = await getPool()
+    .request()
+    .input('incident_id', sql.NVarChar(36), incidentId)
+    .query<IncidentActionRow>(
+      `SELECT * FROM dbo.incident_actions
+       WHERE incident_id = @incident_id AND status = N'pending'
+       ORDER BY seq ASC`
+    )
+  return r.recordset.map(rowToAction)
+}
+
+export async function getActionById(id: string): Promise<IncidentAction | null> {
+  const r = await getPool()
+    .request()
+    .input('id', sql.NVarChar(36), id)
+    .query<IncidentActionRow>(`SELECT * FROM dbo.incident_actions WHERE id = @id`)
+  return r.recordset[0] ? rowToAction(r.recordset[0]) : null
+}
+
+async function updateActionStatus(
+  id: string,
+  status: ActionStatus,
+  approvedBy: string | null,
+  executedAt: number | null,
+  resultJson: string | null,
+  rejectionReason: string | null
+): Promise<void> {
+  await getPool()
+    .request()
+    .input('id', sql.NVarChar(36), id)
+    .input('status', sql.NVarChar(20), status)
+    .input('approved_by', sql.NVarChar(200), approvedBy)
+    .input('executed_at', sql.BigInt, executedAt)
+    .input('result_json', sql.NVarChar(sql.MAX), resultJson)
+    .input('rejection_reason', sql.NVarChar(sql.MAX), rejectionReason)
+    .query(
+      `UPDATE dbo.incident_actions
+       SET status = @status,
+           approved_by = @approved_by,
+           executed_at = @executed_at,
+           result_json = @result_json,
+           rejection_reason = @rejection_reason
+       WHERE id = @id`
+    )
+}
+
+export async function approveAction(
+  id: string,
+  approvedBy: string,
+  result?: unknown
+): Promise<void> {
+  await updateActionStatus(
     id,
-    incidentId,
-    toolName,
-    JSON.stringify(params),
-    tsqlPreview,
-    explanation
-  )
-  return getActionById(id)!
-}
-
-export function getActions(incidentId: string): IncidentAction[] {
-  return stmts().findActions.all(incidentId).map(rowToAction)
-}
-
-export function getPendingActions(incidentId: string): IncidentAction[] {
-  return stmts().findPendingActions.all(incidentId).map(rowToAction)
-}
-
-export function getActionById(id: string): IncidentAction | null {
-  const row = stmts().findActionById.get(id)
-  return row ? rowToAction(row) : null
-}
-
-export function approveAction(id: string, approvedBy: string, result?: unknown): void {
-  stmts().updateActionStatus.run(
     'executed',
     approvedBy,
     Date.now(),
     result !== undefined ? JSON.stringify(result) : null,
-    null,
-    id
+    null
   )
 }
 
-export function rejectAction(id: string, reason: string): void {
-  stmts().updateActionStatus.run('rejected', null, null, null, reason, id)
+export async function rejectAction(id: string, reason: string): Promise<void> {
+  await updateActionStatus(id, 'rejected', null, null, null, reason)
 }
 
-export function failAction(id: string, error: string): void {
-  stmts().updateActionStatus.run('failed', null, null, null, error, id)
+export async function failAction(id: string, error: string): Promise<void> {
+  await updateActionStatus(id, 'failed', null, null, null, error)
 }
 
-export function countApprovedActionsForIncident(incidentId: string): number {
-  return stmts().countApprovedForIncident.get(incidentId)?.count ?? 0
+export async function countApprovedActionsForIncident(incidentId: string): Promise<number> {
+  const r = await getPool()
+    .request()
+    .input('incident_id', sql.NVarChar(36), incidentId)
+    .query<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM dbo.incident_actions
+       WHERE incident_id = @incident_id AND status IN (N'executed', N'approved')`
+    )
+  return r.recordset[0]?.count ?? 0
 }
 
 // ---------------------------------------------------------------------------
@@ -417,32 +471,40 @@ export function sha256(text: string): string {
   return createHash('sha256').update(text).digest('hex').slice(0, 32)
 }
 
-export function addAuditEntry(
+export async function addAuditEntry(
   incidentId: string,
   provider: 'ollama' | 'claude',
   model: string,
   prompt: string,
   response: string,
   telemetry: IncidentAuditTelemetry = {}
-): IncidentAuditEntry {
+): Promise<IncidentAuditEntry> {
   const id = randomUUID()
   const at = Date.now()
   const promptHash = sha256(prompt)
   const responseHash = sha256(response)
-  stmts().insertAudit.run(
-    id,
-    incidentId,
-    provider,
-    model,
-    promptHash,
-    responseHash,
-    telemetry.tokensIn ?? null,
-    telemetry.tokensOut ?? null,
-    telemetry.durationMs ?? null,
-    telemetry.toolCallCount ?? null,
-    telemetry.error ?? null,
-    at
-  )
+  await getPool()
+    .request()
+    .input('id', sql.NVarChar(36), id)
+    .input('incident_id', sql.NVarChar(36), incidentId)
+    .input('provider', sql.NVarChar(20), provider)
+    .input('model', sql.NVarChar(100), model)
+    .input('prompt_hash', sql.Char(64), promptHash)
+    .input('response_hash', sql.Char(64), responseHash)
+    .input('tokens_in', sql.Int, telemetry.tokensIn ?? null)
+    .input('tokens_out', sql.Int, telemetry.tokensOut ?? null)
+    .input('duration_ms', sql.Int, telemetry.durationMs ?? null)
+    .input('tool_call_count', sql.Int, telemetry.toolCallCount ?? null)
+    .input('error', sql.NVarChar(sql.MAX), telemetry.error ?? null)
+    .input('at', sql.BigInt, at)
+    .query(
+      `INSERT INTO dbo.incident_audit
+         (id, incident_id, provider, model, prompt_hash, response_hash,
+          tokens_in, tokens_out, duration_ms, tool_call_count, error, at)
+       VALUES
+         (@id, @incident_id, @provider, @model, @prompt_hash, @response_hash,
+          @tokens_in, @tokens_out, @duration_ms, @tool_call_count, @error, @at)`
+    )
   return {
     id,
     incidentId,
@@ -459,13 +521,24 @@ export function addAuditEntry(
   }
 }
 
-export function getAuditEntries(incidentId: string): IncidentAuditEntry[] {
-  return stmts().findAudit.all(incidentId).map(rowToAudit)
+export async function getAuditEntries(incidentId: string): Promise<IncidentAuditEntry[]> {
+  const r = await getPool()
+    .request()
+    .input('incident_id', sql.NVarChar(36), incidentId)
+    .query<IncidentAuditRow>(
+      `SELECT * FROM dbo.incident_audit WHERE incident_id = @incident_id ORDER BY at ASC`
+    )
+  return r.recordset.map(rowToAudit)
 }
 
-export function getAiStats(): IncidentAiStats {
+export async function getAiStats(): Promise<IncidentAiStats> {
+  const pool = getPool()
+  const [auditR, actionsR] = await Promise.all([
+    pool.request().query<IncidentAuditRow>(`SELECT * FROM dbo.incident_audit ORDER BY at ASC`),
+    pool.request().query<IncidentActionRow>(`SELECT * FROM dbo.incident_actions ORDER BY seq ASC`)
+  ])
   return buildIncidentAiStats({
-    audit: stmts().findAllAudit.all().map(rowToAudit),
-    actions: stmts().findAllActions.all().map(rowToAction)
+    audit: auditR.recordset.map(rowToAudit),
+    actions: actionsR.recordset.map(rowToAction)
   })
 }

@@ -15,8 +15,8 @@ import { attachDetector, onIncidentChange, setAgentRunner } from '../../incident
 import { isIncidentAgentRunning, runIncidentAgent } from '../../incidents/incidentAgent'
 import { ACTION_WHITELIST, buildActionSqlForExecution } from '../../ai/actionTools'
 import { getPool } from '../../collectors/connectionPool'
-import * as serverStore from '../../store/serverStore'
-import { getDb } from '../../store/database'
+import * as serverStore from '../../store/sqlserver/serverRepository'
+import { getRawSetting } from '../../store/sqlserver/settingsRepository'
 
 // ---------------------------------------------------------------------------
 // Layer 4 — Global hourly rate limit + kill switch
@@ -40,14 +40,9 @@ function recordGlobalAction(): void {
   hourlyActionLog.push(Date.now())
 }
 
-function isAgentActionsEnabled(): boolean {
-  const row = getDb()
-    .prepare<
-      [],
-      { value: string }
-    >(`SELECT value FROM settings WHERE key = 'ai_agent_actions_enabled'`)
-    .get()
-  return row?.value !== 'false'
+async function isAgentActionsEnabled(): Promise<boolean> {
+  const value = await getRawSetting('ai_agent_actions_enabled')
+  return value !== 'false'
 }
 
 // ---------------------------------------------------------------------------
@@ -100,9 +95,9 @@ function fireAgent(incidentId: string): boolean {
   void runIncidentAgent(incidentId, {
     onEvent: (ev) => pushToRenderer(IpcChannel.INCIDENT_AGENT_EVENT, { incidentId, event: ev })
   })
-    .then(() => {
+    .then(async () => {
       // Push updated incident with summary/rootCause after agent completes.
-      const incident = repository.getIncidentById(incidentId)
+      const incident = await repository.getIncidentById(incidentId)
       if (incident) pushToRenderer(IpcChannel.INCIDENT_UPDATED, incident)
     })
     .catch((err) => log.error('[incidents] agent error:', err))
@@ -118,18 +113,25 @@ export function registerIncidentHandlers(): void {
   setAgentRunner(fireAgent)
 
   // Push incident changes to renderer whenever the detector fires
-  onIncidentChange((type, incidentId) => {
-    const incident = repository.getIncidentById(incidentId)
-    if (!incident) return
-    const channel = type === 'created' ? IpcChannel.INCIDENT_CREATED : IpcChannel.INCIDENT_UPDATED
-    pushToRenderer(channel, incident)
+  onIncidentChange(async (type, incidentId) => {
+    try {
+      const incident = await repository.getIncidentById(incidentId)
+      if (!incident) return
+      const channel = type === 'created' ? IpcChannel.INCIDENT_CREATED : IpcChannel.INCIDENT_UPDATED
+      pushToRenderer(channel, incident)
+    } catch (err) {
+      log.error('[incidents] onIncidentChange dispatch failed:', safeError(err))
+    }
   })
 
   handle(
     IpcChannel.INCIDENTS_LIST,
-    (_event: IpcMainInvokeEvent, req?: IncidentListRequest): IpcResult<Incident[]> => {
+    async (
+      _event: IpcMainInvokeEvent,
+      req?: IncidentListRequest
+    ): Promise<IpcResult<Incident[]>> => {
       try {
-        return { ok: true, data: repository.listIncidents(req) }
+        return { ok: true, data: await repository.listIncidents(req) }
       } catch (err) {
         log.error('[IPC] INCIDENTS_LIST:', safeError(err))
         return { ok: false, error: safeError(err) }
@@ -139,18 +141,18 @@ export function registerIncidentHandlers(): void {
 
   handle(
     IpcChannel.INCIDENTS_GET,
-    (_event: IpcMainInvokeEvent, id: string): IpcResult<IncidentDetail> => {
+    async (_event: IpcMainInvokeEvent, id: string): Promise<IpcResult<IncidentDetail>> => {
       try {
-        const incident = repository.getIncidentById(id)
+        const incident = await repository.getIncidentById(id)
         if (!incident) return { ok: false, error: `Incident ${id} not found` }
+        const [events, actions, audit] = await Promise.all([
+          repository.getEvents(id),
+          repository.getActions(id),
+          repository.getAuditEntries(id)
+        ])
         return {
           ok: true,
-          data: {
-            incident,
-            events: repository.getEvents(id),
-            actions: repository.getActions(id),
-            audit: repository.getAuditEntries(id)
-          }
+          data: { incident, events, actions, audit }
         }
       } catch (err) {
         log.error('[IPC] INCIDENTS_GET:', safeError(err))
@@ -161,10 +163,13 @@ export function registerIncidentHandlers(): void {
 
   handle(
     IpcChannel.INCIDENTS_SET_STATUS,
-    (_event: IpcMainInvokeEvent, req: IncidentSetStatusRequest): IpcResult<null> => {
+    async (
+      _event: IpcMainInvokeEvent,
+      req: IncidentSetStatusRequest
+    ): Promise<IpcResult<null>> => {
       try {
-        repository.setIncidentStatus(req.id, req.status)
-        const incident = repository.getIncidentById(req.id)
+        await repository.setIncidentStatus(req.id, req.status)
+        const incident = await repository.getIncidentById(req.id)
         if (incident) pushToRenderer(IpcChannel.INCIDENT_UPDATED, incident)
         return { ok: true, data: null }
       } catch (err) {
@@ -174,18 +179,18 @@ export function registerIncidentHandlers(): void {
     }
   )
 
-  handle(IpcChannel.INCIDENTS_COUNT_OPEN, (): IpcResult<number> => {
+  handle(IpcChannel.INCIDENTS_COUNT_OPEN, async (): Promise<IpcResult<number>> => {
     try {
-      return { ok: true, data: repository.countOpen() }
+      return { ok: true, data: await repository.countOpen() }
     } catch (err) {
       log.error('[IPC] INCIDENTS_COUNT_OPEN:', safeError(err))
       return { ok: false, error: safeError(err) }
     }
   })
 
-  handle(IpcChannel.INCIDENTS_AI_STATS, (): IpcResult<IncidentAiStats> => {
+  handle(IpcChannel.INCIDENTS_AI_STATS, async (): Promise<IpcResult<IncidentAiStats>> => {
     try {
-      return { ok: true, data: repository.getAiStats() }
+      return { ok: true, data: await repository.getAiStats() }
     } catch (err) {
       log.error('[IPC] INCIDENTS_AI_STATS:', safeError(err))
       return { ok: false, error: safeError(err) }
@@ -194,13 +199,15 @@ export function registerIncidentHandlers(): void {
 
   handle(
     IpcChannel.INCIDENTS_EXPORT_POSTMORTEM,
-    (_event: IpcMainInvokeEvent, id: string): IpcResult<string> => {
+    async (_event: IpcMainInvokeEvent, id: string): Promise<IpcResult<string>> => {
       try {
-        const incident = repository.getIncidentById(id)
+        const incident = await repository.getIncidentById(id)
         if (!incident) return { ok: false, error: `Incident ${id} not found` }
-        const events = repository.getEvents(id)
-        const actions = repository.getActions(id)
-        const audit = repository.getAuditEntries(id)
+        const [events, actions, audit] = await Promise.all([
+          repository.getEvents(id),
+          repository.getActions(id),
+          repository.getAuditEntries(id)
+        ])
         const md = buildPostmortem(incident, events, actions, audit)
         return { ok: true, data: md }
       } catch (err) {
@@ -212,8 +219,8 @@ export function registerIncidentHandlers(): void {
 
   handle(
     IpcChannel.INCIDENTS_RUN_AGENT,
-    (_event: IpcMainInvokeEvent, id: string): IpcResult<null> => {
-      const incident = repository.getIncidentById(id)
+    async (_event: IpcMainInvokeEvent, id: string): Promise<IpcResult<null>> => {
+      const incident = await repository.getIncidentById(id)
       if (!incident) return { ok: false, error: `Incident ${id} not found` }
       if (!fireAgent(id)) {
         return { ok: false, error: `AI analysis already running for incident ${id}` }
@@ -229,13 +236,13 @@ export function registerIncidentHandlers(): void {
       req: { actionId: string; approvedBy: string }
     ): Promise<IpcResult<null>> => {
       try {
-        const action = repository.getActionById(req.actionId)
+        const action = await repository.getActionById(req.actionId)
         if (!action) return { ok: false, error: `Action ${req.actionId} not found` }
         if (action.status !== 'pending')
           return { ok: false, error: `Action is not pending (status: ${action.status})` }
 
         // Layer 4 — Kill switch
-        if (!isAgentActionsEnabled()) {
+        if (!(await isAgentActionsEnabled())) {
           return { ok: false, error: 'Agent actions are disabled in Settings → AI Provider' }
         }
 
@@ -244,11 +251,11 @@ export function registerIncidentHandlers(): void {
           return { ok: false, error: `Tool '${action.toolName}' is not whitelisted for execution` }
         }
 
-        const incident = repository.getIncidentById(action.incidentId)
+        const incident = await repository.getIncidentById(action.incidentId)
         if (!incident) return { ok: false, error: 'Parent incident not found' }
 
         // Layer 4 — Per-incident action cap
-        const approvedCount = repository.countApprovedActionsForIncident(action.incidentId)
+        const approvedCount = await repository.countApprovedActionsForIncident(action.incidentId)
         if (approvedCount >= MAX_ACTIONS_PER_INCIDENT) {
           return {
             ok: false,
@@ -276,8 +283,8 @@ export function registerIncidentHandlers(): void {
         // Layer 2 — Hard-coded preconditions (TypeScript, not delegated to LLM).
         const preconditionError = await validateActionPreconditions(action, pool)
         if (preconditionError) {
-          repository.failAction(req.actionId, preconditionError)
-          const failed = repository.getActionById(req.actionId)
+          await repository.failAction(req.actionId, preconditionError)
+          const failed = await repository.getActionById(req.actionId)
           if (failed)
             pushToRenderer(IpcChannel.INCIDENT_ACTION, {
               incidentId: action.incidentId,
@@ -290,14 +297,14 @@ export function registerIncidentHandlers(): void {
         await pool.request().query(executableSql)
 
         recordGlobalAction()
-        repository.approveAction(req.actionId, req.approvedBy, { executed: true })
-        repository.addEvent(action.incidentId, 'action_executed', {
+        await repository.approveAction(req.actionId, req.approvedBy, { executed: true })
+        await repository.addEvent(action.incidentId, 'action_executed', {
           toolName: action.toolName,
           actionId: action.id
         })
 
         // Push updated action to renderer.
-        const updated = repository.getActionById(req.actionId)
+        const updated = await repository.getActionById(req.actionId)
         if (updated)
           pushToRenderer(IpcChannel.INCIDENT_ACTION, {
             incidentId: action.incidentId,
@@ -308,7 +315,7 @@ export function registerIncidentHandlers(): void {
       } catch (err) {
         // Mark the action as failed if execution throws.
         try {
-          repository.failAction(req.actionId, safeError(err))
+          await repository.failAction(req.actionId, safeError(err))
         } catch {
           // Best-effort status update; preserve the original execution error below.
         }
@@ -320,20 +327,23 @@ export function registerIncidentHandlers(): void {
 
   handle(
     IpcChannel.INCIDENTS_REJECT_ACTION,
-    (_event: IpcMainInvokeEvent, req: { actionId: string; reason?: string }): IpcResult<null> => {
+    async (
+      _event: IpcMainInvokeEvent,
+      req: { actionId: string; reason?: string }
+    ): Promise<IpcResult<null>> => {
       try {
-        const action = repository.getActionById(req.actionId)
+        const action = await repository.getActionById(req.actionId)
         if (!action) return { ok: false, error: `Action ${req.actionId} not found` }
         if (action.status !== 'pending')
           return { ok: false, error: `Action is not pending (status: ${action.status})` }
 
-        repository.rejectAction(req.actionId, req.reason ?? 'Rejected by user')
-        repository.addEvent(action.incidentId, 'status_change', {
+        await repository.rejectAction(req.actionId, req.reason ?? 'Rejected by user')
+        await repository.addEvent(action.incidentId, 'status_change', {
           actionId: req.actionId,
           status: 'rejected'
         })
 
-        const updated = repository.getActionById(req.actionId)
+        const updated = await repository.getActionById(req.actionId)
         if (updated)
           pushToRenderer(IpcChannel.INCIDENT_ACTION, {
             incidentId: action.incidentId,

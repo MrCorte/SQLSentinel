@@ -5,11 +5,11 @@ const mocks = vi.hoisted(() => ({
   findLastNBulk: vi.fn()
 }))
 
-vi.mock('../../store/serverStore', () => ({
+vi.mock('../../store/sqlserver/serverRepository', () => ({
   getAllStripped: mocks.getAllStripped
 }))
 
-vi.mock('../../store/metricsRepository', () => ({
+vi.mock('../../store/sqlserver/metricsRepository', () => ({
   findLastNBulk: mocks.findLastNBulk
 }))
 
@@ -29,7 +29,7 @@ describe('gatherContext', () => {
       { id: 'srv-1', host: '10.0.0.1', port: 1433 },
       { id: 'srv-2', host: '10.0.0.2', port: 1433 }
     ])
-    mocks.findLastNBulk.mockReturnValue({})
+    mocks.findLastNBulk.mockResolvedValue({})
 
     await gatherContext()
 

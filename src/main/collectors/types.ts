@@ -15,6 +15,9 @@ export interface ServerConnection {
 export interface ServerInfo {
   machineName: string
   instanceName: string | null
+  agRole?: 'PRIMARY' | 'SECONDARY' | 'RESOLVING'
+  agName?: string
+  agGroupId?: string
 }
 
 export interface InstanceInfo {

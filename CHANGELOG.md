@@ -5,6 +5,66 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Performance
+- **`metrics_snapshots` re-clustered on `(server_id, collected_at DESC)`** — the previous schema had `id NVARCHAR(36) PRIMARY KEY` defaulting to a clustered index on a random UUID, causing constant page-splits on insert and forcing key-lookups for every history read. The new layout makes the dominant access paths (`findLatest`, `findHistory`, `findLastNBulk`) single clustered seeks; `id` survives as a non-clustered UNIQUE PK. The cluster key intentionally omits `id` — SQL Server appends a 4-byte uniquifier only on the rare same-millisecond collision, which is cheaper than carrying the 36-byte UUID in every NCI row locator (~360 MB saved per 10M rows on a typical install). Migration 1 converts existing installs idempotently and tries `ONLINE = ON` first, falling back to an offline rebuild on Standard/Express.
+- **`sessions.token` type-bind fix** — `sessionsRepository` was binding `NVarChar(500)` against a `NVARCHAR(64)` PK column, triggering an implicit conversion that disabled the PK seek and made every authenticated IPC call a table scan. Now bound at the exact column width.
+- **`ai_feedback` filtered index** — replaced the non-selective `IX_ai_feedback_rating` (only two distinct values) with filtered `IX_ai_feedback_pos (question_hash) WHERE rating = 1`. Covers `findPromotionCandidates`'s grouping and `listEmbeddable`'s scan directly.
+- **`ai_tsql_map.promoted_hash` index** — new filtered NCI `WHERE promoted_hash IS NOT NULL` eliminates the table scan in `findPromotionCandidates`' anti-join.
+- **`findPromotionCandidates` — `NOT IN` → `NOT EXISTS`** — safer NULL semantics + seek-friendly plan against the new filtered index.
+- **Top-queries collector bounded scan** — `queryTopQueries` now filters `qs.last_execution_time > DATEADD(MINUTE, -60, GETUTCDATE())`, so the `TOP 20 ORDER BY` over `dm_exec_query_stats` no longer triggers a `CROSS APPLY sys.dm_exec_sql_text` on every cached plan (100k+ on busy instances).
+
+### Performance — boot path
+- **Single-round-trip schema snapshot** — `initSchema()` used to issue ~38 separate `EXISTS` queries (one per table / index / stats / compression target) to decide what to create. Replaced with one `UNION ALL` query that returns the full set of dbo objects in a single round-trip — boot warm path drops by ~1s on remote SQL Servers (30ms RTT × 38 → ~30ms).
+- **Removed duplicate `testConnection` in `STORAGE_SAVE_CONFIG`** — the wizard already validates the connection via `STORAGE_TEST_CONNECTION`, and `initStoragePoolFromParams` would surface the same failure modes. Saves one full TLS+TDS handshake (~500ms-1.5s on remote setup).
+- **Parallel post-init migrations** — `migrateEncryptCredentials`, `initDefaultAdmin`, and `migrateEncryptEmailPassword` touch disjoint tables and now run via `Promise.all` after `serverStore.init()`. Saves ~200-500ms.
+- **Deferred RAG knowledge import** — `importKnowledgeIfEmpty` no longer blocks `app.whenReady`; it runs via `setImmediate` after `createWindow`, so the login screen paints immediately even on first boot when the SQLite build artifact has ~8k chunks to import.
+
+### Removed
+- Dropped unused statistics `ST_db_custom_fields_alias` / `_referente` — those columns are never part of a WHERE clause, so the auto-update overhead was pure waste. Migration 2 removes them on existing installs.
+
+### Performance (previous batch)
+- **PAGE compression on hot tables** — `ALTER TABLE ... REBUILD WITH (DATA_COMPRESSION = PAGE)` is now applied to `metrics_snapshots`, `server_databases`, `incident_events`, `incident_actions`, `incident_audit`, `knowledge_chunks`, `knowledge_embeddings` at boot (idempotent: `sys.partitions.data_compression` checked first). Typical 3-5× I/O reduction on read paths (history charts, AG sync, post-mortem export) for ~1-3% extra CPU on INSERTs. Failures (older editions) downgrade to warnings, not boot aborts.
+- **Filtered indexes** replace full B-trees on predicates with skewed selectivity:
+  - `IX_servers_unreachable` → filtered `WHERE unreachable = 1` (95%+ of rows in a healthy fleet are skipped).
+  - `IX_incidents_status_open` → filtered `WHERE status NOT IN ('resolved','archived')` covers `countOpen` and the "active incidents" widget directly.
+  - `IX_incident_actions_pending` → filtered `WHERE status = 'pending'`, with `(incident_id)` as key — points lookup straight at the rows `getPendingActions` actually scans.
+- **In-cache mutations in `serverRepository`** — `add`, `update`, `remove`, `upsertByIpPort` no longer issue a full `SELECT * FROM dbo.servers` after every write. The new `applyCachePatch` / `appendToCache` / `removeFromCache` helpers keep the in-memory snapshot in sync without round-tripping the registry. With 200 servers and a few mutations per minute (CPU detect, AG sync, recover/unreachable transitions) the worker now saves ~20 KB/min of pointless I/O.
+- **Batched `flushLastSeenBuffer`** — replaced the N-UPDATE loop with a single `UPDATE s SET s.last_seen = v.ts FROM dbo.servers s INNER JOIN (VALUES ...) v(id, ts) ON s.id = v.id` per 250-row chunk. 200 dirty servers go from 200 round-trips to 1. The cache is patched in place — no post-flush reload.
+- **Batched `upsertDatabases`** — replaced the N-MERGE-in-transaction loop with a single `MERGE ... USING (VALUES ...) AS s` per 150-row chunk. Worker polling cost: 200 servers × ~50 DBs = 10 000 round-trips/cycle → ~70 (1 per server). Wall-clock cost of the persist step drops from seconds to tens of milliseconds.
+
+### Fixed
+- **Knowledge importer: 30-60s boot stall** — `importKnowledgeIfEmpty` now wraps each table import in a single transaction and emits multi-row INSERT batches (200 rows for cards/chunks, 100 for embeddings to stay under the 1 MB statement size). First boot on a typical 8k-chunk artifact drops from ~minute-scale to single-digit seconds.
+- **Boot crash when storage not configured** — `serverRepository.ensureCache()` now returns `[]` instead of throwing; tray rebuild and health check tolerate the uninitialized state so the first-run storage wizard can complete. New `isInitialized()` helper for callers that want to skip work when the registry isn't ready yet. The strict path (`requireCache`) is reserved for migrations that genuinely need a populated cache.
+- **`backupPath()` regression** — restored the legacy behaviour: the backup JSON sits *next to* the user data dir (parent), not inside it. Matches the path operators were already grep'ing for under `%APPDATA%`.
+- **`add()` race against concurrent IPC** — concurrent callers (Electron + service) could both pass the in-memory duplicate check and race to INSERT, with the loser bubbling up a raw SQL Server UNIQUE-violation error. Now caught explicitly: the loser reloads the cache and returns `{ success: false, reason: 'duplicate' }`.
+- **`migrateEncryptCredentials` false-negative** — replaced the "looks like base64 ≥32 chars" heuristic with a real safeStorage round-trip check via `isEncrypted()`. Plaintext passwords that happened to be base64-safe no longer slip through.
+
+### Changed
+- `searchDbaCards` / `searchKnowledgeChunks` now share a single `rankRows` helper instead of duplicating the score+sort+filter pipeline.
+- Removed the dead `upsertOne` export from `serverDatabasesRepository.ts`.
+
+### Added
+- 7 new tests covering importer idempotency (skip when populated, skip when artifact missing) and the `flushLastSeenBuffer` write-coalescer (one UPDATE per dirty row, no-op short-circuit, single cache reload).
+
+### Changed
+- **Knowledge base migrated to SQL Server 2025** (Phase 3 — final slice of the SQLite → SQL Server unification). New tables `dbo.dba_cards`, `dbo.knowledge_chunks`, `dbo.knowledge_embeddings` replace the legacy SQLite `knowledge_base.db` artifact at query time. A one-shot importer (`importKnowledgeIfEmpty`) runs at boot and copies the build artifact into SQL Server idempotently; once the destination tables are populated the SQLite file is never opened again. `vecRepository.ts` and `ftsRepository.ts` (387 LOC across both) were deleted and replaced by `store/sqlserver/knowledgeRepository.ts`, which loads the embeddings and chunks into an in-memory cache on first use and scores them in JS (cosine for semantic, TF-style weighted for FTS — title=10, tags=5, body=1, exact-phrase=+30/15).
+- `cosineSimilarity` moved from `vecRepository` to `ai/embedder.ts` alongside `packEmbedding`/`unpackEmbedding` so future callers (incidents, feedback index, knowledge) share the same vector primitives.
+
+### Changed
+- **Server registry migrated to SQL Server 2025** (Phase 2b — last big slice of the unification work). `dbo.servers` is now the source of truth for monitored instances, replacing the legacy `sql-sentinel-data.json` electron-store file. Hot-path getters (`getAll`, `getAllStripped`, `getById`, `getByIpPort`, `getInstanceAliases`) stay synchronous via an in-memory cache loaded at boot through `serverRepository.init()`; mutations (`add`, `update`, `remove`, `upsertByIpPort`, `importFromBackup`) are now async and refresh the cache before returning. The Electron main process and the standalone service process both share the same `storageConfig` and `dbo.servers` rows. The `data.db` SQLite file is no longer touched by either process.
+- `metricsWorker` no longer reads/writes `electron-store`. CPU-count writes and AG-role syncs use `await serverStore.update(...)`. The health check (`index.ts`) awaits the unreachable/recovered transitions to avoid losing them on shutdown.
+- `serverStore.markLastSeen` still buffers in memory (5-min window) but the flush is now a real SQL UPDATE on `dbo.servers.last_seen`.
+
+### Changed
+- **Core data migrated to SQL Server 2025** (Phase 2a of full SQLite → SQL Server unification). The following modules now live entirely on the central `dbo` schema: app settings (`dbo.settings`), DB custom fields (`dbo.db_custom_fields`), email/SMTP settings (`dbo.settings` via prefixed keys), metrics history (`dbo.metrics_snapshots`), and the persistent database inventory (`dbo.server_databases`, new table). The legacy `store/settings.ts`, `store/dbCustomFields.ts`, `store/emailSettings.ts`, `store/metricsRepository.ts`, `store/serverDatabasesRepository.ts`, `store/serverRepository.ts`, `store/database.ts` files and the `data.db` SQLite bootstrap were deleted. `metricsWorker.ts` and `backgroundService.ts` are now end-to-end async on the polling and tray paths.
+- **Service process** (`src/service/`) bootstraps the SQL Server pool from the shared `storageConfig` instead of opening a SQLite file. It refuses to start if the storage wizard has never been run.
+- Admin bootstrap hash (`admin_bootstrap_hash`) now lives in `dbo.settings`. The "wipe users → restore from local SQLite backup" disaster-recovery path is gone — rely on SQL Server backups instead.
+
+### Changed
+- **Incident storage migrated to SQL Server 2025** (Phase 1 of full SQLite → SQL Server unification). The `incidents`, `incident_events`, `incident_actions`, `incident_audit` tables now live in the central `dbo` schema alongside `metrics_snapshots`, RAG, and AI feedback — same DB, same backup story. Repository API is now async; all callers (`detector.ts`, `incidentAgent.ts`, `actionTools.ts`, `incidents.ipc.ts`) `await` repository calls. Legacy SQLite incident tables are dropped via migration `user_version = 6`.
+- AI provider settings (provider name, Ollama/Claude model, encrypted Claude API key, `ai_redact_query_text`, `ai_agent_actions_enabled`) moved from the SQLite `settings` table to `dbo.settings` on SQL Server. `getProvider()` and `getProviderName()` are now async.
+- `incident_actions` gained a `seq BIGINT IDENTITY` column so `getActions` can preserve insertion order without relying on the SQLite-specific `rowid`.
+
 ### Added
 - **Response cache** — same question answered <10 min ago is replayed from an in-memory LRU (50 entries) without round-tripping the LLM. FAQ queries now return in <1ms instead of 3-5s
 - **Schema awareness** — when an AI question targets a specific server, top-100 tables/views are fetched (with 10-min cache per server) and injected as `<<TARGET_SCHEMA>>`. Stops the model from inventing table/column names

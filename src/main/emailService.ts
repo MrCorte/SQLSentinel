@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer'
 import type { Alert, IpcResult } from './ipc/types'
-import { getEmailSettings } from './store/emailSettings'
-import type { EmailSettings } from './store/emailSettings'
+import { getEmailSettings } from './store/sqlserver/emailSettingsRepository'
+import type { EmailSettings } from './store/sqlserver/emailSettingsRepository'
 
 // ---------------------------------------------------------------------------
 // Dedup — 15 min per (serverId, category, severity) triple
@@ -122,7 +122,7 @@ async function sendEmail(
 // ---------------------------------------------------------------------------
 
 export async function sendAlertEmail(alert: Alert): Promise<void> {
-  const settings = getEmailSettings()
+  const settings = await getEmailSettings()
   if (!settings.emailEnabled || !settings.smtpHost) return
   if (settings.emailRecipients.length === 0) return
   const key = dedupKey(alert.serverId, alert.category, alert.severity)
@@ -139,7 +139,7 @@ export async function sendAlertEmail(alert: Alert): Promise<void> {
 }
 
 export async function sendTestEmail(): Promise<IpcResult<null>> {
-  const settings = getEmailSettings()
+  const settings = await getEmailSettings()
   if (!settings.smtpHost) return { ok: false, error: 'SMTP host not configured' }
   if (settings.emailRecipients.length === 0)
     return { ok: false, error: 'No recipients configured' }

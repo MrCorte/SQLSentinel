@@ -22,6 +22,8 @@ import {
 import { IncidentDetailDrawer } from '../components/incidents/IncidentDetailDrawer'
 import type { Incident, IncidentAiStats, IncidentStatus } from '../../../preload/index'
 
+type IncidentRow = Incident & { _count: number }
+
 const SEVERITY_COLOR: Record<string, string> = {
   CRITICAL: tokens.color.danger,
   WARNING: tokens.color.warning
@@ -61,18 +63,27 @@ const COLUMNS: GridColDef<IncidentGroupRow>[] = [
     field: 'severity',
     headerName: 'Severity',
     width: 100,
-    renderCell: ({ value }) => (
-      <Chip
-        label={value as string}
-        size="small"
-        sx={{
-          bgcolor: SEVERITY_COLOR[value as string] ?? tokens.color.textMuted,
-          color: '#fff',
-          fontWeight: 600,
-          fontSize: 11,
-          height: 20
-        }}
-      />
+    renderCell: ({ row }) => (
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+        <Chip
+          label={row.severity}
+          size="small"
+          sx={{
+            bgcolor: SEVERITY_COLOR[row.severity] ?? tokens.color.textMuted,
+            color: '#fff',
+            fontWeight: 600,
+            fontSize: 11,
+            height: 20
+          }}
+        />
+        {row._count > 1 && (
+          <Chip
+            label={`×${row._count}`}
+            size="small"
+            sx={{ height: 18, fontSize: 10, fontWeight: 700 }}
+          />
+        )}
+      </Box>
     )
   },
   {
@@ -223,6 +234,11 @@ export function Incidents(): React.JSX.Element {
       unsubUpdated()
     }
   }, [])
+
+  const rows = useMemo<IncidentRow[]>(
+    () => incidents.map((inc) => ({ ...inc, _count: inc.count ?? 1 })),
+    [incidents]
+  )
 
   const handleRowClick = useCallback(
     (params: GridRowParams<IncidentGroupRow>) => {

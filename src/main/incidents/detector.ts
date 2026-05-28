@@ -1,8 +1,13 @@
 import { onIncidentAlert } from '../metricsWorker'
 import * as repository from './repository'
-import { getInstanceAliases } from '../store/serverStore'
+import { getInstanceAliases } from '../store/sqlserver/serverRepository'
+import { getActiveAgentCount } from './incidentAgent'
 import { createLogger } from '../utils/logger'
 import type { Alert } from '../ipc/types'
+
+// Hard cap on simultaneous incident agents to prevent an alert storm from
+// overwhelming the SQL Server being monitored with parallel diagnostic queries.
+const MAX_CONCURRENT_AGENTS = 5
 
 const log = createLogger('incident-detector')
 
@@ -18,6 +23,8 @@ type IncidentCallback = (type: 'created' | 'updated', incidentId: string) => voi
 let _callback: IncidentCallback | null = null
 // Populated by registerIncidentHandlers to avoid a circular dep at import time.
 let _agentRunner: ((id: string) => void) | null = null
+// Tracks agents that are queued (setImmediate) but haven't started yet.
+let _pendingAgentCount = 0
 
 export function onIncidentChange(cb: IncidentCallback): void {
   _callback = cb
@@ -29,16 +36,14 @@ export function setAgentRunner(fn: (id: string) => void): void {
 
 export function attachDetector(): void {
   onIncidentAlert((alert: Alert) => {
-    try {
-      handleAlert(alert)
-    } catch (err) {
+    handleAlert(alert).catch((err) => {
       log.error('[detector] failed to process alert:', err)
-    }
+    })
   })
   log.info('[detector] attached to alert pipeline')
 }
 
-function handleAlert(alert: Alert): void {
+async function handleAlert(alert: Alert): Promise<void> {
   const detectedAt = alert.detectedAt instanceof Date
     ? alert.detectedAt.getTime()
     : new Date(alert.detectedAt).getTime()
@@ -46,10 +51,10 @@ function handleAlert(alert: Alert): void {
   // Resolve all serverIds that point to the SAME SQL Server instance, so two
   // registrations of the same host:port:instanceName share one incident.
   const aliases = getInstanceAliases(alert.serverId)
-  const existing = repository.findActiveForInstance(aliases, alert.category)
+  const existing = await repository.findActiveForInstance(aliases, alert.category)
 
   if (existing) {
-    repository.addEvent(existing.id, 'alert_added', {
+    await repository.addEvent(existing.id, 'alert_added', {
       alertId: alert.id,
       severity: alert.severity,
       message: alert.message,
@@ -57,19 +62,19 @@ function handleAlert(alert: Alert): void {
     }, detectedAt)
 
     if ((SEVERITY_RANK[alert.severity] ?? 0) > (SEVERITY_RANK[existing.severity] ?? 0)) {
-      repository.escalateSeverity(existing.id, alert.severity)
+      await repository.escalateSeverity(existing.id, alert.severity)
     }
 
     log.info(`[detector] alert appended to incident ${existing.id} (${alert.category})`)
     _callback?.('updated', existing.id)
   } else {
-    const incident = repository.createIncident(
+    const incident = await repository.createIncident(
       alert.serverId,
       alert.category,
       alert.severity,
       detectedAt
     )
-    repository.addEvent(incident.id, 'alert_added', {
+    await repository.addEvent(incident.id, 'alert_added', {
       alertId: alert.id,
       severity: alert.severity,
       message: alert.message,
@@ -80,7 +85,22 @@ function handleAlert(alert: Alert): void {
     _callback?.('created', incident.id)
     // Fire agent asynchronously so the alert pipeline is never blocked.
     if (_agentRunner) {
-      setImmediate(() => _agentRunner!(incident.id))
+      const inflight = _pendingAgentCount + getActiveAgentCount()
+      if (inflight >= MAX_CONCURRENT_AGENTS) {
+        log.warn(
+          `[detector] agent queue full (${inflight}/${MAX_CONCURRENT_AGENTS}) — skipping agent for incident ${incident.id}`
+        )
+        await repository.addEvent(incident.id, 'agent_run', {
+          status: 'skipped',
+          reason: 'queue_full'
+        })
+      } else {
+        _pendingAgentCount++
+        setImmediate(() => {
+          _pendingAgentCount--
+          _agentRunner!(incident.id)
+        })
+      }
     }
   }
 }

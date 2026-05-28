@@ -97,7 +97,10 @@ export function Discovery(): React.JSX.Element {
       useWindowsAuth: data.useWindowsAuth,
       username: data.username || undefined,
       password: data.password || undefined,
-      hostingType: data.hostingType
+      hostingType: data.hostingType,
+      agRole: data.agRole,
+      agName: data.agName,
+      agGroupId: data.agGroupId
     })
     if (!result.success) {
       notify.error(result.reason ?? 'Could not add server.', 'Add server failed')

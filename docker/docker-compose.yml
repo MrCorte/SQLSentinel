@@ -6,6 +6,7 @@
 #                             vector(1536) support required for RAG chunks
 #
 # Usage:
+#   cp docker/.env.example docker/.env   # first time only — set your passwords
 #   docker compose up -d          — start all containers
 #   docker compose up -d sql-init — run DB init (after first start)
 #   docker compose down           — stop
@@ -53,6 +54,8 @@ services:
     hostname: sql-prod
     ports:
       - "1433:1433"
+    env_file:
+      - docker/.env
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
@@ -75,6 +78,8 @@ services:
     hostname: sql-dev
     ports:
       - "1434:1433"
+    env_file:
+      - docker/.env
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
@@ -156,6 +161,8 @@ services:
     hostname: sql-sentinel
     ports:
       - "1437:1433"
+    env_file:
+      - docker/.env
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: "Developer"
@@ -184,8 +191,8 @@ services:
       nodo1:        { condition: service_healthy }
       nodo2:        { condition: service_healthy }
       sql-sentinel: { condition: service_healthy }
-    volumes:
-      - ./init:/init:ro
+    env_file:
+      - docker/.env
     environment:
       SQLSENTINEL_DOCK_USER: ${SQLSENTINEL_DOCK_USER:?Set SQLSENTINEL_DOCK_USER in .env}
       SQLSENTINEL_DOCK_PASSWORD: ${SQLSENTINEL_DOCK_PASSWORD:?Set SQLSENTINEL_DOCK_PASSWORD in .env}
@@ -200,6 +207,8 @@ services:
       SQLSENTINEL_STORAGE_SA_PASSWORD: ${SQLSENTINEL_STORAGE_SA_PASSWORD:?Set SQLSENTINEL_STORAGE_SA_PASSWORD in .env}
       SQLSENTINEL_AG_CERT_PASSWORD: ${SQLSENTINEL_AG_CERT_PASSWORD:?Set SQLSENTINEL_AG_CERT_PASSWORD in .env}
       SQLSENTINEL_AG_ENDPOINT_PASSWORD: ${SQLSENTINEL_AG_ENDPOINT_PASSWORD:?Set SQLSENTINEL_AG_ENDPOINT_PASSWORD in .env}
+    volumes:
+      - ./init:/init:ro
     command: bash /init/init-all.sh
     restart: "no"
 

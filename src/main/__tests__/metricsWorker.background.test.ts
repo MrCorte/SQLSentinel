@@ -8,8 +8,24 @@ vi.mock('../collectors/sqlCollector', () => ({ collectMetrics: vi.fn() }))
 vi.mock('../collectors/agCollector', () => ({
   detectAndSyncReplicaRoles: vi.fn(() => Promise.resolve([]))
 }))
-vi.mock('../store/dbCustomFields', () => ({ getAllCustomFields: vi.fn(() => ({})) }))
-vi.mock('../store/serverStore')
+vi.mock('../store/sqlserver/dbCustomFieldsRepository', () => ({
+  getAllCustomFields: vi.fn(async () => ({}))
+}))
+vi.mock('../store/sqlserver/metricsRepository', () => ({
+  cleanup: vi.fn(async () => {}),
+  findLastNBulk: vi.fn(async () => ({})),
+  batchSave: vi.fn(async () => {})
+}))
+vi.mock('../store/sqlserver/settingsRepository', () => ({
+  getSettings: vi.fn(async () => ({ retentionMinutes: 60 }))
+}))
+vi.mock('../store/sqlserver/serverDatabasesRepository', () => ({
+  upsertDatabases: vi.fn(async () => {}),
+  deleteStale: vi.fn(async () => {}),
+  deleteByNames: vi.fn(async () => {}),
+  getAllGroupedByServer: vi.fn(async () => ({}))
+}))
+vi.mock('../store/sqlserver/serverRepository')
 
 import {
   onAlert,

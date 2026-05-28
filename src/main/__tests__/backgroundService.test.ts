@@ -32,12 +32,12 @@ vi.mock('electron', () => ({
   BrowserWindow: { getAllWindows: vi.fn(() => []) }
 }))
 
-vi.mock('../store/serverStore', () => ({
+vi.mock('../store/sqlserver/serverRepository', () => ({
   getAll: vi.fn(() => []),
   getAllStripped: vi.fn(() => [])
 }))
-vi.mock('../store/settings', () => ({
-  getSettings: vi.fn(() => ({
+vi.mock('../store/sqlserver/settingsRepository', () => ({
+  getSettings: vi.fn(async () => ({
     retentionMinutes: 60,
     backgroundEnabled: true,
     backgroundMode: 'light',
@@ -45,7 +45,7 @@ vi.mock('../store/settings', () => ({
     backgroundNotifications: true,
     themeMode: 'system'
   })),
-  saveSettings: vi.fn()
+  saveSettings: vi.fn(async () => {})
 }))
 vi.mock('../metricsWorker', () => ({
   syncServers: vi.fn(),
@@ -134,7 +134,7 @@ describe('BackgroundService — background mode manager', () => {
       })),
       saveSettings: vi.fn()
     }
-    vi.doMock('../store/settings', () => settingsMock)
+    vi.doMock('../store/sqlserver/settingsRepository', () => settingsMock)
     const { BackgroundService } = await import('../backgroundService')
     const win = makeMockWin() as any
     const worker = {
@@ -145,6 +145,7 @@ describe('BackgroundService — background mode manager', () => {
     }
     new BackgroundService(win, worker)
     win.emit('hide')
+    await new Promise((r) => setImmediate(r))
     expect(worker.setIntervalOverrides).toHaveBeenCalledWith(
       expect.objectContaining({
         activeMs: 30 * 60_000,
@@ -156,7 +157,7 @@ describe('BackgroundService — background mode manager', () => {
 
   it('calls stopWorker on hide when backgroundEnabled=false', async () => {
     vi.resetModules()
-    vi.doMock('../store/settings', () => ({
+    vi.doMock('../store/sqlserver/settingsRepository', () => ({
       getSettings: vi.fn(() => ({
         backgroundEnabled: false,
         backgroundMode: 'light',
@@ -177,12 +178,13 @@ describe('BackgroundService — background mode manager', () => {
     }
     new BackgroundService(win, worker)
     win.emit('hide')
+    await new Promise((r) => setImmediate(r))
     expect(worker.stopWorker).toHaveBeenCalled()
   })
 
   it('calls setIntervalOverrides(null) on show', async () => {
     vi.resetModules()
-    vi.doMock('../store/settings', () => ({
+    vi.doMock('../store/sqlserver/settingsRepository', () => ({
       getSettings: vi.fn(() => ({
         backgroundEnabled: true,
         backgroundMode: 'full',
@@ -203,12 +205,13 @@ describe('BackgroundService — background mode manager', () => {
     }
     new BackgroundService(win, worker)
     win.emit('show')
+    await new Promise((r) => setImmediate(r))
     expect(worker.setIntervalOverrides).toHaveBeenCalledWith(null)
   })
 
   it('does not call setIntervalOverrides or stopWorker on hide when backgroundMode=full', async () => {
     vi.resetModules()
-    vi.doMock('../store/settings', () => ({
+    vi.doMock('../store/sqlserver/settingsRepository', () => ({
       getSettings: vi.fn(() => ({
         backgroundEnabled: true,
         backgroundMode: 'full',
@@ -229,6 +232,7 @@ describe('BackgroundService — background mode manager', () => {
     }
     new BackgroundService(win, worker)
     win.emit('hide')
+    await new Promise((r) => setImmediate(r))
     expect(worker.setIntervalOverrides).not.toHaveBeenCalled()
     expect(worker.stopWorker).not.toHaveBeenCalled()
   })
@@ -241,7 +245,7 @@ describe('BackgroundService — notifications', () => {
 
   it('does not notify for WARNING alerts', async () => {
     vi.resetModules()
-    vi.doMock('../store/settings', () => ({
+    vi.doMock('../store/sqlserver/settingsRepository', () => ({
       getSettings: vi.fn(() => ({
         backgroundEnabled: true,
         backgroundMode: 'light',
@@ -279,7 +283,7 @@ describe('BackgroundService — notifications', () => {
 
   it('notifies for CRITICAL alerts when window hidden', async () => {
     vi.resetModules()
-    vi.doMock('../store/settings', () => ({
+    vi.doMock('../store/sqlserver/settingsRepository', () => ({
       getSettings: vi.fn(() => ({
         backgroundEnabled: true,
         backgroundMode: 'light',
@@ -312,13 +316,14 @@ describe('BackgroundService — notifications', () => {
       acknowledgedAt: null,
       id: '1'
     })
+    await new Promise((r) => setImmediate(r))
     expect(MockNotification).toHaveBeenCalled()
     expect(mockNotification.show).toHaveBeenCalled()
   })
 
   it('does not re-notify within 15-minute cooldown', async () => {
     vi.resetModules()
-    vi.doMock('../store/settings', () => ({
+    vi.doMock('../store/sqlserver/settingsRepository', () => ({
       getSettings: vi.fn(() => ({
         backgroundEnabled: true,
         backgroundMode: 'light',
@@ -352,7 +357,9 @@ describe('BackgroundService — notifications', () => {
       id: '1'
     }
     capturedCb!(alert)
+    await new Promise((r) => setImmediate(r))
     capturedCb!(alert) // second call — should be deduped
+    await new Promise((r) => setImmediate(r))
     expect(MockNotification).toHaveBeenCalledTimes(1)
   })
 })

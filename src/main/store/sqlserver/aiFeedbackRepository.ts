@@ -175,7 +175,14 @@ export async function findPromotionCandidates(): Promise<PromotionCandidate[]> {
              l.model            AS latest_model
       FROM grouped g
       JOIN latest l ON l.question_hash = g.question_hash AND l.rn = 1
-      WHERE g.question_hash NOT IN (SELECT promoted_hash FROM dbo.ai_tsql_map WHERE promoted_hash IS NOT NULL)
+      -- NOT EXISTS (vs the previous NOT IN) avoids NULL-comparison surprises
+      -- when ai_tsql_map.promoted_hash is NULL, and matches the seek-friendly
+      -- filtered IX_ai_tsql_map_promoted_hash predicate.
+      WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.ai_tsql_map m
+        WHERE m.promoted_hash IS NOT NULL
+          AND m.promoted_hash = g.question_hash
+      )
       ORDER BY g.upvotes DESC`)
   return r.recordset.map((row) => ({
     questionHash: row.question_hash,

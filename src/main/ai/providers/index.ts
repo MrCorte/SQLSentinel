@@ -1,4 +1,4 @@
-import { getDb } from '../../store/database'
+import { getRawSettings } from '../../store/sqlserver/settingsRepository'
 import { decrypt } from '../../store/safeStorageUtil'
 import { OllamaProvider } from './ollamaProvider'
 import { ClaudeProvider } from './claudeProvider'
@@ -17,10 +17,15 @@ interface AiProviderSettings {
   claudeModel: string
 }
 
-function loadAiSettings(): AiProviderSettings {
-  const db = getDb()
-  const rows = db.prepare<[], { key: string; value: string }>('SELECT key, value FROM settings').all()
-  const map = Object.fromEntries(rows.map((r) => [r.key, r.value]))
+const AI_KEYS = [
+  'ai_provider',
+  'ai_ollama_model',
+  'ai_claude_api_key',
+  'ai_claude_model'
+]
+
+async function loadAiSettings(): Promise<AiProviderSettings> {
+  const map = await getRawSettings(AI_KEYS)
   return {
     provider: (map['ai_provider'] as ProviderName) ?? 'ollama',
     ollamaModel: normalizeOllamaModel(map['ai_ollama_model']),
@@ -29,8 +34,8 @@ function loadAiSettings(): AiProviderSettings {
   }
 }
 
-export function getProvider(override?: ProviderName): LlmProvider {
-  const settings = loadAiSettings()
+export async function getProvider(override?: ProviderName): Promise<LlmProvider> {
+  const settings = await loadAiSettings()
   const name = override ?? settings.provider
 
   if (name === 'claude') {
@@ -44,6 +49,6 @@ export function getProvider(override?: ProviderName): LlmProvider {
   return new OllamaProvider(settings.ollamaModel)
 }
 
-export function getProviderName(): ProviderName {
-  return loadAiSettings().provider
+export async function getProviderName(): Promise<ProviderName> {
+  return (await loadAiSettings()).provider
 }

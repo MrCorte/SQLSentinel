@@ -2,6 +2,7 @@ import { ChatOllama } from '@langchain/ollama'
 import { HumanMessage, AIMessage, SystemMessage, ToolMessage } from '@langchain/core/messages'
 import { OLLAMA_HOST, checkOllamaHealth } from '../ollama'
 import { DEFAULT_OLLAMA_MODEL } from './defaults'
+import { withRetry } from '../retry'
 import type { LlmProvider, LlmRequest, ToolDefinition } from './provider'
 
 function toOllamaTool(def: ToolDefinition) {
@@ -86,7 +87,7 @@ export class OllamaProvider implements LlmProvider {
         return
       }
 
-      const response = await (llm as ChatOllama).invoke(lcMessages, { signal })
+      const response = await withRetry(() => (llm as ChatOllama).invoke(lcMessages, { signal }))
 
       const toolCalls = Array.isArray((response as { tool_calls?: unknown[] }).tool_calls)
         ? (response as { tool_calls: { name: string; args: Record<string, unknown>; id?: string }[] }).tool_calls

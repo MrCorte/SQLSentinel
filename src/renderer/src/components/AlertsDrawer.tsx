@@ -35,7 +35,7 @@ type VirtualItem =
 // Estimated heights for virtualizer sizing
 const ROW_HEIGHT_HEADER = 32
 const ROW_HEIGHT_DIVIDER = 17
-const ROW_HEIGHT_ALERT = 90
+const ROW_HEIGHT_ALERT = 104
 
 function categoryLabel(cat: Alert['category']): string {
   switch (cat) {
@@ -155,11 +155,24 @@ function AlertRow({
           display: 'block',
           fontSize: tokens.font.sizeSm,
           color: tokens.color.textPrimary,
-          mb: 0.5
+          mb: alert.suggestion ? 0.25 : 0.5
         }}
       >
         {alert.message}
       </Typography>
+      {alert.suggestion && (
+        <Typography
+          sx={{
+            display: 'block',
+            fontSize: tokens.font.sizeXs,
+            color: tokens.color.textMuted,
+            fontStyle: 'italic',
+            mb: 0.5
+          }}
+        >
+          {alert.suggestion}
+        </Typography>
+      )}
       <Stack direction="row" justifyContent="space-between" alignItems="center">
         <Typography
           component="span"
@@ -188,9 +201,10 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all')
   const [dedup, setDedup] = useState<boolean>(() => {
     try {
-      return sessionStorage.getItem('sqlsentinel:alerts:dedup') === '1'
+      const stored = sessionStorage.getItem('sqlsentinel:alerts:dedup')
+      return stored === null ? true : stored === '1'
     } catch {
-      return false
+      return true
     }
   })
   const setDedupPersist = (next: boolean): void => {
@@ -227,12 +241,9 @@ export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): R
 
   const dedupedOpen = useMemo(() => {
     if (!dedup) return filteredOpen
-    const ONE_HOUR = 60 * 60 * 1000
-    const now = Date.now()
     const groups = new Map<string, Array<Alert>>()
     for (const a of filteredOpen) {
-      const ts = new Date(a.detectedAt).getTime()
-      const key = now - ts < ONE_HOUR ? `${a.serverId}::${a.category}` : `solo:${a.id}`
+      const key = `${a.serverId}::${a.category}`
       const list = groups.get(key) ?? []
       list.push(a)
       groups.set(key, list)

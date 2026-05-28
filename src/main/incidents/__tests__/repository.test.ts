@@ -1,164 +1,88 @@
 /**
- * Tests for repository.ts fix #3:
- *   listIncidents() must return correct results with and without status filter,
- *   using index-friendly SQL (no non-sargable '? = ''  OR status = ?' trick).
+ * Tests for incidents/repository.ts on SQL Server:
+ *   - listIncidents() must return correct results with and without status filter.
+ *   - createIncident() binds exactly the placeholders required by the insert statement.
+ *
+ * The mssql pool is replaced with a lightweight in-memory fake whose `.request()`
+ * builder records bound inputs and dispatches on the SQL text. Test-only; we
+ * only support the queries actually issued by repository.ts.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ---------------------------------------------------------------------------
-// Lightweight in-memory SQLite stand-in that supports incident queries.
-// better-sqlite3 native binary is incompatible with the CI Node version,
-// so we provide a JS Map-based substitute for this test file only.
+// In-memory pool fake — Map-backed store with a tiny query dispatcher.
 // ---------------------------------------------------------------------------
 
 type Row = Record<string, unknown>
 
-class IncidentStatement {
-  constructor(
-    private sql: string,
-    private store: Map<string, Row>
-  ) {}
+class FakeRequest {
+  private inputs = new Map<string, unknown>()
+  constructor(private store: Map<string, Row>) {}
 
-  private normalised(): string {
-    return this.sql.replace(/\s+/g, ' ').trim().toLowerCase()
+  // mssql.Request.input(name, type?, value?) — we ignore type; record (name, value).
+  input(name: string, typeOrValue: unknown, maybeValue?: unknown): this {
+    const value = arguments.length >= 3 ? maybeValue : typeOrValue
+    this.inputs.set(name, value)
+    return this
   }
 
-  run(...args: unknown[]): { changes: number } {
-    const n = this.normalised()
-    const placeholderCount = (this.sql.match(/\?/g) ?? []).length
-    if (args.length > placeholderCount) {
-      throw new RangeError('Too many parameter values were provided')
-    }
+  async query<T = unknown>(sqlText: string): Promise<{ recordset: T[] }> {
+    const norm = sqlText.replace(/\s+/g, ' ').trim().toLowerCase()
 
-    if (n.startsWith('insert into incidents')) {
-      // INSERT INTO incidents (id, server_id, ...) VALUES (?, ?, ...)
-      const [id, server_id, category, severity, opened_at] = args
-      this.store.set(id as string, {
-        id,
-        server_id,
-        category,
-        severity,
+    if (norm.startsWith('insert into dbo.incidents')) {
+      const row: Row = {
+        id: this.inputs.get('id'),
+        server_id: this.inputs.get('server_id'),
+        category: this.inputs.get('category'),
+        severity: this.inputs.get('severity'),
         status: 'open',
-        opened_at,
+        opened_at: this.inputs.get('opened_at'),
         resolved_at: null,
         summary: null,
         root_cause_md: null
-      })
-      return { changes: 1 }
+      }
+      this.store.set(row.id as string, row)
+      return { recordset: [] as T[] }
     }
 
-    if (n.startsWith('update incidents set status')) {
-      const [status, resolved_at, id] = args
-      const row = this.store.get(id as string)
-      if (row) Object.assign(row, { status, resolved_at })
-      return { changes: row ? 1 : 0 }
+    if (norm.includes('from dbo.incidents where id = @id')) {
+      const id = this.inputs.get('id') as string
+      const r = this.store.get(id)
+      return { recordset: (r ? [r] : []) as T[] }
     }
 
-    if (n.startsWith('update incidents set summary')) {
-      const [summary, id] = args
-      const row = this.store.get(id as string)
-      if (row) row.summary = summary
-      return { changes: row ? 1 : 0 }
-    }
-
-    if (n.startsWith('update incidents set root_cause_md')) {
-      const [root_cause_md, id] = args
-      const row = this.store.get(id as string)
-      if (row) row.root_cause_md = root_cause_md
-      return { changes: row ? 1 : 0 }
-    }
-
-    return { changes: 0 }
-  }
-
-  get(...args: unknown[]): Row | undefined {
-    const n = this.normalised()
-
-    if (n.includes('from incidents where id = ?')) {
-      return this.store.get(args[0] as string)
-    }
-
-    if (n.includes('from incidents') && n.includes('server_id = ?') && n.includes("status = 'open'")) {
-      const [server_id, category] = args
-      return [...this.store.values()]
-        .filter((r) => r.server_id === server_id && r.category === category && r.status === 'open')
-        .sort((a, b) => (b.opened_at as number) - (a.opened_at as number))[0]
-    }
-
-    if (n.includes('from settings')) {
-      return undefined
-    }
-
-    return undefined
-  }
-
-  all(...args: unknown[]): Row[] {
-    const n = this.normalised()
-
-    // No-filter: SELECT * FROM incidents ORDER BY opened_at DESC LIMIT 200
-    if (n.includes('from incidents') && !n.includes('where') && n.includes('order by opened_at')) {
-      return [...this.store.values()]
-        .sort((a, b) => (b.opened_at as number) - (a.opened_at as number))
-        .slice(0, 200)
-    }
-
-    // Status-filtered: SELECT * FROM incidents WHERE status = ? ORDER BY ...
-    if (n.includes('from incidents') && n.includes('where status = ?')) {
-      const status = args[0] as string
-      return [...this.store.values()]
+    if (norm.includes('from dbo.incidents') && norm.includes('where status = @status')) {
+      const status = this.inputs.get('status')
+      const rows = [...this.store.values()]
         .filter((r) => r.status === status)
         .sort((a, b) => (b.opened_at as number) - (a.opened_at as number))
         .slice(0, 200)
+      return { recordset: rows as T[] }
     }
 
-    // Legacy non-sargable: WHERE (? = '' OR status = ?)
-    // Still handle it so tests show the behavioral difference if the fix is reverted.
-    if (n.includes('from incidents') && n.includes("? = ''")) {
-      const [statusFilter] = args as string[]
+    if (norm.includes('from dbo.incidents') && !norm.includes('where')) {
       const rows = [...this.store.values()]
-      const filtered = statusFilter === '' ? rows : rows.filter((r) => r.status === statusFilter)
-      return filtered
         .sort((a, b) => (b.opened_at as number) - (a.opened_at as number))
         .slice(0, 200)
+      return { recordset: rows as T[] }
     }
 
-    return []
+    return { recordset: [] as T[] }
   }
 }
 
-class IncidentMockDatabase {
+class FakePool {
   readonly incidents = new Map<string, Row>()
-
-  pragma(): void {}
-  exec(): void {}
-  close(): void {}
-
-  prepare(sql: string): IncidentStatement {
-    return new IncidentStatement(sql, this.incidents)
-  }
-
-  transaction(fn: (...args: unknown[]) => unknown): (...args: unknown[]) => unknown {
-    return fn
+  request(): FakeRequest {
+    return new FakeRequest(this.incidents)
   }
 }
 
-// ---------------------------------------------------------------------------
-// Mock registration
-// ---------------------------------------------------------------------------
+let pool: FakePool
 
-let dbInstance: IncidentMockDatabase
-
-vi.mock('better-sqlite3', () => ({
-  default: vi.fn(() => dbInstance)
-}))
-
-vi.mock('../../store/database', () => ({
-  getDb: vi.fn(() => dbInstance)
-}))
-
-vi.mock('electron', () => ({
-  app: { isPackaged: false, getPath: () => '/tmp' }
+vi.mock('../../store/sqlserver/connection', () => ({
+  getPool: vi.fn(() => pool)
 }))
 
 // Import AFTER mocks
@@ -174,8 +98,8 @@ function insertRaw(
   openedAt: number,
   serverId = 'srv-1',
   category = 'blocking_sessions'
-) {
-  dbInstance.incidents.set(id, {
+): void {
+  pool.incidents.set(id, {
     id,
     server_id: serverId,
     category,
@@ -194,68 +118,68 @@ function insertRaw(
 
 describe('listIncidents()', () => {
   beforeEach(() => {
-    dbInstance = new IncidentMockDatabase()
+    pool = new FakePool()
   })
 
-  it('returns all incidents when no status filter is provided', () => {
+  it('returns all incidents when no status filter is provided', async () => {
     insertRaw('a', 'open', 1000)
     insertRaw('b', 'resolved', 900)
     insertRaw('c', 'investigating', 800)
 
-    const all = listIncidents()
+    const all = await listIncidents()
     expect(all).toHaveLength(3)
     expect(all.map((i) => i.id).sort()).toEqual(['a', 'b', 'c'])
   })
 
-  it('returns only open incidents when filtered by status=open', () => {
+  it('returns only open incidents when filtered by status=open', async () => {
     insertRaw('a', 'open', 1000)
     insertRaw('b', 'resolved', 900)
     insertRaw('c', 'open', 800)
 
-    const open = listIncidents({ status: 'open' })
+    const open = await listIncidents({ status: 'open' })
     expect(open).toHaveLength(2)
     expect(open.every((i) => i.status === 'open')).toBe(true)
   })
 
-  it('returns only resolved incidents when filtered by status=resolved', () => {
+  it('returns only resolved incidents when filtered by status=resolved', async () => {
     insertRaw('a', 'open', 1000)
     insertRaw('b', 'resolved', 900)
     insertRaw('c', 'resolved', 800)
 
-    const resolved = listIncidents({ status: 'resolved' })
+    const resolved = await listIncidents({ status: 'resolved' })
     expect(resolved).toHaveLength(2)
     expect(resolved.every((i) => i.status === 'resolved')).toBe(true)
   })
 
-  it('returns incidents ordered by opened_at DESC', () => {
+  it('returns incidents ordered by opened_at DESC', async () => {
     insertRaw('old', 'open', 100)
     insertRaw('newest', 'open', 300)
     insertRaw('mid', 'open', 200)
 
-    const all = listIncidents()
+    const all = await listIncidents()
     expect(all[0].id).toBe('newest')
     expect(all[1].id).toBe('mid')
     expect(all[2].id).toBe('old')
   })
 
-  it('returns empty array when no incidents match the filter', () => {
+  it('returns empty array when no incidents match the filter', async () => {
     insertRaw('a', 'open', 1000)
-    expect(listIncidents({ status: 'resolved' })).toHaveLength(0)
+    expect(await listIncidents({ status: 'resolved' })).toHaveLength(0)
   })
 
-  it('returns empty array on empty table', () => {
-    expect(listIncidents()).toHaveLength(0)
-    expect(listIncidents({ status: 'open' })).toHaveLength(0)
+  it('returns empty array on empty table', async () => {
+    expect(await listIncidents()).toHaveLength(0)
+    expect(await listIncidents({ status: 'open' })).toHaveLength(0)
   })
 })
 
 describe('createIncident()', () => {
   beforeEach(() => {
-    dbInstance = new IncidentMockDatabase()
+    pool = new FakePool()
   })
 
-  it('binds exactly the placeholders required by the insert statement', () => {
-    const incident = createIncident('srv-1', 'disk_space_low', 'WARNING', 1234)
+  it('persists the row with status=open and the provided fields', async () => {
+    const incident = await createIncident('srv-1', 'disk_space_low', 'WARNING', 1234)
 
     expect(incident.serverId).toBe('srv-1')
     expect(incident.category).toBe('disk_space_low')

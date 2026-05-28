@@ -8,6 +8,7 @@ out
 .env.production
 .env.development
 .env.local
+docker/.env
 
 CLAUDE.local.md
 .claude/

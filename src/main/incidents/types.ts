@@ -30,6 +30,7 @@ export interface Incident {
   resolvedAt?: number
   summary?: string
   rootCauseMd?: string
+  count?: number
 }
 
 export interface IncidentEvent {

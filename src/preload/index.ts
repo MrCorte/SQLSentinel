@@ -56,7 +56,7 @@ import type {
 } from '../main/ipc/types'
 import type { IncidentAction } from '../main/incidents/types'
 import type { ServerMetrics, ServerInfo, DatabaseInfo } from '../main/collectors/types'
-import type { StoredServer } from '../main/store/serverStore'
+import type { StoredServer } from '../main/store/sqlserver/serverRepository'
 
 // ---------------------------------------------------------------------------
 // Minimal dev-only logger — cannot import from renderer
@@ -144,7 +144,7 @@ export type {
   DiskVolume,
   DatabaseFile
 } from '../main/collectors/types'
-export type { StoredServer } from '../main/store/serverStore'
+export type { StoredServer } from '../main/store/sqlserver/serverRepository'
 export type {
   AiStreamEvent,
   AiProviderSettings,

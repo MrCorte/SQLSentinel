@@ -3,8 +3,8 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import type { CollectMetricsRequest, Alert } from './ipc/types'
 import type { IntervalOverrides } from './metricsWorker'
-import { getSettings, saveSettings } from './store/settings'
-import * as serverStore from './store/serverStore'
+import { getSettings, saveSettings } from './store/sqlserver/settingsRepository'
+import * as serverStore from './store/sqlserver/serverRepository'
 import { getAlerts } from './metricsWorker'
 import { sendAlertEmail } from './emailService'
 import { getStatus } from './serviceClient'
@@ -37,8 +37,12 @@ export class BackgroundService {
   ) {
     this.createTray()
     this.attachWindowListeners()
-    worker.onAlert((alert) => this.maybeNotify(alert))
-    this.menuTimer = setInterval(() => this.rebuildMenu(), 30_000)
+    worker.onAlert((alert) => {
+      this.maybeNotify(alert).catch((err) => log.warn('[background] maybeNotify failed:', err))
+    })
+    this.menuTimer = setInterval(() => {
+      this.rebuildMenu().catch((err) => log.warn('[background] rebuildMenu failed:', err))
+    }, 30_000)
     // Sweep dedup entries older than 24 h every 6 h so the map can never grow
     // unbounded over long sessions even if alerts churn but never get acknowledged.
     this.dedupSweepTimer = setInterval(() => this.sweepNotifyDedup(), 6 * 60 * 60_000)
@@ -53,7 +57,7 @@ export class BackgroundService {
 
   private createTray(): void {
     this.tray = new Tray(trayIconNormal)
-    this.rebuildMenu()
+    this.rebuildMenu().catch((err) => log.warn('[background] rebuildMenu failed:', err))
     this.tray.on('double-click', () => {
       this.win.show()
       this.win.focus()
@@ -67,11 +71,15 @@ export class BackgroundService {
         this.win.hide()
       }
     })
-    this.win.on('hide', () => this.reconfigureWorker())
+    this.win.on('hide', () => {
+      this.reconfigureWorker().catch((err) =>
+        log.warn('[background] reconfigureWorker failed:', err)
+      )
+    })
     this.win.on('show', () => this.restoreWorker())
   }
 
-  private rebuildMenu(): void {
+  private async rebuildMenu(): Promise<void> {
     if (!this.tray || this.tray.isDestroyed()) return
     if (this.quitting) return
     // Tray menu only counts online/offline — no need to decrypt every server's
@@ -79,9 +87,9 @@ export class BackgroundService {
     const servers = serverStore.getAllStripped()
     const online = servers.filter((s) => !s.unreachable).length
     const offline = servers.filter((s) => s.unreachable).length
-    let settings: ReturnType<typeof getSettings>
+    let settings: Awaited<ReturnType<typeof getSettings>>
     try {
-      settings = getSettings()
+      settings = await getSettings()
     } catch {
       return
     }
@@ -108,12 +116,15 @@ export class BackgroundService {
         click: () => {
           const next = !settings.backgroundEnabled
           saveSettings({ backgroundEnabled: next })
-          if (!next) {
-            this.worker.stopWorker()
-          } else {
-            this.restoreWorker()
-          }
-          this.rebuildMenu()
+            .then(() => {
+              if (!next) {
+                this.worker.stopWorker()
+              } else {
+                this.restoreWorker()
+              }
+              return this.rebuildMenu()
+            })
+            .catch((err) => log.warn('[background] toggle backgroundEnabled failed:', err))
         }
       },
       { type: 'separator' },
@@ -129,13 +140,13 @@ export class BackgroundService {
     this.tray.setContextMenu(menu)
   }
 
-  private reconfigureWorker(): void {
+  private async reconfigureWorker(): Promise<void> {
     if (this.quitting) return
-    let s: ReturnType<typeof getSettings>
+    let s: Awaited<ReturnType<typeof getSettings>>
     try {
-      s = getSettings()
+      s = await getSettings()
     } catch {
-      return // DB already closed during shutdown — ignore
+      return // pool already closed during shutdown — ignore
     }
     this.wasStoppedWhenHidden = false
     if (!s.backgroundEnabled) {
@@ -175,7 +186,7 @@ export class BackgroundService {
 
   private readonly notifyDedup = new Map<string, number>()
 
-  private maybeNotify(alert: Alert): void {
+  private async maybeNotify(alert: Alert): Promise<void> {
     // Email — fires for WARNING and CRITICAL, filtered by emailService settings + dedup
     sendAlertEmail(alert).catch((err) =>
       log.error(
@@ -187,7 +198,7 @@ export class BackgroundService {
     // Toast — CRITICAL only, hidden window only
     if (alert.severity !== 'CRITICAL') return
     if (this.win.isVisible()) return
-    if (!getSettings().backgroundNotifications) return
+    if (!(await getSettings()).backgroundNotifications) return
     // Reset dedup for acknowledged alerts
     getAlerts()
       .filter((a) => a.severity === 'CRITICAL' && a.acknowledgedAt)

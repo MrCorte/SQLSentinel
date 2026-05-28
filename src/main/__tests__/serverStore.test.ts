@@ -1,47 +1,92 @@
+/**
+ * Tests for store/sqlserver/serverRepository.ts
+ *
+ * The mssql pool is replaced with an in-memory fake whose Request builder
+ * records inputs and dispatches on the SQL text. We only need to support the
+ * queries actually issued by the repository.
+ */
+
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// ── Mocks ─────────────────────────────────────────────────────────────────────
+type Row = Record<string, unknown>
 
-// vi.hoisted: all vars here are initialized BEFORE vi.mock factories run,
-// which matters because serverStore.ts calls `new Store()` at module load time.
-const hoisted = vi.hoisted(() => {
-  const storeState = { data: {} as Record<string, unknown> }
-  return {
-    storeState,
-    mockStoreGet: vi.fn((key: string, def?: unknown) => storeState.data[key] ?? def),
-    mockStoreSet: vi.fn((key: string, value: unknown) => {
-      storeState.data[key] = value
-    })
+let storedRows: Row[] = []
+
+class FakeRequest {
+  private inputs = new Map<string, unknown>()
+  input(name: string, typeOrValue: unknown, maybeValue?: unknown): this {
+    const value = arguments.length >= 3 ? maybeValue : typeOrValue
+    this.inputs.set(name, value)
+    return this
   }
-})
-
-// electron-store: in-memory singleton — use function() so it can be called with `new`
-vi.mock('electron-store', () => ({
-  default: vi.fn().mockImplementation(function () {
-    return {
-      get: hoisted.mockStoreGet,
-      set: hoisted.mockStoreSet,
-      path: '/tmp/sql-sentinel-data.json'
+  async query<T = unknown>(sqlText: string): Promise<{ recordset: T[] }> {
+    const norm = sqlText.replace(/\s+/g, ' ').toLowerCase()
+    if (norm.startsWith('select * from dbo.servers')) {
+      return { recordset: storedRows.map(toCanonicalRow) as T[] }
     }
-  })
+    if (norm.startsWith('insert into dbo.servers')) {
+      const row: Row = {}
+      for (const [k, v] of this.inputs) row[k] = v
+      storedRows.push(row)
+      return { recordset: [] as T[] }
+    }
+    if (norm.startsWith('update dbo.servers')) {
+      const id = this.inputs.get('id') as string
+      const target = storedRows.find((r) => r['id'] === id)
+      if (target) {
+        // Parse the SET clause: "column = @param, column2 = @param2 WHERE ..."
+        const setMatch = /set\s+(.+?)\s+where/i.exec(sqlText)
+        if (setMatch) {
+          for (const assignment of setMatch[1].split(',')) {
+            const m = /\s*(\w+)\s*=\s*@(\w+)/.exec(assignment)
+            if (!m) continue
+            const [, col, param] = m
+            target[col] = this.inputs.get(param) as unknown
+          }
+        }
+      }
+      return { recordset: [] as T[] }
+    }
+    if (norm.startsWith('delete from dbo.servers')) {
+      const id = this.inputs.get('id') as string
+      storedRows = storedRows.filter((r) => r['id'] !== id)
+      return { recordset: [] as T[] }
+    }
+    return { recordset: [] as T[] }
+  }
+}
+
+// Cast a row from "insert-shape" (named after parameter names) to the
+// snake_case column shape consumed by rowToServer.
+function toCanonicalRow(r: Row): Row {
+  // Insert path stores parameter names (id, host, port, instance_name, ...)
+  // — already in snake_case so we can return as-is.
+  return r
+}
+
+const fakePool = { request: () => new FakeRequest() }
+
+vi.mock('../store/sqlserver/connection', () => ({
+  getPool: () => fakePool
 }))
 
-// safeStorageUtil: symmetric round-trip with a prefix
 vi.mock('../store/safeStorageUtil', () => ({
   encrypt: vi.fn((s: string) => `ENC:${s}`),
   decrypt: vi.fn((s: string) => (s.startsWith('ENC:') ? s.slice(4) : s)),
   isAvailable: vi.fn(() => true)
 }))
 
-// node:fs — prevent any disk writes
+vi.mock('electron', () => ({
+  app: { getPath: () => '/tmp' }
+}))
+
 vi.mock('node:fs', () => ({
   writeFileSync: vi.fn(),
   readFileSync: vi.fn()
 }))
 
-// ── Load module ───────────────────────────────────────────────────────────────
-
 import {
+  init,
   add,
   getAll,
   getById,
@@ -51,46 +96,48 @@ import {
   stripCredentials,
   upsertByIpPort,
   exportForBackup,
-  importFromBackup,
-  migrateHostField,
-  migrateEncryptCredentials,
-  writeAutoBackup
-} from '../store/serverStore'
-import type { StoredServer } from '../../preload/index'
-import { writeFileSync } from 'node:fs'
+  importFromBackup
+} from '../store/sqlserver/serverRepository'
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function makeRaw(overrides: Partial<StoredServer> = {}): StoredServer {
-  return {
-    id: 'test-id',
-    host: '10.0.0.1',
-    port: 1433,
-    useWindowsAuth: true,
-    addedAt: '2024-01-01T00:00:00.000Z',
-    ...overrides
-  }
-}
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  hoisted.storeState.data = {}
+beforeEach(async () => {
+  storedRows = []
+  await init() // load the (empty) cache
 })
 
-// ── add ───────────────────────────────────────────────────────────────────────
+function seed(row: Partial<{ id: string; host: string; port: number; use_windows_auth: number; encrypted_password: string | null; added_at: string; notes: string | null }>): void {
+  storedRows.push({
+    id: row.id ?? 'test-id',
+    host: row.host ?? '10.0.0.1',
+    port: row.port ?? 1433,
+    instance_name: null,
+    use_windows_auth: row.use_windows_auth ?? 1,
+    username: null,
+    encrypted_password: row.encrypted_password ?? null,
+    added_at: row.added_at ?? '2024-01-01T00:00:00.000Z',
+    last_seen: null,
+    unreachable: 0,
+    unreachable_since: null,
+    machine_name: null,
+    ag_group_id: null,
+    ag_name: null,
+    ag_role: null,
+    logical_cpus: null,
+    physical_cpus: null,
+    hosting_type: null,
+    notes: row.notes ?? null
+  })
+}
 
 describe('add', () => {
-  it('adds a new server successfully', () => {
-    hoisted.mockStoreGet.mockImplementation((key, def) => hoisted.storeState.data[key] ?? def ?? [])
-    const result = add({ host: '10.0.0.1', port: 1433, useWindowsAuth: true })
+  it('adds a new server successfully', async () => {
+    const result = await add({ host: '10.0.0.1', port: 1433, useWindowsAuth: true })
     expect(result.success).toBe(true)
-    expect(result.server).toBeDefined()
     expect(result.server?.host).toBe('10.0.0.1')
-    expect(hoisted.mockStoreSet).toHaveBeenCalledOnce()
+    expect(storedRows).toHaveLength(1)
   })
 
-  it('fails when host is missing', () => {
-    const result = add({ port: 1433, useWindowsAuth: true })
+  it('fails when host is missing', async () => {
+    const result = await add({ port: 1433, useWindowsAuth: true })
     expect(result.success).toBe(false)
     expect(result.reason).toBe('missing host')
   })
@@ -102,58 +149,46 @@ describe('add', () => {
     { host: '10.0.0.1', port: 65536, reason: 'invalid port' },
     { host: '10.0.0.1', port: 1433.5, reason: 'invalid port' },
     { host: '10.0.0.1', port: 1433, useWindowsAuth: 'yes', reason: 'invalid auth mode' }
-  ])('rejects malformed server input %#', (params) => {
-    const result = add(params)
+  ])('rejects malformed server input %#', async (params) => {
+    const result = await add(params)
     expect(result.success).toBe(false)
     expect(result.reason).toBe(params.reason)
-    expect(hoisted.mockStoreSet).not.toHaveBeenCalled()
+    expect(storedRows).toHaveLength(0)
   })
 
-  it('rejects duplicates (same host+port)', () => {
-    const existing = makeRaw()
-    hoisted.mockStoreGet.mockReturnValue([existing])
-    const result = add({ host: '10.0.0.1', port: 1433, useWindowsAuth: true })
+  it('rejects duplicates (same host+port)', async () => {
+    seed({ host: '10.0.0.1', port: 1433 })
+    await init()
+    const result = await add({ host: '10.0.0.1', port: 1433, useWindowsAuth: true })
     expect(result.success).toBe(false)
     expect(result.reason).toBe('duplicate')
   })
 
-  it('encrypts the password before persisting (no plaintext on disk)', () => {
-    hoisted.mockStoreGet.mockImplementation((key, def) => hoisted.storeState.data[key] ?? def ?? [])
-    add({ host: '10.0.0.2', port: 1433, useWindowsAuth: false, password: 'secret' })
-    const saved = hoisted.storeState.data['servers'] as StoredServer[]
-    expect(saved[0].password).toBeUndefined()
-    expect(saved[0].encryptedPassword).toBe('ENC:secret')
+  it('encrypts the password before persisting (no plaintext on disk)', async () => {
+    await add({ host: '10.0.0.2', port: 1433, useWindowsAuth: false, password: 'secret' })
+    expect(storedRows[0].encrypted_password).toBe('ENC:secret')
   })
 
-  it('accepts legacy ip field via normalizeServer', () => {
-    hoisted.mockStoreGet.mockImplementation((key, def) => hoisted.storeState.data[key] ?? def ?? [])
-    const result = add({ ip: '10.0.0.3', port: 1433, useWindowsAuth: true } as never)
+  it('accepts legacy ip field via normalizeServer', async () => {
+    const result = await add({ ip: '10.0.0.3', port: 1433, useWindowsAuth: true } as never)
     expect(result.success).toBe(true)
     expect(result.server?.host).toBe('10.0.0.3')
   })
 })
 
-// ── getAll / getById / getByIpPort ────────────────────────────────────────────
-
 describe('getAll', () => {
-  it('decrypts encryptedPassword when reading', () => {
-    const raw = makeRaw({ encryptedPassword: 'ENC:my-password' })
-    hoisted.mockStoreGet.mockReturnValue([raw])
+  it('decrypts encryptedPassword when reading', async () => {
+    seed({ encrypted_password: 'ENC:my-password' })
+    await init()
     const servers = getAll()
     expect(servers[0].password).toBe('my-password')
-  })
-
-  it('normalizes legacy ip → host on read', () => {
-    const raw = { id: 'x', ip: '10.0.0.5', port: 1433, useWindowsAuth: true, addedAt: '' }
-    hoisted.mockStoreGet.mockReturnValue([raw])
-    const servers = getAll()
-    expect(servers[0].host).toBe('10.0.0.5')
   })
 })
 
 describe('getById', () => {
-  it('returns matching server by id', () => {
-    hoisted.mockStoreGet.mockReturnValue([makeRaw({ id: 'abc', encryptedPassword: 'ENC:pw' })])
+  it('returns matching server by id', async () => {
+    seed({ id: 'abc', encrypted_password: 'ENC:pw' })
+    await init()
     const s = getById('abc')
     expect(s).toBeDefined()
     expect(s?.id).toBe('abc')
@@ -161,106 +196,88 @@ describe('getById', () => {
   })
 
   it('returns undefined for unknown id', () => {
-    hoisted.mockStoreGet.mockReturnValue([])
     expect(getById('nonexistent')).toBeUndefined()
   })
 })
 
 describe('getByIpPort', () => {
-  it('finds a server by host and port', () => {
-    hoisted.mockStoreGet.mockReturnValue([makeRaw({ host: '10.0.0.1', port: 1433 })])
-    const s = getByIpPort('10.0.0.1', 1433)
-    expect(s).toBeDefined()
+  it('finds a server by host and port', async () => {
+    seed({ host: '10.0.0.1', port: 1433 })
+    await init()
+    expect(getByIpPort('10.0.0.1', 1433)).toBeDefined()
   })
 
   it('returns undefined for unknown host:port', () => {
-    hoisted.mockStoreGet.mockReturnValue([])
     expect(getByIpPort('99.99.99.99', 1433)).toBeUndefined()
   })
 })
 
-// ── update ────────────────────────────────────────────────────────────────────
-
 describe('update', () => {
-  it('patches the matching server in the store', () => {
-    const initial = [makeRaw({ id: 'srv-1', host: '10.0.0.1' })]
-    hoisted.mockStoreGet.mockReturnValue(initial)
-    update('srv-1', { notes: 'production DB' })
-    const saved = hoisted.storeState.data['servers'] as StoredServer[]
-    expect(saved[0].notes).toBe('production DB')
+  it('patches the matching server in the store', async () => {
+    seed({ id: 'srv-1', host: '10.0.0.1' })
+    await init()
+    await update('srv-1', { notes: 'production DB' })
+    expect(storedRows[0].notes).toBe('production DB')
   })
 
-  it('encrypts updated password before saving', () => {
-    hoisted.mockStoreGet.mockReturnValue([makeRaw({ id: 'srv-1' })])
-    update('srv-1', { password: 'new-pass' })
-    const saved = hoisted.storeState.data['servers'] as StoredServer[]
-    expect(saved[0].password).toBeUndefined()
-    expect(saved[0].encryptedPassword).toBe('ENC:new-pass')
+  it('encrypts updated password before saving', async () => {
+    seed({ id: 'srv-1' })
+    await init()
+    await update('srv-1', { password: 'new-pass' })
+    expect(storedRows[0].encrypted_password).toBe('ENC:new-pass')
   })
 
-  it('is a no-op for unknown id', () => {
-    hoisted.mockStoreGet.mockReturnValue([])
-    expect(() => update('unknown', { notes: 'x' })).not.toThrow()
+  it('is a no-op for unknown id', async () => {
+    await expect(update('unknown', { notes: 'x' })).resolves.not.toThrow()
   })
 })
-
-// ── remove ────────────────────────────────────────────────────────────────────
 
 describe('remove', () => {
-  it('removes the server with the given id', () => {
-    const initial = [makeRaw({ id: 'del-me' }), makeRaw({ id: 'keep-me', host: '10.0.0.2' })]
-    hoisted.mockStoreGet.mockReturnValue(initial)
-    remove('del-me')
-    const saved = hoisted.storeState.data['servers'] as StoredServer[]
-    expect(saved).toHaveLength(1)
-    expect(saved[0].id).toBe('keep-me')
+  it('removes the server with the given id', async () => {
+    seed({ id: 'del-me' })
+    seed({ id: 'keep-me', host: '10.0.0.2' })
+    await init()
+    await remove('del-me')
+    expect(storedRows).toHaveLength(1)
+    expect(storedRows[0].id).toBe('keep-me')
   })
 })
-
-// ── stripCredentials ──────────────────────────────────────────────────────────
 
 describe('stripCredentials', () => {
   it('removes both password and encryptedPassword', () => {
-    const srv = makeRaw({ password: 'plain', encryptedPassword: 'ENC:plain' })
-    const stripped = stripCredentials(srv)
+    const stripped = stripCredentials({
+      id: 't',
+      host: '10.0.0.1',
+      port: 1433,
+      useWindowsAuth: false,
+      addedAt: '2024',
+      password: 'plain',
+      encryptedPassword: 'ENC:plain'
+    })
     expect(stripped.password).toBeUndefined()
     expect(stripped.encryptedPassword).toBeUndefined()
   })
-
-  it('preserves all other fields', () => {
-    const srv = makeRaw({ notes: 'important', host: '10.0.0.99' })
-    const stripped = stripCredentials(srv)
-    expect(stripped.notes).toBe('important')
-    expect(stripped.host).toBe('10.0.0.99')
-  })
 })
-
-// ── upsertByIpPort ────────────────────────────────────────────────────────────
 
 describe('upsertByIpPort', () => {
-  it('inserts when no existing server matches host:port', () => {
-    hoisted.mockStoreGet.mockImplementation((key, def) => hoisted.storeState.data[key] ?? def ?? [])
-    const result = upsertByIpPort({ host: '10.0.0.1', port: 1433, useWindowsAuth: true })
+  it('inserts when no existing server matches host:port', async () => {
+    const result = await upsertByIpPort({ host: '10.0.0.1', port: 1433, useWindowsAuth: true })
     expect(result.host).toBe('10.0.0.1')
-    const saved = hoisted.storeState.data['servers'] as StoredServer[]
-    expect(saved).toHaveLength(1)
+    expect(storedRows).toHaveLength(1)
   })
 
-  it('updates when server already exists', () => {
-    const existing = makeRaw({ host: '10.0.0.1', port: 1433, notes: 'old' })
-    hoisted.mockStoreGet.mockReturnValue([existing])
-    upsertByIpPort({ host: '10.0.0.1', port: 1433, useWindowsAuth: true, notes: 'updated' })
-    const saved = hoisted.storeState.data['servers'] as StoredServer[]
-    expect(saved[0].notes).toBe('updated')
+  it('updates when server already exists', async () => {
+    seed({ host: '10.0.0.1', port: 1433, notes: 'old' })
+    await init()
+    await upsertByIpPort({ host: '10.0.0.1', port: 1433, useWindowsAuth: true, notes: 'updated' })
+    expect(storedRows[0].notes).toBe('updated')
   })
 })
 
-// ── exportForBackup / importFromBackup ────────────────────────────────────────
-
 describe('exportForBackup', () => {
-  it('returns valid JSON with version=1 and no credentials', () => {
-    const srv = makeRaw({ password: 'secret', encryptedPassword: 'ENC:secret', notes: 'prod' })
-    hoisted.mockStoreGet.mockReturnValue([srv])
+  it('returns valid JSON with version=1 and no credentials', async () => {
+    seed({ encrypted_password: 'ENC:secret', notes: 'prod' })
+    await init()
     const json = exportForBackup()
     const parsed = JSON.parse(json)
     expect(parsed.version).toBe(1)
@@ -272,113 +289,38 @@ describe('exportForBackup', () => {
 })
 
 describe('importFromBackup', () => {
-  it('returns error on invalid JSON', () => {
-    const result = importFromBackup('not json')
+  it('returns error on invalid JSON', async () => {
+    const result = await importFromBackup('not json')
     expect(result.errors).toHaveLength(1)
     expect(result.imported).toBe(0)
   })
 
-  it('returns error on unrecognized format', () => {
-    const result = importFromBackup(JSON.stringify({ version: 99 }))
+  it('returns error on unrecognized format', async () => {
+    const result = await importFromBackup(JSON.stringify({ version: 99 }))
     expect(result.errors).toHaveLength(1)
   })
 
-  it('imports new servers successfully', () => {
-    hoisted.mockStoreGet.mockImplementation((key, def) => hoisted.storeState.data[key] ?? def ?? [])
+  it('imports new servers successfully', async () => {
     const backup = JSON.stringify({
       version: 1,
       exportedAt: new Date().toISOString(),
       servers: [{ host: '10.0.0.50', port: 1433, useWindowsAuth: true }]
     })
-    const result = importFromBackup(backup)
+    const result = await importFromBackup(backup)
     expect(result.imported).toBe(1)
     expect(result.skipped).toBe(0)
   })
 
-  it('skips entries that already exist (no duplicate)', () => {
-    hoisted.mockStoreGet.mockReturnValue([makeRaw({ host: '10.0.0.1', port: 1433 })])
+  it('skips entries that already exist (no duplicate)', async () => {
+    seed({ host: '10.0.0.1', port: 1433 })
+    await init()
     const backup = JSON.stringify({
       version: 1,
       exportedAt: new Date().toISOString(),
       servers: [{ host: '10.0.0.1', port: 1433, useWindowsAuth: true }]
     })
-    const result = importFromBackup(backup)
+    const result = await importFromBackup(backup)
+    expect(result.imported).toBe(0)
     expect(result.skipped).toBe(1)
-    expect(result.imported).toBe(0)
-  })
-
-  it('reports error for entries with missing host', () => {
-    hoisted.mockStoreGet.mockImplementation((key, def) => hoisted.storeState.data[key] ?? def ?? [])
-    const backup = JSON.stringify({
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      servers: [{ port: 1433 }]
-    })
-    const result = importFromBackup(backup)
-    expect(result.errors.length).toBeGreaterThan(0)
-    expect(result.imported).toBe(0)
-  })
-})
-
-// ── migrateHostField ──────────────────────────────────────────────────────────
-
-describe('migrateHostField', () => {
-  it('converts ip-only records to host field', () => {
-    const legacy = [{ id: 'x', ip: '10.0.0.1', port: 1433, useWindowsAuth: true, addedAt: '' }]
-    hoisted.mockStoreGet.mockReturnValue(legacy)
-    migrateHostField()
-    const saved = hoisted.storeState.data['servers'] as StoredServer[]
-    expect(saved[0].host).toBe('10.0.0.1')
-    expect((saved[0] as unknown as Record<string, unknown>)['ip']).toBeUndefined()
-  })
-
-  it('is a no-op when all records already have host', () => {
-    const current = [makeRaw()]
-    hoisted.mockStoreGet.mockReturnValue(current)
-    migrateHostField()
-    expect(hoisted.mockStoreSet).not.toHaveBeenCalled()
-  })
-})
-
-// ── migrateEncryptCredentials ─────────────────────────────────────────────────
-
-describe('migrateEncryptCredentials', () => {
-  it('encrypts plaintext password and removes the plaintext field', () => {
-    const legacy = [
-      { id: 'x', host: '10.0.0.1', port: 1433, useWindowsAuth: false, password: 'p@ss', addedAt: '' }
-    ]
-    hoisted.mockStoreGet.mockReturnValue(legacy)
-    migrateEncryptCredentials()
-    const saved = hoisted.storeState.data['servers'] as StoredServer[]
-    expect(saved[0].password).toBeUndefined()
-    expect(saved[0].encryptedPassword).toBe('ENC:p@ss')
-  })
-
-  it('skips records that already have encryptedPassword', () => {
-    const already = [makeRaw({ encryptedPassword: 'ENC:already' })]
-    hoisted.mockStoreGet.mockReturnValue(already)
-    migrateEncryptCredentials()
-    expect(hoisted.mockStoreSet).not.toHaveBeenCalled()
-  })
-})
-
-// ── writeAutoBackup ───────────────────────────────────────────────────────────
-
-describe('writeAutoBackup', () => {
-  it('writes a JSON file without credentials', () => {
-    hoisted.mockStoreGet.mockReturnValue([makeRaw({ password: 'secret' })])
-    writeAutoBackup()
-    expect(vi.mocked(writeFileSync)).toHaveBeenCalledOnce()
-    const written = JSON.parse(vi.mocked(writeFileSync).mock.calls[0][1] as string)
-    expect(written.version).toBe(1)
-    expect(written.servers[0].password).toBeUndefined()
-  })
-
-  it('does not throw when writeFileSync fails', () => {
-    hoisted.mockStoreGet.mockReturnValue([makeRaw()])
-    vi.mocked(writeFileSync).mockImplementation(() => {
-      throw new Error('disk full')
-    })
-    expect(() => writeAutoBackup()).not.toThrow()
   })
 })

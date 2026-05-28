@@ -9,14 +9,18 @@ import {
   type AgentHistory
 } from '../../ai/langGraphAgent'
 import { getProvider } from '../../ai/providers'
-import { resetIndex, preWarmIndex } from '../../store/vecRepository'
+import { resetIndex, preWarmIndex } from '../../store/sqlserver/knowledgeRepository'
 import { getQueryEmbedding, packEmbedding } from '../../ai/embedder'
 import {
   addRow as addFeedbackRow,
   removeRow as removeFeedbackRow,
+  removeByQuestion as removeByQuestionFromIndex,
   preWarm as preWarmFeedbackIndex
 } from '../../ai/feedbackIndex'
-import { invalidate as invalidateResponseCache } from '../../ai/responseCache'
+import {
+  invalidate as invalidateResponseCache,
+  putCachedApproved
+} from '../../ai/responseCache'
 import {
   insertFeedback,
   listAll as listAllFeedback,
@@ -41,7 +45,8 @@ import {
 export function registerKnowledgeHandlers(): void {
   handle(IpcChannel.AI_CHECK, async (): Promise<IpcResult<boolean>> => {
     try {
-      return { ok: true, data: await getProvider().health() }
+      const provider = await getProvider()
+      return { ok: true, data: await provider.health() }
     } catch (err) {
       return { ok: false, error: safeError(err) }
     }
@@ -125,11 +130,19 @@ export function registerKnowledgeHandlers(): void {
         })
         if (input.rating === 1 && vec) {
           addFeedbackRow({ id, question: input.question, response: input.response, vec })
+          // Re-cache the approved answer with a 1-hour TTL so subsequent identical
+          // questions are answered instantly with the user-validated response.
+          putCachedApproved(input.question, input.response)
         }
         // Drop any cached response for this question so a re-ask reflects the
         // user's signal — especially important on 👎 where the cache would
         // otherwise replay the (now disliked) answer for up to 10 minutes.
         invalidateResponseCache(input.question)
+        // On 👎, retract any previously approved entries for this question from the
+        // few-shot index so the bad answer can no longer appear as a past example.
+        if (input.rating === -1) {
+          removeByQuestionFromIndex(input.question)
+        }
         return { ok: true, data: id }
       } catch (err) {
         log.error('[IPC] AI_SAVE_FEEDBACK:', safeError(err))

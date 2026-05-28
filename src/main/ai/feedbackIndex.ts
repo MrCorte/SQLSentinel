@@ -1,6 +1,5 @@
 import { createLogger } from '../utils/logger'
-import { cosineSimilarity } from '../store/vecRepository'
-import { getQueryEmbedding, unpackEmbedding } from './embedder'
+import { getQueryEmbedding, unpackEmbedding, cosineSimilarity } from './embedder'
 import { listEmbeddable } from '../store/sqlserver/aiFeedbackRepository'
 
 const log = createLogger('feedbackIndex')
@@ -101,6 +100,20 @@ export function addRow(row: {
 
 export function removeRow(id: string): void {
   _entries = _entries.filter((e) => e.id !== id)
+}
+
+// On thumbs-down, removes every positive entry for the same question text so
+// that earlier approved answers no longer appear as few-shot examples.
+export function removeByQuestion(question: string): void {
+  const lower = question.toLowerCase().trim()
+  const before = _entries.length
+  _entries = _entries.filter((e) => e.question.toLowerCase().trim() !== lower)
+  const removed = before - _entries.length
+  if (removed > 0) {
+    log.info(
+      `removeByQuestion: retracted ${removed} entry(ies) for "${question.slice(0, 60)}"`
+    )
+  }
 }
 
 export function reset(): void {

@@ -28,6 +28,7 @@ import { migrateEncryptEmailPassword } from './store/sqlserver/emailSettingsRepo
 import { removeExpiredSessions } from './store/sqlserver/sessionsRepository'
 import { isAvailable as safeStorageAvailable } from './store/safeStorageUtil'
 import { IpcChannel } from './ipc/types'
+import { initAutoUpdate } from './autoUpdate'
 import * as serverStore from './store/sqlserver/serverRepository'
 import { scanHost } from './discovery/tcpScanner'
 import { abortActiveStream, warmupModel } from './ai/langGraphAgent'
@@ -409,6 +410,9 @@ app.whenReady().then(async () => {
   })
 
   createWindow()
+
+  // Background auto-update via GitHub Releases (no-op in dev / unpackaged).
+  initAutoUpdate()
 
   // Notify renderer of storage readiness after the window loads
   mainWindow?.webContents.on('did-finish-load', () => {

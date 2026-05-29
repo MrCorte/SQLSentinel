@@ -84,7 +84,7 @@ export function AgReplicaSuggestionDialog(): React.JSX.Element | null {
         <DialogTitle sx={{ pb: 1 }}>
           <Stack direction="row" alignItems="center" spacing={1}>
             <Typography variant="h6" component="span">
-              AG replica rilevata
+              AG replica detected
             </Typography>
             <Chip
               label={current.agName}
@@ -95,8 +95,8 @@ export function AgReplicaSuggestionDialog(): React.JSX.Element | null {
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Questo server fa parte dell&apos;Availability Group{' '}
-            <strong>{current.agName}</strong>. Le repliche seguenti non sono ancora monitorate:
+            This server is part of the Availability Group <strong>{current.agName}</strong>. The
+            following replicas are not yet monitored:
           </Typography>
           <Stack divider={<Divider />}>
             {visibleReplicas.map((r) => (
@@ -125,14 +125,14 @@ export function AgReplicaSuggestionDialog(): React.JSX.Element | null {
                   variant="contained"
                   onClick={() => setAddTarget(r.replica_server_name)}
                 >
-                  Aggiungi
+                  Add
                 </Button>
               </Stack>
             ))}
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => clearAgSuggestion(current.agName)}>Ignora</Button>
+          <Button onClick={() => clearAgSuggestion(current.agName)}>Ignore</Button>
         </DialogActions>
       </Dialog>
 

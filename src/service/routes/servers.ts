@@ -16,6 +16,16 @@ function toCollectRequest(s: StoredServer) {
   }
 }
 
+// The update schema allows `null` for clearable fields (host can't be cleared),
+// but serverStore.update expects Partial<StoredServer> and treats `undefined`
+// as "set column to NULL". Map null→undefined to satisfy the type while keeping
+// the clear-a-field semantics intact.
+function toUpdatePatch(data: Record<string, unknown>): Partial<StoredServer> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(data)) out[k] = v === null ? undefined : v
+  return out as Partial<StoredServer>
+}
+
 function refreshWorker(): void {
   const servers = serverStore.getAll()
   if (servers.length === 0) {
@@ -107,7 +117,7 @@ export function createServersRouter(): Router {
       return
     }
     try {
-      await serverStore.update(req.params['id'] as string, parsed.data)
+      await serverStore.update(req.params['id'] as string, toUpdatePatch(parsed.data))
       refreshWorker()
       serverStore.writeAutoBackup()
       res.json({ ok: true, data: { success: true } })

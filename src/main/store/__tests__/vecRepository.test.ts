@@ -42,6 +42,13 @@ vi.mock('../../ai/ollama', () => ({ OLLAMA_HOST: 'http://localhost:11434' }))
 
 import { cosineSimilarity } from '../../ai/embedder'
 
+// Each test calls vi.resetModules() then dynamically re-imports the
+// knowledgeRepository module graph (embedder + connection + ollama). That cold
+// re-import is cheap in isolation but can exceed the 5s default under a
+// saturated full-suite run, so give these tests headroom — the work itself is
+// correct, only the wall-clock budget was too tight.
+vi.setConfig({ testTimeout: 20000, hookTimeout: 20000 })
+
 describe('knowledgeRepository', () => {
   beforeEach(() => {
     vi.resetModules() // fresh module = caches start null; query cache also empty

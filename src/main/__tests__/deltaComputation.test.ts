@@ -213,14 +213,14 @@ describe('AREA 2 — applyDelta (metricsStore)', () => {
     expect(names).not.toContain('OLD_DB_1')
   })
 
-  it('applyDelta on a server not yet in metricsMap sets the entire snapshot', () => {
-    // SID does not exist in store yet
+  it('drops an orphan delta for a server not yet in metricsMap', () => {
+    // A delta is partial by contract. If the renderer never received the initial
+    // full snapshot, the delta is ignored rather than stored as if complete —
+    // otherwise tabs like Databases would render partial data as the full truth.
     const delta = { ...makeMetrics([{ name: 'DB_X' }]), isDelta: true } as ServerMetrics
     useMetricsStore.getState().applyDelta('99.99.99.99:1433', delta)
 
-    const m = useMetricsStore.getState().metricsMap['99.99.99.99:1433']
-    expect(m).toBeDefined()
-    expect(m.databases[0].name).toBe('DB_X')
+    expect(useMetricsStore.getState().metricsMap['99.99.99.99:1433']).toBeUndefined()
   })
 })
 

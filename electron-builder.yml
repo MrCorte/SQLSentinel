@@ -24,11 +24,24 @@ extraResources:
     to: knowledge_base.db
 win:
   executableName: sqlsentinel
+  # Code signing is driven by environment variables so the certificate never
+  # lives in the repo: set CSC_LINK (path or base64 of the .pfx) and
+  # CSC_KEY_PASSWORD in the release workflow. Builds without them are produced
+  # unsigned (with a warning) so local/CI builds still succeed before the cert
+  # is procured. To switch to Azure Trusted Signing, replace the env vars with a
+  # `win.azureSignOptions` block (see RELEASING.md).
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+# Auto-update feed. electron-builder bakes this into app-update.yml at package
+# time; the running app (electron-updater) reads it to find new releases, and
+# `electron-builder --publish` uploads artifacts + latest.yml to GitHub Releases.
+publish:
+  provider: github
+  owner: MrCorte
+  repo: SQLSentinel
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:

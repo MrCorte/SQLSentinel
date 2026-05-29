@@ -61,15 +61,27 @@ describe('aiChatStore streaming state', () => {
     expect(getStore().messages).toHaveLength(0)
   })
 
-  it('resetStreaming adds an error bubble and clears streaming state', () => {
+  it('resetStreaming surfaces a whitelisted error and clears streaming state', () => {
     const s = getStore()
     s.appendToken('partial')
-    s.resetStreaming('Ollama down')
+    // "connection refused" matches the safe-error allowlist, so it is surfaced
+    // verbatim rather than replaced by the generic redacted message.
+    s.resetStreaming('Ollama connection refused')
     const state = getStore()
     expect(state.messages).toHaveLength(1)
-    expect(state.messages[0].content).toContain('Ollama down')
+    expect(state.messages[0].content).toContain('connection refused')
     expect(state.streamingText).toBe('')
     expect(state.toolSteps).toHaveLength(0)
+  })
+
+  it('resetStreaming redacts an unrecognized error to a generic message', () => {
+    const s = getStore()
+    s.appendToken('partial')
+    s.resetStreaming('secret internal detail xyz')
+    const state = getStore()
+    expect(state.messages).toHaveLength(1)
+    expect(state.messages[0].content).not.toContain('secret internal detail xyz')
+    expect(state.messages[0].content).toContain('AI provider error')
   })
 })
 

@@ -1,0 +1,43 @@
+name: Release
+
+# Cut a release by pushing a version tag, e.g. `git tag v1.2.0 && git push origin v1.2.0`.
+# This builds, signs (if the signing secrets are set), and publishes the Windows
+# installer + the auto-update feed (latest.yml) to a GitHub Release.
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: write # required to create the GitHub Release and upload assets
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js from .nvmrc
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (typecheck + service + electron-vite)
+        run: npm run build
+
+      - name: Package, sign & publish (Windows)
+        run: npx electron-builder --win --publish always
+        env:
+          # Auto-provided token; the `contents: write` permission above lets it
+          # create the Release and upload assets in this repo.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Windows Authenticode signing. Leave these repo secrets empty until the
+          # certificate is procured — electron-builder then produces an UNSIGNED
+          # build (auto-update signature verification will reject it, so sign
+          # before relying on updates). CSC_LINK = base64 of the .pfx file.
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}

@@ -1,0 +1,8 @@
+# Used by electron-updater only in dev to resolve the update feed. The packaged
+# app uses the generated app-update.yml instead. Auto-update is disabled in dev
+# (initAutoUpdate no-ops when the app is unpackaged); set SQLSENTINEL_DISABLE_UPDATE=0
+# and run a packaged build to exercise the real flow.
+provider: github
+owner: MrCorte
+repo: SQLSentinel
+updaterCacheDirName: sqlsentinel-updater

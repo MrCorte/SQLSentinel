@@ -16,6 +16,26 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 type Row = Record<string, unknown>
 
+/**
+ * Mirror of the listIncidents CTE: keep the newest row per (server_id, category)
+ * group, annotate each with group_count, and order by opened_at DESC.
+ */
+function dedupNewestPerGroup(rows: Row[]): Row[] {
+  const groups = new Map<string, Row[]>()
+  for (const r of rows) {
+    const key = `${r.server_id}|${r.category}`
+    const arr = groups.get(key)
+    if (arr) arr.push(r)
+    else groups.set(key, [r])
+  }
+  const winners: Row[] = []
+  for (const arr of groups.values()) {
+    const newest = arr.reduce((a, b) => ((b.opened_at as number) > (a.opened_at as number) ? b : a))
+    winners.push({ ...newest, group_count: arr.length })
+  }
+  return winners.sort((a, b) => (b.opened_at as number) - (a.opened_at as number))
+}
+
 class FakeRequest {
   private inputs = new Map<string, unknown>()
   constructor(private store: Map<string, Row>) {}
@@ -52,20 +72,15 @@ class FakeRequest {
       return { recordset: (r ? [r] : []) as T[] }
     }
 
-    if (norm.includes('from dbo.incidents') && norm.includes('where status = @status')) {
-      const status = this.inputs.get('status')
-      const rows = [...this.store.values()]
-        .filter((r) => r.status === status)
-        .sort((a, b) => (b.opened_at as number) - (a.opened_at as number))
-        .slice(0, 200)
-      return { recordset: rows as T[] }
-    }
-
-    if (norm.includes('from dbo.incidents') && !norm.includes('where')) {
-      const rows = [...this.store.values()]
-        .sort((a, b) => (b.opened_at as number) - (a.opened_at as number))
-        .slice(0, 200)
-      return { recordset: rows as T[] }
+    // listIncidents: a CTE dedups to the newest row per (server_id, category)
+    // via ROW_NUMBER ... WHERE rn = 1, annotating each with group_count.
+    if (norm.includes('from dbo.incidents') && norm.includes('row_number')) {
+      let rows = [...this.store.values()]
+      if (norm.includes('where status = @status')) {
+        const status = this.inputs.get('status')
+        rows = rows.filter((r) => r.status === status)
+      }
+      return { recordset: dedupNewestPerGroup(rows).slice(0, 200) as T[] }
     }
 
     return { recordset: [] as T[] }
@@ -121,20 +136,31 @@ describe('listIncidents()', () => {
     pool = new FakePool()
   })
 
-  it('returns all incidents when no status filter is provided', async () => {
-    insertRaw('a', 'open', 1000)
-    insertRaw('b', 'resolved', 900)
-    insertRaw('c', 'investigating', 800)
+  it('returns the newest incident per (server, category) group', async () => {
+    // Distinct categories → three separate groups, all surface.
+    insertRaw('a', 'open', 1000, 'srv-1', 'cpu_high')
+    insertRaw('b', 'resolved', 900, 'srv-1', 'blocking_sessions')
+    insertRaw('c', 'investigating', 800, 'srv-1', 'disk_space_low')
 
     const all = await listIncidents()
     expect(all).toHaveLength(3)
     expect(all.map((i) => i.id).sort()).toEqual(['a', 'b', 'c'])
   })
 
+  it('collapses multiple incidents in the same group to the newest', async () => {
+    insertRaw('old', 'open', 100, 'srv-1', 'cpu_high')
+    insertRaw('new', 'open', 300, 'srv-1', 'cpu_high')
+
+    const all = await listIncidents()
+    expect(all).toHaveLength(1)
+    expect(all[0].id).toBe('new')
+    expect(all[0].count).toBe(2)
+  })
+
   it('returns only open incidents when filtered by status=open', async () => {
-    insertRaw('a', 'open', 1000)
-    insertRaw('b', 'resolved', 900)
-    insertRaw('c', 'open', 800)
+    insertRaw('a', 'open', 1000, 'srv-1', 'cpu_high')
+    insertRaw('b', 'resolved', 900, 'srv-1', 'blocking_sessions')
+    insertRaw('c', 'open', 800, 'srv-1', 'disk_space_low')
 
     const open = await listIncidents({ status: 'open' })
     expect(open).toHaveLength(2)
@@ -142,9 +168,9 @@ describe('listIncidents()', () => {
   })
 
   it('returns only resolved incidents when filtered by status=resolved', async () => {
-    insertRaw('a', 'open', 1000)
-    insertRaw('b', 'resolved', 900)
-    insertRaw('c', 'resolved', 800)
+    insertRaw('a', 'open', 1000, 'srv-1', 'cpu_high')
+    insertRaw('b', 'resolved', 900, 'srv-1', 'blocking_sessions')
+    insertRaw('c', 'resolved', 800, 'srv-1', 'disk_space_low')
 
     const resolved = await listIncidents({ status: 'resolved' })
     expect(resolved).toHaveLength(2)
@@ -152,9 +178,9 @@ describe('listIncidents()', () => {
   })
 
   it('returns incidents ordered by opened_at DESC', async () => {
-    insertRaw('old', 'open', 100)
-    insertRaw('newest', 'open', 300)
-    insertRaw('mid', 'open', 200)
+    insertRaw('old', 'open', 100, 'srv-1', 'cpu_high')
+    insertRaw('newest', 'open', 300, 'srv-1', 'blocking_sessions')
+    insertRaw('mid', 'open', 200, 'srv-1', 'disk_space_low')
 
     const all = await listIncidents()
     expect(all[0].id).toBe('newest')

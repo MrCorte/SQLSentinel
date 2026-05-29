@@ -51,6 +51,12 @@ const SAVE_EVERY_N = 5 // save to SQLite every N polls (≈5 min at 60s interval
 const SAVE_FLUSH_MS = 60_000
 const SAVE_QUEUE_HARD_CAP = 500
 const AG_DETECT_EVERY_N = 5 // detect AG roles every N polls — roles change only on failover
+// Expensive, slow-changing collectors (top queries, wait stats, FILEPROPERTY
+// per-file database files) run only every N polls for non-active servers; in
+// between, the previous poll's values are reused. They feed UI detail panels +
+// the autogrowth alert, none of which need 60s resolution. The active server
+// always collects them fresh (it's the one on screen).
+const HEAVY_COLLECT_EVERY_N = 5
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,6 +70,7 @@ interface PollJob {
   failCount: number // consecutive failures — drives exponential back-off
   lastSuccess: number | null // ms timestamp of last successful collect
   pollCount: number // total successful polls — drives SAVE_EVERY_N logic
+  inFlight?: boolean // true while a poll is executing — prevents re-dispatch by the backstop timer
 }
 
 // ---------------------------------------------------------------------------
@@ -73,6 +80,10 @@ interface PollJob {
 const jobs = new Map<string, PollJob>()
 let running = 0
 let tickHandle: ReturnType<typeof setTimeout> | null = null
+// Coalesce reschedules: N jobs completing in the same turn collapse into one
+// scheduleTick() instead of N full O(jobs) passes. queueMicrotask (not
+// setImmediate) so the unit tests' microtask-draining drives it under fake timers.
+let pumpScheduled = false
 let activeServerId: string | null = null
 let activeIntervalMs = INTERVAL_ACTIVE_MS
 // Debounce handle for setActiveServer to prevent burst-fetching on rapid navigation
@@ -90,6 +101,9 @@ const openAlertKeys = new Map<string, string>()
 // for runaway scenarios (e.g. flapping fleet during an incident) so the
 // memory footprint stays bounded.
 const MAX_STORED_ALERTS = 1000
+// Throttle the acknowledged-alert prune scan (see processAlerts).
+const ALERT_PRUNE_INTERVAL_MS = 60_000
+let lastAlertPruneAt = 0
 
 // --- SQLite persistence ---
 const saveQueue: metricsRepository.SaveItem[] = []
@@ -466,14 +480,21 @@ function processAlerts(sid: string, metrics: ServerMetrics): void {
     if (incidentAlertCallback) incidentAlertCallback(alert)
   }
 
-  // Prune acknowledged alerts older than 24 h to keep storedAlerts bounded
-  const pruneOlderThan = Date.now() - 24 * 60 * 60 * 1000
-  const beforeLen = storedAlerts.length
-  storedAlerts = storedAlerts.filter(
-    (a) => !(a.acknowledgedAt && new Date(a.acknowledgedAt).getTime() < pruneOlderThan)
-  )
-  if (storedAlerts.length !== beforeLen) {
-    rebuildOpenAlertKeys()
+  // Prune acknowledged alerts older than 24 h to keep storedAlerts bounded.
+  // Throttled: this is a full-array scan and was previously run on every poll of
+  // every server (~200 scans/min at fleet scale). Once per minute is ample since
+  // the cutoff is 24h.
+  const now = Date.now()
+  if (now - lastAlertPruneAt >= ALERT_PRUNE_INTERVAL_MS) {
+    lastAlertPruneAt = now
+    const pruneOlderThan = now - 24 * 60 * 60 * 1000
+    const beforeLen = storedAlerts.length
+    storedAlerts = storedAlerts.filter(
+      (a) => !(a.acknowledgedAt && new Date(a.acknowledgedAt).getTime() < pruneOlderThan)
+    )
+    if (storedAlerts.length !== beforeLen) {
+      rebuildOpenAlertKeys()
+    }
   }
 
   // Hard cap: if open alerts exceed the cap (incident flood), drop the OLDEST
@@ -512,8 +533,28 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     }, POLL_TIMEOUT_MS)
   })
   try {
-    const collectFn = intervalOverrides?.lightCollectors ? collectMetricsCritical : collectMetrics
-    const metrics = await Promise.race([collectFn(job.server, controller.signal), timeoutPromise])
+    // Run the expensive collectors fresh only for the active server or every
+    // HEAVY_COLLECT_EVERY_N polls; reuse the previous values in between.
+    const isActive = sid === activeServerId
+    const skipHeavy = !isActive && job.pollCount % HEAVY_COLLECT_EVERY_N !== 0
+    const collectPromise = intervalOverrides?.lightCollectors
+      ? collectMetricsCritical(job.server, controller.signal)
+      : collectMetrics(job.server, controller.signal, { skipHeavy })
+    let metrics = await Promise.race([collectPromise, timeoutPromise])
+
+    // Reuse the previous poll's heavy arrays when this poll skipped them, so UI
+    // panels and the autogrowth alert keep working between full collections.
+    if (skipHeavy) {
+      const prev = metricsHistory.get(sid)?.at(-1)
+      if (prev) {
+        metrics = {
+          ...metrics,
+          topQueries: prev.topQueries,
+          waitStats: prev.waitStats,
+          databaseFiles: prev.databaseFiles
+        }
+      }
+    }
 
     // Merge custom fields (alias, referente) into DatabaseInfo before pushing to the renderer
     let enrichedMetrics: ServerMetrics = {
@@ -556,7 +597,18 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     while (hist.length > cap) hist.shift()
     metricsHistory.set(sid, hist)
 
-    const delta = computeDelta(sid, enrichedMetrics)
+    // The heavy detail arrays (top queries, wait stats, disk volumes, database
+    // files) are only rendered in the *selected* server's detail tabs — and the
+    // Dashboard fetches the selected server directly via useMetrics. So for every
+    // non-active server we strip them from the pushed payload: at 200 servers
+    // that removes ~O(DBs×files) of JSON per server from every poll's IPC traffic
+    // and from the renderer store churn. Alerts and persistence below still use
+    // the full `enrichedMetrics`, so disk/autogrowth alert fidelity is unchanged.
+    const pushMetrics: ServerMetrics = isActive
+      ? enrichedMetrics
+      : { ...enrichedMetrics, topQueries: [], waitStats: [], diskVolumes: [], databaseFiles: [] }
+
+    const delta = computeDelta(sid, pushMetrics)
     enqueueBatchPush(sid, delta)
     processAlerts(sid, enrichedMetrics)
 
@@ -665,28 +717,48 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
 // Scheduler
 // ---------------------------------------------------------------------------
 
+// Coalesced reschedule — used from runJob's finally so a burst of completions
+// triggers a single scheduleTick rather than one O(jobs) pass per completion.
+function requestTick(): void {
+  if (pumpScheduled) return
+  pumpScheduled = true
+  queueMicrotask(() => {
+    pumpScheduled = false
+    scheduleTick()
+  })
+}
+
 function scheduleTick(): void {
   if (tickHandle) clearTimeout(tickHandle)
   if (jobs.size === 0) return
 
   const now = Date.now()
-  const dueSorted = [...jobs.values()]
-    .filter((j) => j.nextRun <= now)
-    .sort((a, b) => a.priority - b.priority)
+  // Single pass: collect due (non-in-flight) jobs AND the nearest nextRun.
+  // Previously this was two full materializations plus a Math.min(...spread)
+  // over every job — wasteful at 200 servers and called on every completion.
+  let minNext = Infinity
+  const due: PollJob[] = []
+  for (const job of jobs.values()) {
+    if (job.nextRun < minNext) minNext = job.nextRun
+    if (!job.inFlight && job.nextRun <= now) due.push(job)
+  }
+  if (due.length > 1) due.sort((a, b) => a.priority - b.priority)
 
-  for (const job of dueSorted) {
+  for (const job of due) {
     if (running >= BATCH_SIZE) break
     running++
+    job.inFlight = true
     const sid = serverId(job.server.ip, job.server.port)
     runJob(sid, job).finally(() => {
+      job.inFlight = false
       // Guard against negative counter when stopWorker() races an in-flight job
       if (running > 0) running--
-      scheduleTick()
+      requestTick()
     })
   }
 
-  // Schedule next tick at the nearest nextRun
-  const nextMs = Math.min(...[...jobs.values()].map((j) => j.nextRun))
+  // Schedule next tick at the nearest nextRun (backstop; min 1s).
+  const nextMs = minNext === Infinity ? now + 1_000 : minNext
   const delay = Math.max(nextMs - Date.now(), 1_000)
   tickHandle = setTimeout(scheduleTick, delay)
 }
@@ -774,6 +846,7 @@ export function stopWorker(): void {
   }
   jobs.clear()
   running = 0
+  pumpScheduled = false
   previousMetrics.clear()
 }
 
@@ -922,6 +995,7 @@ export function __resetForTests(): void {
   storedAlerts = []
   openAlertKeys.clear()
   alertCounter = 0
+  lastAlertPruneAt = 0
   activeServerId = null
   alertCallback = null
   incidentAlertCallback = null

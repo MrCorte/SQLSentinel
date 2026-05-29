@@ -51,6 +51,18 @@ function buildServerSummary(
   const dbs = m?.databases ?? []
   const ag = srv.agGroupId ? Object.values(agGroups).find((a) => a.id === srv.agGroupId) : undefined
   const alias = serverAliases[srv.id]
+  // Single pass over the DB list instead of 4 (2× filter + 2× reduce) — at
+  // 200 servers × dozens of DBs, recomputed whenever metrics tick, this matters.
+  let onlineCount = 0
+  let offlineCount = 0
+  let totalDataMb = 0
+  let totalLogMb = 0
+  for (const d of dbs) {
+    if (d.stateDesc === 'ONLINE') onlineCount++
+    else offlineCount++
+    totalDataMb += d.sizeMb ?? 0
+    totalLogMb += d.logSizeMb ?? 0
+  }
   return {
     serverId: srv.id,
     displayName: alias?.trim() || serverLabel(srv),
@@ -62,10 +74,10 @@ function buildServerSummary(
     edition: m?.instanceInfo.edition ?? '—',
     uptimeDays: m?.instanceInfo.uptimeDays ?? 0,
     dbCount: dbs.length,
-    onlineCount: dbs.filter((d) => d.stateDesc === 'ONLINE').length,
-    offlineCount: dbs.filter((d) => d.stateDesc !== 'ONLINE').length,
-    totalDataMb: dbs.reduce((s, d) => s + (d.sizeMb ?? 0), 0),
-    totalLogMb: dbs.reduce((s, d) => s + (d.logSizeMb ?? 0), 0),
+    onlineCount,
+    offlineCount,
+    totalDataMb,
+    totalLogMb,
     unreachable: srv.unreachable ?? false,
     isAg: !!srv.agGroupId,
     agName: ag?.ag_name,
@@ -83,10 +95,10 @@ function buildGroupInventory(
   groupName: string,
   groupColor: string,
   groupServers: StoredServer[],
-  serverAliases: Record<string, string>,
+  summaryById: Map<string, ServerSummary>,
   agGroups: ReturnType<typeof useAgStore.getState>['agGroups']
 ): GroupInventory {
-  const summaries = groupServers.map((s) => buildServerSummary(s, serverAliases, agGroups))
+  const summaries = groupServers.map((s) => summaryById.get(s.id)!)
   const standalone = summaries.filter((s) => !s.isAg)
   const agServerList = summaries.filter((s) => s.isAg)
 
@@ -139,6 +151,13 @@ export function computeInventory(): InventoryStats {
   const { groups, serverGroups, serverAliases } = useGroupsStore.getState()
   const agGroups = useAgStore.getState().agGroups
 
+  // Build each server's summary exactly once, then reuse it for the per-group
+  // sections and the totals — previously every server's summary was rebuilt
+  // twice (once in its group, once for allSummaries), each doing multiple O(DB)
+  // passes, on every metrics tick while the Inventory tab is open.
+  const summaryById = new Map<string, ServerSummary>()
+  for (const s of servers) summaryById.set(s.id, buildServerSummary(s, serverAliases, agGroups))
+
   const sortedGroups = [...groups].sort((a, b) => a.order - b.order)
   const groupInventories: GroupInventory[] = []
 
@@ -146,18 +165,18 @@ export function computeInventory(): InventoryStats {
   for (const g of sortedGroups) {
     const gs = servers.filter((s) => serverGroups[serverLabel(s)] === g.id)
     if (gs.length === 0) continue
-    groupInventories.push(buildGroupInventory(g.id, g.name, g.color, gs, serverAliases, agGroups))
+    groupInventories.push(buildGroupInventory(g.id, g.name, g.color, gs, summaryById, agGroups))
   }
 
   // Ungrouped servers
   const ungrouped = servers.filter((s) => !serverGroups[serverLabel(s)])
   if (ungrouped.length > 0) {
     groupInventories.push(
-      buildGroupInventory(null, 'Ungrouped', '#737373', ungrouped, serverAliases, agGroups)
+      buildGroupInventory(null, 'Ungrouped', '#737373', ungrouped, summaryById, agGroups)
     )
   }
 
-  const allSummaries = servers.map((s) => buildServerSummary(s, serverAliases, agGroups))
+  const allSummaries = servers.map((s) => summaryById.get(s.id)!)
   return {
     groups: groupInventories,
     totals: {

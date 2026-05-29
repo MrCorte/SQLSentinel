@@ -174,6 +174,16 @@ function buildConfig(conn: ServerConnection): mssql.config {
 
 // --- Query T-SQL ---
 
+// All collector reads run READ UNCOMMITTED so monitoring never takes blocking
+// shared locks on (or gets blocked by) catalog/DDL activity on the customer's
+// production server. The SET is batch-scoped, so it must prefix each query
+// (pool connections are reused, so a one-off connection SET wouldn't stick).
+const RU_PREFIX = 'SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;\n'
+
+function queryRU<T>(pool: mssql.ConnectionPool, sql: string): Promise<mssql.IResult<T>> {
+  return pool.request().query<T>(RU_PREFIX + sql)
+}
+
 /**
  * Info istanza: versione, edizione, memoria usata, CPU, uptime.
  * Fonti: sys.dm_os_process_memory + sys.dm_os_sys_info + @@VERSION + sys.dm_os_ring_buffers
@@ -213,7 +223,7 @@ async function queryInstanceInfo(pool: mssql.ConnectionPool): Promise<InstanceIn
     CROSS JOIN sys.dm_os_sys_info osi
   `
 
-  const result = await pool.request().query<InstanceInfoRow>(sql)
+  const result = await queryRU<InstanceInfoRow>(pool, sql)
   const row = result.recordset[0]
 
   return {
@@ -293,11 +303,11 @@ async function queryDatabases(pool: mssql.ConnectionPool): Promise<DatabaseInfo[
   })
 
   try {
-    const result = await pool.request().query<DatabaseInfoRow>(sqlFull)
+    const result = await queryRU<DatabaseInfoRow>(pool, sqlFull)
     return result.recordset.map(mapRow)
   } catch {
     log.warn('[collector] queryDatabases full query failed, falling back to simple query')
-    const result = await pool.request().query<DatabaseInfoRow>(sqlSimple)
+    const result = await queryRU<DatabaseInfoRow>(pool, sqlSimple)
     return result.recordset.map(mapRow)
   }
 }
@@ -321,7 +331,7 @@ async function querySessions(pool: mssql.ConnectionPool): Promise<SessionInfo[]>
     ORDER BY r.cpu_time DESC
   `
 
-  const result = await pool.request().query<SessionInfoRow>(sql)
+  const result = await queryRU<SessionInfoRow>(pool, sql)
 
   return result.recordset.map((row) => ({
     sessionId: row.session_id,
@@ -364,7 +374,7 @@ async function queryTopQueries(pool: mssql.ConnectionPool): Promise<QueryInfo[]>
     ORDER BY qs.total_elapsed_time DESC
   `
 
-  const result = await pool.request().query<QueryInfoRow>(sql)
+  const result = await queryRU<QueryInfoRow>(pool, sql)
 
   return result.recordset.map((row) => ({
     queryText: row.query_text,
@@ -405,7 +415,7 @@ async function queryBackupStatus(pool: mssql.ConnectionPool): Promise<BackupInfo
   // still treated as missing/overdue by alert evaluation.
   const sql = buildBackupStatusSql()
 
-  const result = await pool.request().query<BackupInfoRow>(sql)
+  const result = await queryRU<BackupInfoRow>(pool, sql)
 
   return result.recordset.map((row) => ({
     databaseName: row.database_name,
@@ -450,7 +460,7 @@ async function queryWaitStats(pool: mssql.ConnectionPool): Promise<WaitStatInfo[
     ORDER BY wait_time_ms DESC
   `
 
-  const result = await pool.request().query<WaitStatRow>(sql)
+  const result = await queryRU<WaitStatRow>(pool, sql)
 
   return result.recordset.map((row) => ({
     waitType: row.wait_type,
@@ -510,7 +520,7 @@ async function queryDiskVolumes(pool: mssql.ConnectionPool): Promise<DiskVolume[
     ORDER BY vs.volume_mount_point
   `
 
-  const result = await pool.request().query<DiskVolumeRow>(sql)
+  const result = await queryRU<DiskVolumeRow>(pool, sql)
   return result.recordset.map((row) => ({
     volume_mount_point: row.volume_mount_point,
     logical_volume_name: row.logical_volume_name ?? '',
@@ -549,7 +559,7 @@ async function queryDatabaseFiles(pool: mssql.ConnectionPool): Promise<DatabaseF
     ORDER BY db.name, mf.type_desc DESC
   `
 
-  const result = await pool.request().query<DatabaseFileRow>(sql)
+  const result = await queryRU<DatabaseFileRow>(pool, sql)
   return result.recordset.map((row) => ({
     database_name: row.database_name,
     file_name: row.file_name,
@@ -643,13 +653,21 @@ export async function detectServerInfo(connection: ServerConnection): Promise<Se
  */
 export async function collectMetrics(
   connection: ServerConnection,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  opts?: { skipHeavy?: boolean }
 ): Promise<ServerMetrics> {
   // On abort: invalidate the cached pool so the half-open connection isn't reused.
   const onAbort = (): void => {
     invalidatePool(connection)
   }
   signal?.addEventListener('abort', onAbort, { once: true })
+
+  // skipHeavy: omit the expensive, slow-changing collectors (top queries,
+  // wait stats, FILEPROPERTY-per-file database files). The worker runs these on
+  // a slower cadence and reuses the previous values in between — these feed UI
+  // detail panels + the autogrowth alert, none of which need 60s resolution.
+  // Disk volumes are kept on every poll because they drive disk-space alerts.
+  const skipHeavy = opts?.skipHeavy === true
 
   let invalidateOnFail = false
   try {
@@ -690,31 +708,37 @@ export async function collectMetrics(
         log.error('[collector] sessions:', sanitizeSqlError(err))
         return [] as SessionInfo[]
       }),
-      queryTopQueries(pool).catch((err: Error) => {
-        onConnErr(err)
-        log.error('[collector] top queries:', sanitizeSqlError(err))
-        return [] as QueryInfo[]
-      }),
+      skipHeavy
+        ? Promise.resolve([] as QueryInfo[])
+        : queryTopQueries(pool).catch((err: Error) => {
+            onConnErr(err)
+            log.error('[collector] top queries:', sanitizeSqlError(err))
+            return [] as QueryInfo[]
+          }),
       queryBackupStatus(pool).catch((err: Error) => {
         onConnErr(err)
         log.error('[collector] backup status:', sanitizeSqlError(err))
         return [] as BackupInfo[]
       }),
-      queryWaitStats(pool).catch((err: Error) => {
-        onConnErr(err)
-        log.error('[collector] wait stats:', sanitizeSqlError(err))
-        return [] as WaitStatInfo[]
-      }),
+      skipHeavy
+        ? Promise.resolve([] as WaitStatInfo[])
+        : queryWaitStats(pool).catch((err: Error) => {
+            onConnErr(err)
+            log.error('[collector] wait stats:', sanitizeSqlError(err))
+            return [] as WaitStatInfo[]
+          }),
       queryDiskVolumes(pool).catch((err: Error) => {
         onConnErr(err)
         log.error('[collector] disk volumes:', sanitizeSqlError(err))
         return [] as DiskVolume[]
       }),
-      queryDatabaseFiles(pool).catch((err: Error) => {
-        onConnErr(err)
-        log.error('[collector] database files:', sanitizeSqlError(err))
-        return [] as DatabaseFile[]
-      })
+      skipHeavy
+        ? Promise.resolve([] as DatabaseFile[])
+        : queryDatabaseFiles(pool).catch((err: Error) => {
+            onConnErr(err)
+            log.error('[collector] database files:', sanitizeSqlError(err))
+            return [] as DatabaseFile[]
+          })
     ])
 
     if (connectionErrored) invalidatePool(connection)

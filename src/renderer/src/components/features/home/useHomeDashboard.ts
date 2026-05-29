@@ -111,7 +111,11 @@ export function useHomeDashboard(onNavigateToServer: (id: string) => void): Home
 
   const now = useNow()
   const { groups, serverGroups, serverAliases } = useGroupsStore(
-    useShallow((s) => ({ groups: s.groups, serverGroups: s.serverGroups, serverAliases: s.serverAliases }))
+    useShallow((s) => ({
+      groups: s.groups,
+      serverGroups: s.serverGroups,
+      serverAliases: s.serverAliases
+    }))
   )
   const agGroups = useAgStore((s) => s.agGroups)
   const alerts = useAlertsStore((s) => s.alerts)
@@ -197,6 +201,11 @@ export function useHomeDashboard(onNavigateToServer: (id: string) => void): Home
 
     const offlineDbs: OfflineDb[] = servers.flatMap((s) => {
       const key = serverKey(s)
+      // Fast skip: the precomputed summary already counts offline DBs, so we
+      // avoid scanning the full database array for the (vast majority) healthy
+      // servers on every metrics tick.
+      const summary = summaries[key]
+      if (!summary || summary.offlineDbCount === 0) return []
       const m = metricsMap[key]
       if (!m) return []
       const srvName = serverAliases[s.id] || s.host || s.ip || key

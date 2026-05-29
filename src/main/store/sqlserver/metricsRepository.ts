@@ -59,6 +59,12 @@ export async function findLatest(serverId: string): Promise<ServerMetrics | null
   return JSON.parse(r.recordset[0].metrics_json, dateReviver) as ServerMetrics
 }
 
+// Hard cap on rows returned by a single history read. Each row carries a full
+// metrics_json blob (several KB), so an uncapped pull on a long retention window
+// (e.g. 90 days × 288 snapshots/day ≈ 26k rows) could transfer 100+ MB. Charts
+// can't render that many points anyway, so we always return the most recent N.
+const MAX_HISTORY_ROWS = 10000
+
 export async function findHistory(serverId: string, limitDays: number): Promise<MetricsSnapshot[]> {
   const pool = getPool()
   if (limitDays === 0) {
@@ -66,7 +72,7 @@ export async function findHistory(serverId: string, limitDays: number): Promise<
       .request()
       .input('server_id', sql.NVarChar(36), serverId)
       .query<SnapshotRow>(
-        `SELECT TOP 10000 id, server_id, collected_at, metrics_json
+        `SELECT TOP ${MAX_HISTORY_ROWS} id, server_id, collected_at, metrics_json
        FROM dbo.metrics_snapshots
        WHERE server_id = @server_id
        ORDER BY collected_at DESC`
@@ -78,7 +84,7 @@ export async function findHistory(serverId: string, limitDays: number): Promise<
     .input('server_id', sql.NVarChar(36), serverId)
     .input('days', sql.Int, Math.abs(limitDays))
     .query<SnapshotRow>(
-      `SELECT id, server_id, collected_at, metrics_json FROM dbo.metrics_snapshots WHERE server_id = @server_id AND collected_at >= DATEADD(DAY, -@days, GETUTCDATE()) ORDER BY collected_at DESC`
+      `SELECT TOP ${MAX_HISTORY_ROWS} id, server_id, collected_at, metrics_json FROM dbo.metrics_snapshots WHERE server_id = @server_id AND collected_at >= DATEADD(DAY, -@days, GETUTCDATE()) ORDER BY collected_at DESC`
     )
   return r.recordset.map(rowToSnapshot)
 }
@@ -138,8 +144,7 @@ export async function findLastNBulk(
   const r = await pool
     .request()
     .input('serverIds', sql.NVarChar(sql.MAX), safe.join(','))
-    .input('n', sql.Int, n)
-    .query<SnapshotRow>(`
+    .input('n', sql.Int, n).query<SnapshotRow>(`
       SELECT id, server_id, collected_at, metrics_json
       FROM (
         SELECT id, server_id, collected_at, metrics_json,

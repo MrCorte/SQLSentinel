@@ -72,7 +72,9 @@ export function Dashboard(): React.JSX.Element {
     () => servers.find((s) => s.id === selectedServerId) ?? null,
     [servers, selectedServerId]
   )
-  const [selectedAgName, _setSelectedAgName] = useState<string | null>(null)
+  // Shared via appStore so the sidebar AG header and the HomeDashboard AG header
+  // both drive this view (was previously dead local state).
+  const selectedAgName = useAppStore((s) => s.selectedAgName)
   const [retriggering, setRetriggering] = useState(false)
 
   const { intervalSeconds, setIntervalSeconds, setConnection, pushSnapshot } = useWorker()
@@ -107,7 +109,14 @@ export function Dashboard(): React.JSX.Element {
   useEffect(() => {
     setConnection(connection)
     // Only re-notify worker when actual connection params change, not on metadata patches
-  }, [connection?.ip, connection?.port, connection?.instanceName, connection?.useWindowsAuth, connection?.username, connection?.password]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    connection?.ip,
+    connection?.port,
+    connection?.instanceName,
+    connection?.useWindowsAuth,
+    connection?.username,
+    connection?.password
+  ]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!serverMetricsKey) return
@@ -396,7 +405,10 @@ export function Dashboard(): React.JSX.Element {
             }
 
             return displayMetrics ? (
-              <Box key={serverMetricsKey ?? ''} sx={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+              <Box
+                key={serverMetricsKey ?? ''}
+                sx={{ flex: 1, overflow: 'auto', position: 'relative' }}
+              >
                 {/* Silent refresh bar — does not block the UI */}
                 {isLoading && (
                   <LinearProgress

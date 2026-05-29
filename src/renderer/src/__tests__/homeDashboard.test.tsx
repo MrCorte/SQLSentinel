@@ -89,7 +89,7 @@ describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
   it('does not throw "Rendered more hooks than during previous render" when servers changes from [] to [srv]', () => {
     // Starting point: empty list → shows <EmptyState>
     const { rerender } = render(
-      <HomeDashboard onNavigateToServer={noop} onNavigateToDiscovery={noop} />
+      <HomeDashboard onNavigateToServer={noop} onNavigateToAg={noop} onNavigateToDiscovery={noop} />
     )
 
     expect(screen.getAllByText(/no monitored servers/i).length).toBeGreaterThan(0)
@@ -105,7 +105,11 @@ describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
     // No errors mean hooks are stable across renders
     expect(() =>
       rerender(
-        <HomeDashboard onNavigateToServer={noop} onNavigateToDiscovery={noop} />
+        <HomeDashboard
+          onNavigateToServer={noop}
+          onNavigateToAg={noop}
+          onNavigateToDiscovery={noop}
+        />
       )
     ).not.toThrow()
   })
@@ -114,7 +118,7 @@ describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
     useServersStore.setState({ servers: [makeStoredServer('10.0.0.1')], initialized: true })
 
     const { rerender } = render(
-      <HomeDashboard onNavigateToServer={noop} onNavigateToDiscovery={noop} />
+      <HomeDashboard onNavigateToServer={noop} onNavigateToAg={noop} onNavigateToDiscovery={noop} />
     )
 
     act(() => {
@@ -135,14 +139,18 @@ describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
 
     expect(() =>
       rerender(
-        <HomeDashboard onNavigateToServer={noop} onNavigateToDiscovery={noop} />
+        <HomeDashboard
+          onNavigateToServer={noop}
+          onNavigateToAg={noop}
+          onNavigateToDiscovery={noop}
+        />
       )
     ).not.toThrow()
   })
 
   it('shows EmptyState only when servers is empty', () => {
     render(
-      <HomeDashboard onNavigateToServer={noop} onNavigateToDiscovery={noop} />
+      <HomeDashboard onNavigateToServer={noop} onNavigateToAg={noop} onNavigateToDiscovery={noop} />
     )
     expect(screen.getAllByText(/no monitored servers/i).length).toBeGreaterThan(0)
   })
@@ -154,7 +162,7 @@ describe('AREA 4 — HomeDashboard: Rules of Hooks', () => {
     })
 
     render(
-      <HomeDashboard onNavigateToServer={noop} onNavigateToDiscovery={noop} />
+      <HomeDashboard onNavigateToServer={noop} onNavigateToAg={noop} onNavigateToDiscovery={noop} />
     )
 
     // Must show the Home Dashboard with the "Total" KPI card (label was
@@ -175,14 +183,14 @@ describe('AREA 4 — HomeDashboard: useMemo does not recalculate unnecessarily',
     })
 
     const { rerender } = render(
-      <HomeDashboard onNavigateToServer={noop} onNavigateToDiscovery={noop} />
+      <HomeDashboard onNavigateToServer={noop} onNavigateToAg={noop} onNavigateToDiscovery={noop} />
     )
 
     const kpiBefore = screen.getAllByText('2').length // "2" as KPI value
 
     // Re-render with same props and same store — memo must not change output
     rerender(
-      <HomeDashboard onNavigateToServer={noop} onNavigateToDiscovery={noop} />
+      <HomeDashboard onNavigateToServer={noop} onNavigateToAg={noop} onNavigateToDiscovery={noop} />
     )
 
     expect(screen.getAllByText('2').length).toBe(kpiBefore)

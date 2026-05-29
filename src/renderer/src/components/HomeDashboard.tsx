@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Box, Typography } from '@mui/material'
 import { useHomeDashboard } from './features/home/useHomeDashboard'
 import { DashboardCharts } from './features/home/DashboardCharts'
@@ -12,6 +12,7 @@ import { useAppStore } from '../store/appStore'
 
 interface Props {
   onNavigateToServer: (serverId: string) => void
+  onNavigateToAg: (agName: string) => void
   onNavigateToDiscovery: () => void
 }
 
@@ -73,6 +74,7 @@ function KpiCard({
 
 export function HomeDashboard({
   onNavigateToServer,
+  onNavigateToAg,
   onNavigateToDiscovery
 }: Props): React.JSX.Element {
   const {
@@ -94,6 +96,21 @@ export function HomeDashboard({
   } = useHomeDashboard(onNavigateToServer)
 
   const setSelectedServerId = useAppStore((s) => s.setSelectedServerId)
+
+  // Count Always On groups shown in the table (AGs with 2+ replicas), keyed by
+  // agName the same way ServerTable clusters them.
+  const agGroupCount = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const s of servers) {
+      const k = s.agName?.trim().toLowerCase()
+      if (k) counts.set(k, (counts.get(k) ?? 0) + 1)
+    }
+    let n = 0
+    counts.forEach((c) => {
+      if (c >= 2) n++
+    })
+    return n
+  }, [servers])
 
   const handleNavigate = useCallback(
     (serverId: string) => {
@@ -155,6 +172,9 @@ export function HomeDashboard({
           color={offlineCount > 0 ? tokens.color.danger : tokens.color.textMuted}
         />
         <KpiCard label="Online" value={onlineCount} color={tokens.color.success} />
+        {agGroupCount > 0 && (
+          <KpiCard label="Always On" value={agGroupCount} color={tokens.color.accent} />
+        )}
       </Box>
 
       {/* ---- Charts ---- */}
@@ -178,6 +198,7 @@ export function HomeDashboard({
         serverAliases={serverAliases}
         now={now}
         onNavigate={handleNavigate}
+        onNavigateToAg={onNavigateToAg}
       />
     </Box>
   )

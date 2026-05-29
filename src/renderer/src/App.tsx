@@ -8,24 +8,14 @@ import { Incidents } from './pages/Incidents'
 // LoginPage are reached only on demand. Discovery and Inventory are
 // secondary tabs not visited on cold start — deferring them shaves ~600KB from
 // the initial bundle and reduces TTI further.
-const AIPanel = lazy(() =>
-  import('./components/ai/AIPanel').then((m) => ({ default: m.AIPanel }))
-)
-const Settings = lazy(() =>
-  import('./pages/Settings').then((m) => ({ default: m.Settings }))
-)
-const LoginPage = lazy(() =>
-  import('./pages/Login').then((m) => ({ default: m.LoginPage }))
-)
+const AIPanel = lazy(() => import('./components/ai/AIPanel').then((m) => ({ default: m.AIPanel })))
+const Settings = lazy(() => import('./pages/Settings').then((m) => ({ default: m.Settings })))
+const LoginPage = lazy(() => import('./pages/Login').then((m) => ({ default: m.LoginPage })))
 const StorageSetupPage = lazy(() =>
   import('./pages/StorageSetupPage').then((m) => ({ default: m.StorageSetupPage }))
 )
-const Discovery = lazy(() =>
-  import('./pages/Discovery').then((m) => ({ default: m.Discovery }))
-)
-const Inventory = lazy(() =>
-  import('./pages/Inventory').then((m) => ({ default: m.Inventory }))
-)
+const Discovery = lazy(() => import('./pages/Discovery').then((m) => ({ default: m.Discovery })))
+const Inventory = lazy(() => import('./pages/Inventory').then((m) => ({ default: m.Inventory })))
 import { AlertsDrawer } from './components/AlertsDrawer'
 import { GlobalSnackbar } from './components/GlobalSnackbar'
 import { AgReplicaSuggestionDialog } from './components/AgReplicaSuggestionDialog'
@@ -86,6 +76,8 @@ function AppInner(): React.JSX.Element {
   const acknowledgeAlertInStore = useAlertsStore((s) => s.acknowledgeAlert)
   const selectedServerId = useAppStore((s) => s.selectedServerId)
   const setSelectedServerId = useAppStore((s) => s.setSelectedServerId)
+  const selectedAgName = useAppStore((s) => s.selectedAgName)
+  const setSelectedAgName = useAppStore((s) => s.setSelectedAgName)
   const servers = useServersStore((s) => s.servers)
   const incidentBadge = useIncidentsStore((s) => s.openCount)
   const serverAliases = useGroupsStore((s) => s.serverAliases)
@@ -104,8 +96,6 @@ function AppInner(): React.JSX.Element {
       alias: serverAliases[selectedServer.id]
     })
   }, [selectedServer, serverAliases])
-  const [selectedAgName, setSelectedAgName] = useState<string | null>(null)
-
   // Load persisted servers on mount — runs in both real and mock mode so that
   // servers added manually while VITE_USE_MOCK=true are preserved across restarts
   useEffect(() => {
@@ -278,7 +268,10 @@ function AppInner(): React.JSX.Element {
     const unsubUpdated = window.sqlSentinel.incidents.onUpdated((incident) => {
       useIncidentsStore.getState().upsertIncident(incident)
     })
-    return () => { unsubCreated(); unsubUpdated() }
+    return () => {
+      unsubCreated()
+      unsubUpdated()
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAlertNew = useCallback(
@@ -313,10 +306,7 @@ function AppInner(): React.JSX.Element {
       })
       .catch((err) => {
         log.error('acknowledgeAlert failed:', err)
-        notify.error(
-          err instanceof Error ? err.message : String(err),
-          'Acknowledge failed'
-        )
+        notify.error(err instanceof Error ? err.message : String(err), 'Acknowledge failed')
       })
   }
 
@@ -332,7 +322,12 @@ function AppInner(): React.JSX.Element {
     <AccentProvider>
       <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
         {/* Icon Rail */}
-        <IconRail activeTab={tab} onTabChange={setTab} onSettingsClick={() => setTab(4)} incidentBadge={incidentBadge} />
+        <IconRail
+          activeTab={tab}
+          onTabChange={setTab}
+          onSettingsClick={() => setTab(4)}
+          incidentBadge={incidentBadge}
+        />
 
         {/* Right of rail: breadcrumb + (tree + content) */}
         <Box
@@ -359,6 +354,7 @@ function AppInner(): React.JSX.Element {
                 selectedAgName={selectedAgName}
                 onSelectServer={handleSelectServer}
                 onSelectAg={(agName) => {
+                  setSelectedServerId(null)
                   setSelectedAgName(agName)
                   setTab(3)
                 }}
@@ -375,7 +371,13 @@ function AppInner(): React.JSX.Element {
                 <Box sx={{ height: '100%', overflow: 'auto' }}>
                   <HomeDashboard
                     onNavigateToServer={(id) => {
+                      setSelectedAgName(null)
                       setSelectedServerId(id)
+                      setTab(3)
+                    }}
+                    onNavigateToAg={(agName) => {
+                      setSelectedServerId(null)
+                      setSelectedAgName(agName)
                       setTab(3)
                     }}
                     onNavigateToDiscovery={() => setTab(1)}

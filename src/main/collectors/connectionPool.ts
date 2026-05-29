@@ -22,6 +22,10 @@ const cache = new Map<string, CachedPool>()
 // each opening a separate pool for the same connection key. The first wins;
 // the second awaits its result.
 const inflight = new Map<string, Promise<mssql.ConnectionPool>>()
+// Keys whose connect was in-flight when invalidatePool() fired. openPool checks
+// this after connecting and discards (instead of caching) the fresh pool, so an
+// abort/error that races the initial connect can't leave a live pool uncached.
+const invalidatedDuringConnect = new Set<string>()
 let sweepTimer: ReturnType<typeof setInterval> | null = null
 let shuttingDown = false
 
@@ -128,6 +132,14 @@ async function openPool(key: string, conn: ServerConnection): Promise<mssql.Conn
 
   await pool.connect()
 
+  // Invalidation guard: if invalidatePool() fired while we were connecting, the
+  // caller no longer wants this pool (credential rotation, abort, hard error).
+  // Discard it rather than caching a pool that escaped the invalidation.
+  if (invalidatedDuringConnect.delete(key)) {
+    pool.close().catch(() => {})
+    throw new Error('connection pool invalidated during connect')
+  }
+
   // Race guard: if we were beaten to the punch by another openPool that set
   // a different entry, close ours and return theirs. Cheap because both
   // pools are warm — but only ours leaks a TLS handshake worth of work.
@@ -175,6 +187,8 @@ export async function getPool(conn: ServerConnection): Promise<mssql.ConnectionP
 
   const promise = openPool(key, conn).finally(() => {
     inflight.delete(key)
+    // Safety net: clear any tombstone openPool didn't consume (e.g. connect threw).
+    invalidatedDuringConnect.delete(key)
   })
   inflight.set(key, promise)
   return promise
@@ -186,6 +200,10 @@ export async function getPool(conn: ServerConnection): Promise<mssql.ConnectionP
  */
 export function invalidatePool(conn: ServerConnection): void {
   const key = buildKey(conn)
+  // If a connect is still in flight, tombstone the key so openPool discards the
+  // pool it's about to produce — otherwise it would cache a pool we just asked
+  // to drop.
+  if (inflight.has(key)) invalidatedDuringConnect.add(key)
   const entry = cache.get(key)
   if (!entry) return
   cache.delete(key)
@@ -226,6 +244,7 @@ export function __resetForTests(): void {
   shuttingDown = false
   cache.clear()
   inflight.clear()
+  invalidatedDuringConnect.clear()
   if (sweepTimer) {
     clearInterval(sweepTimer)
     sweepTimer = null

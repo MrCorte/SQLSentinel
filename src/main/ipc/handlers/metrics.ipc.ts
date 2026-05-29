@@ -69,6 +69,9 @@ export function registerMetricsHandlers(): void {
       _event: IpcMainInvokeEvent,
       req: HistoryRequest
     ): Promise<IpcResult<ServerMetrics[]>> => {
+      if (typeof req?.ip !== 'string' || !Number.isInteger(req?.port)) {
+        return { ok: false, error: 'Invalid history request' }
+      }
       const history = getHistory(req.ip, req.port)
       log.info(
         '[Main] metrics:history richiesta per',

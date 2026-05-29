@@ -91,13 +91,13 @@ export enum IpcChannel {
   // Vector index — dev helper to reload the in-memory embeddings after re-ingest
   AI_VEC_RELOAD = 'ai:vecReload',
   // AI feedback (thumbs up/down) + dynamic TSQL map
-  AI_SAVE_FEEDBACK              = 'ai:saveFeedback',
-  AI_LIST_FEEDBACK              = 'ai:listFeedback',
-  AI_DELETE_FEEDBACK            = 'ai:deleteFeedback',
-  AI_LIST_PROMOTION_CANDIDATES  = 'ai:listPromotionCandidates',
-  AI_PROMOTE_TO_TSQL_MAP        = 'ai:promoteToTsqlMap',
-  AI_LIST_TSQL_MAP              = 'ai:listTsqlMap',
-  AI_DELETE_TSQL_MAP_ENTRY      = 'ai:deleteTsqlMapEntry',
+  AI_SAVE_FEEDBACK = 'ai:saveFeedback',
+  AI_LIST_FEEDBACK = 'ai:listFeedback',
+  AI_DELETE_FEEDBACK = 'ai:deleteFeedback',
+  AI_LIST_PROMOTION_CANDIDATES = 'ai:listPromotionCandidates',
+  AI_PROMOTE_TO_TSQL_MAP = 'ai:promoteToTsqlMap',
+  AI_LIST_TSQL_MAP = 'ai:listTsqlMap',
+  AI_DELETE_TSQL_MAP_ENTRY = 'ai:deleteTsqlMapEntry',
   // Storage connection management
   STORAGE_GET_CONFIG = 'storage:get-config',
   STORAGE_TEST_CONNECTION = 'storage:test-connection',
@@ -237,6 +237,13 @@ export interface Alert {
   message: string
   /** Actionable hint shown below the alert message in the UI */
   suggestion?: string
+  /**
+   * Optional dedup discriminator for multiple distinct conditions that share the
+   * same (category, severity) — e.g. low-volume-space vs autogrowth-disabled
+   * both map to disk_space_low/WARNING. Folded into the dedup key so one doesn't
+   * suppress the other. Not shown in the UI.
+   */
+  dedupTag?: string
   detectedAt: Date
   acknowledgedAt: Date | null
 }
@@ -407,6 +414,8 @@ export interface ShrinkResult {
   newSizeMb?: number
   reclaimedMb?: number
   error?: string
+  /** Non-fatal operator warning (e.g. the log backup chain was broken). */
+  warning?: string
 }
 
 // --- Always On Availability Groups ---

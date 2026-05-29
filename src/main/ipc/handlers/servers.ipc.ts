@@ -42,6 +42,9 @@ import type { ScanOptions } from '../../discovery/types'
 // from a single location without reaching into the service layer themselves.
 export { resolveConnection }
 
+// IPv4 dotted-quad — used to bound renderer-supplied IPs before outbound lookups.
+const IPV4_RE = /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)$/
+
 // Single-shot scan controller — only one scan runs at a time. A new SCAN_SUBNET
 // invocation aborts the previous one (defensive) and SCAN_CANCEL aborts the active one.
 let activeScanController: AbortController | null = null
@@ -219,6 +222,11 @@ export function registerServerHandlers(): void {
     IpcChannel.RESOLVE_HOSTNAME,
     async (_event: IpcMainInvokeEvent, ip: string): Promise<IpcResult<string>> => {
       try {
+        // Validate the IPv4 shape before issuing a PTR lookup — otherwise a
+        // hijacked renderer could trigger arbitrary outbound reverse-DNS queries.
+        if (typeof ip !== 'string' || !IPV4_RE.test(ip)) {
+          return { ok: false, error: 'Invalid IPv4 address' }
+        }
         const hostnames = await dns.reverse(ip)
         const hostname = (hostnames[0] ?? '').replace(/\.$/, '')
         return hostname ? { ok: true, data: hostname } : { ok: false, error: 'No PTR record' }
@@ -264,25 +272,22 @@ export function registerServerHandlers(): void {
   )
 
   // SERVERS_EXPORT_BACKUP — shows Save dialog, writes JSON backup sans passwords
-  handle(
-    IpcChannel.SERVERS_EXPORT_BACKUP,
-    async (): Promise<IpcResult<{ saved: boolean }>> => {
-      try {
-        const { canceled, filePath } = await dialog.showSaveDialog({
-          title: 'Export server backup',
-          defaultPath: `sqlsentinel-backup-${new Date().toISOString().slice(0, 10)}.json`,
-          filters: [{ name: 'JSON backup', extensions: ['json'] }]
-        })
-        if (canceled || !filePath) return { ok: true, data: { saved: false } }
-        const json = exportForBackup()
-        writeFileSync(filePath, json, 'utf8')
-        return { ok: true, data: { saved: true } }
-      } catch (err) {
-        log.error('[IPC] SERVERS_EXPORT_BACKUP:', safeError(err))
-        return { ok: false, error: safeError(err) }
-      }
+  handle(IpcChannel.SERVERS_EXPORT_BACKUP, async (): Promise<IpcResult<{ saved: boolean }>> => {
+    try {
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        title: 'Export server backup',
+        defaultPath: `sqlsentinel-backup-${new Date().toISOString().slice(0, 10)}.json`,
+        filters: [{ name: 'JSON backup', extensions: ['json'] }]
+      })
+      if (canceled || !filePath) return { ok: true, data: { saved: false } }
+      const json = exportForBackup()
+      writeFileSync(filePath, json, 'utf8')
+      return { ok: true, data: { saved: true } }
+    } catch (err) {
+      log.error('[IPC] SERVERS_EXPORT_BACKUP:', safeError(err))
+      return { ok: false, error: safeError(err) }
     }
-  )
+  })
 
   // SERVERS_IMPORT_BACKUP — shows Open dialog, imports servers from JSON backup
   handle(

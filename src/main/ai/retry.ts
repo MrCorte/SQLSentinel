@@ -3,10 +3,19 @@ import { createLogger } from '../utils/logger'
 const log = createLogger('retry')
 
 function isRetryable(err: unknown): boolean {
+  // Prefer a structured HTTP status when the error carries one (Anthropic SDK,
+  // node-fetch, etc.) — far more reliable than scanning the message text.
+  const status =
+    (err as { status?: unknown; statusCode?: unknown })?.status ??
+    (err as { statusCode?: unknown })?.statusCode
+  if (typeof status === 'number') {
+    return status === 429 || (status >= 500 && status <= 599)
+  }
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase()
   if (/econnrefused|econnreset|etimedout|epipe|enotfound/.test(msg)) return true
-  // HTTP 429 rate-limit and 5xx server errors
-  if (/\b(429|500|502|503|504)\b/.test(msg)) return true
+  // HTTP 429 rate-limit and 5xx server errors. Require an http/status qualifier
+  // so we don't retry on incidental numbers (e.g. "returned 500 rows").
+  if (/\b(status|code|http)\b\D{0,8}(429|5\d\d)\b/.test(msg)) return true
   return false
 }
 

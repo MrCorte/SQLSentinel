@@ -8,7 +8,11 @@ import { login, logout, getSession, isAuthenticated, changePassword } from '../.
 import { buildCsvContent } from '../../csvUtils'
 import { getEmailSettings, saveEmailSettings } from '../../store/sqlserver/emailSettingsRepository'
 import { sendTestEmail } from '../../emailService'
-import { getCustomFields, setCustomFields, getAllCustomFields } from '../../store/sqlserver/dbCustomFieldsRepository'
+import {
+  getCustomFields,
+  setCustomFields,
+  getAllCustomFields
+} from '../../store/sqlserver/dbCustomFieldsRepository'
 import { getShrinkEstimate, shrinkDatabase, shrinkFile } from '../../collectors/dbAdmin'
 import {
   getAvailabilityGroups,
@@ -46,6 +50,13 @@ import {
   type AuthSession
 } from '../types'
 import { resolveConnection } from './servers.ipc'
+
+// serverId is "ip:port" and dbName is a SQL identifier; both are used as map
+// keys / parameterized inputs downstream. Bound them so a hijacked renderer
+// can't push unbounded/garbage keys into the custom-fields store.
+function isValidCustomFieldKey(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= 256
+}
 
 export function registerSystemHandlers(): void {
   // App version — surfaced in the UI for support / triage. Reads from
@@ -202,6 +213,9 @@ export function registerSystemHandlers(): void {
       _event: IpcMainInvokeEvent,
       req: DbCustomFieldsGetRequest
     ): Promise<IpcResult<DbCustomFields>> => {
+      if (!isValidCustomFieldKey(req?.serverId) || !isValidCustomFieldKey(req?.dbName)) {
+        return { ok: false, error: 'Invalid serverId/dbName' }
+      }
       return { ok: true, data: await getCustomFields(req.serverId, req.dbName) }
     }
   )
@@ -210,6 +224,12 @@ export function registerSystemHandlers(): void {
   handle(
     IpcChannel.DB_SET_CUSTOM_FIELDS,
     async (_event: IpcMainInvokeEvent, req: DbCustomFieldsSetRequest): Promise<IpcResult<null>> => {
+      if (!isValidCustomFieldKey(req?.serverId) || !isValidCustomFieldKey(req?.dbName)) {
+        return { ok: false, error: 'Invalid serverId/dbName' }
+      }
+      if (typeof req.fields !== 'object' || req.fields === null) {
+        return { ok: false, error: 'Invalid fields' }
+      }
       await setCustomFields(req.serverId, req.dbName, req.fields)
       return { ok: true, data: null }
     }

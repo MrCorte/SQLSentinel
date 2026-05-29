@@ -126,7 +126,7 @@ function nextAlertId(): string {
 }
 
 // Injectable push handler — set by the host process (Electron or service)
-let _pushHandler: ((channel: string, data: unknown) => void) = () => {}
+let _pushHandler: (channel: string, data: unknown) => void = () => {}
 
 export function setPushHandler(fn: (channel: string, data: unknown) => void): void {
   _pushHandler = fn
@@ -187,9 +187,7 @@ async function flushSaveQueue(): Promise<void> {
       // exceed the retry budget so a permanently failing storage can't OOM us.
       if (failedBatches.length >= MAX_FAILED_BATCHES) {
         const dropped = failedBatches.shift()
-        log.warn(
-          `[worker] DLQ overflow: dropping oldest batch of ${dropped?.length ?? 0} item(s)`
-        )
+        log.warn(`[worker] DLQ overflow: dropping oldest batch of ${dropped?.length ?? 0} item(s)`)
       }
       failedBatches.push(batch)
       anyFailed = true
@@ -328,7 +326,8 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
     category: AlertCategory,
     severity: AlertSeverity,
     message: string,
-    suggestion?: string
+    suggestion?: string,
+    dedupTag?: string
   ): Alert {
     return {
       id: nextAlertId(),
@@ -337,6 +336,7 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
       severity,
       message,
       suggestion,
+      dedupTag,
       detectedAt: now,
       acknowledgedAt: null
     }
@@ -409,7 +409,13 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
       .map((v) => `${v.volume_mount_point} (${v.free_pct.toFixed(1)}% free)`)
       .join(', ')
     alerts.push(
-      make('disk_space_low', 'CRITICAL', `Volume space critical: ${desc}`, shrinkSuggestion(criticalVolumes))
+      make(
+        'disk_space_low',
+        'CRITICAL',
+        `Volume space critical: ${desc}`,
+        shrinkSuggestion(criticalVolumes),
+        'volume'
+      )
     )
   }
   if (warnVolumes.length > 0) {
@@ -417,26 +423,41 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
       .map((v) => `${v.volume_mount_point} (${v.free_pct.toFixed(1)}% free)`)
       .join(', ')
     alerts.push(
-      make('disk_space_low', 'WARNING', `Volume space running low: ${desc}`, shrinkSuggestion(warnVolumes))
+      make(
+        'disk_space_low',
+        'WARNING',
+        `Volume space running low: ${desc}`,
+        shrinkSuggestion(warnVolumes),
+        'volume'
+      )
     )
   }
 
-  // Autogrowth disabled with low available space
+  // Autogrowth disabled with low available space. Distinct dedupTag so this
+  // WARNING isn't suppressed by the warn-volume WARNING (same category/severity).
   const noGrowthLowSpace = databaseFiles.filter((f) => f.growth === 0 && f.free_mb < 100)
   if (noGrowthLowSpace.length > 0) {
     const desc = noGrowthLowSpace
       .map((f) => `${f.database_name} (${f.type_desc}): ${f.free_mb.toFixed(0)} MB free`)
       .join(', ')
-    alerts.push(make('disk_space_low', 'WARNING', `Autogrowth disabled: ${desc}`))
+    alerts.push(
+      make('disk_space_low', 'WARNING', `Autogrowth disabled: ${desc}`, undefined, 'autogrowth')
+    )
   }
 
   return alerts
 }
 
+/** Dedup key — includes dedupTag so distinct same-category/severity conditions
+ * (e.g. low-volume vs autogrowth) don't suppress each other. */
+function alertKey(a: Alert): string {
+  return `${a.serverId}:${a.category}:${a.severity}:${a.dedupTag ?? ''}`
+}
+
 function processAlerts(sid: string, metrics: ServerMetrics): void {
   const candidates = evaluateAlerts(sid, metrics)
   for (const alert of candidates) {
-    const key = `${alert.serverId}:${alert.category}:${alert.severity}`
+    const key = alertKey(alert)
     if (openAlertKeys.has(key)) continue // dedup hit, skip
     storedAlerts.push(alert)
     openAlertKeys.set(key, alert.id)
@@ -468,7 +489,7 @@ function rebuildOpenAlertKeys(): void {
   openAlertKeys.clear()
   for (const a of storedAlerts) {
     if (a.acknowledgedAt === null) {
-      openAlertKeys.set(`${a.serverId}:${a.category}:${a.severity}`, a.id)
+      openAlertKeys.set(alertKey(a), a.id)
     }
   }
 }
@@ -831,7 +852,7 @@ export function acknowledgeAlert(alertId: string): boolean {
   // Drop from the dedup map so a fresh alert in the same category can re-fire
   // immediately after the operator acknowledges. Without this, the dedup
   // would keep blocking new alerts indefinitely.
-  openAlertKeys.delete(`${alert.serverId}:${alert.category}:${alert.severity}`)
+  openAlertKeys.delete(alertKey(alert))
   return true
 }
 

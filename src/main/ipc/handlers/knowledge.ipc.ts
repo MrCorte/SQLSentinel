@@ -17,10 +17,7 @@ import {
   removeByQuestion as removeByQuestionFromIndex,
   preWarm as preWarmFeedbackIndex
 } from '../../ai/feedbackIndex'
-import {
-  invalidate as invalidateResponseCache,
-  putCachedApproved
-} from '../../ai/responseCache'
+import { invalidate as invalidateResponseCache, putCachedApproved } from '../../ai/responseCache'
 import {
   insertFeedback,
   listAll as listAllFeedback,
@@ -41,6 +38,36 @@ import {
   type TsqlMapEntryDto,
   type PromoteToTsqlMapInput
 } from '../types'
+
+// Promoted map entries become trusted query templates the agent can later run,
+// so validate the renderer-supplied payload before persisting it: bound the key
+// charset/length, cap the SQL size, and reject anything that isn't read-only.
+const KEY_NAME_RE = /^[a-z0-9_-]{1,64}$/i
+// Statement-modifying / out-of-server constructs that must never appear in a
+// promoted (auto-runnable) template. Mirrors executeReadOnly.WRITE_PATTERN.
+const TSQL_WRITE_PATTERN =
+  /\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE|EXEC|EXECUTE|MERGE|BULK|GRANT|REVOKE|DENY|KILL|DBCC|CHECKPOINT|BACKUP|RESTORE|RECONFIGURE|SHUTDOWN|OPENROWSET|OPENQUERY|OPENDATASOURCE|WAITFOR|xp_cmdshell|sp_configure|sp_executesql)\b/i
+
+function validatePromotionInput(input: PromoteToTsqlMapInput): string | null {
+  if (!input || typeof input.keyName !== 'string' || !KEY_NAME_RE.test(input.keyName)) {
+    return 'Invalid keyName (allowed: letters, digits, _ -, 1-64 chars)'
+  }
+  if (typeof input.tsql !== 'string' || input.tsql.length === 0 || input.tsql.length > 8000) {
+    return 'Invalid tsql (must be 1-8000 chars)'
+  }
+  if (TSQL_WRITE_PATTERN.test(input.tsql)) {
+    return 'Promoted T-SQL must be read-only (no write/EXEC/DBCC/etc.)'
+  }
+  if (input.aliases != null) {
+    if (
+      !Array.isArray(input.aliases) ||
+      input.aliases.some((a) => typeof a !== 'string' || a.length > 128)
+    ) {
+      return 'Invalid aliases'
+    }
+  }
+  return null
+}
 
 export function registerKnowledgeHandlers(): void {
   handle(IpcChannel.AI_CHECK, async (): Promise<IpcResult<boolean>> => {
@@ -174,18 +201,15 @@ export function registerKnowledgeHandlers(): void {
     }
   })
 
-  handle(
-    IpcChannel.AI_DELETE_FEEDBACK,
-    async (_event, id: string): Promise<IpcResult<void>> => {
-      try {
-        await deleteFeedbackRow(id)
-        removeFeedbackRow(id)
-        return { ok: true, data: undefined }
-      } catch (err) {
-        return { ok: false, error: safeError(err) }
-      }
+  handle(IpcChannel.AI_DELETE_FEEDBACK, async (_event, id: string): Promise<IpcResult<void>> => {
+    try {
+      await deleteFeedbackRow(id)
+      removeFeedbackRow(id)
+      return { ok: true, data: undefined }
+    } catch (err) {
+      return { ok: false, error: safeError(err) }
     }
-  )
+  })
 
   handle(
     IpcChannel.AI_LIST_PROMOTION_CANDIDATES,
@@ -203,6 +227,8 @@ export function registerKnowledgeHandlers(): void {
     IpcChannel.AI_PROMOTE_TO_TSQL_MAP,
     async (_event, input: PromoteToTsqlMapInput): Promise<IpcResult<string>> => {
       try {
+        const validationError = validatePromotionInput(input)
+        if (validationError) return { ok: false, error: validationError }
         const id = await insertTsqlMapEntry({
           keyName: input.keyName,
           aliases: input.aliases,
@@ -231,7 +257,10 @@ export function registerKnowledgeHandlers(): void {
         createdAt: '',
         origin: 'builtin' as const
       }))
-      const promotedDto: TsqlMapEntryDto[] = promoted.map((e) => ({ ...e, origin: 'promoted' as const }))
+      const promotedDto: TsqlMapEntryDto[] = promoted.map((e) => ({
+        ...e,
+        origin: 'promoted' as const
+      }))
       return { ok: true, data: [...promotedDto, ...builtin] }
     } catch (err) {
       return { ok: false, error: safeError(err) }

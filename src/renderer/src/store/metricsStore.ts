@@ -108,128 +108,130 @@ interface MetricsStore {
 // ── Store implementation ───────────────────────────────────────────────────
 
 export const useMetricsStore = create<MetricsStore>()(
-  subscribeWithSelector(immer((set) => ({
-    metricsMap: {},
-    summaries: {},
-    historyMap: {},
-    activeServerId: null,
-    lastUpdate: null,
-    serverHealth: {},
+  subscribeWithSelector(
+    immer((set) => ({
+      metricsMap: {},
+      summaries: {},
+      historyMap: {},
+      activeServerId: null,
+      lastUpdate: null,
+      serverHealth: {},
 
-    setActiveServerId: (id) =>
-      set((state) => {
-        state.activeServerId = id
-      }),
+      setActiveServerId: (id) =>
+        set((state) => {
+          state.activeServerId = id
+        }),
 
-    evictFullMetrics: (serverId) =>
-      set((state) => {
-        delete state.metricsMap[serverId]
-      }),
+      evictFullMetrics: (serverId) =>
+        set((state) => {
+          delete state.metricsMap[serverId]
+        }),
 
-    resetHistory: (serverId) =>
-      set((state) => {
-        if (serverId) {
-          state.historyMap[serverId] = { cpu: [], memory: [] }
-        } else {
-          Object.keys(state.historyMap).forEach((id) => {
-            state.historyMap[id] = { cpu: [], memory: [] }
-          })
-        }
-      }),
-
-    deleteServerData: (serverId) =>
-      set((state) => {
-        delete state.metricsMap[serverId]
-        delete state.summaries[serverId]
-        delete state.historyMap[serverId]
-        delete state.serverHealth[serverId]
-      }),
-
-    seedFromHistory: (allHistory) =>
-      set((state) => {
-        for (const [sid, history] of Object.entries(allHistory)) {
-          if (history.length === 0) continue
-          const latest = history[history.length - 1]
-          state.metricsMap[sid] = latest
-          state.summaries[sid] = buildSummary(latest)
-          const cpu: HistoryPoint[] = []
-          const memory: HistoryPoint[] = []
-          for (const m of history) {
-            const ts = new Date(m.collectedAt).getTime()
-            cpu.push({ ts, value: m.instanceInfo.cpuUsagePercent })
-            memory.push({ ts, value: memPercent(m.instanceInfo) })
+      resetHistory: (serverId) =>
+        set((state) => {
+          if (serverId) {
+            state.historyMap[serverId] = { cpu: [], memory: [] }
+          } else {
+            Object.keys(state.historyMap).forEach((id) => {
+              state.historyMap[id] = { cpu: [], memory: [] }
+            })
           }
-          const cap = state.activeServerId === sid ? MAX_HISTORY_ACTIVE : MAX_HISTORY_IDLE
-          state.historyMap[sid] = {
-            cpu: cpu.slice(-cap),
-            memory: memory.slice(-cap)
-          }
-        }
-        if (Object.keys(allHistory).length > 0) state.lastUpdate = new Date()
-      }),
+        }),
 
-    seedFromDatabases: (databasesByServer) =>
-      set((state) => {
-        for (const [sid, databases] of Object.entries(databasesByServer)) {
-          if (databases.length === 0) continue
-          const existing = state.metricsMap[sid]
-          if (existing) {
-            if (existing.databases.length === 0) {
-              existing.databases = databases
-              state.summaries[sid] = buildSummary(existing)
+      deleteServerData: (serverId) =>
+        set((state) => {
+          delete state.metricsMap[serverId]
+          delete state.summaries[serverId]
+          delete state.historyMap[serverId]
+          delete state.serverHealth[serverId]
+        }),
+
+      seedFromHistory: (allHistory) =>
+        set((state) => {
+          for (const [sid, history] of Object.entries(allHistory)) {
+            if (history.length === 0) continue
+            const latest = history[history.length - 1]
+            state.metricsMap[sid] = latest
+            state.summaries[sid] = buildSummary(latest)
+            const cpu: HistoryPoint[] = []
+            const memory: HistoryPoint[] = []
+            for (const m of history) {
+              const ts = new Date(m.collectedAt).getTime()
+              cpu.push({ ts, value: m.instanceInfo.cpuUsagePercent })
+              memory.push({ ts, value: memPercent(m.instanceInfo) })
             }
-            continue
+            const cap = state.activeServerId === sid ? MAX_HISTORY_ACTIVE : MAX_HISTORY_IDLE
+            state.historyMap[sid] = {
+              cpu: cpu.slice(-cap),
+              memory: memory.slice(-cap)
+            }
           }
-          const stub: ServerMetrics = {
-            collectedAt: new Date(0),
-            instanceInfo: {
-              version: '',
-              edition: '',
-              memoryUsedMb: 0,
-              memoryTargetMb: 0,
-              cpuUsagePercent: 0,
-              uptimeDays: 0,
-              logicalCpus: 0,
-              physicalCpus: 0
-            },
-            databases,
-            activeSessions: [],
-            topQueries: [],
-            backupStatus: [],
-            waitStats: [],
-            diskVolumes: [],
-            databaseFiles: []
+          if (Object.keys(allHistory).length > 0) state.lastUpdate = new Date()
+        }),
+
+      seedFromDatabases: (databasesByServer) =>
+        set((state) => {
+          for (const [sid, databases] of Object.entries(databasesByServer)) {
+            if (databases.length === 0) continue
+            const existing = state.metricsMap[sid]
+            if (existing) {
+              if (existing.databases.length === 0) {
+                existing.databases = databases
+                state.summaries[sid] = buildSummary(existing)
+              }
+              continue
+            }
+            const stub: ServerMetrics = {
+              collectedAt: new Date(0),
+              instanceInfo: {
+                version: '',
+                edition: '',
+                memoryUsedMb: 0,
+                memoryTargetMb: 0,
+                cpuUsagePercent: 0,
+                uptimeDays: 0,
+                logicalCpus: 0,
+                physicalCpus: 0
+              },
+              databases,
+              activeSessions: [],
+              topQueries: [],
+              backupStatus: [],
+              waitStats: [],
+              diskVolumes: [],
+              databaseFiles: []
+            }
+            state.metricsMap[sid] = stub
+            // Don't set summaries — KPI cards should stay blank until real data arrives
           }
-          state.metricsMap[sid] = stub
-          // Don't set summaries — KPI cards should stay blank until real data arrives
-        }
-      }),
+        }),
 
-    setMetrics: (serverId, m) =>
-      set((state) => {
-        applyFullSnapshot(state, serverId, m)
-        state.lastUpdate = new Date()
-      }),
+      setMetrics: (serverId, m) =>
+        set((state) => {
+          applyFullSnapshot(state, serverId, m)
+          state.lastUpdate = new Date()
+        }),
 
-    setServerHealth: (health) =>
-      set((state) => {
-        state.serverHealth[health.serverId] = health
-      }),
+      setServerHealth: (health) =>
+        set((state) => {
+          state.serverHealth[health.serverId] = health
+        }),
 
-    applyDelta: (serverId, delta) =>
-      set((state) => {
-        applyOne(state, serverId, delta)
-        state.lastUpdate = new Date()
-      }),
-
-    applyDeltaBatch: (batch) =>
-      set((state) => {
-        for (const { serverId, metrics: delta } of batch) {
+      applyDelta: (serverId, delta) =>
+        set((state) => {
           applyOne(state, serverId, delta)
-        }
-        state.lastUpdate = new Date()
-      })
-  })))
+          state.lastUpdate = new Date()
+        }),
+
+      applyDeltaBatch: (batch) =>
+        set((state) => {
+          for (const { serverId, metrics: delta } of batch) {
+            applyOne(state, serverId, delta)
+          }
+          state.lastUpdate = new Date()
+        })
+    }))
+  )
 )
 
 // ── Internal mutators (operate on Immer draft) ─────────────────────────────
@@ -295,10 +297,19 @@ function applyOne(state: Draft, serverId: string, delta: DeltaMetrics): void {
       }
     }
   }
-  // Instance-level fields
+  // Instance-level fields. The worker spreads the full `...fresh` snapshot into
+  // every delta, so these arrays are complete — assigning them keeps the disk /
+  // wait-stats / files / top-query tabs fresh. Without this they only ever
+  // refreshed on a full snapshot, so a server with stable DBs (but changing
+  // disk/wait data) would show stale tabs while alerts fired on data the UI
+  // couldn't surface.
   Object.assign(existing.instanceInfo, delta.instanceInfo)
   existing.activeSessions = delta.activeSessions
   existing.backupStatus = delta.backupStatus
+  existing.diskVolumes = delta.diskVolumes
+  existing.databaseFiles = delta.databaseFiles
+  existing.topQueries = delta.topQueries
+  existing.waitStats = delta.waitStats
   existing.collectedAt = delta.collectedAt
   // Strip transient delta metadata so it never persists in the store
   delete existing.isDelta

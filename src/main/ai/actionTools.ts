@@ -7,11 +7,7 @@ import * as repo from '../incidents/repository'
 // The executor checks this list before running any T-SQL.
 // ---------------------------------------------------------------------------
 
-export const ACTION_WHITELIST = new Set([
-  'kill_session',
-  'update_statistics',
-  'rebuild_index'
-])
+export const ACTION_WHITELIST = new Set(['kill_session', 'update_statistics', 'rebuild_index'])
 
 // ---------------------------------------------------------------------------
 // T-SQL preview builders — parameterized with safe literals, no user input.
@@ -23,17 +19,54 @@ function killSessionSql(sessionId: number): string {
   return `KILL ${sessionId};`
 }
 
+// Control chars 0x00-0x1F plus DEL (0x7F). Built via codePoints to avoid
+// embedding raw control bytes in the source file. Mirrors dbAdmin.ts.
+const CONTROL_CHAR_RE = new RegExp(
+  '[' +
+    Array.from({ length: 32 }, (_v, i) => '\\x' + i.toString(16).padStart(2, '0')).join('') +
+    '\\x7f]'
+)
+
+/**
+ * Reject identifiers that should never reach the SQL driver. The bracket-escaping
+ * below neutralises `]`, but these identifiers originate from the LLM tool call,
+ * so we independently validate length / control chars / whitespace before they
+ * are concatenated into executable T-SQL (defence-in-depth against a poisoned or
+ * confused model emitting a 4000-char or newline-laden name).
+ */
+function assertSafeIdentifier(value: string, kind: string): void {
+  if (value.length === 0 || value.length > 128) {
+    throw new Error(`Invalid ${kind}: must be 1-128 chars`)
+  }
+  if (value !== value.trim()) {
+    throw new Error(`Invalid ${kind}: leading/trailing whitespace not allowed`)
+  }
+  if (CONTROL_CHAR_RE.test(value)) {
+    throw new Error(`Invalid ${kind}: control characters not allowed`)
+  }
+}
+
 function bracketName(name: string): string {
   const dot = name.indexOf('.')
-  if (dot === -1) return `[${name.replace(/]/g, ']]')}]`
-  return `[${name.slice(0, dot).replace(/]/g, ']]')}].[${name.slice(dot + 1).replace(/]/g, ']]')}]`
+  if (dot === -1) {
+    assertSafeIdentifier(name, 'object name')
+    return `[${name.replace(/]/g, ']]')}]`
+  }
+  const schema = name.slice(0, dot)
+  const object = name.slice(dot + 1)
+  assertSafeIdentifier(schema, 'schema name')
+  assertSafeIdentifier(object, 'object name')
+  return `[${schema.replace(/]/g, ']]')}].[${object.replace(/]/g, ']]')}]`
 }
 
 function updateStatsSql(dbName: string, tableName: string): string {
+  assertSafeIdentifier(dbName, 'database name')
   return `USE [${dbName.replace(/]/g, ']]')}];\nUPDATE STATISTICS ${bracketName(tableName)} WITH FULLSCAN;`
 }
 
 function rebuildIndexSql(dbName: string, tableName: string, indexName: string): string {
+  assertSafeIdentifier(dbName, 'database name')
+  assertSafeIdentifier(indexName, 'index name')
   // ONLINE = ON requires Enterprise / Developer Edition — omit to support all editions.
   return [
     `USE [${dbName.replace(/]/g, ']]')}];`,
@@ -104,7 +137,11 @@ export function buildActionTools(incidentId: string): DynamicStructuredTool[] {
           tsql,
           reason
         )
-        await repo.addEvent(incidentId, 'action_proposed', { toolName: 'kill_session', actionId: action.id, session_id })
+        await repo.addEvent(incidentId, 'action_proposed', {
+          toolName: 'kill_session',
+          actionId: action.id,
+          session_id
+        })
         return JSON.stringify({ proposed: true, actionId: action.id, tsql })
       }
     }),
@@ -127,7 +164,12 @@ export function buildActionTools(incidentId: string): DynamicStructuredTool[] {
           tsql,
           reason
         )
-        await repo.addEvent(incidentId, 'action_proposed', { toolName: 'update_statistics', actionId: action.id, db_name, table_name })
+        await repo.addEvent(incidentId, 'action_proposed', {
+          toolName: 'update_statistics',
+          actionId: action.id,
+          db_name,
+          table_name
+        })
         return JSON.stringify({ proposed: true, actionId: action.id, tsql })
       }
     }),
@@ -155,7 +197,13 @@ export function buildActionTools(incidentId: string): DynamicStructuredTool[] {
           tsql,
           reason
         )
-        await repo.addEvent(incidentId, 'action_proposed', { toolName: 'rebuild_index', actionId: action.id, db_name, table_name, index_name })
+        await repo.addEvent(incidentId, 'action_proposed', {
+          toolName: 'rebuild_index',
+          actionId: action.id,
+          db_name,
+          table_name,
+          index_name
+        })
         return JSON.stringify({ proposed: true, actionId: action.id, tsql })
       }
     })

@@ -3,7 +3,13 @@ import { createLogger } from '../utils/logger'
 const log = createLogger('sql-collector')
 import { getPool, invalidatePool } from './connectionPool'
 
-const CONNECTION_ERROR_CODES = new Set(['ESOCKET', 'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'ETIMEOUT'])
+const CONNECTION_ERROR_CODES = new Set([
+  'ESOCKET',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'ETIMEOUT'
+])
 
 function isConnectionError(err: unknown): boolean {
   const code = (err as NodeJS.ErrnoException).code
@@ -200,7 +206,9 @@ async function queryInstanceInfo(pool: mssql.ConnectionPool): Promise<InstanceIn
       ), 0)                                      AS cpu_usage_percent,
       DATEDIFF(DAY, osi.sqlserver_start_time, GETDATE()) AS uptime_days,
       osi.cpu_count                                      AS logical_cpu_count,
-      osi.cpu_count / NULLIF(osi.hyperthread_ratio, 0)    AS physical_cpu_count
+      -- Float division + CEILING: integer division truncated 6/4 to 1 (instead
+      -- of 2 sockets) and NULLIF→NULL coerced to 0 physical CPUs in inventory.
+      CEILING(CAST(osi.cpu_count AS FLOAT) / NULLIF(osi.hyperthread_ratio, 0)) AS physical_cpu_count
     FROM sys.dm_os_process_memory pm
     CROSS JOIN sys.dm_os_sys_info osi
   `
@@ -603,10 +611,8 @@ export async function detectServerInfo(connection: ServerConnection): Promise<Se
       `)
     ])
 
-    const row =
-      serverRes.status === 'fulfilled' ? serverRes.value.recordset[0] : undefined
-    const agRow =
-      agRes.status === 'fulfilled' ? agRes.value.recordset[0] : undefined
+    const row = serverRes.status === 'fulfilled' ? serverRes.value.recordset[0] : undefined
+    const agRow = agRes.status === 'fulfilled' ? agRes.value.recordset[0] : undefined
 
     const rawRole = agRow?.role_desc
     const agRole =
@@ -650,6 +656,15 @@ export async function collectMetrics(
     const pool = await getPool(connection)
     if (signal?.aborted) throw new Error('aborted')
 
+    // Defer pool invalidation: if one query hits a connection error we must NOT
+    // tear the pool down while its siblings are still executing on it (that
+    // surfaces spurious "Connection is closed" cascades). Each catch flags the
+    // need; we invalidate once, after all queries settle.
+    let connectionErrored = false
+    const onConnErr = (err: Error): void => {
+      if (isConnectionError(err)) connectionErrored = true
+    }
+
     const [
       instanceInfo,
       databases,
@@ -661,46 +676,48 @@ export async function collectMetrics(
       databaseFiles
     ] = await Promise.all([
       queryInstanceInfo(pool).catch((err: Error) => {
-        if (isConnectionError(err)) invalidatePool(connection)
+        onConnErr(err)
         log.error('[collector] instance info:', sanitizeSqlError(err))
         return defaultInstanceInfo()
       }),
       queryDatabases(pool).catch((err: Error) => {
-        if (isConnectionError(err)) invalidatePool(connection)
+        onConnErr(err)
         log.error('[collector] databases:', sanitizeSqlError(err))
         return [] as DatabaseInfo[]
       }),
       querySessions(pool).catch((err: Error) => {
-        if (isConnectionError(err)) invalidatePool(connection)
+        onConnErr(err)
         log.error('[collector] sessions:', sanitizeSqlError(err))
         return [] as SessionInfo[]
       }),
       queryTopQueries(pool).catch((err: Error) => {
-        if (isConnectionError(err)) invalidatePool(connection)
+        onConnErr(err)
         log.error('[collector] top queries:', sanitizeSqlError(err))
         return [] as QueryInfo[]
       }),
       queryBackupStatus(pool).catch((err: Error) => {
-        if (isConnectionError(err)) invalidatePool(connection)
+        onConnErr(err)
         log.error('[collector] backup status:', sanitizeSqlError(err))
         return [] as BackupInfo[]
       }),
       queryWaitStats(pool).catch((err: Error) => {
-        if (isConnectionError(err)) invalidatePool(connection)
+        onConnErr(err)
         log.error('[collector] wait stats:', sanitizeSqlError(err))
         return [] as WaitStatInfo[]
       }),
       queryDiskVolumes(pool).catch((err: Error) => {
-        if (isConnectionError(err)) invalidatePool(connection)
+        onConnErr(err)
         log.error('[collector] disk volumes:', sanitizeSqlError(err))
         return [] as DiskVolume[]
       }),
       queryDatabaseFiles(pool).catch((err: Error) => {
-        if (isConnectionError(err)) invalidatePool(connection)
+        onConnErr(err)
         log.error('[collector] database files:', sanitizeSqlError(err))
         return [] as DatabaseFile[]
       })
     ])
+
+    if (connectionErrored) invalidatePool(connection)
 
     return {
       collectedAt: new Date(),
@@ -743,33 +760,41 @@ export async function collectMetricsCritical(
     const pool = await getPool(connection)
     if (signal?.aborted) throw new Error('aborted')
 
+    // Defer invalidation until all sibling queries settle (see collectMetrics).
+    let connectionErrored = false
+    const onConnErr = (err: Error): void => {
+      if (isConnectionError(err)) connectionErrored = true
+    }
+
     const [instanceInfo, databases, activeSessions, backupStatus, diskVolumes] = await Promise.all([
       queryInstanceInfo(pool).catch((err: Error) => {
-        if (isConnectionError(err)) invalidatePool(connection)
+        onConnErr(err)
         log.error('[collector] instance info:', sanitizeSqlError(err))
         return defaultInstanceInfo()
       }),
       queryDatabases(pool).catch((err: Error) => {
-        if (isConnectionError(err)) invalidatePool(connection)
+        onConnErr(err)
         log.error('[collector] databases:', sanitizeSqlError(err))
         return [] as DatabaseInfo[]
       }),
       querySessions(pool).catch((err: Error) => {
-        if (isConnectionError(err)) invalidatePool(connection)
+        onConnErr(err)
         log.error('[collector] sessions:', sanitizeSqlError(err))
         return [] as SessionInfo[]
       }),
       queryBackupStatus(pool).catch((err: Error) => {
-        if (isConnectionError(err)) invalidatePool(connection)
+        onConnErr(err)
         log.error('[collector] backup status:', sanitizeSqlError(err))
         return [] as BackupInfo[]
       }),
       queryDiskVolumes(pool).catch((err: Error) => {
-        if (isConnectionError(err)) invalidatePool(connection)
+        onConnErr(err)
         log.error('[collector] disk volumes:', sanitizeSqlError(err))
         return [] as DiskVolume[]
       })
     ])
+
+    if (connectionErrored) invalidatePool(connection)
 
     return {
       collectedAt: new Date(),

@@ -94,44 +94,46 @@ export async function upsertDatabases(serverId: string, databases: DatabaseInfo[
   }
 }
 
+// Each placeholder is one parameter; +1 for @server_id. Keep well under the
+// 2100-parameter cap so a consolidated instance with thousands of DBs can't
+// blow the statement.
+const DELETE_CHUNK_SIZE = 2000
+
 /** Delete specific databases by name for a server (used when databases are dropped). */
 export async function deleteByNames(serverId: string, names: string[]): Promise<void> {
   if (names.length === 0) return
-  const req = getPool().request()
-  req.input('server_id', sql.NVarChar(36), serverId)
-  const placeholders = names.map((n, i) => {
-    const key = `n${i}`
-    req.input(key, sql.NVarChar(200), n)
-    return `@${key}`
-  })
-  await req.query(
-    `DELETE FROM dbo.server_databases WHERE server_id = @server_id AND name IN (${placeholders.join(',')})`
-  )
+  for (let off = 0; off < names.length; off += DELETE_CHUNK_SIZE) {
+    const chunk = names.slice(off, off + DELETE_CHUNK_SIZE)
+    const req = getPool().request()
+    req.input('server_id', sql.NVarChar(36), serverId)
+    const placeholders = chunk.map((n, i) => {
+      const key = `n${i}`
+      req.input(key, sql.NVarChar(200), n)
+      return `@${key}`
+    })
+    await req.query(
+      `DELETE FROM dbo.server_databases WHERE server_id = @server_id AND name IN (${placeholders.join(',')})`
+    )
+  }
 }
 
 /**
  * Delete any databases for a server whose name is not in the current live set.
  * Called after a full snapshot to remove stale entries.
+ *
+ * Implemented as fetch-existing + diff-in-JS + chunked deleteByNames rather than
+ * a single `NOT IN (...)`: the parameter list would otherwise be unbounded (a
+ * server with >2099 DBs would throw the 2100-parameter error, and a NOT IN can't
+ * be chunked safely — each chunk would delete names present in other chunks).
  */
 export async function deleteStale(serverId: string, currentNames: string[]): Promise<void> {
-  if (currentNames.length === 0) {
-    await getPool()
-      .request()
-      .input('server_id', sql.NVarChar(36), serverId)
-      .query(`DELETE FROM dbo.server_databases WHERE server_id = @server_id`)
-    return
-  }
-  const req = getPool().request()
-  req.input('server_id', sql.NVarChar(36), serverId)
-  const placeholders = currentNames.map((n, i) => {
-    const key = `n${i}`
-    req.input(key, sql.NVarChar(200), n)
-    return `@${key}`
-  })
-  await req.query(
-    `DELETE FROM dbo.server_databases
-     WHERE server_id = @server_id AND name NOT IN (${placeholders.join(',')})`
-  )
+  const live = new Set(currentNames)
+  const existing = await getPool()
+    .request()
+    .input('server_id', sql.NVarChar(36), serverId)
+    .query<{ name: string }>(`SELECT name FROM dbo.server_databases WHERE server_id = @server_id`)
+  const stale = existing.recordset.map((r) => r.name).filter((n) => !live.has(n))
+  await deleteByNames(serverId, stale)
 }
 
 /**

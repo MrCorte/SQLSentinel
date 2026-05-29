@@ -22,10 +22,15 @@ function bracketEscape(name: string): string {
 // Control chars 0x00-0x1F plus DEL (0x7F). Built via codePoints to avoid
 // embedding raw control bytes in the source file.
 const CONTROL_CHAR_RE = new RegExp(
-  '[' + Array.from({ length: 32 }, (_v, i) => '\\x' + i.toString(16).padStart(2, '0')).join('') + '\\x7f]'
+  '[' +
+    Array.from({ length: 32 }, (_v, i) => '\\x' + i.toString(16).padStart(2, '0')).join('') +
+    '\\x7f]'
 )
 
-function assertSafeDbIdentifier(value: unknown, kind: 'database' | 'file'): asserts value is string {
+function assertSafeDbIdentifier(
+  value: unknown,
+  kind: 'database' | 'file'
+): asserts value is string {
   if (typeof value !== 'string') {
     throw new Error(`Invalid ${kind} name: expected string`)
   }
@@ -152,26 +157,27 @@ export async function shrinkFile(
   try {
     pool = await mssql.connect(config)
 
+    let warning: string | undefined
     if (isLog) {
       // Check recovery model — only backup log if FULL recovery
-      const rmRow = await pool
-        .request()
-        .input('dbName', mssql.NVarChar, dbName)
-        .query<{
-          recovery_model_desc: string
-        }>(`SELECT recovery_model_desc FROM sys.databases WHERE name = @dbName`)
+      const rmRow = await pool.request().input('dbName', mssql.NVarChar, dbName).query<{
+        recovery_model_desc: string
+      }>(`SELECT recovery_model_desc FROM sys.databases WHERE name = @dbName`)
       if (rmRow.recordset[0]?.recovery_model_desc === 'FULL') {
+        // BACKUP LOG TO NUL discards the log backup — this BREAKS the log backup
+        // chain, so point-in-time restore is impossible until the next FULL
+        // backup. Surface it to the operator rather than doing it silently.
         await pool.request().query(`BACKUP LOG ${bracketEscape(dbName)} TO DISK = N'NUL'`)
+        warning =
+          'Log backup chain broken: the transaction log was discarded (BACKUP LOG TO NUL) to enable the shrink. ' +
+          'Take a new FULL backup now — point-in-time restore is unavailable until you do.'
       }
     }
 
     // Measure before
-    const beforeRow = await pool
-      .request()
-      .input('fn', mssql.NVarChar, fileName)
-      .query<{
-        size_mb: number
-      }>(`SELECT CAST(size * 8.0 / 1024 AS INT) AS size_mb FROM sys.database_files WHERE name = @fn`)
+    const beforeRow = await pool.request().input('fn', mssql.NVarChar, fileName).query<{
+      size_mb: number
+    }>(`SELECT CAST(size * 8.0 / 1024 AS INT) AS size_mb FROM sys.database_files WHERE name = @fn`)
     const beforeMb = beforeRow.recordset[0]?.size_mb ?? 0
 
     const safeSizeMb = Math.max(0, Math.floor(targetSizeMb))
@@ -179,19 +185,17 @@ export async function shrinkFile(
     await pool.request().query(`DBCC SHRINKFILE (${safeFileId}, ${safeSizeMb})`)
 
     // Measure after
-    const afterRow = await pool
-      .request()
-      .input('fn', mssql.NVarChar, fileName)
-      .query<{
-        size_mb: number
-      }>(`SELECT CAST(size * 8.0 / 1024 AS INT) AS size_mb FROM sys.database_files WHERE name = @fn`)
+    const afterRow = await pool.request().input('fn', mssql.NVarChar, fileName).query<{
+      size_mb: number
+    }>(`SELECT CAST(size * 8.0 / 1024 AS INT) AS size_mb FROM sys.database_files WHERE name = @fn`)
     const afterMb = afterRow.recordset[0]?.size_mb ?? 0
 
     return {
       success: true,
       duration_ms: Date.now() - t0,
       newSizeMb: afterMb,
-      reclaimedMb: Math.max(0, beforeMb - afterMb)
+      reclaimedMb: Math.max(0, beforeMb - afterMb),
+      warning
     }
   } catch (err) {
     return {

@@ -1,6 +1,7 @@
-import { app, shell, BrowserWindow, ipcMain, powerMonitor } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, powerMonitor, session } from 'electron'
 import type { BrowserWindow as BrowserWindowType } from 'electron'
 import { join } from 'path'
+import { pathToFileURL } from 'node:url'
 
 const icon = app.isPackaged
   ? join(process.resourcesPath, 'icon.png')
@@ -198,13 +199,21 @@ function createWindow(): void {
   })
 
   // Same scheme allow-list for renderer-initiated navigations
+  const appIndexUrl = pathToFileURL(join(__dirname, '../renderer/index.html')).href
   mainWindow.webContents.on('will-navigate', (event, url) => {
     try {
       const proto = new URL(url).protocol
-      // Allow internal app reload (file:// / dev-server URL); block others.
+      // Allow internal app reload (dev-server URL); block others.
       const devOrigin = process.env['ELECTRON_RENDERER_URL']
       if (devOrigin && url.startsWith(devOrigin)) return
-      if (proto === 'file:') return
+      // For file:, only allow navigating to our own bundled index.html (optionally
+      // with a hash/query for client-side routing) — not arbitrary local paths.
+      if (proto === 'file:') {
+        const target = url.split(/[?#]/)[0]
+        if (target === appIndexUrl) return
+        event.preventDefault()
+        return
+      }
       event.preventDefault()
       if (proto === 'http:' || proto === 'https:' || proto === 'mailto:') {
         shell.openExternal(url)
@@ -381,6 +390,21 @@ app.whenReady().then(async () => {
   setPushHandler((channel, data) => {
     BrowserWindow.getAllWindows().forEach((w) => {
       if (!w.isDestroyed() && w.isVisible()) w.webContents.send(channel, data)
+    })
+  })
+
+  // Enforce CSP at the header level too, not just the <meta> tag — a header
+  // can't be stripped by tampering with the bundled HTML, and it covers
+  // responses the meta tag doesn't. Kept in sync with renderer/index.html.
+  const CSP =
+    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+    "img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [CSP]
+      }
     })
   })
 

@@ -28,20 +28,32 @@ const log = createLogger('server-service')
 // ---------------------------------------------------------------------------
 
 /**
- * C2 hardening: resolves credentials from serverStore when the renderer-supplied
- * request omits them. SQL-auth requests without a password get their creds
- * hydrated here; Windows-auth requests pass through unchanged.
+ * Resolves the connection used for monitoring/admin flows.
+ *
+ * H1 hardening: for a server already registered in the store, the credentials,
+ * auth mode and target are taken authoritatively from the store and the
+ * renderer-supplied password/username/auth-mode are ignored. This prevents a
+ * hijacked renderer from (a) re-pointing a known server's auth, or (b) using
+ * the main process as a credentialed connection proxy / credential-spraying
+ * oracle against arbitrary internal hosts.
+ *
+ * For an unregistered target (the add-server / test-connection wizard, where the
+ * user is explicitly entering credentials for a host they want to register) the
+ * renderer-supplied credentials are honoured — but the host/port are still
+ * validated to keep the outbound surface narrow (no SSRF to malformed targets).
  */
 export function resolveConnection(req: CollectMetricsRequest): CollectMetricsRequest {
-  if (req.useWindowsAuth) return req
-  if (req.password) return req
+  validateHostInput(req.ip, req.port)
   const stored = serverStore.getByIpPort(req.ip, req.port)
-  if (!stored) return req
-  return {
-    ...req,
-    username: req.username ?? stored.username,
-    password: stored.password
+  if (stored) {
+    return {
+      ...req,
+      useWindowsAuth: stored.useWindowsAuth,
+      username: stored.username,
+      password: stored.password
+    }
   }
+  return req
 }
 
 // ---------------------------------------------------------------------------
@@ -76,7 +88,8 @@ export function listServers(): StoredServer[] {
 // IPv4 dotted-quad. Hostname: RFC-1123 short-form (alnum + hyphens, 1-63 chars per label).
 // We deliberately reject IPv6 and FQDNs with trailing dots to keep the surface narrow.
 const IPV4_RE = /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d?\d)$/
-const HOSTNAME_RE = /^(?=.{1,253}$)([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
+const HOSTNAME_RE =
+  /^(?=.{1,253}$)([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
 
 function validateHostInput(host: string, port: number): void {
   if (typeof host !== 'string' || host.length === 0 || host.length > 253) {

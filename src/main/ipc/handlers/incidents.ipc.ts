@@ -1,5 +1,7 @@
 import type { IpcMainInvokeEvent } from 'electron'
+import * as mssql from 'mssql'
 import { handle, safeError, log } from '../handleWrapper'
+import { getSession } from '../../authService'
 import { pushToRenderer } from '../push'
 import { IpcChannel } from '../types'
 import type {
@@ -71,11 +73,16 @@ async function validateActionPreconditions(
       return `Cannot kill system session (session_id ${sessionId} ≤ 50)`
     }
     // Query live server to verify session still exists and is killable.
-    const result = await pool.request().query<{ login_name: string; is_user_process: number }>(
-      `SELECT login_name, is_user_process
-       FROM sys.dm_exec_sessions
-       WHERE session_id = ${sessionId}`
-    )
+    // Parameterized so the safety never depends on the upstream integer guard
+    // surviving a future refactor.
+    const result = await pool
+      .request()
+      .input('sid', mssql.Int, sessionId)
+      .query<{ login_name: string; is_user_process: number }>(
+        `SELECT login_name, is_user_process
+         FROM sys.dm_exec_sessions
+         WHERE session_id = @sid`
+      )
     if (!result.recordset.length) {
       return `Session ${sessionId} not found — it may have already ended`
     }
@@ -297,7 +304,10 @@ export function registerIncidentHandlers(): void {
         await pool.request().query(executableSql)
 
         recordGlobalAction()
-        await repository.approveAction(req.actionId, req.approvedBy, { executed: true })
+        // Audit non-repudiation: the approver is the authenticated session user,
+        // never a renderer-supplied string (which would be spoofable).
+        const approvedBy = getSession()?.username ?? 'unknown'
+        await repository.approveAction(req.actionId, approvedBy, { executed: true })
         await repository.addEvent(action.incidentId, 'action_executed', {
           toolName: action.toolName,
           actionId: action.id

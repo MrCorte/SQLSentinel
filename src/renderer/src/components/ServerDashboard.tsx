@@ -3,10 +3,12 @@ import { Paper, Box, Tooltip, Chip, Select, MenuItem, Typography } from '@mui/ma
 import type { StoredServer, CollectMetricsRequest, ServerMetrics } from '../../../preload/index'
 import { MetricsPanel } from './MetricsPanel'
 import { ServerHistorySection } from './ServerHistoryChart'
+import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
 import { useServersStore } from '../store/serversStore'
 import { HOSTING_OPTIONS, HOSTING_BADGE } from '../constants/hosting'
 import type { ServerHostingType } from '../constants/hosting'
 import { getServerDisplayName } from '../types'
+import { RemediationCredentialsDialog } from './actions/RemediationCredentialsDialog'
 
 interface Props {
   server: StoredServer
@@ -29,9 +31,12 @@ export function ServerDashboard({ server, metrics, connection, onRemove }: Props
   const updateServer = useServersStore((s) => s.updateServer)
   const [editingHosting, setEditingHosting] = useState(false)
   const [hostingError, setHostingError] = useState<string | null>(null)
+  const [remediationOpen, setRemediationOpen] = useState(false)
 
   const currentHosting: ServerHostingType = server.hostingType ?? 'on-premise'
   const badge = HOSTING_BADGE[currentHosting]
+  const remediationConfigured =
+    Boolean(server.remediationUsername) || server.remediationUseWindowsAuth === true
 
   return (
     <>
@@ -92,7 +97,30 @@ export function ServerDashboard({ server, metrics, connection, onRemove }: Props
             />
           </Tooltip>
         )}
+        <Tooltip
+          title={
+            remediationConfigured
+              ? 'Edit the elevated credential used to run approved AI fixes'
+              : 'Configure an elevated credential to run approved AI fixes on this server'
+          }
+        >
+          <Chip
+            icon={<ShieldOutlinedIcon sx={{ fontSize: 14 }} />}
+            label={remediationConfigured ? 'Remediation: on' : 'Remediation: off'}
+            size="small"
+            variant="outlined"
+            color={remediationConfigured ? 'success' : 'default'}
+            onClick={() => setRemediationOpen(true)}
+            sx={{ ml: 1, cursor: 'pointer', fontSize: 10, borderRadius: '3px' }}
+          />
+        </Tooltip>
       </Box>
+
+      <RemediationCredentialsDialog
+        open={remediationOpen}
+        server={server}
+        onClose={() => setRemediationOpen(false)}
+      />
 
       {/* ── Storico CPU / Memoria ─────────────────────────────────────── */}
       <Paper sx={{ p: 2, mb: 2, flexShrink: 0 }}>

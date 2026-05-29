@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { ACTION_WHITELIST } from '../../ai/actionTools'
+import { ACTION_WHITELIST, isDestructiveAction } from '../../ai/actionTools'
 
 // ---------------------------------------------------------------------------
 // Business logic inlined from incidents.ipc.ts (not exported by that module)
@@ -234,6 +234,82 @@ describe('INCIDENTS_REJECT_ACTION', () => {
     const result = simulateReject(action)
     expect(result.ok).toBe(false)
     expect(result.error).toMatch(/not pending/)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// New gates added for chat-originated remediation actions. Logic mirrors
+// incidents.ipc.ts (not exported); kept in sync with the handler.
+// ---------------------------------------------------------------------------
+
+const MAX_CHAT_ACTIONS_PER_SERVER_PER_HOUR = 5
+
+function checkTypedConfirmation(
+  toolName: string,
+  expectedToken: string,
+  confirmation: string | undefined
+): string | null {
+  if (!isDestructiveAction(toolName)) return null
+  if ((confirmation ?? '').trim() !== expectedToken) {
+    return `This action is destructive and requires typed confirmation. Type "${expectedToken}" to confirm.`
+  }
+  return null
+}
+
+function checkRemediationCred(conn: unknown | null): string | null {
+  if (!conn) {
+    return 'No elevated remediation credential is configured for this server. Add one in the server settings to run fixes.'
+  }
+  return null
+}
+
+function checkServerCap(count: number): string | null {
+  if (count >= MAX_CHAT_ACTIONS_PER_SERVER_PER_HOUR) {
+    return `Per-server action cap reached (max ${MAX_CHAT_ACTIONS_PER_SERVER_PER_HOUR} per hour)`
+  }
+  return null
+}
+
+describe('ACTIONS_APPROVE — destructive typed-confirmation gate', () => {
+  const TOKEN = '10.0.0.1:1433'
+
+  it('blocks a destructive action with no confirmation', () => {
+    expect(checkTypedConfirmation('kill_session', TOKEN, undefined)).toMatch(/typed confirmation/)
+  })
+
+  it('blocks a destructive action with the wrong token', () => {
+    expect(checkTypedConfirmation('rebuild_index', TOKEN, 'wrong')).toMatch(/typed confirmation/)
+  })
+
+  it('allows a destructive action with the exact token', () => {
+    expect(checkTypedConfirmation('clear_plan_cache', TOKEN, TOKEN)).toBeNull()
+  })
+
+  it('ignores confirmation for non-destructive actions', () => {
+    expect(checkTypedConfirmation('update_statistics', TOKEN, undefined)).toBeNull()
+    expect(checkTypedConfirmation('reorganize_index', TOKEN, undefined)).toBeNull()
+  })
+})
+
+describe('ACTIONS_APPROVE — remediation credential requirement', () => {
+  it('refuses to execute when no remediation credential is configured', () => {
+    expect(checkRemediationCred(null)).toMatch(/remediation credential/)
+  })
+
+  it('proceeds when a remediation credential is present', () => {
+    expect(checkRemediationCred({ username: 'svc_fix' })).toBeNull()
+  })
+})
+
+describe('ACTIONS_APPROVE — per-server chat rate limit', () => {
+  it('allows up to the per-server cap', () => {
+    for (let i = 0; i < MAX_CHAT_ACTIONS_PER_SERVER_PER_HOUR; i++) {
+      expect(checkServerCap(i)).toBeNull()
+    }
+  })
+
+  it('blocks once the per-server cap is reached', () => {
+    expect(checkServerCap(MAX_CHAT_ACTIONS_PER_SERVER_PER_HOUR)).toMatch(/Per-server action cap/)
   })
 })
 

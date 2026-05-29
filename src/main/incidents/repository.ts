@@ -11,7 +11,8 @@ import type {
   IncidentAuditTelemetry,
   IncidentStatus,
   IncidentEventKind,
-  ActionStatus
+  ActionStatus,
+  ActionSource
 } from './types'
 import type { AlertCategory, AlertSeverity } from '../ipc/types'
 import { buildIncidentAiStats } from './aiStats'
@@ -43,7 +44,9 @@ interface IncidentEventRow {
 
 interface IncidentActionRow {
   id: string
-  incident_id: string
+  incident_id: string | null
+  server_id: string | null
+  source: string | null
   tool_name: string
   params_json: string
   tsql_preview: string
@@ -115,6 +118,8 @@ function rowToAction(row: IncidentActionRow): IncidentAction {
   return {
     id: row.id,
     incidentId: row.incident_id,
+    ...(row.server_id != null && { serverId: row.server_id }),
+    source: row.source === 'chat' ? 'chat' : 'incident',
     toolName: row.tool_name,
     params: JSON.parse(row.params_json) as Record<string, unknown>,
     tsqlPreview: row.tsql_preview,
@@ -347,25 +352,34 @@ export async function getEvents(incidentId: string): Promise<IncidentEvent[]> {
 // Public API — actions
 // ---------------------------------------------------------------------------
 
-export async function createAction(
-  incidentId: string,
-  toolName: string,
-  params: Record<string, unknown>,
-  tsqlPreview: string,
+export interface CreateActionInput {
+  /** Null for chat-originated actions. */
+  incidentId?: string | null
+  /** Target server id — always required so the executor can resolve the server. */
+  serverId: string
+  source: ActionSource
+  toolName: string
+  params: Record<string, unknown>
+  tsqlPreview: string
   explanation: string
-): Promise<IncidentAction> {
+}
+
+export async function createAction(input: CreateActionInput): Promise<IncidentAction> {
   const id = randomUUID()
   await getPool()
     .request()
     .input('id', sql.NVarChar(36), id)
-    .input('incident_id', sql.NVarChar(36), incidentId)
-    .input('tool_name', sql.NVarChar(100), toolName)
-    .input('params_json', sql.NVarChar(sql.MAX), JSON.stringify(params))
-    .input('tsql_preview', sql.NVarChar(sql.MAX), tsqlPreview)
-    .input('explanation', sql.NVarChar(sql.MAX), explanation)
+    .input('incident_id', sql.NVarChar(36), input.incidentId ?? null)
+    .input('server_id', sql.NVarChar(36), input.serverId)
+    .input('source', sql.NVarChar(20), input.source)
+    .input('tool_name', sql.NVarChar(100), input.toolName)
+    .input('params_json', sql.NVarChar(sql.MAX), JSON.stringify(input.params))
+    .input('tsql_preview', sql.NVarChar(sql.MAX), input.tsqlPreview)
+    .input('explanation', sql.NVarChar(sql.MAX), input.explanation)
     .query(
-      `INSERT INTO dbo.incident_actions (id, incident_id, tool_name, params_json, tsql_preview, explanation)
-       VALUES (@id, @incident_id, @tool_name, @params_json, @tsql_preview, @explanation)`
+      `INSERT INTO dbo.incident_actions
+         (id, incident_id, server_id, source, tool_name, params_json, tsql_preview, explanation)
+       VALUES (@id, @incident_id, @server_id, @source, @tool_name, @params_json, @tsql_preview, @explanation)`
     )
   const created = await getActionById(id)
   if (!created) throw new Error(`createAction: failed to read back ${id}`)
@@ -390,6 +404,23 @@ export async function getPendingActions(incidentId: string): Promise<IncidentAct
       `SELECT * FROM dbo.incident_actions
        WHERE incident_id = @incident_id AND status = N'pending'
        ORDER BY seq ASC`
+    )
+  return r.recordset.map(rowToAction)
+}
+
+/** Recent chat-originated actions for a server (newest first), for the chat panel. */
+export async function getChatActionsForServer(
+  serverId: string,
+  limit = 50
+): Promise<IncidentAction[]> {
+  const r = await getPool()
+    .request()
+    .input('server_id', sql.NVarChar(36), serverId)
+    .input('limit', sql.Int, limit)
+    .query<IncidentActionRow>(
+      `SELECT TOP (@limit) * FROM dbo.incident_actions
+       WHERE server_id = @server_id AND source = N'chat'
+       ORDER BY seq DESC`
     )
   return r.recordset.map(rowToAction)
 }
@@ -429,6 +460,24 @@ async function updateActionStatus(
     )
 }
 
+/**
+ * Atomically transition a pending action to 'approved', claiming it for
+ * execution. Returns true only for the caller that won the race — concurrent
+ * approvals of the same action see rowcount 0 and must abort. This closes the
+ * TOCTOU window between the status check and execution in the approve handler.
+ */
+export async function tryClaimActionForExecution(id: string): Promise<boolean> {
+  const r = await getPool()
+    .request()
+    .input('id', sql.NVarChar(36), id)
+    .query<{ claimed: number }>(
+      `UPDATE dbo.incident_actions SET status = N'approved'
+       WHERE id = @id AND status = N'pending';
+       SELECT @@ROWCOUNT AS claimed`
+    )
+  return (r.recordset[0]?.claimed ?? 0) === 1
+}
+
 export async function approveAction(
   id: string,
   approvedBy: string,
@@ -459,6 +508,28 @@ export async function countApprovedActionsForIncident(incidentId: string): Promi
     .query<{ count: number }>(
       `SELECT COUNT(*) AS count FROM dbo.incident_actions
        WHERE incident_id = @incident_id AND status IN (N'executed', N'approved')`
+    )
+  return r.recordset[0]?.count ?? 0
+}
+
+/**
+ * Count chat-originated actions executed/approved against a server since a given
+ * epoch-ms cutoff. Used to rate-limit fixes proposed from the AI chat panel,
+ * which have no incident to scope a per-incident cap against.
+ */
+export async function countApprovedActionsForServer(
+  serverId: string,
+  sinceMs: number
+): Promise<number> {
+  const r = await getPool()
+    .request()
+    .input('server_id', sql.NVarChar(36), serverId)
+    .input('since', sql.BigInt, sinceMs)
+    .query<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM dbo.incident_actions
+       WHERE server_id = @server_id AND source = N'chat'
+         AND status IN (N'executed', N'approved')
+         AND executed_at >= @since`
     )
   return r.recordset[0]?.count ?? 0
 }

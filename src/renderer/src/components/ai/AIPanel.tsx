@@ -21,6 +21,7 @@ import { tokens } from '../../styles/tokens'
 import { useAiChatStore } from '../../store/aiChatStore'
 import { useAppStore } from '../../store/appStore'
 import { ThumbsRow } from './ThumbsRow'
+import { ActionCard } from '../actions/ActionCard'
 import type { ToolStep } from '../../store/aiChatStore'
 import type { AiProviderSettings } from '../../../../preload/index'
 
@@ -52,7 +53,9 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
     finalizeStreaming,
     resetStreaming,
     feedbackByMessageId,
-    setFeedback
+    setFeedback,
+    proposedActions,
+    upsertProposedAction
   } = useAiChatStore()
   const [input, setInput] = useState('')
   // Health state: 'unknown' before the first probe, 'ok' / 'down' afterwards.
@@ -142,6 +145,8 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
         addToolStep(ev.name)
       } else if (ev.type === 'tool_end') {
         completeToolStep(ev.name, ev.output)
+      } else if (ev.type === 'action_proposed') {
+        upsertProposedAction(ev.action)
       } else if (ev.type === 'done') {
         unsubscribeRef.current?.()
         unsubscribeRef.current = null
@@ -180,7 +185,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
       resetStreaming(err instanceof Error ? err.message : String(err))
       if (mountedRef.current) setLoading(false)
     }
-  }, [input, loading, addMessage, setLoading, startStreaming, appendToken, addToolStep, completeToolStep, finalizeStreaming, resetStreaming])
+  }, [input, loading, addMessage, setLoading, startStreaming, appendToken, addToolStep, completeToolStep, finalizeStreaming, resetStreaming, upsertProposedAction])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -336,6 +341,26 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
 
           {/* Tool timeline — shown while agent is calling tools */}
           {toolSteps.length > 0 && <ToolTimeline steps={toolSteps} />}
+
+          {/* Proposed remediation actions — approve to run the fix on the server */}
+          {proposedActions.length > 0 && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Typography
+                sx={{
+                  fontSize: tokens.font.sizeXs,
+                  fontWeight: 600,
+                  color: tokens.color.textMuted,
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5
+                }}
+              >
+                Suggested fixes
+              </Typography>
+              {proposedActions.map((action) => (
+                <ActionCard key={action.id} action={action} onUpdated={upsertProposedAction} />
+              ))}
+            </Box>
+          )}
 
           {/* Streaming bubble — shows tokens as they arrive */}
           {streamingText && <StreamingBubble text={streamingText} loading={loading} />}

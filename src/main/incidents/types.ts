@@ -20,6 +20,9 @@ export type IncidentEventKind =
 
 export type ActionStatus = 'pending' | 'approved' | 'rejected' | 'executed' | 'failed'
 
+/** Origin of a remediation action: an incident investigation, or the AI chat panel. */
+export type ActionSource = 'incident' | 'chat'
+
 export interface Incident {
   id: string
   serverId: string
@@ -43,7 +46,12 @@ export interface IncidentEvent {
 
 export interface IncidentAction {
   id: string
-  incidentId: string
+  /** Null for chat-originated actions, which are tied to a server instead. */
+  incidentId: string | null
+  /** Target server id. Always set for new actions; legacy rows may be null. */
+  serverId?: string
+  /** Where the action originated. Defaults to 'incident'. */
+  source: ActionSource
   toolName: string
   params: Record<string, unknown>
   tsqlPreview: string

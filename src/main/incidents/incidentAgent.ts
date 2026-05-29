@@ -269,7 +269,10 @@ export async function runIncidentAgent(
       incident.category,
       buildDiagnosticTools(conn)
     )
-    const actionTools = selectActionToolsForIncident(incident.category, buildActionTools(incidentId))
+    const actionTools = selectActionToolsForIncident(
+      incident.category,
+      buildActionTools({ incidentId, serverId: server.id, source: 'incident' })
+    )
 
     const ac = new AbortController()
 

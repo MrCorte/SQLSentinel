@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { IncidentAction } from '../../../preload/index'
 
 export interface AiMessage {
   id: string
@@ -41,6 +42,8 @@ interface AiChatStore {
   loading: boolean
   streamingText: string
   toolSteps: ToolStep[]
+  /** AI-proposed remediation actions awaiting (or past) user approval. */
+  proposedActions: IncidentAction[]
   /** Per-message feedback rating (1 = thumbs up, -1 = thumbs down). Volatile. */
   feedbackByMessageId: Record<string, 1 | -1>
   addMessage: (msg: Omit<AiMessage, 'id'> & { id?: string }) => void
@@ -53,6 +56,8 @@ interface AiChatStore {
   finalizeStreaming: () => void
   resetStreaming: (error: string) => void
   setFeedback: (id: string, rating: 1 | -1) => void
+  /** Insert or replace a proposed action by id (proposal + status updates). */
+  upsertProposedAction: (action: IncidentAction) => void
 }
 
 export const useAiChatStore = create<AiChatStore>((set, get) => ({
@@ -60,13 +65,21 @@ export const useAiChatStore = create<AiChatStore>((set, get) => ({
   loading: false,
   streamingText: '',
   toolSteps: [],
+  proposedActions: [],
   feedbackByMessageId: {},
 
   addMessage: (msg) =>
     set((s) => ({ messages: [...s.messages, { id: msg.id ?? newId(), ...msg }] })),
   setLoading: (loading) => set({ loading }),
   clear: () =>
-    set({ messages: [], loading: false, streamingText: '', toolSteps: [], feedbackByMessageId: {} }),
+    set({
+      messages: [],
+      loading: false,
+      streamingText: '',
+      toolSteps: [],
+      proposedActions: [],
+      feedbackByMessageId: {}
+    }),
 
   startStreaming: () => set({ streamingText: '', toolSteps: [] }),
 
@@ -113,5 +126,14 @@ export const useAiChatStore = create<AiChatStore>((set, get) => ({
   },
 
   setFeedback: (id, rating) =>
-    set((s) => ({ feedbackByMessageId: { ...s.feedbackByMessageId, [id]: rating } }))
+    set((s) => ({ feedbackByMessageId: { ...s.feedbackByMessageId, [id]: rating } })),
+
+  upsertProposedAction: (action) =>
+    set((s) => {
+      const idx = s.proposedActions.findIndex((a) => a.id === action.id)
+      if (idx === -1) return { proposedActions: [...s.proposedActions, action] }
+      const next = s.proposedActions.slice()
+      next[idx] = action
+      return { proposedActions: next }
+    })
 }))

@@ -194,6 +194,9 @@ const TABLE_DDL: Array<{ name: string; sql: string }> = [
        physical_cpus      INT           NULL,
        hosting_type       NVARCHAR(20)  NULL,
        notes              NVARCHAR(MAX) NULL,
+       remediation_username           NVARCHAR(200) NULL,
+       remediation_encrypted_password NVARCHAR(MAX) NULL,
+       remediation_use_windows_auth   BIT           NULL,
        CONSTRAINT UQ_servers_host_port UNIQUE (host, port)
      )`
   },
@@ -245,9 +248,14 @@ const TABLE_DDL: Array<{ name: string; sql: string }> = [
   },
   {
     name: 'incident_actions',
+    // `incident_id` is nullable: chat-originated remediation actions are tied to
+    // a server (server_id) rather than an incident. `source` distinguishes the
+    // two origins. Incident actions populate both incident_id and server_id.
     sql: `CREATE TABLE dbo.incident_actions (
        id               NVARCHAR(36)  NOT NULL PRIMARY KEY,
-       incident_id      NVARCHAR(36)  NOT NULL REFERENCES dbo.incidents(id) ON DELETE CASCADE,
+       incident_id      NVARCHAR(36)  NULL REFERENCES dbo.incidents(id) ON DELETE CASCADE,
+       server_id        NVARCHAR(36)  NULL,
+       source           NVARCHAR(20)  NOT NULL CONSTRAINT DF_incident_actions_source DEFAULT N'incident',
        tool_name        NVARCHAR(100) NOT NULL,
        params_json      NVARCHAR(MAX) NOT NULL,
        tsql_preview     NVARCHAR(MAX) NOT NULL,
@@ -608,6 +616,57 @@ const MIGRATIONS: Migration[] = [
                  WHERE object_id = OBJECT_ID(N'dbo.ai_feedback')
                    AND name = N'IX_ai_feedback_rating')
         DROP INDEX IX_ai_feedback_rating ON dbo.ai_feedback;
+    `
+  },
+  {
+    id: 4,
+    description: 'Generalize incident_actions: add server_id + source, make incident_id nullable',
+    // Chat-originated remediation actions are tied to a server rather than an
+    // incident, so incident_id must allow NULL and we add server_id + source.
+    // The inline FK was created unnamed (REFERENCES ... in the column DDL); we
+    // look it up by referenced table, drop it, relax the column, then re-add a
+    // named nullable FK. Idempotent: guarded on column existence / nullability.
+    sql: `
+      IF COL_LENGTH(N'dbo.incident_actions', N'server_id') IS NULL
+        ALTER TABLE dbo.incident_actions ADD server_id NVARCHAR(36) NULL;
+
+      IF COL_LENGTH(N'dbo.incident_actions', N'source') IS NULL
+        ALTER TABLE dbo.incident_actions
+          ADD source NVARCHAR(20) NOT NULL
+          CONSTRAINT DF_incident_actions_source DEFAULT N'incident';
+
+      IF EXISTS (SELECT 1 FROM sys.columns
+                 WHERE object_id = OBJECT_ID(N'dbo.incident_actions')
+                   AND name = N'incident_id' AND is_nullable = 0)
+      BEGIN
+        DECLARE @fk SYSNAME;
+        SELECT @fk = fk.name
+        FROM sys.foreign_keys fk
+        WHERE fk.parent_object_id = OBJECT_ID(N'dbo.incident_actions')
+          AND fk.referenced_object_id = OBJECT_ID(N'dbo.incidents');
+        IF @fk IS NOT NULL
+          EXEC('ALTER TABLE dbo.incident_actions DROP CONSTRAINT ' + QUOTENAME(@fk));
+        ALTER TABLE dbo.incident_actions ALTER COLUMN incident_id NVARCHAR(36) NULL;
+        ALTER TABLE dbo.incident_actions
+          ADD CONSTRAINT FK_incident_actions_incident
+          FOREIGN KEY (incident_id) REFERENCES dbo.incidents(id) ON DELETE CASCADE;
+      END
+    `
+  },
+  {
+    id: 5,
+    description: 'Add elevated remediation credential columns to servers',
+    // Approved fixes execute under a separate higher-privilege credential so the
+    // monitoring account can stay read-only. Nullable: feature is opt-in per server.
+    sql: `
+      IF COL_LENGTH(N'dbo.servers', N'remediation_username') IS NULL
+        ALTER TABLE dbo.servers ADD remediation_username NVARCHAR(200) NULL;
+
+      IF COL_LENGTH(N'dbo.servers', N'remediation_encrypted_password') IS NULL
+        ALTER TABLE dbo.servers ADD remediation_encrypted_password NVARCHAR(MAX) NULL;
+
+      IF COL_LENGTH(N'dbo.servers', N'remediation_use_windows_auth') IS NULL
+        ALTER TABLE dbo.servers ADD remediation_use_windows_auth BIT NULL;
     `
   }
 ]

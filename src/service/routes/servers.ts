@@ -35,7 +35,12 @@ const AddServerSchema = z.object({
   username: z.string().max(128).optional(),
   password: z.string().max(256).optional(),
   hostingType: z.enum(['on-premise', 'cloud']).optional(),
-  notes: z.string().max(1000).optional()
+  notes: z.string().max(1000).optional(),
+  // Elevated remediation credential (used only to execute approved fixes).
+  // Empty string is allowed so the UI can disable/clear it.
+  remediationUsername: z.string().max(200).optional(),
+  remediationPassword: z.string().max(256).optional(),
+  remediationUseWindowsAuth: z.boolean().optional()
 })
 
 const UpdateServerSchema = AddServerSchema.partial().extend({

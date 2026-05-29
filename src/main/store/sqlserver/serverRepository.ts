@@ -11,6 +11,7 @@ import {
   isEncrypted
 } from '../safeStorageUtil'
 import { createLogger } from '../../utils/logger'
+import type { ServerConnection } from '../../collectors/types'
 
 const log = createLogger('server-repo')
 
@@ -45,6 +46,15 @@ export interface StoredServer {
   physicalCpus?: number
   hostingType?: ServerHostingType
   notes?: string
+  // ── Elevated "remediation" credential (opt-in, per server) ──────────────
+  // Used ONLY to execute approved AI-suggested fixes, so the monitoring
+  // credential above can stay least-privilege (read-only).
+  remediationUsername?: string
+  remediationUseWindowsAuth?: boolean
+  /** Encrypted remediation password (safeStorage base64 blob) — never plaintext on disk. */
+  remediationEncryptedPassword?: string
+  /** @deprecated Do not persist. Populated transiently after decryption. */
+  remediationPassword?: string
 }
 
 interface ServerRow {
@@ -67,6 +77,9 @@ interface ServerRow {
   physical_cpus: number | null
   hosting_type: string | null
   notes: string | null
+  remediation_username: string | null
+  remediation_encrypted_password: string | null
+  remediation_use_windows_auth: boolean | number | null
 }
 
 function rowToServer(row: ServerRow): StoredServer {
@@ -97,7 +110,15 @@ function rowToServer(row: ServerRow): StoredServer {
     ...(row.logical_cpus != null && { logicalCpus: row.logical_cpus }),
     ...(row.physical_cpus != null && { physicalCpus: row.physical_cpus }),
     ...(hostingType != null && { hostingType }),
-    ...(row.notes != null && { notes: row.notes })
+    ...(row.notes != null && { notes: row.notes }),
+    ...(row.remediation_username != null && { remediationUsername: row.remediation_username }),
+    ...(row.remediation_encrypted_password != null && {
+      remediationEncryptedPassword: row.remediation_encrypted_password
+    }),
+    ...(row.remediation_use_windows_auth != null && {
+      remediationUseWindowsAuth:
+        row.remediation_use_windows_auth === true || row.remediation_use_windows_auth === 1
+    })
   }
 }
 
@@ -139,7 +160,11 @@ const UPSERT_ALLOWED_FIELDS = [
   'logicalCpus',
   'physicalCpus',
   'hostingType',
-  'notes'
+  'notes',
+  'remediationUsername',
+  'remediationPassword',
+  'remediationEncryptedPassword',
+  'remediationUseWindowsAuth'
 ] as const
 
 function pickAllowedFields(params: unknown): Record<string, unknown> {
@@ -168,12 +193,54 @@ function withDecryptedPassword(s: StoredServer): StoredServer {
   if (out.encryptedPassword) {
     out.password = decrypt(out.encryptedPassword)
   }
+  if (out.remediationEncryptedPassword) {
+    out.remediationPassword = decrypt(out.remediationEncryptedPassword)
+  }
   return out
 }
 
 export function stripCredentials(s: StoredServer): StoredServer {
-  const { password: _pw, encryptedPassword: _enc, ...safe } = s
+  const {
+    password: _pw,
+    encryptedPassword: _enc,
+    remediationPassword: _rpw,
+    remediationEncryptedPassword: _renc,
+    ...safe
+  } = s
+  // Keep remediationUsername / remediationUseWindowsAuth so the UI can show
+  // whether an elevated credential is configured, without exposing the secret.
   return safe as StoredServer
+}
+
+/**
+ * Build a ServerConnection from the server's *elevated remediation* credential,
+ * used only to execute approved AI-suggested fixes. Returns null when no
+ * remediation credential has been configured — callers must refuse to execute
+ * rather than silently falling back to the read-only monitoring credential.
+ *
+ * Accepts a StoredServer that has already been through withDecryptedPassword
+ * (e.g. from getById); decrypts on the fly as a fallback for safety.
+ */
+export function resolveRemediationConnection(s: StoredServer): ServerConnection | null {
+  const useWindowsAuth = s.remediationUseWindowsAuth === true
+  const password =
+    s.remediationPassword ??
+    (s.remediationEncryptedPassword ? decrypt(s.remediationEncryptedPassword) : undefined)
+
+  // SQL auth requires both username and password; Windows auth uses the
+  // service process identity, so no explicit credential is needed.
+  if (!useWindowsAuth && (!s.remediationUsername || !password)) return null
+
+  return {
+    ip: s.host,
+    port: s.port,
+    instanceName: s.instanceName,
+    username: s.remediationUsername,
+    password,
+    useWindowsAuth,
+    encrypt: true,
+    trustServerCertificate: true
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -434,13 +501,26 @@ async function insertRow(s: StoredServer): Promise<void> {
     .input('physical_cpus', sql.Int, s.physicalCpus ?? null)
     .input('hosting_type', sql.NVarChar(20), s.hostingType ?? null)
     .input('notes', sql.NVarChar(sql.MAX), s.notes ?? null)
+    .input('remediation_username', sql.NVarChar(200), s.remediationUsername ?? null)
+    .input(
+      'remediation_encrypted_password',
+      sql.NVarChar(sql.MAX),
+      s.remediationEncryptedPassword ?? null
+    )
+    .input(
+      'remediation_use_windows_auth',
+      sql.Bit,
+      s.remediationUseWindowsAuth == null ? null : s.remediationUseWindowsAuth ? 1 : 0
+    )
     .query(`INSERT INTO dbo.servers
       (id, host, port, instance_name, use_windows_auth, username, encrypted_password,
        added_at, last_seen, unreachable, unreachable_since, machine_name,
-       ag_group_id, ag_name, ag_role, logical_cpus, physical_cpus, hosting_type, notes)
+       ag_group_id, ag_name, ag_role, logical_cpus, physical_cpus, hosting_type, notes,
+       remediation_username, remediation_encrypted_password, remediation_use_windows_auth)
       VALUES (@id, @host, @port, @instance_name, @use_windows_auth, @username, @encrypted_password,
               @added_at, @last_seen, @unreachable, @unreachable_since, @machine_name,
-              @ag_group_id, @ag_name, @ag_role, @logical_cpus, @physical_cpus, @hosting_type, @notes)`)
+              @ag_group_id, @ag_name, @ag_role, @logical_cpus, @physical_cpus, @hosting_type, @notes,
+              @remediation_username, @remediation_encrypted_password, @remediation_use_windows_auth)`)
 }
 
 export interface AddResult {
@@ -478,6 +558,10 @@ export async function add(params: unknown): Promise<AddResult> {
     server.encryptedPassword = encrypt(server.password)
     delete server.password
   }
+  if (server.remediationPassword) {
+    server.remediationEncryptedPassword = encrypt(server.remediationPassword)
+    delete server.remediationPassword
+  }
   try {
     await insertRow(server)
   } catch (err) {
@@ -513,12 +597,18 @@ const UPDATE_COLUMNS: Record<string, { column: string; type: () => sql.ISqlType 
   logicalCpus: { column: 'logical_cpus', type: () => sql.Int() },
   physicalCpus: { column: 'physical_cpus', type: () => sql.Int() },
   hostingType: { column: 'hosting_type', type: () => sql.NVarChar(20) },
-  notes: { column: 'notes', type: () => sql.NVarChar(sql.MAX) }
+  notes: { column: 'notes', type: () => sql.NVarChar(sql.MAX) },
+  remediationUsername: { column: 'remediation_username', type: () => sql.NVarChar(200) },
+  remediationEncryptedPassword: {
+    column: 'remediation_encrypted_password',
+    type: () => sql.NVarChar(sql.MAX)
+  },
+  remediationUseWindowsAuth: { column: 'remediation_use_windows_auth', type: () => sql.Bit() }
 }
 
 function normalizeUpdateValue(key: string, value: unknown): unknown {
   if (value === undefined) return null
-  if (key === 'useWindowsAuth' || key === 'unreachable') {
+  if (key === 'useWindowsAuth' || key === 'unreachable' || key === 'remediationUseWindowsAuth') {
     return value ? 1 : 0
   }
   return value
@@ -533,6 +623,13 @@ export async function update(id: string, patch: Partial<StoredServer>): Promise<
     safePatch.encryptedPassword = encrypt(safePatch.password as string)
   }
   delete safePatch.password
+  if (
+    typeof safePatch.remediationPassword === 'string' &&
+    safePatch.remediationPassword.length > 0
+  ) {
+    safePatch.remediationEncryptedPassword = encrypt(safePatch.remediationPassword as string)
+  }
+  delete safePatch.remediationPassword
   // Collapse legacy `ip` into `host` if the caller still sends it.
   if (typeof safePatch.ip === 'string' && safePatch.ip && !safePatch.host) {
     safePatch.host = safePatch.ip
@@ -551,15 +648,16 @@ export async function update(id: string, patch: Partial<StoredServer>): Promise<
     // No-op short-circuit (avoids the JSON write storm caused by polling-driven
     // CPU/AG-role updates with unchanged values).
     const currentValue = (current as unknown as Record<string, unknown>)[key]
-    const normalizedCurrent =
-      key === 'useWindowsAuth' || key === 'unreachable' ? (currentValue ? 1 : 0) : currentValue
+    const isBitKey =
+      key === 'useWindowsAuth' || key === 'unreachable' || key === 'remediationUseWindowsAuth'
+    const normalizedCurrent = isBitKey ? (currentValue ? 1 : 0) : currentValue
     if (normalizedCurrent === value) continue
     const paramName = `p${paramIdx++}`
     req.input(paramName, meta.type(), value as never)
     setFragments.push(`${meta.column} = @${paramName}`)
     // Translate the DB-bound value back to its StoredServer shape so the
     // in-memory cache stays in sync without a full reload.
-    if (key === 'useWindowsAuth' || key === 'unreachable') {
+    if (isBitKey) {
       ;(appliedPatch as Record<string, unknown>)[key] = !!value
     } else if (value === null) {
       ;(appliedPatch as Record<string, unknown>)[key] = undefined
@@ -609,6 +707,10 @@ export async function upsertByIpPort(params: unknown): Promise<StoredServer> {
   if (server.password) {
     server.encryptedPassword = encrypt(server.password)
     delete server.password
+  }
+  if (server.remediationPassword) {
+    server.remediationEncryptedPassword = encrypt(server.remediationPassword)
+    delete server.remediationPassword
   }
   await insertRow(server)
   appendToCache(server)

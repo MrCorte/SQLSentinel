@@ -68,8 +68,8 @@ describe('buildAiWorkspaceSummary', () => {
     const summary = buildAiWorkspaceSummary({
       events: [],
       actions: [
-        { id: 'a1', incidentId: 'inc-1', toolName: 'kill_session', status: 'pending' },
-        { id: 'a2', incidentId: 'inc-1', toolName: 'update_statistics', status: 'executed' }
+        { id: 'a1', incidentId: 'inc-1', source: 'incident', toolName: 'kill_session', status: 'pending' },
+        { id: 'a2', incidentId: 'inc-1', source: 'incident', toolName: 'update_statistics', status: 'executed' }
       ] as IncidentAction[],
       audit: []
     })
@@ -85,6 +85,7 @@ describe('buildAiRecommendations', () => {
       {
         id: 'a1',
         incidentId: 'inc-1',
+        source: 'incident',
         toolName: 'kill_session',
         status: 'pending',
         explanation: 'Kill the blocking session after validation.',
@@ -94,6 +95,7 @@ describe('buildAiRecommendations', () => {
       {
         id: 'a2',
         incidentId: 'inc-1',
+        source: 'incident',
         toolName: 'update_statistics',
         status: 'executed',
         explanation: 'Refresh stale stats.',

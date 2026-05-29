@@ -52,7 +52,9 @@ import type {
   IncidentDetail,
   IncidentListRequest,
   IncidentSetStatusRequest,
-  AiProviderSettings
+  AiProviderSettings,
+  ApproveActionRequest,
+  RejectActionRequest
 } from '../main/ipc/types'
 import type { IncidentAction } from '../main/incidents/types'
 import type { ServerMetrics, ServerInfo, DatabaseInfo } from '../main/collectors/types'
@@ -840,6 +842,18 @@ const realApi = {
       ipcRenderer.on(IpcChannel.INCIDENT_ACTION, listener)
       return () => ipcRenderer.removeListener(IpcChannel.INCIDENT_ACTION, listener)
     }
+  },
+
+  // Generalized remediation actions (incident- or chat-originated).
+  actions: {
+    approve: (req: ApproveActionRequest): Promise<IpcResult<IncidentAction>> =>
+      ipcRenderer.invoke(IpcChannel.ACTIONS_APPROVE, req),
+
+    reject: (req: RejectActionRequest): Promise<IpcResult<IncidentAction>> =>
+      ipcRenderer.invoke(IpcChannel.ACTIONS_REJECT, req),
+
+    listForServer: (serverId: string): Promise<IpcResult<IncidentAction[]>> =>
+      ipcRenderer.invoke(IpcChannel.ACTIONS_LIST_FOR_SERVER, serverId)
   }
 }
 
@@ -1378,6 +1392,7 @@ const bridgeApi = {
   aiListTsqlMap: () => realApi.aiListTsqlMap(),
   aiDeleteTsqlMapEntry: (id: string) => realApi.aiDeleteTsqlMapEntry(id),
   incidents: realApi.incidents,
+  actions: realApi.actions,
   getServiceStatus: () => ipcRenderer.invoke(IpcChannel.SERVICE_STATUS_GET),
   storage: {
     getConfig: (): Promise<IpcResult<StorageConfigInfo | null>> =>

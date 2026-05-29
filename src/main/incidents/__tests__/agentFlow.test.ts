@@ -92,9 +92,11 @@ const FAKE_SERVER = {
 const FAKE_ACTION = {
   id: 'action-abc',
   incidentId: 'inc-test-001',
+  serverId: 'srv-001',
+  source: 'incident',
   toolName: 'kill_session',
   status: 'pending'
-} as ReturnType<typeof repo.createAction>
+} as unknown as Awaited<ReturnType<typeof repo.createAction>>
 
 function makeFakeProvider(
   options: {
@@ -502,13 +504,15 @@ describe('runIncidentAgent — action proposal flow', () => {
   it('stores a pending action via createAction when kill_session tool is invoked', async () => {
     vi.mocked(providers.getProvider).mockResolvedValue(makeFakeProvider({ callKillSession: true }))
     await runIncidentAgent('inc-test-001')
-    expect(repo.createAction).toHaveBeenCalledWith(
-      'inc-test-001',
-      'kill_session',
-      { session_id: 99 },
-      'KILL 99;',
-      'long-running blocking query'
-    )
+    expect(repo.createAction).toHaveBeenCalledWith({
+      incidentId: 'inc-test-001',
+      serverId: 'srv-001',
+      source: 'incident',
+      toolName: 'kill_session',
+      params: { session_id: 99 },
+      tsqlPreview: 'KILL 99;',
+      explanation: 'long-running blocking query'
+    })
   })
 
   it('logs action_proposed event including toolName and actionId', async () => {
@@ -547,7 +551,11 @@ describe('runIncidentAgent — action proposal flow', () => {
 
 describe('toolDefinitionFromDynamicTool', () => {
   it('keeps numeric action params as JSON schema numbers', () => {
-    const killSession = buildActionTools('inc-test-001').find((t) => t.name === 'kill_session')
+    const killSession = buildActionTools({
+      incidentId: 'inc-test-001',
+      serverId: 'srv-001',
+      source: 'incident'
+    }).find((t) => t.name === 'kill_session')
     expect(killSession).toBeDefined()
 
     const def = toolDefinitionFromDynamicTool(killSession!)

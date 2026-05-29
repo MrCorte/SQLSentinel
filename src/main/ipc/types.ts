@@ -1,5 +1,6 @@
 import type { DiscoveredServer, ScanOptions, ScanProgress } from '../discovery/types'
 import type { ServerMetrics } from '../collectors/types'
+import type { IncidentAction } from '../incidents/types'
 
 /**
  * IPC channel names. Regular enum (not const enum) to avoid
@@ -113,6 +114,10 @@ export enum IpcChannel {
   INCIDENTS_RUN_AGENT = 'incidents:runAgent',
   INCIDENTS_APPROVE_ACTION = 'incidents:approveAction',
   INCIDENTS_REJECT_ACTION = 'incidents:rejectAction',
+  // Generalized remediation actions (incident- or chat-originated)
+  ACTIONS_APPROVE = 'actions:approve',
+  ACTIONS_REJECT = 'actions:reject',
+  ACTIONS_LIST_FOR_SERVER = 'actions:listForServer',
   INCIDENT_CREATED = 'incident:created', // push: main → renderer
   INCIDENT_UPDATED = 'incident:updated', // push: main → renderer
   INCIDENT_EVENT = 'incident:event', // push: main → renderer
@@ -192,8 +197,24 @@ export type AiStreamEvent =
   | { type: 'tool_start'; name: string }
   | { type: 'tool_end'; name: string; output: string }
   | { type: 'token'; text: string }
+  | { type: 'action_proposed'; action: IncidentAction }
   | { type: 'done' }
   | { type: 'error'; message: string }
+
+/** Request to approve & execute a remediation action (incident- or chat-originated). */
+export interface ApproveActionRequest {
+  actionId: string
+  /**
+   * Typed confirmation token. Required for destructive actions — must equal the
+   * target server's "host:port". Ignored for non-destructive actions.
+   */
+  confirmation?: string
+}
+
+export interface RejectActionRequest {
+  actionId: string
+  reason?: string
+}
 
 // --- Per-channel request types ---
 

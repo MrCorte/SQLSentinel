@@ -473,6 +473,8 @@ export type IncidentEventKind =
 
 export type ActionStatus = 'pending' | 'approved' | 'rejected' | 'executed' | 'failed'
 
+export type ActionSource = 'incident' | 'chat'
+
 export interface Incident {
   id: string
   serverId: string
@@ -496,7 +498,9 @@ export interface IncidentEvent {
 
 export interface IncidentAction {
   id: string
-  incidentId: string
+  incidentId: string | null
+  serverId?: string
+  source: ActionSource
   toolName: string
   params: Record<string, unknown>
   tsqlPreview: string
@@ -555,8 +559,19 @@ export type AiStreamEvent =
   | { type: 'tool_start'; name: string }
   | { type: 'tool_end'; name: string; output: string }
   | { type: 'token'; text: string }
+  | { type: 'action_proposed'; action: IncidentAction }
   | { type: 'done' }
   | { type: 'error'; message: string }
+
+export interface ApproveActionRequest {
+  actionId: string
+  confirmation?: string
+}
+
+export interface RejectActionRequest {
+  actionId: string
+  reason?: string
+}
 
 export type AiProviderName = 'ollama' | 'claude'
 
@@ -729,7 +744,11 @@ export interface SqlSentinelAPI {
     onCreated(callback: (incident: Incident) => void): () => void
     onUpdated(callback: (incident: Incident) => void): () => void
     runAgent(id: string): Promise<IpcResult<null>>
-    approveAction(req: { actionId: string; approvedBy: string }): Promise<IpcResult<null>>
+    approveAction(req: {
+      actionId: string
+      approvedBy?: string
+      confirmation?: string
+    }): Promise<IpcResult<null>>
     rejectAction(req: { actionId: string; reason?: string }): Promise<IpcResult<null>>
     onAgentEvent(
       callback: (payload: { incidentId: string; event: AiStreamEvent }) => void
@@ -737,6 +756,11 @@ export interface SqlSentinelAPI {
     onAction(
       callback: (payload: { incidentId: string; action: IncidentAction }) => void
     ): () => void
+  }
+  actions: {
+    approve(req: ApproveActionRequest): Promise<IpcResult<IncidentAction>>
+    reject(req: RejectActionRequest): Promise<IpcResult<IncidentAction>>
+    listForServer(serverId: string): Promise<IpcResult<IncidentAction[]>>
   }
   getServiceStatus(): Promise<IpcResult<{ status: 'connected' | 'connecting' | 'disconnected' }>>
   storage: {

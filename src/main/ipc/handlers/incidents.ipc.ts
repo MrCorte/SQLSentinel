@@ -9,13 +9,19 @@ import type {
   IncidentAiStats,
   IncidentListRequest,
   IncidentSetStatusRequest,
-  IncidentDetail
+  IncidentDetail,
+  ApproveActionRequest,
+  RejectActionRequest
 } from '../types'
 import type { Incident, IncidentEvent, IncidentAction } from '../../incidents/types'
 import * as repository from '../../incidents/repository'
 import { attachDetector, onIncidentChange, setAgentRunner } from '../../incidents/detector'
 import { isIncidentAgentRunning, runIncidentAgent } from '../../incidents/incidentAgent'
-import { ACTION_WHITELIST, buildActionSqlForExecution } from '../../ai/actionTools'
+import {
+  ACTION_WHITELIST,
+  buildActionSqlForExecution,
+  isDestructiveAction
+} from '../../ai/actionTools'
 import { getPool } from '../../collectors/connectionPool'
 import * as serverStore from '../../store/sqlserver/serverRepository'
 import { getRawSetting } from '../../store/sqlserver/settingsRepository'
@@ -26,6 +32,9 @@ import { getRawSetting } from '../../store/sqlserver/settingsRepository'
 
 const MAX_ACTIONS_PER_INCIDENT = 3
 const MAX_ACTIONS_PER_HOUR = 10
+// Chat-originated actions have no incident to scope a per-incident cap against,
+// so they are rate-limited per target server over a sliding hour.
+const MAX_CHAT_ACTIONS_PER_SERVER_PER_HOUR = 5
 
 // Sliding-window timestamp log of approved actions (in-memory, resets on restart).
 const hourlyActionLog: number[] = []
@@ -109,6 +118,182 @@ function fireAgent(incidentId: string): boolean {
     })
     .catch((err) => log.error('[incidents] agent error:', err))
   return true
+}
+
+// ---------------------------------------------------------------------------
+// Shared remediation-action execution — used by both the incident approve
+// handler and the generalized chat-action approve handler. Same 4-layer guard.
+// ---------------------------------------------------------------------------
+
+function notifyActionChange(action: IncidentAction): void {
+  // Incident actions are surfaced to the incident drawer via a push channel.
+  // Chat actions report their final status synchronously through the approve/
+  // reject IPC result, so they need no separate push.
+  if (action.incidentId) {
+    pushToRenderer(IpcChannel.INCIDENT_ACTION, { incidentId: action.incidentId, action })
+  }
+}
+
+function resolveActionServer(action: IncidentAction): serverStore.StoredServer | undefined {
+  if (action.serverId) {
+    const byId = serverStore.getById(action.serverId)
+    if (byId) return byId
+  }
+  return undefined
+}
+
+async function executeActionApproval(
+  req: ApproveActionRequest
+): Promise<IpcResult<IncidentAction>> {
+  try {
+    const action = await repository.getActionById(req.actionId)
+    if (!action) return { ok: false, error: `Action ${req.actionId} not found` }
+    if (action.status !== 'pending')
+      return { ok: false, error: `Action is not pending (status: ${action.status})` }
+
+    // Layer 4 — Kill switch
+    if (!(await isAgentActionsEnabled())) {
+      return { ok: false, error: 'Agent actions are disabled in Settings → AI Provider' }
+    }
+
+    // Layer 1 — Hard whitelist guard (defence-in-depth, even if UI is bypassed).
+    if (!ACTION_WHITELIST.has(action.toolName)) {
+      return { ok: false, error: `Tool '${action.toolName}' is not whitelisted for execution` }
+    }
+
+    // Resolve the target server. Chat actions carry server_id directly; legacy
+    // incident rows (no server_id) fall back to the parent incident's server.
+    let server = resolveActionServer(action)
+    if (!server && action.incidentId) {
+      const incident = await repository.getIncidentById(action.incidentId)
+      if (incident) server = serverStore.getById(incident.serverId)
+    }
+    if (!server) return { ok: false, error: 'Target server not found' }
+
+    // Server-side typed-confirmation gate for destructive actions. The UI also
+    // enforces this, but we re-check here so the safety never depends on the UI.
+    if (isDestructiveAction(action.toolName)) {
+      const expected = `${server.host}:${server.port}`
+      if ((req.confirmation ?? '').trim() !== expected) {
+        return {
+          ok: false,
+          error: `This action is destructive and requires typed confirmation. Type "${expected}" to confirm.`
+        }
+      }
+    }
+
+    // Layer 4 — Context rate limits (per-incident, or per-server for chat).
+    if (action.incidentId) {
+      const approvedCount = await repository.countApprovedActionsForIncident(action.incidentId)
+      if (approvedCount >= MAX_ACTIONS_PER_INCIDENT) {
+        return {
+          ok: false,
+          error: `Incident action cap reached (max ${MAX_ACTIONS_PER_INCIDENT} per incident)`
+        }
+      }
+    } else if (action.serverId) {
+      const since = Date.now() - 3_600_000
+      const serverCount = await repository.countApprovedActionsForServer(action.serverId, since)
+      if (serverCount >= MAX_CHAT_ACTIONS_PER_SERVER_PER_HOUR) {
+        return {
+          ok: false,
+          error: `Per-server action cap reached (max ${MAX_CHAT_ACTIONS_PER_SERVER_PER_HOUR} per hour)`
+        }
+      }
+    } else {
+      // An action with neither an incident nor a server has no rate-limit scope
+      // and no resolvable target — refuse rather than fall through.
+      return { ok: false, error: 'Action has no incident or server context' }
+    }
+
+    // Layer 4 — Global hourly cap
+    checkGlobalRateLimit()
+
+    // Execute via the *elevated remediation credential* so the read-only
+    // monitoring credential is never used for writes. Refuse if none configured.
+    const remediationConn = serverStore.resolveRemediationConnection(server)
+    if (!remediationConn) {
+      return {
+        ok: false,
+        error:
+          'No elevated remediation credential is configured for this server. Add one in the server settings to run fixes.'
+      }
+    }
+    const pool = await getPool(remediationConn)
+
+    // Layer 2 — Hard-coded preconditions (TypeScript, not delegated to LLM).
+    const preconditionError = await validateActionPreconditions(action, pool)
+    if (preconditionError) {
+      await repository.failAction(req.actionId, preconditionError)
+      const failed = await repository.getActionById(req.actionId)
+      if (failed) notifyActionChange(failed)
+      return { ok: false, error: preconditionError }
+    }
+
+    // Atomically claim the action (pending → approved). The loser of a
+    // concurrent approve race gets `false` here and aborts before executing,
+    // so the SQL runs at most once even under double-submit.
+    const claimed = await repository.tryClaimActionForExecution(req.actionId)
+    if (!claimed) {
+      return { ok: false, error: 'Action is no longer pending (already being processed)' }
+    }
+
+    const executableSql = buildActionSqlForExecution(action.toolName, action.params)
+    await pool.request().query(executableSql)
+
+    recordGlobalAction()
+    // Audit non-repudiation: the approver is the authenticated session user,
+    // never a renderer-supplied string (which would be spoofable).
+    const approvedBy = getSession()?.username ?? 'unknown'
+    await repository.approveAction(req.actionId, approvedBy, { executed: true })
+    if (action.incidentId) {
+      await repository.addEvent(action.incidentId, 'action_executed', {
+        toolName: action.toolName,
+        actionId: action.id
+      })
+    } else {
+      log.info(
+        `[actions] chat fix executed: ${action.toolName} on server ${action.serverId} by ${approvedBy}`
+      )
+    }
+
+    const updated = await repository.getActionById(req.actionId)
+    if (updated) notifyActionChange(updated)
+    return { ok: true, data: updated ?? action }
+  } catch (err) {
+    // Mark the action as failed if execution throws.
+    try {
+      await repository.failAction(req.actionId, safeError(err))
+    } catch {
+      // Best-effort status update; preserve the original execution error below.
+    }
+    log.error('[IPC] approve action execute error:', safeError(err))
+    return { ok: false, error: safeError(err) }
+  }
+}
+
+async function rejectActionShared(req: RejectActionRequest): Promise<IpcResult<IncidentAction>> {
+  try {
+    const action = await repository.getActionById(req.actionId)
+    if (!action) return { ok: false, error: `Action ${req.actionId} not found` }
+    if (action.status !== 'pending')
+      return { ok: false, error: `Action is not pending (status: ${action.status})` }
+
+    await repository.rejectAction(req.actionId, req.reason ?? 'Rejected by user')
+    if (action.incidentId) {
+      await repository.addEvent(action.incidentId, 'status_change', {
+        actionId: req.actionId,
+        status: 'rejected'
+      })
+    }
+
+    const updated = await repository.getActionById(req.actionId)
+    if (updated) notifyActionChange(updated)
+    return { ok: true, data: updated ?? action }
+  } catch (err) {
+    log.error('[IPC] reject action:', safeError(err))
+    return { ok: false, error: safeError(err) }
+  }
 }
 
 export function registerIncidentHandlers(): void {
@@ -236,102 +421,20 @@ export function registerIncidentHandlers(): void {
     }
   )
 
+  // Incident action approval — back-compat channel. Delegates to the shared
+  // executor. `approvedBy` from the renderer is ignored (the session user is
+  // authoritative); `confirmation` is forwarded for destructive actions.
   handle(
     IpcChannel.INCIDENTS_APPROVE_ACTION,
     async (
       _event: IpcMainInvokeEvent,
-      req: { actionId: string; approvedBy: string }
+      req: { actionId: string; approvedBy?: string; confirmation?: string }
     ): Promise<IpcResult<null>> => {
-      try {
-        const action = await repository.getActionById(req.actionId)
-        if (!action) return { ok: false, error: `Action ${req.actionId} not found` }
-        if (action.status !== 'pending')
-          return { ok: false, error: `Action is not pending (status: ${action.status})` }
-
-        // Layer 4 — Kill switch
-        if (!(await isAgentActionsEnabled())) {
-          return { ok: false, error: 'Agent actions are disabled in Settings → AI Provider' }
-        }
-
-        // Layer 1 — Hard whitelist guard (defence-in-depth, even if UI is bypassed).
-        if (!ACTION_WHITELIST.has(action.toolName)) {
-          return { ok: false, error: `Tool '${action.toolName}' is not whitelisted for execution` }
-        }
-
-        const incident = await repository.getIncidentById(action.incidentId)
-        if (!incident) return { ok: false, error: 'Parent incident not found' }
-
-        // Layer 4 — Per-incident action cap
-        const approvedCount = await repository.countApprovedActionsForIncident(action.incidentId)
-        if (approvedCount >= MAX_ACTIONS_PER_INCIDENT) {
-          return {
-            ok: false,
-            error: `Incident action cap reached (max ${MAX_ACTIONS_PER_INCIDENT} per incident)`
-          }
-        }
-
-        // Layer 4 — Global hourly cap
-        checkGlobalRateLimit()
-
-        const server = serverStore.getById(incident.serverId)
-        if (!server) return { ok: false, error: 'Server not found' }
-
-        // Execute the T-SQL preview against the server.
-        const pool = await getPool({
-          ip: server.host,
-          port: server.port,
-          instanceName: server.instanceName,
-          username: server.username,
-          password: server.password,
-          useWindowsAuth: server.useWindowsAuth,
-          encrypt: true,
-          trustServerCertificate: true
-        })
-        // Layer 2 — Hard-coded preconditions (TypeScript, not delegated to LLM).
-        const preconditionError = await validateActionPreconditions(action, pool)
-        if (preconditionError) {
-          await repository.failAction(req.actionId, preconditionError)
-          const failed = await repository.getActionById(req.actionId)
-          if (failed)
-            pushToRenderer(IpcChannel.INCIDENT_ACTION, {
-              incidentId: action.incidentId,
-              action: failed
-            })
-          return { ok: false, error: preconditionError }
-        }
-
-        const executableSql = buildActionSqlForExecution(action.toolName, action.params)
-        await pool.request().query(executableSql)
-
-        recordGlobalAction()
-        // Audit non-repudiation: the approver is the authenticated session user,
-        // never a renderer-supplied string (which would be spoofable).
-        const approvedBy = getSession()?.username ?? 'unknown'
-        await repository.approveAction(req.actionId, approvedBy, { executed: true })
-        await repository.addEvent(action.incidentId, 'action_executed', {
-          toolName: action.toolName,
-          actionId: action.id
-        })
-
-        // Push updated action to renderer.
-        const updated = await repository.getActionById(req.actionId)
-        if (updated)
-          pushToRenderer(IpcChannel.INCIDENT_ACTION, {
-            incidentId: action.incidentId,
-            action: updated
-          })
-
-        return { ok: true, data: null }
-      } catch (err) {
-        // Mark the action as failed if execution throws.
-        try {
-          await repository.failAction(req.actionId, safeError(err))
-        } catch {
-          // Best-effort status update; preserve the original execution error below.
-        }
-        log.error('[IPC] INCIDENTS_APPROVE_ACTION execute error:', safeError(err))
-        return { ok: false, error: safeError(err) }
-      }
+      const res = await executeActionApproval({
+        actionId: req.actionId,
+        confirmation: req.confirmation
+      })
+      return res.ok ? { ok: true, data: null } : res
     }
   )
 
@@ -341,28 +444,41 @@ export function registerIncidentHandlers(): void {
       _event: IpcMainInvokeEvent,
       req: { actionId: string; reason?: string }
     ): Promise<IpcResult<null>> => {
+      const res = await rejectActionShared(req)
+      return res.ok ? { ok: true, data: null } : res
+    }
+  )
+
+  // Generalized remediation-action channels — used by both incidents and chat.
+  handle(
+    IpcChannel.ACTIONS_APPROVE,
+    async (
+      _event: IpcMainInvokeEvent,
+      req: ApproveActionRequest
+    ): Promise<IpcResult<IncidentAction>> => executeActionApproval(req)
+  )
+
+  handle(
+    IpcChannel.ACTIONS_REJECT,
+    async (
+      _event: IpcMainInvokeEvent,
+      req: RejectActionRequest
+    ): Promise<IpcResult<IncidentAction>> => rejectActionShared(req)
+  )
+
+  handle(
+    IpcChannel.ACTIONS_LIST_FOR_SERVER,
+    async (
+      _event: IpcMainInvokeEvent,
+      serverId: string
+    ): Promise<IpcResult<IncidentAction[]>> => {
       try {
-        const action = await repository.getActionById(req.actionId)
-        if (!action) return { ok: false, error: `Action ${req.actionId} not found` }
-        if (action.status !== 'pending')
-          return { ok: false, error: `Action is not pending (status: ${action.status})` }
-
-        await repository.rejectAction(req.actionId, req.reason ?? 'Rejected by user')
-        await repository.addEvent(action.incidentId, 'status_change', {
-          actionId: req.actionId,
-          status: 'rejected'
-        })
-
-        const updated = await repository.getActionById(req.actionId)
-        if (updated)
-          pushToRenderer(IpcChannel.INCIDENT_ACTION, {
-            incidentId: action.incidentId,
-            action: updated
-          })
-
-        return { ok: true, data: null }
+        if (typeof serverId !== 'string' || !serverId) {
+          return { ok: false, error: 'Invalid serverId' }
+        }
+        return { ok: true, data: await repository.getChatActionsForServer(serverId) }
       } catch (err) {
-        log.error('[IPC] INCIDENTS_REJECT_ACTION:', safeError(err))
+        log.error('[IPC] ACTIONS_LIST_FOR_SERVER:', safeError(err))
         return { ok: false, error: safeError(err) }
       }
     }

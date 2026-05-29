@@ -31,6 +31,8 @@ import {
   type AiRecommendationItem
 } from './aiWorkspace'
 import { ThumbsRow } from '../ai/ThumbsRow'
+import { ConfirmActionDialog } from '../actions/ConfirmActionDialog'
+import { isDestructiveAction, confirmTokenForAction } from '../actions/actionMeta'
 
 const DRAWER_WIDTH = 480
 
@@ -66,6 +68,7 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
   const tokenBufRef = useRef('')
   const [pendingActions, setPendingActions] = useState<IncidentAction[]>([])
   const [actionBusy, setActionBusy] = useState<string | null>(null) // actionId being approved/rejected
+  const [confirmAction, setConfirmAction] = useState<IncidentAction | null>(null)
   const [incidentFeedback, setIncidentFeedback] = useState<Record<string, 1 | -1>>({})
 
   useEffect(() => {
@@ -179,15 +182,26 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
     }
   }
 
-  async function handleApproveAction(actionId: string): Promise<void> {
+  async function doApproveAction(actionId: string, confirmation?: string): Promise<void> {
     setActionBusy(actionId)
     const res = await window.sqlSentinel.incidents.approveAction({
       actionId,
-      approvedBy: session.username
+      approvedBy: session.username,
+      confirmation
     })
     setActionBusy(null)
     if (!res.ok) notify.error(res.error, 'Action failed')
     else loadDetail(selectedId!)
+  }
+
+  function handleApproveAction(actionId: string): void {
+    const action = currentActions.find((a) => a.id === actionId)
+    // Destructive fixes require a typed confirmation (also enforced server-side).
+    if (action && isDestructiveAction(action.toolName)) {
+      setConfirmAction(action)
+      return
+    }
+    void doApproveAction(actionId)
   }
 
   async function handleRejectAction(actionId: string): Promise<void> {
@@ -603,6 +617,21 @@ export function IncidentDetailDrawer({ open, onClose }: Props): React.JSX.Elemen
           </>
         )}
       </Box>
+
+      {confirmAction && (
+        <ConfirmActionDialog
+          open={!!confirmAction}
+          toolName={confirmAction.toolName}
+          expectedToken={confirmTokenForAction(confirmAction) ?? incident?.serverId ?? 'CONFIRM'}
+          tsqlPreview={confirmAction.tsqlPreview}
+          onClose={() => setConfirmAction(null)}
+          onConfirm={(token) => {
+            const id = confirmAction.id
+            setConfirmAction(null)
+            void doApproveAction(id, token)
+          }}
+        />
+      )}
     </Drawer>
   )
 }

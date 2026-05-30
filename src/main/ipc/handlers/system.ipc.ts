@@ -7,6 +7,11 @@ import { handle, safeError, log } from '../handleWrapper'
 import { login, logout, getSession, isAuthenticated, changePassword } from '../../authService'
 import { buildCsvContent } from '../../csvUtils'
 import { getEmailSettings, saveEmailSettings } from '../../store/sqlserver/emailSettingsRepository'
+import {
+  getSettings as getSettingsDirect,
+  saveSettings as saveSettingsDirect,
+  type AppSettings as RepoAppSettings
+} from '../../store/sqlserver/settingsRepository'
 import { sendTestEmail } from '../../emailService'
 import {
   getCustomFields,
@@ -56,6 +61,41 @@ import { resolveConnection } from './servers.ipc'
 // can't push unbounded/garbage keys into the custom-fields store.
 function isValidCustomFieldKey(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0 && value.length <= 256
+}
+
+// Settings live in the SQL Server `dbo.settings` table. On Windows we normally
+// route reads/writes through the service (so its running worker reacts to
+// interval/mode changes), but the main process shares the same storage pool. When
+// the service is down — or the proxy call fails — fall back to the repository
+// directly instead of failing outright. Without this, the theme (loaded from
+// SETTINGS_GET before login) and every settings read/write break whenever the
+// service is offline.
+// Returns the persisted settings WITHOUT autostartEnabled — that field is an OS
+// setting the caller merges in via app.getLoginItemSettings().
+async function readSettings(): Promise<RepoAppSettings> {
+  if (getStatus() === 'connected') {
+    try {
+      const res = await serviceApi.getSettings()
+      return (res as { ok: true; data: RepoAppSettings }).data
+    } catch (err) {
+      log.warn('[IPC] SETTINGS_GET via service failed — using local store:', safeError(err))
+    }
+  }
+  return getSettingsDirect()
+}
+
+async function writeSettings(req: SaveSettingsRequest): Promise<void> {
+  if (getStatus() === 'connected') {
+    try {
+      await serviceApi.updateSettings(req)
+      return
+    } catch (err) {
+      log.warn('[IPC] SETTINGS_SET via service failed — using local store:', safeError(err))
+    }
+  }
+  // saveSettings only persists known AppSettings keys, so the extra
+  // autostartEnabled field (handled by the OS, not the DB) is harmlessly ignored.
+  await saveSettingsDirect(req)
 }
 
 export function registerSystemHandlers(): void {
@@ -137,11 +177,10 @@ export function registerSystemHandlers(): void {
     }
   )
 
-  // SETTINGS_GET — proxied to service HTTP (autostart state merged locally)
+  // SETTINGS_GET — service when connected, local store as fallback (autostart merged locally)
   handle(IpcChannel.SETTINGS_GET, async (): Promise<IpcResult<AppSettings>> => {
     try {
-      const res = await serviceApi.getSettings()
-      const data = (res as { ok: true; data: AppSettings }).data
+      const data = await readSettings()
       return {
         ok: true,
         data: {
@@ -155,12 +194,12 @@ export function registerSystemHandlers(): void {
     }
   })
 
-  // SETTINGS_SET — proxied to service HTTP; OS autostart handled locally
+  // SETTINGS_SET — service when connected, local store as fallback; OS autostart handled locally
   handle(
     IpcChannel.SETTINGS_SET,
     async (_event: IpcMainInvokeEvent, req: SaveSettingsRequest): Promise<IpcResult<null>> => {
       try {
-        await serviceApi.updateSettings(req)
+        await writeSettings(req)
         if (req.autostartEnabled !== undefined) {
           app.setLoginItemSettings({ openAtLogin: req.autostartEnabled })
         }

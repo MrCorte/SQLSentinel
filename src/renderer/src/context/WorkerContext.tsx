@@ -14,19 +14,29 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
 
   // useRef for the Map: never recreated → no data loss on re-render
   const historyMapRef = useRef<Map<string, MetricsHistoryPoint[]>>(new Map())
-  // Pending batch held while document is hidden; flushed on visibilitychange
-  const pendingBatchRef = useRef<Array<{ serverId: string; metrics: ServerMetrics }>>([])
+  // Pending snapshots held while document is hidden; flushed on visibilitychange.
+  // Keyed by serverId so the latest snapshot per server replaces the previous in
+  // O(1) (was an array with an O(n) findIndex per push → O(n²) per hidden flush).
+  const pendingBatchRef = useRef<Map<string, ServerMetrics>>(new Map())
 
-  // maxPoints: based on worst-case 30s interval
-  const maxPoints = Math.ceil((retentionMinutes * 60) / 30)
+  // maxPoints: worst-case 30s interval, but clamped. retentionMinutes can be set
+  // up to a year (settings allows 525600), which would otherwise hold ~1M points
+  // per server in memory; charts can't render more than a few thousand points
+  // anyway. 2880 ≈ 24h at the 30s worst-case interval.
+  const MAX_CHART_POINTS = 2880
+  const maxPoints = Math.min(Math.ceil((retentionMinutes * 60) / 30), MAX_CHART_POINTS)
 
   // Flush pending store updates when the page becomes visible again.
   // Also flush on unmount so metrics buffered during a hidden window are not lost.
   useEffect(() => {
     function flush(): void {
-      if (pendingBatchRef.current.length === 0) return
-      useMetricsStore.getState().applyDeltaBatch(pendingBatchRef.current)
-      pendingBatchRef.current = []
+      if (pendingBatchRef.current.size === 0) return
+      const batch = Array.from(pendingBatchRef.current, ([serverId, metrics]) => ({
+        serverId,
+        metrics
+      }))
+      useMetricsStore.getState().applyDeltaBatch(batch)
+      pendingBatchRef.current.clear()
     }
     function onVisibilityChange(): void {
       // Fires on both hidden→visible and visible→hidden; only flush when becoming visible
@@ -53,9 +63,7 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
           : [...existing.slice(existing.length - maxPoints + 1), newPoint]
       )
       if (document.hidden) {
-        const idx = pendingBatchRef.current.findIndex((e) => e.serverId === serverId)
-        if (idx >= 0) pendingBatchRef.current[idx].metrics = m
-        else pendingBatchRef.current.push({ serverId, metrics: m })
+        pendingBatchRef.current.set(serverId, m)
         return
       }
       useMetricsStore.getState().applyDelta(serverId, m)
@@ -78,11 +86,9 @@ export function WorkerProvider({ children }: { children: React.ReactNode }): Rea
         )
       }
       if (document.hidden) {
-        // Replace pending entries for each server with the latest snapshot
+        // Replace pending entry for each server with the latest snapshot (O(1) each)
         for (const entry of batch) {
-          const idx = pendingBatchRef.current.findIndex((e) => e.serverId === entry.serverId)
-          if (idx >= 0) pendingBatchRef.current[idx] = entry
-          else pendingBatchRef.current.push(entry)
+          pendingBatchRef.current.set(entry.serverId, entry.metrics)
         }
         return
       }

@@ -148,11 +148,16 @@ export function useHomeDashboard(onNavigateToServer: (id: string) => void): Home
 
   // Derived metrics
   const derived = useMemo(() => {
-    const onlineCount = servers.filter((s) => !s.unreachable && metricsMap[serverKey(s)]).length
-    const offlineCount = servers.filter((s) => s.unreachable).length
-    const unreachableCount = servers.filter(
-      (s) => !s.unreachable && !metricsMap[serverKey(s)]
-    ).length
+    // Single pass instead of three filters (each re-evaluating serverKey): on a
+    // 200-server fleet this memo re-runs on every metrics tick.
+    let onlineCount = 0
+    let offlineCount = 0
+    let unreachableCount = 0
+    for (const s of servers) {
+      if (s.unreachable) offlineCount++
+      else if (metricsMap[serverKey(s)]) onlineCount++
+      else unreachableCount++
+    }
     const totalDbs = Object.values(summaries).reduce((acc, s) => acc + s.dbCount, 0)
     const activeAlerts: Alert[] = alerts.filter((a) => a.acknowledgedAt === null)
     const criticalCount = activeAlerts.filter((a) => a.severity === 'CRITICAL').length

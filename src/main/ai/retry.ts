@@ -33,7 +33,9 @@ export async function withRetry<T>(
       return await fn()
     } catch (err) {
       if (!isRetryable(err) || attempt === maxAttempts) throw err
-      const delay = baseDelayMs * Math.pow(2, attempt - 1)
+      // Cap the exponential backoff so a caller passing a large maxAttempts can't
+      // produce a multi-minute (or overflowing) sleep.
+      const delay = Math.min(baseDelayMs * Math.pow(2, attempt - 1), 30_000)
       log.warn(
         `attempt ${attempt}/${maxAttempts} failed: ${err instanceof Error ? err.message : String(err)} — retrying in ${delay}ms`
       )

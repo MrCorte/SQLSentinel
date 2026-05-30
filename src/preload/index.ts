@@ -1234,13 +1234,28 @@ const mockApi = {
 
   aiAgentCancel: (): Promise<void> => Promise.resolve(),
 
-  aiSaveFeedback: async (_input: AiFeedbackSaveInput): Promise<IpcResult<string>> => ({ ok: true, data: 'mock-id' }),
+  aiSaveFeedback: async (_input: AiFeedbackSaveInput): Promise<IpcResult<string>> => ({
+    ok: true,
+    data: 'mock-id'
+  }),
   aiListFeedback: async (): Promise<IpcResult<AiFeedbackRecord[]>> => ({ ok: true, data: [] }),
-  aiDeleteFeedback: async (_id: string): Promise<IpcResult<void>> => ({ ok: true, data: undefined }),
-  aiListPromotionCandidates: async (): Promise<IpcResult<PromotionCandidateDto[]>> => ({ ok: true, data: [] }),
-  aiPromoteToTsqlMap: async (_input: PromoteToTsqlMapInput): Promise<IpcResult<string>> => ({ ok: true, data: 'mock-id' }),
+  aiDeleteFeedback: async (_id: string): Promise<IpcResult<void>> => ({
+    ok: true,
+    data: undefined
+  }),
+  aiListPromotionCandidates: async (): Promise<IpcResult<PromotionCandidateDto[]>> => ({
+    ok: true,
+    data: []
+  }),
+  aiPromoteToTsqlMap: async (_input: PromoteToTsqlMapInput): Promise<IpcResult<string>> => ({
+    ok: true,
+    data: 'mock-id'
+  }),
   aiListTsqlMap: async (): Promise<IpcResult<TsqlMapEntryDto[]>> => ({ ok: true, data: [] }),
-  aiDeleteTsqlMapEntry: async (_id: string): Promise<IpcResult<void>> => ({ ok: true, data: undefined }),
+  aiDeleteTsqlMapEntry: async (_id: string): Promise<IpcResult<void>> => ({
+    ok: true,
+    data: undefined
+  }),
 
   onAiStreamEvent: (_cb: (event: AiStreamEvent) => void): (() => void) => {
     return () => {
@@ -1377,8 +1392,7 @@ const bridgeApi = {
     q: string,
     h: Array<{ role: 'user' | 'assistant'; content: string }>,
     options?: { targetServerId?: string }
-  ) =>
-    realApi.aiAgentStream(q, h, options),
+  ) => realApi.aiAgentStream(q, h, options),
   aiAgentCancel: () => realApi.aiAgentCancel(),
   onAiStreamEvent: (cb: (e: AiStreamEvent) => void) => realApi.onAiStreamEvent(cb),
   aiGetSettings: () => realApi.aiGetSettings(),
@@ -1394,6 +1408,14 @@ const bridgeApi = {
   incidents: realApi.incidents,
   actions: realApi.actions,
   getServiceStatus: () => ipcRenderer.invoke(IpcChannel.SERVICE_STATUS_GET),
+  onServiceStatusChanged: (
+    cb: (status: 'connected' | 'connecting' | 'disconnected') => void
+  ): (() => void) => {
+    const listener = (_e: IpcRendererEvent, status: 'connected' | 'connecting' | 'disconnected') =>
+      cb(status)
+    ipcRenderer.on(IpcChannel.SERVICE_STATUS_CHANGED, listener)
+    return () => ipcRenderer.removeListener(IpcChannel.SERVICE_STATUS_CHANGED, listener)
+  },
   storage: {
     getConfig: (): Promise<IpcResult<StorageConfigInfo | null>> =>
       ipcRenderer.invoke(IpcChannel.STORAGE_GET_CONFIG),

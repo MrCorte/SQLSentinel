@@ -763,6 +763,9 @@ export interface SqlSentinelAPI {
     listForServer(serverId: string): Promise<IpcResult<IncidentAction[]>>
   }
   getServiceStatus(): Promise<IpcResult<{ status: 'connected' | 'connecting' | 'disconnected' }>>
+  onServiceStatusChanged(
+    cb: (status: 'connected' | 'connecting' | 'disconnected') => void
+  ): () => void
   storage: {
     getConfig(): Promise<IpcResult<StorageConfigInfo | null>>
     testConnection(params: StorageConnectionParams): Promise<IpcResult<null>>

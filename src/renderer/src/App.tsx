@@ -107,8 +107,22 @@ function AppInner(): React.JSX.Element {
       return
     }
 
+    // History is read from persisted storage, not the live worker, so seed it
+    // regardless of which process (in-app worker or Windows Service) is polling.
+    const seedHistoryFromStorage = (): void => {
+      if (typeof window.sqlSentinel?.getHistoryBulk !== 'function') return
+      window.sqlSentinel
+        .getHistoryBulk()
+        .then((result) => {
+          if (result.ok && Object.keys(result.data).length > 0) {
+            seedHistory(result.data)
+          }
+        })
+        .catch(() => {}) // non-blocking
+    }
+
     loadServers()
-      .then(() => {
+      .then(async () => {
         const { servers: srvs } = useServersStore.getState()
         migrateAliasKeys(srvs)
         migrateServerGroupKeys(srvs)
@@ -124,39 +138,47 @@ function AppInner(): React.JSX.Element {
             })
             .catch(() => {}) // non-blocking
         }
-        if (srvs.length > 0) {
-          window.sqlSentinel
-            .workerStart({
-              intervalSeconds: 60,
-              servers: srvs.map((s) => ({
-                ip: s.ip ?? s.host,
-                port: s.port,
-                instanceName: s.instanceName,
-                useWindowsAuth: s.useWindowsAuth ?? false,
-                username: s.username,
-                password: s.password
-              }))
-            })
-            .then(() => {
-              if (typeof window.sqlSentinel?.getHistoryBulk === 'function') {
-                window.sqlSentinel
-                  .getHistoryBulk()
-                  .then((result) => {
-                    if (result.ok && Object.keys(result.data).length > 0) {
-                      seedHistory(result.data)
-                    }
-                  })
-                  .catch(() => {}) // non-blocking
-              }
-            })
-            .catch((err) => {
-              log.error('workerStart failed:', err)
-              notify.error(
-                'Could not start the metrics collector. Polling is paused.',
-                'Worker error'
-              )
-            })
+        seedHistoryFromStorage()
+
+        if (srvs.length === 0) return
+
+        // Only run the in-process collector when the Windows Service is NOT the
+        // authoritative collector. When the service is connected it polls every
+        // server and pushes metrics over the WS bridge; starting a second worker
+        // here would double the diagnostic load on every monitored SQL Server and
+        // write duplicate metric rows. The reconnect effect below resumes local
+        // polling if the service later disconnects.
+        let serviceConnected = false
+        try {
+          const status = await window.sqlSentinel.getServiceStatus()
+          serviceConnected = status.ok && status.data.status === 'connected'
+        } catch {
+          serviceConnected = false // no service reachable → poll locally
         }
+        if (serviceConnected) {
+          log.info('Windows Service is the active collector — in-app worker stays idle')
+          return
+        }
+
+        window.sqlSentinel
+          .workerStart({
+            intervalSeconds: 60,
+            servers: srvs.map((s) => ({
+              ip: s.ip ?? s.host,
+              port: s.port,
+              instanceName: s.instanceName,
+              useWindowsAuth: s.useWindowsAuth ?? false,
+              username: s.username,
+              password: s.password
+            }))
+          })
+          .catch((err) => {
+            log.error('workerStart failed:', err)
+            notify.error(
+              'Could not start the metrics collector. Polling is paused.',
+              'Worker error'
+            )
+          })
       })
       .catch((err) => {
         log.error('loadServers failed:', err)
@@ -164,22 +186,73 @@ function AppInner(): React.JSX.Element {
       })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Service status transitions: hand polling back and forth between the in-app
+  // worker and the Windows Service so exactly one of them is ever active.
+  useEffect(() => {
+    if (USE_MOCK) return
+    if (typeof window.sqlSentinel?.onServiceStatusChanged !== 'function') return
+    return window.sqlSentinel.onServiceStatusChanged((status) => {
+      if (status === 'connected') {
+        // Service took over — stop the local worker to end double polling.
+        window.sqlSentinel.workerStop().catch(() => {})
+      } else if (status === 'disconnected') {
+        // Service is gone — resume local polling so monitoring continues.
+        const { servers: srvs, initialized } = useServersStore.getState()
+        if (!initialized || srvs.length === 0) return
+        window.sqlSentinel
+          .workerStart({
+            intervalSeconds: 60,
+            servers: srvs.map((s) => ({
+              ip: s.ip ?? s.host,
+              port: s.port,
+              instanceName: s.instanceName,
+              useWindowsAuth: s.useWindowsAuth ?? false,
+              username: s.username,
+              password: s.password
+            }))
+          })
+          .catch((err) => log.error('workerStart on service disconnect failed:', err))
+      }
+    })
+  }, [])
+
   // Sync server list with the background worker whenever servers are added/removed
   // Skip in mock mode — mock IPs (10.0.x.x) are not reachable
   useEffect(() => {
     if (USE_MOCK) return
     return useServersStore.subscribe((state) => {
       if (!state.initialized) return
-      window.sqlSentinel.workerSyncServers({
-        servers: state.servers.map((s) => ({
-          ip: s.ip ?? s.host,
-          port: s.port,
-          instanceName: s.instanceName,
-          useWindowsAuth: s.useWindowsAuth ?? false,
-          username: s.username,
-          password: s.password
-        }))
-      })
+      // When the Windows Service is the active collector, server add/update/remove
+      // is already proxied to it (servers.ipc.ts), which re-syncs the service worker.
+      // Skip syncing the idle in-app worker to avoid resurrecting double polling.
+      window.sqlSentinel
+        .getServiceStatus()
+        .then((res) => {
+          if (res.ok && res.data.status === 'connected') return
+          window.sqlSentinel.workerSyncServers({
+            servers: state.servers.map((s) => ({
+              ip: s.ip ?? s.host,
+              port: s.port,
+              instanceName: s.instanceName,
+              useWindowsAuth: s.useWindowsAuth ?? false,
+              username: s.username,
+              password: s.password
+            }))
+          })
+        })
+        .catch(() => {
+          // Status unknown → assume no service and sync locally.
+          window.sqlSentinel.workerSyncServers({
+            servers: state.servers.map((s) => ({
+              ip: s.ip ?? s.host,
+              port: s.port,
+              instanceName: s.instanceName,
+              useWindowsAuth: s.useWindowsAuth ?? false,
+              username: s.username,
+              password: s.password
+            }))
+          })
+        })
     })
   }, [])
 

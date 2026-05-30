@@ -61,6 +61,7 @@ export enum IpcChannel {
   APP_BACKGROUND = 'app:background',
   APP_FOREGROUND = 'app:foreground',
   SERVICE_STATUS_GET = 'service:statusGet',
+  SERVICE_STATUS_CHANGED = 'service:statusChanged', // push-only: main → renderer
   // Server detection — MachineName + InstanceName via SERVERPROPERTY
   DETECT_SERVER_INFO = 'servers:detectInfo',
   // Hostname resolution — DNS reverse lookup (PTR record)

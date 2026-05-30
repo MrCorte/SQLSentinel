@@ -7,7 +7,7 @@ const icon = app.isPackaged
   ? join(process.resourcesPath, 'icon.png')
   : join(__dirname, '../../resources/icon.png')
 import { registerIpcHandlers } from './ipc'
-import { setRendererWindow } from './ipc/push'
+import { setRendererWindow, pushToRenderer } from './ipc/push'
 import { initDefaultAdmin } from './authService'
 import { BackgroundService } from './backgroundService'
 import type { WorkerApi } from './backgroundService'
@@ -352,6 +352,13 @@ app.whenReady().then(async () => {
 
   // Connect to Windows Service and migrate servers on first connect
   connect()
+  // Forward service connection status to the renderer so it can stand down its
+  // in-process metrics worker while the service is the authoritative collector.
+  // Without this, the app and the service would poll every monitored SQL Server
+  // simultaneously (2× query load, duplicate metric rows).
+  onStatusChange((status) => {
+    pushToRenderer(IpcChannel.SERVICE_STATUS_CHANGED, status)
+  })
   onStatusChange(async (status) => {
     if (status !== 'connected') return
     if (process.platform !== 'win32') return

@@ -26,7 +26,8 @@ describe('executeReadOnly', () => {
       'DBCC CHECKDB',
       'BACKUP DATABASE foo',
       'RESTORE DATABASE foo',
-      'SHUTDOWN'
+      'SHUTDOWN',
+      'SELECT * INTO new_table FROM sys.objects'
     ]
 
     for (const sql of blocked) {
@@ -71,5 +72,19 @@ describe('executeReadOnly', () => {
         await expect(executeReadOnly(conn, sql)).resolves.toBeDefined()
       })
     }
+  })
+
+  describe('row cap', () => {
+    it('caps the returned rows at MAX_ROWS (200) regardless of SET ROWCOUNT', async () => {
+      const big = Array.from({ length: 500 }, (_, i) => ({ n: i }))
+      const { getPool } = await import('../../collectors/connectionPool')
+      vi.mocked(getPool).mockResolvedValueOnce({
+        request: () => ({ query: vi.fn().mockResolvedValue({ recordset: big }) })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any)
+      const conn = { ip: '127.0.0.1', port: 1433 } as never
+      const rows = await executeReadOnly(conn, 'SELECT n FROM big_view')
+      expect(rows).toHaveLength(200)
+    })
   })
 })

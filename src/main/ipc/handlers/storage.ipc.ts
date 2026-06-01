@@ -3,7 +3,7 @@ import { handle, safeError, log } from '../handleWrapper'
 import { IpcChannel } from '../types'
 import type { StorageConnectionParams, StorageConfigInfo, IpcResult, SchemaInitResult } from '../types'
 import { getStorageConfig, saveStorageConfig } from '../../store/storageConfig'
-import { isAvailable as safeStorageAvailable } from '../../store/safeStorageUtil'
+import { isAvailable as safeStorageAvailable } from '../../utils/safeStorageUtil'
 import {
   testConnection,
   initStoragePoolFromParams,

@@ -1,10 +1,10 @@
 import { useCallback, useMemo } from 'react'
 import { Box, Typography } from '@mui/material'
-import { useHomeDashboard } from './features/home/useHomeDashboard'
-import { DashboardCharts } from './features/home/DashboardCharts'
-import { ServerTable } from './features/home/ServerTable'
-import { tokens } from '../styles/tokens'
-import { useAppStore } from '../store/appStore'
+import { useHomeDashboard } from './useHomeDashboard'
+import { DashboardCharts } from './DashboardCharts'
+import { ServerTable } from './ServerTable'
+import { tokens } from '../../../styles/tokens'
+import { useAppStore } from '../../../store/appStore'
 
 // ---------------------------------------------------------------------------
 // Props

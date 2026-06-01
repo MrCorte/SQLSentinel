@@ -1,4 +1,3 @@
-import { useMemo, useState, useRef, useCallback } from 'react'
 import {
   Drawer,
   Box,
@@ -9,14 +8,12 @@ import {
   Chip,
   Button
 } from '@mui/material'
-import { useVirtualizer } from '@tanstack/react-virtual'
 import CloseIcon from '@mui/icons-material/Close'
 import DoneAllIcon from '@mui/icons-material/DoneAll'
-import type { Alert } from '../../../preload/index'
-import { tokens } from '../styles/tokens'
-
-type SeverityFilter = 'all' | 'CRITICAL' | 'WARNING'
-type CategoryFilter = 'all' | Alert['category']
+import type { Alert } from '../../../../../preload/index'
+import { tokens } from '../../../styles/tokens'
+import { useAlertFiltering } from './hooks/useAlertFiltering'
+import { useAlertVirtualization } from './hooks/useAlertVirtualization'
 
 interface Props {
   open: boolean
@@ -26,16 +23,6 @@ interface Props {
 }
 
 type AlertWithDup = Alert & { _dupCount?: number }
-
-type VirtualItem =
-  | { kind: 'header'; label: string }
-  | { kind: 'divider' }
-  | { kind: 'alert'; alert: AlertWithDup }
-
-// Estimated heights for virtualizer sizing
-const ROW_HEIGHT_HEADER = 32
-const ROW_HEIGHT_DIVIDER = 17
-const ROW_HEIGHT_ALERT = 104
 
 function categoryLabel(cat: Alert['category']): string {
   switch (cat) {
@@ -49,6 +36,8 @@ function categoryLabel(cat: Alert['category']): string {
       return 'Backup'
     case 'disk_space_low':
       return 'Disk'
+    default:
+      return cat
   }
 }
 
@@ -197,109 +186,24 @@ function AlertRow({
 }
 
 export function AlertsDrawer({ open, alerts, onClose, onAcknowledge }: Props): React.JSX.Element {
-  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('all')
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all')
-  const [dedup, setDedup] = useState<boolean>(() => {
-    try {
-      const stored = sessionStorage.getItem('sqlsentinel:alerts:dedup')
-      return stored === null ? true : stored === '1'
-    } catch {
-      return true
-    }
-  })
-  const setDedupPersist = (next: boolean): void => {
-    setDedup(next)
-    try {
-      sessionStorage.setItem('sqlsentinel:alerts:dedup', next ? '1' : '0')
-    } catch {
-      // non-fatal
-    }
-  }
-
-  const openAlerts = useMemo(() => alerts.filter((a) => a.acknowledgedAt === null), [alerts])
-  const acked = useMemo(() => alerts.filter((a) => a.acknowledgedAt !== null), [alerts])
-
-  const availableCategories = useMemo(() => {
-    const set = new Set<Alert['category']>()
-    for (const a of openAlerts) set.add(a.category)
-    return Array.from(set)
-  }, [openAlerts])
-
-  const matchesFilters = useCallback(
-    (a: Alert): boolean => {
-      if (severityFilter !== 'all' && a.severity !== severityFilter) return false
-      if (categoryFilter !== 'all' && a.category !== categoryFilter) return false
-      return true
-    },
-    [severityFilter, categoryFilter]
-  )
-
-  const filteredOpen = useMemo(() => openAlerts.filter(matchesFilters), [
+  const {
+    severityFilter,
+    categoryFilter,
+    dedup,
+    setSeverityFilter,
+    setCategoryFilter,
+    setDedupPersist,
     openAlerts,
-    matchesFilters
-  ])
+    acked,
+    availableCategories,
+    criticalFirst
+  } = useAlertFiltering(alerts)
 
-  const dedupedOpen = useMemo(() => {
-    if (!dedup) return filteredOpen
-    const groups = new Map<string, Array<Alert>>()
-    for (const a of filteredOpen) {
-      const key = `${a.serverId}::${a.category}`
-      const list = groups.get(key) ?? []
-      list.push(a)
-      groups.set(key, list)
-    }
-    const out: AlertWithDup[] = []
-    for (const list of groups.values()) {
-      list.sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime())
-      const head = list[0]
-      out.push(list.length > 1 ? { ...head, _dupCount: list.length } : head)
-    }
-    return out
-  }, [filteredOpen, dedup])
-
-  const criticalFirst = useMemo(
-    () =>
-      [...dedupedOpen].sort((a, b) => {
-        if (a.severity === 'CRITICAL' && b.severity !== 'CRITICAL') return -1
-        if (b.severity === 'CRITICAL' && a.severity !== 'CRITICAL') return 1
-        return 0
-      }),
-    [dedupedOpen]
-  )
+  const { scrollRef, virtualItems, virtualizer } = useAlertVirtualization(criticalFirst, acked)
 
   const handleAckAll = (): void => {
-    const ids = criticalFirst.map((a) => a.id)
-    for (const id of ids) onAcknowledge(id)
+    for (const a of criticalFirst) onAcknowledge(a.id)
   }
-
-  // Flat list for the virtualizer: headers + alerts + optional divider
-  const virtualItems = useMemo<VirtualItem[]>(() => {
-    const items: VirtualItem[] = []
-    if (criticalFirst.length > 0) {
-      items.push({ kind: 'header', label: 'Active' })
-      for (const a of criticalFirst) items.push({ kind: 'alert', alert: a })
-    }
-    if (acked.length > 0) {
-      if (criticalFirst.length > 0) items.push({ kind: 'divider' })
-      items.push({ kind: 'header', label: 'Acknowledged' })
-      for (const a of acked) items.push({ kind: 'alert', alert: a })
-    }
-    return items
-  }, [criticalFirst, acked])
-
-  const scrollRef = useRef<HTMLDivElement>(null)
-
-  const virtualizer = useVirtualizer({
-    count: virtualItems.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: (i) => {
-      const item = virtualItems[i]
-      if (item.kind === 'header') return ROW_HEIGHT_HEADER
-      if (item.kind === 'divider') return ROW_HEIGHT_DIVIDER
-      return ROW_HEIGHT_ALERT
-    },
-    overscan: 5
-  })
 
   return (
     <Drawer

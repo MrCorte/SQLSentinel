@@ -27,7 +27,7 @@ import type {
 } from '../../../../../preload/index'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import ClearIcon from '@mui/icons-material/Clear'
-import { NoteEditor } from '../../NoteEditor'
+import { NoteEditor } from './NoteEditor'
 import { RemoveServerDialog } from '../../dialogs/RemoveServerDialog'
 import { DbBulkEditDialog } from './DbBulkEditDialog'
 import { compatLevelToSqlVersion } from '../../../utils/sqlVersionUtils'

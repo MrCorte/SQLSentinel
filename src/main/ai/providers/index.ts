@@ -1,5 +1,5 @@
 import { getRawSettings } from '../../store/sqlserver/settingsRepository'
-import { decrypt } from '../../store/safeStorageUtil'
+import { decrypt } from '../../utils/safeStorageUtil'
 import { OllamaProvider } from './ollamaProvider'
 import { ClaudeProvider } from './claudeProvider'
 import type { LlmProvider } from './provider'

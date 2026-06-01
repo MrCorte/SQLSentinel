@@ -7,7 +7,7 @@ import { describe, it, expect, vi } from 'vitest'
 
 // resolveRemediationConnection only touches decrypt() as a fallback; we pass an
 // already-decrypted remediationPassword so the real safeStorage is never hit.
-vi.mock('../../safeStorageUtil', () => ({
+vi.mock('../../../utils/safeStorageUtil', () => ({
   encrypt: (v: string) => v,
   decrypt: (v: string) => v,
   isAvailable: () => true,

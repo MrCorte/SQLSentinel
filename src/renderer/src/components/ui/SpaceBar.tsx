@@ -1,5 +1,5 @@
 import { Box, Typography } from '@mui/material'
-import { tokens } from '../styles/tokens'
+import { tokens } from '../../styles/tokens'
 
 interface SpaceBarProps {
   used: number

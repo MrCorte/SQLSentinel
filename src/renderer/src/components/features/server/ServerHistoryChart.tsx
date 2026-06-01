@@ -12,8 +12,8 @@ import {
   ReferenceLine
 } from 'recharts'
 import { useShallow } from 'zustand/react/shallow'
-import { useMetricsStore } from '../store/metricsStore'
-import { tokens } from '../styles/tokens'
+import { useMetricsStore } from '../../../store/metricsStore'
+import { tokens } from '../../../styles/tokens'
 
 function fmtTime(ts: number): string {
   return new Intl.DateTimeFormat('en-US', {

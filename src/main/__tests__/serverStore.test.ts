@@ -70,7 +70,7 @@ vi.mock('../store/sqlserver/connection', () => ({
   getPool: () => fakePool
 }))
 
-vi.mock('../store/safeStorageUtil', () => ({
+vi.mock('../utils/safeStorageUtil', () => ({
   encrypt: vi.fn((s: string) => `ENC:${s}`),
   decrypt: vi.fn((s: string) => (s.startsWith('ENC:') ? s.slice(4) : s)),
   isAvailable: vi.fn(() => true)

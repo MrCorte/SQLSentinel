@@ -9,7 +9,7 @@ import {
   decrypt,
   isAvailable as safeStorageAvailable,
   isEncrypted
-} from '../safeStorageUtil'
+} from '../../utils/safeStorageUtil'
 import { createLogger } from '../../utils/logger'
 import type { ServerConnection } from '../../collectors/types'
 

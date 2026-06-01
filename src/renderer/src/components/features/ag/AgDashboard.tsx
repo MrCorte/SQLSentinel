@@ -1,4 +1,4 @@
-import { memo, useState, useCallback, useEffect } from 'react'
+import { memo, useState } from 'react'
 import {
   Box,
   Typography,
@@ -17,14 +17,12 @@ import type {
   CollectMetricsRequest,
   AvailabilityReplica,
   AvailabilityDatabase
-} from '../../../preload/index'
-import { useShallow } from 'zustand/react/shallow'
-import { useAgStore } from '../store/agStore'
-import { useServersStore } from '../store/serversStore'
-import { useGroupsStore } from '../store/groupsStore'
-import { useAppStore } from '../store/appStore'
-import { tokens } from '../styles/tokens'
-import { useVisibilityPoll } from '../hooks/useVisibilityPoll'
+} from '../../../../../preload/index'
+import { useAgStore } from '../../../store/agStore'
+import { tokens } from '../../../styles/tokens'
+import { useAgDataFetch } from './hooks/useAgDataFetch'
+import { useReplicaDisplayNames } from './hooks/useReplicaDisplayNames'
+import { useServerNavigation } from './hooks/useServerNavigation'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -495,56 +493,12 @@ interface Props {
 }
 
 export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
-  const { agDetails, updateAgDetails } = useAgStore(
-    useShallow((s) => ({ agDetails: s.agDetails, updateAgDetails: s.updateAgDetails }))
-  )
-  const servers = useServersStore((s) => s.servers)
-  const serverAliases = useGroupsStore((s) => s.serverAliases)
-  const setPendingServerId = useAppStore((s) => s.setPendingServerId)
+  const agDetails = useAgStore((s) => s.agDetails)
   const detail = agDetails[agName]
 
-  const [snackbarMsg, setSnackbarMsg] = useState<string | null>(null)
-
-  useEffect(() => {
-    updateAgDetails(connection)
-  }, [agName, connection.ip, connection.port]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleUpdateDetails = useCallback(() => {
-    if (connection) updateAgDetails(connection)
-  }, [connection, updateAgDetails])
-
-  useVisibilityPoll(handleUpdateDetails, 60_000)
-
-  const getDisplayName = useCallback(
-    (replicaServerName: string): string => {
-      const nameBase = replicaServerName.split('\\')[0].toLowerCase()
-      const match = servers.find((s) => {
-        const addr = (s.host ?? s.ip ?? '').toLowerCase()
-        return addr === nameBase || addr.includes(nameBase) || nameBase.includes(addr)
-      })
-      if (!match) return replicaServerName
-      return serverAliases[match.id] || match.host || replicaServerName
-    },
-    [servers, serverAliases]
-  )
-
-  const handleNavigateToServer = useCallback(
-    (replica: AvailabilityReplica): void => {
-      const nameBase = replica.replica_server_name.split('\\')[0].toLowerCase()
-      const match = servers.find((s) => {
-        const addr = (s.host ?? s.ip ?? '').toLowerCase()
-        return addr === nameBase || addr.includes(nameBase) || nameBase.includes(addr)
-      })
-      if (match) {
-        setPendingServerId(match.id)
-      } else {
-        setSnackbarMsg(
-          `Server "${replica.replica_server_name}" is not in the monitored servers list. Add it first from Discovery.`
-        )
-      }
-    },
-    [servers, setPendingServerId]
-  )
+  useAgDataFetch(agName, connection)
+  const getDisplayName = useReplicaDisplayNames()
+  const { snackbarMsg, closeSnackbar, handleNavigateToServer } = useServerNavigation()
 
   if (!detail) {
     return (
@@ -579,10 +533,10 @@ export function AgDashboard({ agName, connection }: Props): React.JSX.Element {
       <Snackbar
         open={snackbarMsg !== null}
         autoHideDuration={5000}
-        onClose={() => setSnackbarMsg(null)}
+        onClose={closeSnackbar}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert severity="warning" onClose={() => setSnackbarMsg(null)} sx={{ width: '100%' }}>
+        <Alert severity="warning" onClose={closeSnackbar} sx={{ width: '100%' }}>
           {snackbarMsg}
         </Alert>
       </Snackbar>

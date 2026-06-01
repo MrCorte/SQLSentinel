@@ -11,12 +11,12 @@ import {
   Divider
 } from '@mui/material'
 import StorageIcon from '@mui/icons-material/Storage'
-import { AddServerDialog } from './AddServerDialog'
-import type { AddServerFormData } from './AddServerDialog'
-import { useAgStore } from '../store/agStore'
-import { useServersStore } from '../store/serversStore'
-import { useGroupsStore } from '../store/groupsStore'
-import { tokens } from '../styles/tokens'
+import { AddServerDialog } from '../features/add-server/AddServerDialog'
+import type { AddServerFormData } from '../features/add-server/AddServerDialog'
+import { useAgStore } from '../../store/agStore'
+import { useServersStore } from '../../store/serversStore'
+import { useGroupsStore } from '../../store/groupsStore'
+import { tokens } from '../../styles/tokens'
 
 function parseReplicaName(name: string): { host: string; instance: string } {
   const [host, instance = ''] = name.split('\\')

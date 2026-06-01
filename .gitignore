@@ -22,4 +22,8 @@ docs/*.docx
 
 # Built locally / shipped via electron-builder extraResources — not in git
 knowledge-pipeline/knowledge_base.db
+knowledge-pipeline/*.db-shm
+knowledge-pipeline/*.db-wal
+knowledge-pipeline/*.db.backup-*
 knowledge-pipeline/__pycache__/
+knowledge-pipeline/pipeline_run.log

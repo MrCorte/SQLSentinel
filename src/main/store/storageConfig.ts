@@ -1,5 +1,5 @@
 import Store from 'electron-store'
-import { encrypt, decrypt } from './safeStorageUtil'
+import { encrypt, decrypt } from '../utils/safeStorageUtil'
 import { createLogger } from '../utils/logger'
 
 const log = createLogger('storage-config')

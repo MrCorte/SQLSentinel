@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { act } from 'react'
-import { ServerHistoryChart } from '../components/ServerHistoryChart'
+import { ServerHistoryChart } from '../components/features/server/ServerHistoryChart'
 import { useMetricsStore } from '../store/metricsStore'
 import type { ServerHealthPayload } from '../../../preload/index'
 

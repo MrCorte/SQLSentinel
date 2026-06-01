@@ -53,7 +53,7 @@ class FakeRequest {
 
 const fakePool = { request: () => new FakeRequest() }
 vi.mock('../connection', () => ({ getPool: () => fakePool }))
-vi.mock('../../safeStorageUtil', () => ({
+vi.mock('../../../utils/safeStorageUtil', () => ({
   encrypt: vi.fn(),
   decrypt: vi.fn((s: string) => s),
   isAvailable: vi.fn(() => true),

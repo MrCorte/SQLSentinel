@@ -1,8 +1,8 @@
 import { lazy, Suspense } from 'react'
 import { Box, Tabs, Tab } from '@mui/material'
-import type { ServerMetrics, CollectMetricsRequest } from '../../../preload/index'
-import { tokens } from '../styles/tokens'
-import { useMetricsData } from './features/metrics/useMetricsData'
+import type { ServerMetrics, CollectMetricsRequest } from '../../../../../preload/index'
+import { tokens } from '../../../styles/tokens'
+import { useMetricsData } from '../metrics/useMetricsData'
 import {
   TabPanoramica,
   TabDatabase,
@@ -10,7 +10,7 @@ import {
   TabBackup,
   TabTopQuery,
   TabWaitStats
-} from './features/metrics/MetricsTabs'
+} from '../metrics/MetricsTabs'
 
 const DisksTab = lazy(() => import('./tabs/DisksTab').then((m) => ({ default: m.DisksTab })))
 

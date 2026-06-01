@@ -49,7 +49,7 @@ vi.mock('../store/agStore', () => ({
 import { useServersStore } from '../store/serversStore'
 import { useMetricsStore } from '../store/metricsStore'
 import { useAlertsStore } from '../store/alertsStore'
-import { HomeDashboard } from '../components/HomeDashboard'
+import { HomeDashboard } from '../components/features/home/HomeDashboard'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

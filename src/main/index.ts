@@ -26,7 +26,7 @@ import { cleanup as purgeOldSnapshots } from './store/sqlserver/metricsRepositor
 import { getSettings } from './store/sqlserver/settingsRepository'
 import { migrateEncryptEmailPassword } from './store/sqlserver/emailSettingsRepository'
 import { removeExpiredSessions } from './store/sqlserver/sessionsRepository'
-import { isAvailable as safeStorageAvailable } from './store/safeStorageUtil'
+import { isAvailable as safeStorageAvailable } from './utils/safeStorageUtil'
 import { IpcChannel } from './ipc/types'
 import { initAutoUpdate } from './autoUpdate'
 import * as serverStore from './store/sqlserver/serverRepository'

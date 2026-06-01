@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { Paper, Box, Tooltip, Chip, Select, MenuItem, Typography } from '@mui/material'
-import type { StoredServer, CollectMetricsRequest, ServerMetrics } from '../../../preload/index'
+import type { StoredServer, CollectMetricsRequest, ServerMetrics } from '../../../../../preload/index'
 import { MetricsPanel } from './MetricsPanel'
 import { ServerHistorySection } from './ServerHistoryChart'
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
-import { useServersStore } from '../store/serversStore'
-import { HOSTING_OPTIONS, HOSTING_BADGE } from '../constants/hosting'
-import type { ServerHostingType } from '../constants/hosting'
-import { getServerDisplayName } from '../types'
-import { RemediationCredentialsDialog } from './actions/RemediationCredentialsDialog'
+import { useServersStore } from '../../../store/serversStore'
+import { HOSTING_OPTIONS, HOSTING_BADGE } from '../../../constants/hosting'
+import type { ServerHostingType } from '../../../constants/hosting'
+import { getServerDisplayName } from '../../../types'
+import { RemediationCredentialsDialog } from '../../actions/RemediationCredentialsDialog'
 
 interface Props {
   server: StoredServer

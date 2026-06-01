@@ -9,8 +9,8 @@ import {
   ResponsiveContainer
 } from 'recharts'
 import { Box } from '@mui/material'
-import type { MetricsHistoryPoint } from '../hooks/useMetrics'
-import { tokens } from '../styles/tokens'
+import type { MetricsHistoryPoint } from '../../hooks/useMetrics'
+import { tokens } from '../../styles/tokens'
 
 interface Props {
   history: MetricsHistoryPoint[]

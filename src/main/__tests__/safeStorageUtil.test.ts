@@ -22,16 +22,16 @@ vi.mock('electron', () => ({
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('safeStorageUtil', () => {
-  let isAvailable: typeof import('../store/safeStorageUtil').isAvailable
-  let encrypt: typeof import('../store/safeStorageUtil').encrypt
-  let decrypt: typeof import('../store/safeStorageUtil').decrypt
-  let isEncrypted: typeof import('../store/safeStorageUtil').isEncrypted
+  let isAvailable: typeof import('../utils/safeStorageUtil').isAvailable
+  let encrypt: typeof import('../utils/safeStorageUtil').encrypt
+  let decrypt: typeof import('../utils/safeStorageUtil').decrypt
+  let isEncrypted: typeof import('../utils/safeStorageUtil').isEncrypted
 
   beforeEach(async () => {
     vi.resetModules()
     vi.clearAllMocks()
     mockElectronState.safeStorageMissing = false
-    ;({ isAvailable, encrypt, decrypt, isEncrypted } = await import('../store/safeStorageUtil'))
+    ;({ isAvailable, encrypt, decrypt, isEncrypted } = await import('../utils/safeStorageUtil'))
   })
 
   // ── isAvailable ─────────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ describe('safeStorageUtil', () => {
     it('returns false when Electron does not expose safeStorage in this process', async () => {
       vi.resetModules()
       mockElectronState.safeStorageMissing = true
-      ;({ isAvailable } = await import('../store/safeStorageUtil'))
+      ;({ isAvailable } = await import('../utils/safeStorageUtil'))
 
       expect(isAvailable()).toBe(false)
     })

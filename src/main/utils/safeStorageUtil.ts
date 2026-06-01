@@ -1,5 +1,5 @@
 import { safeStorage } from 'electron'
-import { createLogger } from '../utils/logger'
+import { createLogger } from './logger'
 const log = createLogger('safe-storage')
 
 /**

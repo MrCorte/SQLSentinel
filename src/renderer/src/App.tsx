@@ -16,17 +16,17 @@ const StorageSetupPage = lazy(() =>
 )
 const Discovery = lazy(() => import('./pages/Discovery').then((m) => ({ default: m.Discovery })))
 const Inventory = lazy(() => import('./pages/Inventory').then((m) => ({ default: m.Inventory })))
-import { AlertsDrawer } from './components/AlertsDrawer'
-import { GlobalSnackbar } from './components/GlobalSnackbar'
-import { AgReplicaSuggestionDialog } from './components/AgReplicaSuggestionDialog'
-import { HomeDashboard } from './components/HomeDashboard'
+import { AlertsDrawer } from './components/features/alerts/AlertsDrawer'
+import { GlobalSnackbar } from './components/ui/GlobalSnackbar'
+import { AgReplicaSuggestionDialog } from './components/dialogs/AgReplicaSuggestionDialog'
+import { HomeDashboard } from './components/features/home/HomeDashboard'
 import { WorkerProvider } from './context/WorkerContext'
 import { useWorker } from './context/useWorker'
 import { useServersStore } from './store/serversStore'
 import { useAlertsStore } from './store/alertsStore'
 import { useAppStore } from './store/appStore'
 import { useMetricsStore } from './store/metricsStore'
-import { ErrorBoundary } from './components/ErrorBoundary'
+import { ErrorBoundary } from './components/ui/ErrorBoundary'
 import { useMockData } from './hooks/useMockData'
 import { useIpcEvent } from './hooks/useIpcEvent'
 import { buildTheme } from './styles/theme'

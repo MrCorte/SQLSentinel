@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Box, Typography, TextField, CircularProgress } from '@mui/material'
-import { useServersStore } from '../store/serversStore'
-import { useDebouncedValue } from '../hooks/useDebouncedValue'
-import { tokens } from '../styles/tokens'
+import { useServersStore } from '../../../store/serversStore'
+import { useDebouncedValue } from '../../../hooks/useDebouncedValue'
+import { tokens } from '../../../styles/tokens'
 
 interface NoteEditorProps {
   serverId: string

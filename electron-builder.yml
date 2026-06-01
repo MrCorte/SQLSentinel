@@ -16,9 +16,9 @@ extraResources:
     to: service/index.js
   - from: out/service/index.js.map
     to: service/index.js.map
-  - from: scripts/install-service.cjs
+  - from: scripts/setup/install-service.cjs
     to: scripts/install-service.cjs
-  - from: scripts/uninstall-service.cjs
+  - from: scripts/setup/uninstall-service.cjs
     to: scripts/uninstall-service.cjs
   - from: knowledge-pipeline/knowledge_base.db
     to: knowledge_base.db

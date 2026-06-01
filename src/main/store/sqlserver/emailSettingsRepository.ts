@@ -1,6 +1,6 @@
 import * as sql from 'mssql'
 import { getPool } from './connection'
-import { encrypt, decrypt, isAvailable, isEncrypted } from '../safeStorageUtil'
+import { encrypt, decrypt, isAvailable, isEncrypted } from '../../utils/safeStorageUtil'
 import { createLogger } from '../../utils/logger'
 
 const log = createLogger('email-settings-ss')

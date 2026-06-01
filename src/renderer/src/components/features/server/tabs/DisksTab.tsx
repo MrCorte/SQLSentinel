@@ -4,10 +4,10 @@ import StorageIcon from '@mui/icons-material/Storage'
 import FolderOpenIcon from '@mui/icons-material/FolderOpen'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import SettingsIcon from '@mui/icons-material/Settings'
-import type { DiskVolume, DatabaseFile, CollectMetricsRequest } from '../../../../preload/index'
-import { SpaceBar } from '../SpaceBar'
-import { tokens } from '../../styles/tokens'
-import { ShrinkDialog } from '../dialogs/ShrinkDialog'
+import type { DiskVolume, DatabaseFile, CollectMetricsRequest } from '../../../../../../preload/index'
+import { SpaceBar } from '../../../ui/SpaceBar'
+import { tokens } from '../../../../styles/tokens'
+import { ShrinkDialog } from '../../../dialogs/ShrinkDialog'
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -3,7 +3,7 @@ import { handle, safeError, log } from '../handleWrapper'
 import { IpcChannel } from '../types'
 import type { IpcResult, AiProviderSettings, AiProviderName } from '../types'
 import { getRawSettings, setRawSetting } from '../../store/sqlserver/settingsRepository'
-import { encrypt, decrypt, isAvailable as safeStorageAvailable } from '../../store/safeStorageUtil'
+import { encrypt, decrypt, isAvailable as safeStorageAvailable } from '../../utils/safeStorageUtil'
 import { getProvider } from '../../ai/providers'
 import { normalizeOllamaModel } from '../../ai/providers/defaults'
 

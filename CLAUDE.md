@@ -29,7 +29,7 @@ The shell is **PowerShell** (use `$env:VAR`, `$null`, backtick continuation).
 | Build (typecheck + service + bundle) | `npm run build` |
 | Package for Windows | `npm run build:win` |
 
-- **Tests run through `scripts/vitest-runner.cjs`**, not `vitest` directly. It
+- **Tests run through `scripts/dev/vitest-runner.cjs`**, not `vitest` directly. It
   shells out to **git bash** with `node --experimental-vm-modules` because plain
   Node v24 breaks Vitest's ESM VM evaluator. If tests fail to start, confirm git
   bash exists at one of the paths in that script (or set `$env:BASH`).
@@ -77,9 +77,9 @@ Four TypeScript build targets, each with its own tsconfig:
 
 ### Service (`src/service`)
 - Standalone background collector. On Windows it runs as an installed Windows
-  Service (`node-windows`, `scripts/install-service.cjs`); on dev/macOS `index.ts`
+  Service (`node-windows`, `scripts/setup/install-service.cjs`); on dev/macOS `index.ts`
   forks it as a child process. Built separately with esbuild
-  (`scripts/build-service.mjs`). Talks to the app over WebSocket
+  (`scripts/build/build-service.mjs`). Talks to the app over WebSocket
   (`src/shared/serviceProtocol.ts`). It reuses `src/main/store` and
   `src/main/metricsWorker` — shared, not duplicated.
 

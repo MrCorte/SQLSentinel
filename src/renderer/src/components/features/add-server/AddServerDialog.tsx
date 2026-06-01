@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -20,101 +20,14 @@ import {
   Alert
 } from '@mui/material'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-import { PasswordField } from './ui/PasswordField'
-import { useGroupsStore } from '../store/groupsStore'
-import { HOSTING_OPTIONS } from '../constants/hosting'
-import type { ServerHostingType } from '../constants/hosting'
-import { tokens } from '../styles/tokens'
-
-interface ParsedError {
-  title: string
-  hints: string[]
-}
-
-function parseConnectionError(raw: string): ParsedError {
-  const r = raw.toLowerCase()
-
-  if (r.includes('untrusted domain') || r.includes('cannot be used with integrated')) {
-    return {
-      title: 'Windows Authentication rejected',
-      hints: [
-        'The server is in a different domain or workgroup.',
-        'Switch to SQL Server Authentication and use a SQL login.',
-      ]
-    }
-  }
-  if (r.includes('login failed')) {
-    if (r.includes("login failed for user ''") || r.includes('windows')) {
-      return {
-        title: 'Windows Authentication failed',
-        hints: [
-          'The current Windows account has no SQL Server access.',
-          "Ask the DBA to run: CREATE LOGIN [DOMAIN\\\\user] FROM WINDOWS; GRANT CONNECT SQL TO [DOMAIN\\\\user]",
-          'Or switch to SQL Server Authentication.',
-        ]
-      }
-    }
-    return {
-      title: 'Authentication failed',
-      hints: [
-        'Wrong username or password.',
-        'The SQL login may be disabled or locked.',
-      ]
-    }
-  }
-  if (r.includes('econnrefused') || r.includes('connection refused')) {
-    return {
-      title: 'Connection refused',
-      hints: [
-        'SQL Server is not listening on this port.',
-        'Enable TCP/IP in SQL Server Configuration Manager → Protocols → TCP/IP.',
-        'Verify the port under TCP/IP → IP Addresses → IPAll → TCP Port.',
-      ]
-    }
-  }
-  if (
-    r.includes('etimedout') ||
-    r.includes('timed out') ||
-    r.includes('failed to connect') ||
-    r.includes('could not connect')
-  ) {
-    return {
-      title: 'Connection timed out — server unreachable',
-      hints: [
-        'Verify the SQL Server service is running (services.msc → SQL Server).',
-        'Check that the firewall allows the port (Windows Firewall + network firewall).',
-        'Confirm the IP address and port are correct.',
-      ]
-    }
-  }
-  if (r.includes('enotfound') || r.includes('getaddrinfo')) {
-    return {
-      title: 'Hostname not found',
-      hints: [
-        'DNS cannot resolve this hostname.',
-        'Use the IP address instead, or check the spelling.',
-      ]
-    }
-  }
-  if (r.includes('ssl') || r.includes('tls') || r.includes('certificate') || r.includes('wrong version')) {
-    return {
-      title: 'SSL / TLS error',
-      hints: [
-        'SQL Server certificate issue.',
-        'In SQL Server Configuration Manager set "Force Encryption" to No.',
-      ]
-    }
-  }
-  if (r.includes('cannot open database')) {
-    return {
-      title: 'Default database not accessible',
-      hints: [
-        "Run: ALTER LOGIN [loginname] WITH DEFAULT_DATABASE = master",
-      ]
-    }
-  }
-  return { title: 'Connection failed', hints: [raw] }
-}
+import { PasswordField } from '../../ui/PasswordField'
+import { useGroupsStore } from '../../../store/groupsStore'
+import { HOSTING_OPTIONS } from '../../../constants/hosting'
+import type { ServerHostingType } from '../../../constants/hosting'
+import { tokens } from '../../../styles/tokens'
+import { parseConnectionError } from './utils/parseConnectionError'
+import { useConnectionTest } from './hooks/useConnectionTest'
+import { useAddServerForm } from './hooks/useAddServerForm'
 
 export interface AddServerFormData {
   ip: string
@@ -144,24 +57,6 @@ interface Props {
   onSave: (data: AddServerFormData) => void
 }
 
-interface FormErrors {
-  ip?: string
-  port?: string
-  username?: string
-}
-
-const EMPTY_FORM: AddServerFormData = {
-  ip: '',
-  port: 1433,
-  instanceName: '',
-  useWindowsAuth: true,
-  username: '',
-  password: '',
-  groupId: undefined,
-  alias: undefined,
-  hostingType: 'on-premise'
-}
-
 export function AddServerDialog({
   open,
   initialIp,
@@ -173,35 +68,24 @@ export function AddServerDialog({
   onClose,
   onSave
 }: Props): React.JSX.Element {
-  const [form, setForm] = useState<AddServerFormData>(EMPTY_FORM)
-  const [errors, setErrors] = useState<FormErrors>({})
-  const [testState, setTestState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
-  const [testLabel, setTestLabel] = useState('')
-  const [agBadge, setAgBadge] = useState<{
-    role: 'PRIMARY' | 'SECONDARY' | 'RESOLVING'
-    agName: string
-    agGroupId: string
-  } | null>(null)
+  const { form, errors, setForm, set, validate, initializeForm } = useAddServerForm()
+  const { testState, testLabel, agBadge, resetTest, handleTestConnection } = useConnectionTest()
 
   const groups = useGroupsStore((state) => state.groups)
   const sortedGroups = [...groups].sort((a, b) => a.order - b.order)
 
   useEffect(() => {
     if (open) {
-      setForm({
-        ...EMPTY_FORM,
-        ip: initialIp ?? '',
-        port: initialPort ?? 1433,
-        instanceName: initialInstanceName ?? '',
-        useWindowsAuth: initialUseWindowsAuth ?? true,
-        username: initialUsername ?? '',
-        password: initialPassword ?? '',
-        groupId: sortedGroups[0]?.id
+      initializeForm({
+        initialIp,
+        initialPort,
+        initialInstanceName,
+        initialUseWindowsAuth,
+        initialUsername,
+        initialPassword,
+        defaultGroupId: sortedGroups[0]?.id
       })
-      setErrors({})
-      setTestState('idle')
-      setTestLabel('')
-      setAgBadge(null)
+      resetTest()
       if (initialIp && /^\d{1,3}(\.\d{1,3}){3}$/.test(initialIp.trim())) {
         const ip = initialIp.trim()
         const port = initialPort ?? 1433
@@ -229,69 +113,8 @@ export function AddServerDialog({
     }
   }, [open, initialIp, initialPort]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const validate = (): boolean => {
-    const newErrors: FormErrors = {}
-    if (!form.ip.trim()) newErrors.ip = 'IP or hostname required'
-    const portNum = Number(form.port)
-    if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535)
-      newErrors.port = 'Port must be a number between 1 and 65535'
-    if (!form.useWindowsAuth && !form.username.trim())
-      newErrors.username = 'Username required for SQL Server authentication'
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const handleTestConnection = async (): Promise<void> => {
-    if (!form.ip.trim()) {
-      setErrors((e) => ({ ...e, ip: 'IP or hostname required' }))
-      return
-    }
-    setTestState('loading')
-    setTestLabel('')
-    try {
-      const result = await window.sqlSentinel.detectServerInfo({
-        ip: form.ip.trim(),
-        port: Number(form.port),
-        instanceName: form.instanceName || undefined,
-        useWindowsAuth: form.useWindowsAuth,
-        username: form.username || undefined,
-        password: form.password || undefined
-      })
-      if (!result.ok) {
-        setTestState('error')
-        setTestLabel(result.error)
-        return
-      }
-      const { machineName, instanceName, agRole, agName, agGroupId } = result.data
-      setForm((prev) => ({
-        ...prev,
-        machineName,
-        instanceName: prev.instanceName?.trim() ? prev.instanceName : (instanceName ?? ''),
-        alias: prev.alias?.trim() ? prev.alias : machineName,
-        agRole,
-        agName,
-        agGroupId
-      }))
-      if (agRole && agName && agGroupId) {
-        setAgBadge({ role: agRole, agName, agGroupId })
-      } else {
-        setAgBadge(null)
-      }
-      const label = instanceName ? `${machineName}\\${instanceName}` : machineName
-      setTestState('success')
-      setTestLabel(label)
-    } catch (err) {
-      setTestState('error')
-      setTestLabel(err instanceof Error ? err.message : String(err))
-    }
-  }
-
   const handleSave = (): void => {
     if (validate()) onSave({ ...form, port: Number(form.port) })
-  }
-
-  const set = <K extends keyof AddServerFormData>(key: K, value: AddServerFormData[K]): void => {
-    setForm((prev) => ({ ...prev, [key]: value }))
   }
 
   return (
@@ -509,7 +332,7 @@ export function AddServerDialog({
       <DialogActions>
         <Button onClick={onClose}>Cancel</Button>
         <Button
-          onClick={handleTestConnection}
+          onClick={() => handleTestConnection(form, setForm)}
           disabled={testState === 'loading'}
           startIcon={
             testState === 'loading' ? <CircularProgress size={14} color="inherit" /> : undefined

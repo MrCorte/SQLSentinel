@@ -1,6 +1,6 @@
 import { Snackbar, Alert, AlertTitle, Stack } from '@mui/material'
-import { useNotifyStore } from '../store/notifyStore'
-import type { NotifyEntry } from '../store/notifyStore'
+import { useNotifyStore } from '../../store/notifyStore'
+import type { NotifyEntry } from '../../store/notifyStore'
 
 /**
  * Mounted once at the root of <App/>. Renders all queued notifications as a

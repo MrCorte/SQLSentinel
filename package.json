@@ -22,7 +22,8 @@
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
-    "build:linux": "npm run build && electron-builder --linux"
+    "build:linux": "npm run build && electron-builder --linux",
+    "icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.97.0",
@@ -85,6 +86,7 @@
     "prettier": "^3.7.4",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
+    "sharp": "^0.34.5",
     "typescript": "^5.9.3",
     "vite": "^7.2.6",
     "vitest": "^4.1.0"

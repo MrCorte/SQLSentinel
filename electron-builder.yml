@@ -24,6 +24,7 @@ extraResources:
     to: knowledge_base.db
 win:
   executableName: sqlsentinel
+  icon: build/icon.ico
   # Code signing is driven by environment variables so the certificate never
   # lives in the repo: set CSC_LINK (path or base64 of the .pfx) and
   # CSC_KEY_PASSWORD in the release workflow. Builds without them are produced
@@ -43,6 +44,7 @@ publish:
   owner: MrCorte
   repo: SQLSentinel
 mac:
+  icon: build/icon.icns
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
@@ -53,6 +55,7 @@ mac:
 dmg:
   artifactName: ${name}-${version}.${ext}
 linux:
+  icon: build/icon.png
   target:
     - AppImage
     - snap

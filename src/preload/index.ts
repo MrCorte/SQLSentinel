@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcRendererEvent } from 'electron'
+import { isMockModeEnabled } from '../shared/mockMode'
 import { IpcChannel } from '../main/ipc/types'
 import type { ScanOptions, ScanProgress, DiscoveredServer } from '../main/discovery/types'
 import type {
@@ -1218,7 +1219,7 @@ const mockApi = {
     _history: Array<{ role: 'user' | 'assistant'; content: string }>
   ): Promise<IpcResult<string>> => ({
     ok: true,
-    data: `**OBSERVATION**: (mock) Received question: "${question}"\n\n**PROBABLE CAUSE**: Mock mode active — no real servers monitored.\n\n**IMMEDIATE ACTION**: Start the app without mock mode (\`VITE_USE_MOCK=false\`) to get real responses from the AI agent.\n\n**NEXT CHECKS**: Verify that Ollama is running with \`ollama serve\`.`
+    data: `**OBSERVATION**: (mock) Received question: "${question}"\n\n**PROBABLE CAUSE**: Mock mode active — no real servers monitored.\n\n**IMMEDIATE ACTION**: Start the app without mock mode (\`VITE_MOCK_MODE=false\`) to get real responses from the AI agent.\n\n**NEXT CHECKS**: Verify that Ollama is running with \`ollama serve\`.`
   }),
 
   aiAgentStream: (
@@ -1286,7 +1287,7 @@ const mockApi = {
 // Selezione API in base a VITE_MOCK_MODE
 // ---------------------------------------------------------------------------
 
-const isMock = import.meta.env.VITE_MOCK_MODE === 'true'
+const isMock = isMockModeEnabled(import.meta.env)
 const api = isMock ? mockApi : realApi
 
 _log.info(`init — mock=${isMock}`)

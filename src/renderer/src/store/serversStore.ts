@@ -9,6 +9,19 @@ import { createLogger } from '../utils/logger'
 import * as ipc from '../api/ipc'
 
 const log = createLogger('servers-store')
+const REDACTED = '[redacted]'
+
+export function redactServerParamsForLog<T extends Record<string, unknown>>(params: T): T {
+  return {
+    ...params,
+    ...(typeof params.password === 'string' ? { password: REDACTED } : {}),
+    ...(typeof params.remediationPassword === 'string' ? { remediationPassword: REDACTED } : {}),
+    ...(typeof params.encryptedPassword === 'string' ? { encryptedPassword: REDACTED } : {}),
+    ...(typeof params.remediationEncryptedPassword === 'string'
+      ? { remediationEncryptedPassword: REDACTED }
+      : {})
+  }
+}
 
 interface ServersStore {
   servers: StoredServer[]
@@ -48,7 +61,7 @@ export const useServersStore = create<ServersStore>((set) => ({
 
   addServer: async (params) => {
     try {
-      log.debug('addServer — params:', JSON.stringify(params))
+      log.debug('addServer — params:', JSON.stringify(redactServerParamsForLog(params)))
       const result = await ipc.servers.add(params)
       log.debug('add IPC result:', JSON.stringify(result))
       // result is flat { success, reason?, server? }

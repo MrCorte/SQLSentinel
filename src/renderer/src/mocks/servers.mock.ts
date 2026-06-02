@@ -11,7 +11,7 @@
  *   Machine     → SQLPROD03 and SQLPROD04 with 2 instances → machine-header in inventory
  *                 SQLDEV01 with 2 instances
  *
- * Activation: VITE_USE_MOCK=true in .env.development
+ * Activation: VITE_MOCK_MODE=true in .env.development
  */
 
 import type { StoredServer, ServerMetrics, DatabaseInfo } from '../../../preload/index'

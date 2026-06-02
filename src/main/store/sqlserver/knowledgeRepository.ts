@@ -89,7 +89,8 @@ export async function importKnowledgeIfEmpty(): Promise<void> {
   // can still boot (we only need it for the one-shot copy).
   let Database: typeof import('better-sqlite3')
   try {
-    Database = (await import('better-sqlite3')).default as unknown as typeof import('better-sqlite3')
+    Database = (await import('better-sqlite3'))
+      .default as unknown as typeof import('better-sqlite3')
   } catch (err) {
     log.warn('[knowledge] better-sqlite3 unavailable — knowledge base import skipped:', err)
     return
@@ -133,7 +134,9 @@ async function batchInsert<T>(
     }
     await tx.commit()
   } catch (err) {
-    await tx.rollback().catch(() => {})
+    await tx.rollback().catch((rollbackErr) => {
+      log.warn('[knowledge] transaction rollback failed:', rollbackErr)
+    })
     throw err
   }
 }
@@ -146,9 +149,7 @@ async function importDbaCards(
     .prepare<
       [],
       DbaCardRow
-    >(
-      'SELECT slug, title, tags, explanation, tsql_query, when_to_use FROM dba_cards_fts'
-    )
+    >('SELECT slug, title, tags, explanation, tsql_query, when_to_use FROM dba_cards_fts')
     .all() as DbaCardRow[]
   await batchInsert(
     pool,
@@ -180,9 +181,10 @@ async function importKnowledgeChunks(
     source_file: string
   }
   const rows = sqlite
-    .prepare<[], FtsRow>(
-      'SELECT rowid AS rowid, title, content, tags, type, source_file FROM knowledge_fts'
-    )
+    .prepare<
+      [],
+      FtsRow
+    >('SELECT rowid AS rowid, title, content, tags, type, source_file FROM knowledge_fts')
     .all() as FtsRow[]
   await batchInsert(
     pool,
@@ -207,9 +209,7 @@ async function importKnowledgeEmbeddings(
 ): Promise<void> {
   type EmbedRow = { id: number; title: string; chunk_idx: number; text: string; embedding: Buffer }
   const rows = sqlite
-    .prepare<[], EmbedRow>(
-      'SELECT id, title, chunk_idx, text, embedding FROM knowledge_embeddings'
-    )
+    .prepare<[], EmbedRow>('SELECT id, title, chunk_idx, text, embedding FROM knowledge_embeddings')
     .all() as EmbedRow[]
   // Embeddings bind 5 params/row but each row carries ~3KB of binary data, so
   // we use a smaller chunk size to keep individual statements under ~1MB.
@@ -290,9 +290,11 @@ export function resetIndex(): void {
 
 export function preWarmIndex(): void {
   setImmediate(() => {
-    void loadVecIndex().catch(() => {})
-    void loadDbaCards().catch(() => {})
-    void loadKnowledgeChunks().catch(() => {})
+    void loadVecIndex().catch((err) => log.warn('[knowledge] prewarm vec index failed:', err))
+    void loadDbaCards().catch((err) => log.warn('[knowledge] prewarm DBA cards failed:', err))
+    void loadKnowledgeChunks().catch((err) =>
+      log.warn('[knowledge] prewarm knowledge chunks failed:', err)
+    )
   })
 }
 
@@ -308,7 +310,9 @@ async function loadDbaCards(): Promise<DbaCardRow[]> {
   if (_dbaCards !== null) return _dbaCards
   const r = await getPool()
     .request()
-    .query<DbaCardRow>(`SELECT slug, title, tags, explanation, tsql_query, when_to_use FROM dbo.dba_cards`)
+    .query<DbaCardRow>(
+      `SELECT slug, title, tags, explanation, tsql_query, when_to_use FROM dbo.dba_cards`
+    )
   _dbaCards = r.recordset
   return _dbaCards
 }
@@ -323,7 +327,10 @@ async function loadKnowledgeChunks(): Promise<ChunkRow[]> {
 }
 
 function sanitize(q: string): string {
-  return q.replace(/["()*:]/g, ' ').replace(/\s+/g, ' ').trim()
+  return q
+    .replace(/["()*:]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function tokenize(q: string): string[] {

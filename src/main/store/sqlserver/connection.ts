@@ -1,8 +1,10 @@
 import * as mssql from 'mssql'
 import type { StorageConfig } from '../storageConfig'
 import { getDecryptedPassword } from '../storageConfig'
+import { createLogger } from '../../utils/logger'
 
 let _pool: mssql.ConnectionPool | null = null
+const log = createLogger('storage-connection')
 
 function buildConfig(params: {
   host: string
@@ -62,23 +64,20 @@ export async function initStoragePoolFromParams(params: {
   trustServerCertificate?: boolean
 }): Promise<void> {
   if (_pool) {
-    await _pool.close().catch(() => {})
+    await _pool.close().catch((err) => log.warn('[storage] replacing pool close failed:', err))
     _pool = null
   }
   _pool = await mssql.connect(buildConfig(params))
 }
 
 export function getPool(): mssql.ConnectionPool {
-  if (!_pool)
-    throw new Error(
-      'Storage pool not initialized. Call initStoragePool() first.'
-    )
+  if (!_pool) throw new Error('Storage pool not initialized. Call initStoragePool() first.')
   return _pool
 }
 
 export async function closeStoragePool(): Promise<void> {
   if (_pool) {
-    await _pool.close().catch(() => {})
+    await _pool.close().catch((err) => log.warn('[storage] closeStoragePool failed:', err))
     _pool = null
   }
 }
@@ -117,7 +116,9 @@ export async function testConnection(params: {
   let timedOut = false
   connect
     .then((p) => {
-      if (timedOut) p.close().catch(() => {})
+      if (timedOut) {
+        p.close().catch((err) => log.warn('[storage] timed-out test pool close failed:', err))
+      }
     })
     .catch(() => {
       /* connect failed after timeout — already reported via thrown timeout */

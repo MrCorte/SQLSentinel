@@ -1,12 +1,12 @@
 /**
- * Seeds all Zustand stores with mock data when VITE_USE_MOCK=true.
+ * Seeds all Zustand stores with mock data when VITE_MOCK_MODE=true.
  *
  * Strategy:
  * - Waits for loadServers() to complete (initialized=true) before acting.
  * - Seeds mocks ONLY if the store is empty (no real server configured).
  *   If the user has added real servers, those take priority and the mocks
  *   are not loaded — so the real server add flow is never interfered with,
- *   even when VITE_USE_MOCK=true.
+ *   even when VITE_MOCK_MODE=true.
  * - serverGroups/serverAliases are MERGED (not replaced) to avoid
  *   corrupting the group-assignments of real servers in persisted localStorage.
  */
@@ -22,8 +22,9 @@ import {
   MOCK_METRICS_MAP,
   MOCK_AG_GROUPS
 } from '../mocks/servers.mock'
+import { isMockModeEnabled } from '../../../shared/mockMode'
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
+const USE_MOCK = isMockModeEnabled(import.meta.env)
 
 export function useMockData(): void {
   const initialized = useServersStore((s) => s.initialized)

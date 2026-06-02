@@ -4,6 +4,7 @@ out
 .DS_Store
 .eslintcache
 *.log*
+.env
 .env.production
 .env.development
 .env.local
@@ -11,6 +12,8 @@ docker/.env
 
 CLAUDE.local.md
 .claude/
+.agents/
+.codex/
 .superpowers/
 .vscode/
 REFACTORING_PLAN.md

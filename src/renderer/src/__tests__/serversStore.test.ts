@@ -17,7 +17,7 @@ vi.mock('../store/agStore', () => ({
   }
 }))
 
-import { useServersStore } from '../store/serversStore'
+import { redactServerParamsForLog, useServersStore } from '../store/serversStore'
 import { useMetricsStore } from '../store/metricsStore'
 import { useAlertsStore } from '../store/alertsStore'
 import type { StoredServer } from '../../../preload/index'
@@ -52,7 +52,14 @@ const STORES_RESET = {
 beforeEach(() => {
   vi.clearAllMocks()
   useServersStore.setState(STORES_RESET)
-  useMetricsStore.setState({ metricsMap: {}, summaries: {}, historyMap: {}, serverHealth: {}, activeServerId: null, lastUpdate: null })
+  useMetricsStore.setState({
+    metricsMap: {},
+    summaries: {},
+    historyMap: {},
+    serverHealth: {},
+    activeServerId: null,
+    lastUpdate: null
+  })
   useAlertsStore.setState({ alerts: [] })
 })
 
@@ -70,7 +77,16 @@ describe('loadServers', () => {
   })
 
   it('normalizes legacy "ip" field to "host"', async () => {
-    const raw = [{ id: 'srv1', ip: '10.0.0.2', host: '10.0.0.2', port: 1433, useWindowsAuth: true, addedAt: '' }]
+    const raw = [
+      {
+        id: 'srv1',
+        ip: '10.0.0.2',
+        host: '10.0.0.2',
+        port: 1433,
+        useWindowsAuth: true,
+        addedAt: ''
+      }
+    ]
     mockIpc.servers.getAll.mockResolvedValue(raw)
     await useServersStore.getState().loadServers()
     const servers = useServersStore.getState().servers
@@ -94,6 +110,20 @@ describe('loadServers', () => {
 // ── addServer ─────────────────────────────────────────────────────────────────
 
 describe('addServer', () => {
+  it('redacts passwords before logging add-server params', () => {
+    const redacted = redactServerParamsForLog({
+      ...makeServer('new-id'),
+      password: 'secret',
+      remediationPassword: 'fix-secret'
+    })
+
+    expect(JSON.stringify(redacted)).not.toContain('secret')
+    expect(redacted).toMatchObject({
+      password: '[redacted]',
+      remediationPassword: '[redacted]'
+    })
+  })
+
   it('appends the server on success', async () => {
     const server = makeServer('new-id')
     mockIpc.servers.add.mockResolvedValue({ success: true, server })

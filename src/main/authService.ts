@@ -12,10 +12,7 @@ import {
   updateLastLogin,
   updatePassword
 } from './store/sqlserver/usersRepository'
-import {
-  createSession,
-  removeSession
-} from './store/sqlserver/sessionsRepository'
+import { createSession, removeSession } from './store/sqlserver/sessionsRepository'
 import { getRawSetting, setRawSetting } from './store/sqlserver/settingsRepository'
 import { createLogger } from './utils/logger'
 
@@ -126,7 +123,9 @@ export async function login(
   // Per-username lockout: progressive 15-min cooldown after 5 failed attempts.
   const lockout = getLockoutStatus(usernameKey)
   if (lockout.locked) {
-    log.warn(`[AUTH] Account locked for "${usernameKey}", retry in ${Math.ceil(lockout.retryAfterMs / 1000)}s`)
+    log.warn(
+      `[AUTH] Account locked for "${usernameKey}", retry in ${Math.ceil(lockout.retryAfterMs / 1000)}s`
+    )
     // Constant-time bcrypt compare anyway to mask the lockout state from timing.
     await bcrypt.compare(password, DUMMY_HASH)
     return {
@@ -182,7 +181,9 @@ export async function login(
 
 export function logout(): void {
   if (currentSession) {
-    removeSession(hashToken(currentSession.token)).catch(() => {})
+    removeSession(hashToken(currentSession.token)).catch((err) => {
+      log.warn('[AUTH] removeSession failed during logout:', err)
+    })
   }
   currentSession = null
 }
@@ -349,6 +350,9 @@ export async function initDefaultAdmin(): Promise<void> {
         `— log in and change it, then delete the file.`
     )
   } else {
-    log.warn(`[AUTH] Default admin created. Initial password: ${plaintext} (CHANGE IMMEDIATELY)`)
+    log.error(
+      '[AUTH] Default admin created, but the bootstrap credential file could not be written. ' +
+        'Plaintext password was not logged; reset the admin password from a trusted local shell.'
+    )
   }
 }

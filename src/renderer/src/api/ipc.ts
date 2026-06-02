@@ -4,6 +4,11 @@
 import type { IpcResult, StoredServer, ServerAddResult } from '../../../preload/index'
 
 const DEFAULT_TIMEOUT_MS = 5_000
+export const MUST_CHANGE_PASSWORD_EVENT = 'sqlsentinel:must-change-password'
+
+function isMustChangePasswordError(err: unknown): boolean {
+  return err instanceof Error && err.message.includes('MUST_CHANGE_PASSWORD')
+}
 
 function withTimeout<T>(promise: Promise<T>, ms = DEFAULT_TIMEOUT_MS): Promise<T> {
   return Promise.race([
@@ -11,7 +16,12 @@ function withTimeout<T>(promise: Promise<T>, ms = DEFAULT_TIMEOUT_MS): Promise<T
     new Promise<T>((_, reject) =>
       setTimeout(() => reject(new Error(`IPC timeout after ${ms}ms`)), ms)
     )
-  ])
+  ]).catch((err) => {
+    if (isMustChangePasswordError(err)) {
+      window.dispatchEvent(new CustomEvent(MUST_CHANGE_PASSWORD_EVENT))
+    }
+    throw err
+  })
 }
 
 const api = window.sqlSentinel

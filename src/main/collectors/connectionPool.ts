@@ -126,7 +126,9 @@ async function openPool(key: string, conn: ServerConnection): Promise<mssql.Conn
     log.warn('[pool] error event, invalidating:', err?.message ?? err)
     if (cache.get(key) === entry) cache.delete(key)
     if (!entry.closing) {
-      entry.closing = pool.close().catch(() => {})
+      entry.closing = pool.close().catch((closeErr) => {
+        log.warn('[pool] close after error failed:', closeErr)
+      })
     }
   })
 
@@ -136,7 +138,7 @@ async function openPool(key: string, conn: ServerConnection): Promise<mssql.Conn
   // caller no longer wants this pool (credential rotation, abort, hard error).
   // Discard it rather than caching a pool that escaped the invalidation.
   if (invalidatedDuringConnect.delete(key)) {
-    pool.close().catch(() => {})
+    pool.close().catch((err) => log.warn('[pool] close invalidated pool failed:', err))
     throw new Error('connection pool invalidated during connect')
   }
 
@@ -145,7 +147,7 @@ async function openPool(key: string, conn: ServerConnection): Promise<mssql.Conn
   // pools are warm — but only ours leaks a TLS handshake worth of work.
   const winner = cache.get(key)
   if (winner && winner !== entry) {
-    pool.close().catch(() => {})
+    pool.close().catch((err) => log.warn('[pool] close duplicate pool failed:', err))
     return winner.pool
   }
 
@@ -208,7 +210,9 @@ export function invalidatePool(conn: ServerConnection): void {
   if (!entry) return
   cache.delete(key)
   if (!entry.closing) {
-    entry.closing = entry.pool.close().catch(() => {})
+    entry.closing = entry.pool.close().catch((err) => {
+      log.warn('[pool] close invalidated cached pool failed:', err)
+    })
   }
 }
 

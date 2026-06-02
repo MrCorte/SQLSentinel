@@ -2,6 +2,30 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // ── Mocks (must precede imports) ──────────────────────────────────────────────
 
+const fsMocks = vi.hoisted(() => ({
+  writeFileSync: vi.fn(),
+  chmodSync: vi.fn(),
+  unlinkSync: vi.fn(),
+  existsSync: vi.fn(() => false)
+}))
+
+const logMocks = vi.hoisted(() => ({
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn()
+}))
+
+vi.mock('electron', () => ({
+  app: { getPath: () => '/tmp/sqlsentinel-auth-test' }
+}))
+
+vi.mock('node:fs', () => fsMocks)
+
+vi.mock('../utils/logger', () => ({
+  createLogger: () => logMocks
+}))
+
 const mockFindByUsername = vi.fn()
 const mockFindById = vi.fn()
 const mockCountUsers = vi.fn()
@@ -36,7 +60,9 @@ vi.mock('../store/sqlserver/settingsRepository', () => ({
 
 const mockBcryptCompare = vi.fn()
 const mockBcryptHash = vi.fn()
-const mockBcryptHashSync = vi.fn(() => '$2a$12$dummy.hash.computed.at.module.load.for.timing.defense.AB')
+const mockBcryptHashSync = vi.fn(
+  () => '$2a$12$dummy.hash.computed.at.module.load.for.timing.defense.AB'
+)
 vi.mock('bcryptjs', () => ({
   default: {
     compare: mockBcryptCompare,
@@ -73,17 +99,15 @@ describe('authService', () => {
   beforeEach(async () => {
     vi.resetModules()
     vi.clearAllMocks()
+    fsMocks.existsSync.mockReturnValue(false)
+    fsMocks.writeFileSync.mockImplementation(() => undefined)
+    fsMocks.chmodSync.mockImplementation(() => undefined)
+    fsMocks.unlinkSync.mockImplementation(() => undefined)
     mockUpdateLastLogin.mockResolvedValue(undefined)
     mockCreateSession.mockResolvedValue(undefined)
     mockRemoveSession.mockResolvedValue(undefined)
-    ;({
-      login,
-      logout,
-      getSession,
-      isAuthenticated,
-      changePassword,
-      initDefaultAdmin
-    } = await import('../authService'))
+    ;({ login, logout, getSession, isAuthenticated, changePassword, initDefaultAdmin } =
+      await import('../authService'))
   })
 
   // ── login ──────────────────────────────────────────────────────────────────
@@ -306,6 +330,22 @@ describe('authService', () => {
       expect(call.role).toBe('admin')
       expect(call.mustChangePassword).toBe(true)
       expect(mockSetRawSetting).toHaveBeenCalledWith('admin_bootstrap_hash', '$adminhash')
+    })
+
+    it('does not log the generated bootstrap password when the credential file cannot be written', async () => {
+      mockCountUsers.mockResolvedValue(0)
+      mockGetRawSetting.mockResolvedValue(undefined)
+      mockBcryptHash.mockResolvedValue('$adminhash')
+      mockCreateUser.mockResolvedValue(undefined)
+      fsMocks.writeFileSync.mockImplementation(() => {
+        throw new Error('disk full')
+      })
+
+      await initDefaultAdmin()
+
+      const warnings = logMocks.warn.mock.calls.flat().join('\n')
+      expect(warnings).not.toMatch(/Initial password:/i)
+      expect(warnings).not.toMatch(/CHANGE IMMEDIATELY/i)
     })
 
     it('restores admin from local backup when table is empty but hash exists', async () => {

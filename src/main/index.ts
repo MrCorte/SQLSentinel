@@ -392,8 +392,8 @@ app.whenReady().then(async () => {
   warmupEmbedder()
   // Load AI feedback (positive thumbs-up examples) and dynamic T-SQL map overlay
   // — best-effort: they depend on SQL Server storage being configured.
-  preWarmFeedbackIndex().catch(() => {})
-  reloadDynamicTsqlMap().catch(() => {})
+  preWarmFeedbackIndex().catch((err) => log.warn('[main] preWarmFeedbackIndex:', err))
+  reloadDynamicTsqlMap().catch((err) => log.warn('[main] reloadDynamicTsqlMap:', err))
 
   setPushHandler((channel, data) => {
     BrowserWindow.getAllWindows().forEach((w) => {
@@ -526,8 +526,8 @@ function cleanupResources(): void {
   } catch (err) {
     log.warn('[main] flushLastSeenBuffer:', err)
   }
-  closeStoragePool().catch(() => {})
-  closeAllPools().catch(() => {})
+  closeStoragePool().catch((err) => log.warn('[main] closeStoragePool:', err))
+  closeAllPools().catch((err) => log.warn('[main] closeAllPools:', err))
 }
 
 app.on('window-all-closed', () => {

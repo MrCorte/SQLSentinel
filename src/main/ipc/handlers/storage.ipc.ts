@@ -1,7 +1,12 @@
 import type { IpcMainInvokeEvent } from 'electron'
 import { handle, safeError, log } from '../handleWrapper'
 import { IpcChannel } from '../types'
-import type { StorageConnectionParams, StorageConfigInfo, IpcResult, SchemaInitResult } from '../types'
+import type {
+  StorageConnectionParams,
+  StorageConfigInfo,
+  IpcResult,
+  SchemaInitResult
+} from '../types'
 import { getStorageConfig, saveStorageConfig } from '../../store/storageConfig'
 import { isAvailable as safeStorageAvailable } from '../../utils/safeStorageUtil'
 import {
@@ -42,27 +47,24 @@ function validateConnectionParams(params: unknown): asserts params is StorageCon
 }
 
 export function registerStorageHandlers(): void {
-  handle(
-    IpcChannel.STORAGE_GET_CONFIG,
-    async (): Promise<IpcResult<StorageConfigInfo | null>> => {
-      const cfg = getStorageConfig()
-      if (!cfg) return { ok: true, data: null }
-      // backward compat: older config may not have encrypt/trustServerCertificate
-      const encrypt = cfg.encrypt ?? false
-      const trustServerCertificate = cfg.trustServerCertificate ?? true
-      return {
-        ok: true,
-        data: {
-          host: cfg.host,
-          port: cfg.port,
-          database: cfg.database,
-          username: cfg.username,
-          encrypt,
-          trustServerCertificate
-        }
+  handle(IpcChannel.STORAGE_GET_CONFIG, async (): Promise<IpcResult<StorageConfigInfo | null>> => {
+    const cfg = getStorageConfig()
+    if (!cfg) return { ok: true, data: null }
+    // backward compat: older config may not have encrypt/trustServerCertificate
+    const encrypt = cfg.encrypt ?? false
+    const trustServerCertificate = cfg.trustServerCertificate ?? true
+    return {
+      ok: true,
+      data: {
+        host: cfg.host,
+        port: cfg.port,
+        database: cfg.database,
+        username: cfg.username,
+        encrypt,
+        trustServerCertificate
       }
     }
-  )
+  })
 
   handle(
     IpcChannel.STORAGE_SAFE_STORAGE_STATUS,
@@ -90,10 +92,7 @@ export function registerStorageHandlers(): void {
 
   handle(
     IpcChannel.STORAGE_SAVE_CONFIG,
-    async (
-      _e: IpcMainInvokeEvent,
-      params: unknown
-    ): Promise<IpcResult<SchemaInitResult>> => {
+    async (_e: IpcMainInvokeEvent, params: unknown): Promise<IpcResult<SchemaInitResult>> => {
       try {
         validateConnectionParams(params)
         // No explicit testConnection here: initStoragePoolFromParams opens
@@ -119,7 +118,9 @@ export function registerStorageHandlers(): void {
         return { ok: true, data: schemaResult }
       } catch (err) {
         // Rollback the live pool so subsequent retries get a fresh attempt.
-        await closeStoragePool().catch(() => {})
+        await closeStoragePool().catch((closeErr) => {
+          log.warn('[IPC] STORAGE_SAVE_CONFIG rollback closeStoragePool:', safeError(closeErr))
+        })
         const sanitized = sanitizeSqlError(err)
         log.error('[IPC] STORAGE_SAVE_CONFIG:', sanitized)
         return { ok: false, error: sanitized }

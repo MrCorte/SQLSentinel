@@ -51,9 +51,10 @@ import { useGroupsStore } from './store/groupsStore'
 import { useIncidentsStore, loadOpenCount } from './store/incidentsStore'
 import { notify } from './store/notifyStore'
 import { getServerDisplayName } from './types/index'
+import { isMockModeEnabled } from '../../shared/mockMode'
 
 const log = createLogger('app')
-const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true'
+const USE_MOCK = isMockModeEnabled(import.meta.env)
 
 // Tree is visible on Inventory (2) and Dashboard (3) only
 const TREE_VISIBLE_TABS = new Set([2, 3])
@@ -97,7 +98,7 @@ function AppInner(): React.JSX.Element {
     })
   }, [selectedServer, serverAliases])
   // Load persisted servers on mount — runs in both real and mock mode so that
-  // servers added manually while VITE_USE_MOCK=true are preserved across restarts
+  // servers added manually while VITE_MOCK_MODE=true are preserved across restarts
   useEffect(() => {
     const { loadServers } = useServersStore.getState()
 
@@ -578,17 +579,28 @@ function App(): React.JSX.Element {
 
   // Global UNAUTHORIZED handler — session expired or revoked
   useEffect(() => {
+    function resetSession(): void {
+      setSession(null)
+    }
+
     function onUnhandledRejection(e: PromiseRejectionEvent): void {
       if (
         e.reason instanceof Error &&
-        (e.reason.message === 'UNAUTHORIZED' || e.reason.message.includes('UNAUTHORIZED'))
+        (e.reason.message === 'UNAUTHORIZED' ||
+          e.reason.message.includes('UNAUTHORIZED') ||
+          e.reason.message === 'MUST_CHANGE_PASSWORD' ||
+          e.reason.message.includes('MUST_CHANGE_PASSWORD'))
       ) {
         e.preventDefault()
-        setSession(null)
+        resetSession()
       }
     }
+    window.addEventListener('sqlsentinel:must-change-password', resetSession)
     window.addEventListener('unhandledrejection', onUnhandledRejection)
-    return () => window.removeEventListener('unhandledrejection', onUnhandledRejection)
+    return () => {
+      window.removeEventListener('sqlsentinel:must-change-password', resetSession)
+      window.removeEventListener('unhandledrejection', onUnhandledRejection)
+    }
   }, [])
 
   useEffect(() => {

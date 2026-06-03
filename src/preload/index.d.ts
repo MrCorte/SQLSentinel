@@ -372,6 +372,7 @@ export interface ShrinkFileParams {
   fileName: string
   targetSizeMb: number
   isLog: boolean
+  logBackupConfirmed?: boolean
 }
 
 export interface ShrinkEstimateParams {

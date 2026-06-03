@@ -15,7 +15,6 @@ import type {
   ActionSource
 } from './types'
 import type { AlertCategory, AlertSeverity } from '../ipc/types'
-import { buildIncidentAiStats } from './aiStats'
 
 // ---------------------------------------------------------------------------
 // Row shapes (SQL Server → TypeScript)
@@ -604,12 +603,69 @@ export async function getAuditEntries(incidentId: string): Promise<IncidentAudit
 
 export async function getAiStats(): Promise<IncidentAiStats> {
   const pool = getPool()
-  const [auditR, actionsR] = await Promise.all([
-    pool.request().query<IncidentAuditRow>(`SELECT * FROM dbo.incident_audit ORDER BY at ASC`),
-    pool.request().query<IncidentActionRow>(`SELECT * FROM dbo.incident_actions ORDER BY seq ASC`)
+  const [aggregateR, providerR, actionsR, p95R] = await Promise.all([
+    pool.request().query<{
+      total_runs: number
+      failed_runs: number
+      avg_duration_ms: number | null
+      avg_tool_calls: number | null
+      last_run_at: number | null
+    }>(`
+      SELECT
+        COUNT(*)                                                           AS total_runs,
+        COUNT(CASE WHEN error IS NOT NULL THEN 1 END)                     AS failed_runs,
+        AVG(CAST(duration_ms AS FLOAT))                                   AS avg_duration_ms,
+        AVG(CAST(tool_call_count AS FLOAT))                               AS avg_tool_calls,
+        MAX(at)                                                            AS last_run_at
+      FROM dbo.incident_audit
+    `),
+    pool.request().query<{ provider: string; runs: number; failed_runs: number }>(`
+      SELECT
+        provider,
+        COUNT(*)                                                           AS runs,
+        COUNT(CASE WHEN error IS NOT NULL THEN 1 END)                     AS failed_runs
+      FROM dbo.incident_audit
+      GROUP BY provider
+      ORDER BY COUNT(*) DESC
+    `),
+    pool.request().query<{ proposed_actions: number; executed_actions: number }>(`
+      SELECT
+        COUNT(CASE WHEN status = N'pending'  THEN 1 END)                  AS proposed_actions,
+        COUNT(CASE WHEN status = N'executed' THEN 1 END)                  AS executed_actions
+      FROM dbo.incident_actions
+    `),
+    pool.request().query<{ p95: number | null }>(`
+      SELECT TOP 1
+        CAST(
+          PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) OVER ()
+          AS INT
+        ) AS p95
+      FROM dbo.incident_audit
+      WHERE duration_ms IS NOT NULL
+    `)
   ])
-  return buildIncidentAiStats({
-    audit: auditR.recordset.map(rowToAudit),
-    actions: actionsR.recordset.map(rowToAction)
-  })
+
+  const agg = aggregateR.recordset[0]
+  const acts = actionsR.recordset[0]
+  const totalRuns = agg?.total_runs ?? 0
+  const failedRuns = agg?.failed_runs ?? 0
+  const successfulRuns = totalRuns - failedRuns
+
+  return {
+    totalRuns,
+    successfulRuns,
+    failedRuns,
+    successRate: totalRuns > 0 ? successfulRuns / totalRuns : 0,
+    avgDurationMs: Math.round(agg?.avg_duration_ms ?? 0),
+    p95DurationMs: p95R.recordset[0]?.p95 ?? 0,
+    avgToolCalls: Math.round((agg?.avg_tool_calls ?? 0) * 100) / 100,
+    proposedActions: acts?.proposed_actions ?? 0,
+    executedActions: acts?.executed_actions ?? 0,
+    lastRunAt: toNumOrNull(agg?.last_run_at) ?? undefined,
+    providers: providerR.recordset.map((r) => ({
+      provider: r.provider as 'ollama' | 'claude',
+      runs: r.runs,
+      failedRuns: r.failed_runs
+    }))
+  }
 }

@@ -390,7 +390,11 @@ async function queryTopQueries(pool: mssql.ConnectionPool): Promise<QueryInfo[]>
  * Source: msdb.dbo.backupset GROUP BY database_name, type
  */
 export function buildBackupStatusSql(lookbackDays = 35): string {
+  // Clamp to a safe integer so the DECLARE literal can never contain SQL
+  // metacharacters regardless of how the function is called internally.
+  const safeLookback = Math.max(1, Math.min(365, Math.trunc(Number(lookbackDays))))
   return `
+    DECLARE @lookback INT = ${safeLookback};
     SELECT
       d.name                                                                    AS database_name,
       MAX(CASE WHEN bs.type = 'D' THEN bs.backup_finish_date ELSE NULL END)    AS last_full_backup,
@@ -400,7 +404,7 @@ export function buildBackupStatusSql(lookbackDays = 35): string {
     LEFT JOIN msdb.dbo.backupset bs WITH (READUNCOMMITTED)
       ON d.name = bs.database_name
       AND bs.type IN ('D', 'I', 'L')
-      AND bs.backup_finish_date >= DATEADD(DAY, -${lookbackDays}, GETDATE())
+      AND bs.backup_finish_date >= DATEADD(DAY, -@lookback, GETDATE())
     WHERE d.database_id > 4
     GROUP BY d.name
     ORDER BY d.name

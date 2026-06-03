@@ -43,6 +43,18 @@ export async function setCustomFields(
   }
 }
 
+/**
+ * Drop all cached entries whose key starts with `${serverId}/`.
+ * Called when a server is removed so stale aliases don't accumulate forever.
+ */
+export function invalidateCustomFieldsForServer(serverId: string): void {
+  if (cachedFields === null) return
+  const prefix = `${serverId}/`
+  for (const key of Object.keys(cachedFields)) {
+    if (key.startsWith(prefix)) delete cachedFields[key]
+  }
+}
+
 export async function getAllCustomFields(): Promise<Record<string, DbCustomFields>> {
   if (cachedFields !== null) return cachedFields
   const pool = getPool()

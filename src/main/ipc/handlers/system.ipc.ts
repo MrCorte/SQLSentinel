@@ -325,6 +325,18 @@ export function registerSystemHandlers(): void {
     IpcChannel.DB_SHRINK_FILE,
     async (_event: IpcMainInvokeEvent, req: ShrinkFileParams): Promise<IpcResult<ShrinkResult>> => {
       try {
+        // Log shrink on a FULL-recovery DB executes BACKUP LOG TO NUL, which
+        // breaks the backup chain. Require explicit opt-in so the operator
+        // cannot trigger this destructive side-effect by accident.
+        if (req.isLog && !req.logBackupConfirmed) {
+          return {
+            ok: false,
+            error:
+              'Log shrink requires explicit confirmation: this operation will run ' +
+              'BACKUP LOG TO NUL on FULL-recovery databases, breaking the log backup chain ' +
+              'until a new FULL backup is taken. Check the confirmation box before proceeding.'
+          }
+        }
         const result = await shrinkFile(
           resolveConnection(req.connection),
           req.dbName,

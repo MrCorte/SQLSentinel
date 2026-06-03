@@ -17,7 +17,8 @@ import {
   MenuItem,
   InputLabel,
   CircularProgress,
-  Divider
+  Divider,
+  Checkbox
 } from '@mui/material'
 import WarningAmberIcon from '@mui/icons-material/WarningAmber'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
@@ -75,6 +76,7 @@ export function ShrinkDialog({
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<ShrinkResult | null>(null)
   const [resultError, setResultError] = useState<string | null>(null)
+  const [logBackupConfirmed, setLogBackupConfirmed] = useState(false)
 
   const dataFiles = files.filter((f) => f.type_desc === 'ROWS')
   const logFiles = files.filter((f) => f.type_desc === 'LOG')
@@ -99,6 +101,7 @@ export function ShrinkDialog({
       setResult(null)
       setResultError(null)
       setMode('database')
+      setLogBackupConfirmed(false)
       return
     }
     if (!window.sqlSentinel?.db?.shrinkEstimate) {
@@ -135,7 +138,8 @@ export function ShrinkDialog({
           dbName,
           fileName: selectedFile,
           targetSizeMb,
-          isLog
+          isLog,
+          logBackupConfirmed: isLog ? logBackupConfirmed : undefined
         })
       }
       if (res.ok) {
@@ -333,31 +337,61 @@ export function ShrinkDialog({
               disabled={logFiles.length === 0}
             />
             {mode === 'log' && (
-              <Stack direction="row" spacing={1.5} sx={{ ml: 4, mb: 1 }}>
-                <FormControl size="small" sx={{ minWidth: 180 }}>
-                  <InputLabel>File log</InputLabel>
-                  <Select
-                    label="File log"
-                    value={selectedFile}
-                    onChange={(e) => handleFileSelect(e.target.value)}
-                  >
-                    {logFiles.map((f) => (
-                      <MenuItem key={f.file_name} value={f.file_name}>
-                        {f.file_name} ({f.size_mb} MB)
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                <TextField
-                  label="Target size (MB)"
-                  type="number"
-                  size="small"
-                  value={targetSizeMb}
-                  onChange={(e) => setTargetSizeMb(Math.max(0, Number(e.target.value)))}
-                  inputProps={{ min: 0 }}
-                  sx={{ width: 140 }}
-                />
-              </Stack>
+              <>
+                <Stack direction="row" spacing={1.5} sx={{ ml: 4, mb: 1 }}>
+                  <FormControl size="small" sx={{ minWidth: 180 }}>
+                    <InputLabel>File log</InputLabel>
+                    <Select
+                      label="File log"
+                      value={selectedFile}
+                      onChange={(e) => handleFileSelect(e.target.value)}
+                    >
+                      {logFiles.map((f) => (
+                        <MenuItem key={f.file_name} value={f.file_name}>
+                          {f.file_name} ({f.size_mb} MB)
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    label="Target size (MB)"
+                    type="number"
+                    size="small"
+                    value={targetSizeMb}
+                    onChange={(e) => setTargetSizeMb(Math.max(0, Number(e.target.value)))}
+                    inputProps={{ min: 0 }}
+                    sx={{ width: 140 }}
+                  />
+                </Stack>
+                <Box
+                  sx={{
+                    ml: 4,
+                    mb: 1,
+                    p: 1.25,
+                    bgcolor: '#fff4ce',
+                    border: '1px solid #ffb900',
+                    borderRadius: 1
+                  }}
+                >
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        size="small"
+                        checked={logBackupConfirmed}
+                        onChange={(e) => setLogBackupConfirmed(e.target.checked)}
+                        sx={{ py: 0 }}
+                      />
+                    }
+                    label={
+                      <Typography sx={{ fontSize: 12, color: '#7a4f00' }}>
+                        I understand this may run <strong>BACKUP LOG TO NUL</strong> on
+                        FULL-recovery databases, breaking the log backup chain until a new
+                        FULL backup is taken.
+                      </Typography>
+                    }
+                  />
+                </Box>
+              </>
             )}
           </RadioGroup>
         </FormControl>
@@ -431,7 +465,7 @@ export function ShrinkDialog({
           variant="contained"
           size="small"
           onClick={handleExecute}
-          disabled={running || !!result?.success}
+          disabled={running || !!result?.success || (mode === 'log' && !logBackupConfirmed)}
           startIcon={running ? <CircularProgress size={14} color="inherit" /> : undefined}
           sx={{
             bgcolor: '#d83b01',

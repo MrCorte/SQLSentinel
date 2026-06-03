@@ -416,6 +416,8 @@ export interface ShrinkFileParams {
   fileName: string
   targetSizeMb: number
   isLog: boolean
+  /** Must be true when isLog=true — signals the operator acknowledged the log backup chain will be broken. */
+  logBackupConfirmed?: boolean
 }
 
 export interface ShrinkEstimateParams {

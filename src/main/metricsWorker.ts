@@ -15,8 +15,11 @@ import * as serverStore from './store/sqlserver/serverRepository'
 import * as metricsRepository from './store/sqlserver/metricsRepository'
 import * as serverDatabasesRepository from './store/sqlserver/serverDatabasesRepository'
 import { getSettings } from './store/sqlserver/settingsRepository'
-import type { ServerMetrics } from './collectors/types'
-import { getAllCustomFields } from './store/sqlserver/dbCustomFieldsRepository'
+import type { ServerMetrics, DiskVolume, DatabaseFile } from './collectors/types'
+import {
+  getAllCustomFields,
+  invalidateCustomFieldsForServer
+} from './store/sqlserver/dbCustomFieldsRepository'
 import { shouldSendDelta } from './deltaUtils'
 
 export interface IntervalOverrides {
@@ -107,6 +110,10 @@ let lastAlertPruneAt = 0
 
 // --- SQLite persistence ---
 const saveQueue: metricsRepository.SaveItem[] = []
+// Prevents concurrent flushes when the SAVE_FLUSH_MS timer and the hard-cap
+// path both fire in the same turn: without this guard both calls would snapshot
+// the same queue items and persist them twice.
+let flushInProgress = false
 let saveFlushTimer: ReturnType<typeof setTimeout> | null = null
 
 // Track previous metrics for delta computation
@@ -175,8 +182,18 @@ const failedBatches: metricsRepository.SaveItem[][] = []
 const MAX_FAILED_BATCHES = 5
 
 async function flushSaveQueue(): Promise<void> {
+  if (flushInProgress) {
+    // Already in progress — schedule a follow-up so items queued during this
+    // flush aren't stranded until the next natural SAVE_FLUSH_MS interval.
+    if (!saveFlushTimer) saveFlushTimer = setTimeout(scheduleFlushSaveQueue, SAVE_FLUSH_MS)
+    return
+  }
+  flushInProgress = true
   saveFlushTimer = null
-  if (saveQueue.length === 0 && failedBatches.length === 0) return
+  if (saveQueue.length === 0 && failedBatches.length === 0) {
+    flushInProgress = false
+    return
+  }
 
   // Snapshot what we'll persist BEFORE removing it from the queue. Previously
   // we spliced first and persisted second — on batchSave failure the items
@@ -186,37 +203,44 @@ async function flushSaveQueue(): Promise<void> {
   const allBatches = [...failedBatches, toFlush.length > 0 ? toFlush : null].filter(
     (b): b is metricsRepository.SaveItem[] => b !== null && b.length > 0
   )
-  if (allBatches.length === 0) return
+  if (allBatches.length === 0) {
+    flushInProgress = false
+    return
+  }
 
   // Reset the failed buffer; we'll re-populate on retry.
   failedBatches.length = 0
 
   let anyFailed = false
-  for (const batch of allBatches) {
-    try {
-      await metricsRepository.batchSave(batch)
-    } catch (err) {
-      log.error('[worker] batch save failed, will retry:', err)
-      // Hold onto the batch for the next flush. Drop the OLDEST batch if we
-      // exceed the retry budget so a permanently failing storage can't OOM us.
-      if (failedBatches.length >= MAX_FAILED_BATCHES) {
-        const dropped = failedBatches.shift()
-        log.warn(`[worker] DLQ overflow: dropping oldest batch of ${dropped?.length ?? 0} item(s)`)
+  try {
+    for (const batch of allBatches) {
+      try {
+        await metricsRepository.batchSave(batch)
+      } catch (err) {
+        log.error('[worker] batch save failed, will retry:', err)
+        // Hold onto the batch for the next flush. Drop the OLDEST batch if we
+        // exceed the retry budget so a permanently failing storage can't OOM us.
+        if (failedBatches.length >= MAX_FAILED_BATCHES) {
+          const dropped = failedBatches.shift()
+          log.warn(`[worker] DLQ overflow: dropping oldest batch of ${dropped?.length ?? 0} item(s)`)
+        }
+        failedBatches.push(batch)
+        anyFailed = true
       }
-      failedBatches.push(batch)
-      anyFailed = true
     }
-  }
 
-  // Only consume the live queue if it was successfully persisted (or the
-  // failure was already recorded in failedBatches).
-  if (toFlush.length > 0) {
-    saveQueue.splice(0, toFlush.length)
-  }
+    // Only consume the live queue if it was successfully persisted (or the
+    // failure was already recorded in failedBatches).
+    if (toFlush.length > 0) {
+      saveQueue.splice(0, toFlush.length)
+    }
 
-  // If anything failed, schedule a retry on the next regular flush window.
-  if (anyFailed && !saveFlushTimer) {
-    saveFlushTimer = setTimeout(scheduleFlushSaveQueue, SAVE_FLUSH_MS)
+    // If anything failed, schedule a retry on the next regular flush window.
+    if (anyFailed && !saveFlushTimer) {
+      saveFlushTimer = setTimeout(scheduleFlushSaveQueue, SAVE_FLUSH_MS)
+    }
+  } finally {
+    flushInProgress = false
   }
 }
 
@@ -301,21 +325,27 @@ function computeDelta(sid: string, fresh: ServerMetrics): ServerMetrics {
   previousMetrics.set(sid, fresh)
   if (!prev) return fresh // first time: send full
 
-  const freshNames = new Set(fresh.databases.map((d) => d.name))
-  const removedDbs = prev.databases.map((d) => d.name).filter((n) => !freshNames.has(n))
-
-  // Build a Map for O(1) lookups instead of O(n) find() inside filter()
+  // Pass 1 — prev databases → lookup Map (O(prevDBs))
   const prevByName = new Map(prev.databases.map((d) => [d.name, d]))
 
-  const changedDbs = fresh.databases.filter((db) => {
-    const prevDb = prevByName.get(db.name)
-    return (
-      !prevDb ||
-      prevDb.sizeMb !== db.sizeMb ||
-      prevDb.logSizeMb !== db.logSizeMb ||
-      prevDb.stateDesc !== db.stateDesc
-    )
-  })
+  // Pass 2 — fresh databases → changed list + seen set in one imperative loop,
+  // avoiding the two temporary arrays the functional version created
+  // (fresh.databases.map(d=>d.name) and prev.databases.map(d=>d.name).filter()).
+  const changedDbs: ServerMetrics['databases'] = []
+  const seenInFresh = new Set<string>()
+  for (const db of fresh.databases) {
+    seenInFresh.add(db.name)
+    const p = prevByName.get(db.name)
+    if (!p || p.sizeMb !== db.sizeMb || p.logSizeMb !== db.logSizeMb || p.stateDesc !== db.stateDesc) {
+      changedDbs.push(db)
+    }
+  }
+
+  // Removed DBs: prev names not seen in fresh — iterates Map.keys(), no extra array
+  const removedDbs: string[] = []
+  for (const name of prevByName.keys()) {
+    if (!seenInFresh.has(name)) removedDbs.push(name)
+  }
 
   if (
     shouldSendDelta(
@@ -331,6 +361,23 @@ function computeDelta(sid: string, fresh: ServerMetrics): ServerMetrics {
 // ---------------------------------------------------------------------------
 // Alert evaluation
 // ---------------------------------------------------------------------------
+
+// Hoisted to module level to avoid allocating a new closure on every
+// evaluateAlerts() call (~200 servers × every poll cycle).
+function buildShrinkSuggestion(volumes: DiskVolume[], databaseFiles: DatabaseFile[]): string | undefined {
+  const mounts = volumes.map((v) => v.volume_mount_point.toLowerCase())
+  const candidates = databaseFiles
+    .filter((f) => {
+      const path = f.physical_name.toLowerCase()
+      return f.free_mb > 0 && mounts.some((m) => path.startsWith(m))
+    })
+    .sort((a, b) => b.free_mb - a.free_mb)
+    .slice(0, 5)
+  if (candidates.length === 0) return undefined
+  return `Consider SHRINKFILE on: ${candidates
+    .map((f) => `${f.database_name}/${f.file_name} (${(f.free_mb / 1024).toFixed(1)} GB free)`)
+    .join(', ')}`
+}
 
 function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
   const alerts: Alert[] = []
@@ -401,23 +448,6 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
   const criticalVolumes = diskVolumes.filter((v) => v.free_pct < 10)
   const warnVolumes = diskVolumes.filter((v) => v.free_pct >= 10 && v.free_pct < 30)
 
-  // Returns a shrink suggestion listing the top files with reclaimable space on the given volumes
-  function shrinkSuggestion(volumes: typeof diskVolumes): string | undefined {
-    const mounts = volumes.map((v) => v.volume_mount_point.toLowerCase())
-    const candidates = databaseFiles
-      .filter((f) => {
-        const path = f.physical_name.toLowerCase()
-        return f.free_mb > 0 && mounts.some((m) => path.startsWith(m))
-      })
-      .sort((a, b) => b.free_mb - a.free_mb)
-      .slice(0, 5)
-    if (candidates.length === 0) return undefined
-    const list = candidates
-      .map((f) => `${f.database_name}/${f.file_name} (${(f.free_mb / 1024).toFixed(1)} GB free)`)
-      .join(', ')
-    return `Consider SHRINKFILE on: ${list}`
-  }
-
   if (criticalVolumes.length > 0) {
     const desc = criticalVolumes
       .map((v) => `${v.volume_mount_point} (${v.free_pct.toFixed(1)}% free)`)
@@ -427,7 +457,7 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
         'disk_space_low',
         'CRITICAL',
         `Volume space critical: ${desc}`,
-        shrinkSuggestion(criticalVolumes),
+        buildShrinkSuggestion(criticalVolumes, databaseFiles),
         'volume'
       )
     )
@@ -441,7 +471,7 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
         'disk_space_low',
         'WARNING',
         `Volume space running low: ${desc}`,
-        shrinkSuggestion(warnVolumes),
+        buildShrinkSuggestion(warnVolumes, databaseFiles),
         'volume'
       )
     )
@@ -520,8 +550,6 @@ function rebuildOpenAlertKeys(): void {
 // ---------------------------------------------------------------------------
 
 async function runJob(sid: string, job: PollJob): Promise<void> {
-  const allCustomFields = await getAllCustomFields()
-
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined
   // AbortController propagated to the collector: on timeout we close the pool immediately
   // instead of letting the TDS connection dangle until GC.
@@ -533,6 +561,10 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     }, POLL_TIMEOUT_MS)
   })
   try {
+    // Included inside the timeout guard so a stalled storage pool doesn't leak
+    // the `running` counter: if this hangs past POLL_TIMEOUT_MS the timeout
+    // rejects and the finally block decrements the counter normally.
+    const allCustomFields = await Promise.race([getAllCustomFields(), timeoutPromise])
     // Run the expensive collectors fresh only for the active server or every
     // HEAVY_COLLECT_EVERY_N polls; reuse the previous values in between.
     const isActive = sid === activeServerId
@@ -556,30 +588,20 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
       }
     }
 
-    // Merge custom fields (alias, referente) into DatabaseInfo before pushing to the renderer
-    let enrichedMetrics: ServerMetrics = {
-      ...metrics,
-      databases: metrics.databases.map((db) => ({
-        ...db,
-        ...(allCustomFields[`${sid}/${db.name}`] ?? {})
-      }))
-    }
-
-    // Enrich databases with offlineSince timestamp (track first detection of non-ONLINE state)
+    // Merge custom fields (alias, referente) and offlineSince timestamp into
+    // DatabaseInfo in a single pass to avoid creating two intermediate arrays.
     const offlineMap = dbOfflineTimestamps.get(sid) ?? new Map<string, string>()
-    enrichedMetrics = {
-      ...enrichedMetrics,
-      databases: enrichedMetrics.databases.map((db) => {
-        if (db.stateDesc !== 'ONLINE') {
-          if (!offlineMap.has(db.name)) {
-            offlineMap.set(db.name, enrichedMetrics.collectedAt.toISOString())
-          }
-          return { ...db, offlineSince: offlineMap.get(db.name) }
-        }
-        offlineMap.delete(db.name)
-        return db
-      })
-    }
+    const collectedAtIso = metrics.collectedAt.toISOString()
+    const enrichedDatabases = metrics.databases.map((db) => {
+      const custom = allCustomFields[`${sid}/${db.name}`] ?? {}
+      if (db.stateDesc !== 'ONLINE') {
+        if (!offlineMap.has(db.name)) offlineMap.set(db.name, collectedAtIso)
+        return { ...db, ...custom, offlineSince: offlineMap.get(db.name) }
+      }
+      offlineMap.delete(db.name)
+      return { ...db, ...custom }
+    })
+    const enrichedMetrics: ServerMetrics = { ...metrics, databases: enrichedDatabases }
     // Prune entries for DBs that no longer exist (dropped between polls).
     // Without this the map keeps growing forever as users drop and recreate
     // databases — a dozen bytes per ghost entry but unbounded over months.
@@ -655,7 +677,10 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     // sufficient; on intermediate cycles we save a dedicated SQL connection
     // per server in the AG.
     if (job.pollCount % AG_DETECT_EVERY_N === 0) {
-      detectAndSyncReplicaRoles(job.server)
+      const agTimeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('AG detect timeout')), 30_000)
+      )
+      Promise.race([detectAndSyncReplicaRoles(job.server), agTimeout])
         .then((updated) => {
           if (updated.length > 0) {
             pushToRenderer(
@@ -664,7 +689,7 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
             )
           }
         })
-        .catch((err: unknown) => log.warn('[worker] AG sync:', err)) // not in AG or insufficient permissions
+        .catch((err: unknown) => log.warn('[worker] AG sync:', err))
     }
 
     // Persist snapshot to SQLite every SAVE_EVERY_N successful polls
@@ -902,8 +927,12 @@ export function syncServers(servers: CollectMetricsRequest[]): void {
   }
 
   // Remove deleted servers
-  for (const sid of jobs.keys()) {
+  for (const [sid, job] of jobs) {
     if (!incoming.has(sid)) {
+      // Prune cached custom-field entries so stale aliases can't accumulate
+      // forever as servers are added and removed over the lifetime of the app.
+      const record = serverStore.getStrippedByIpPort(job.server.ip, job.server.port)
+      if (record) invalidateCustomFieldsForServer(record.id)
       jobs.delete(sid)
       previousMetrics.delete(sid)
       metricsHistory.delete(sid)
@@ -992,6 +1021,7 @@ export function __resetForTests(): void {
   dbOfflineTimestamps.clear()
   saveQueue.length = 0
   failedBatches.length = 0
+  flushInProgress = false
   storedAlerts = []
   openAlertKeys.clear()
   alertCounter = 0

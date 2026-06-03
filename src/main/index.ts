@@ -397,7 +397,11 @@ app.whenReady().then(async () => {
 
   setPushHandler((channel, data) => {
     BrowserWindow.getAllWindows().forEach((w) => {
-      if (!w.isDestroyed() && w.isVisible()) w.webContents.send(channel, data)
+      // Don't gate on isVisible(): WorkerContext already buffers events when
+      // document.hidden is true, so filtering here only drops events without
+      // saving IPC budget. A minimized window still needs to receive updates
+      // so the store stays current when the user brings it back.
+      if (!w.isDestroyed()) w.webContents.send(channel, data)
     })
   })
 

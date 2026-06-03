@@ -1370,8 +1370,14 @@ const bridgeApi = {
     add: (p: Omit<StoredServer, 'id' | 'addedAt'>) => api.servers.add(p),
     update: (id: string, patch: Partial<StoredServer>) => api.servers.update(id, patch),
     remove: (id: string) => api.servers.remove(id),
-    clearMocks: (): Promise<{ success: boolean; removed: number; remaining: number }> =>
-      ipcRenderer.invoke(IpcChannel.SERVERS_CLEAR_MOCKS),
+    clearMocks: (): Promise<{ success: boolean; removed: number; remaining: number }> => {
+      if (isMock) {
+        const removed = mockStoredServers.length
+        mockStoredServers = []
+        return Promise.resolve({ success: true, removed, remaining: 0 })
+      }
+      return ipcRenderer.invoke(IpcChannel.SERVERS_CLEAR_MOCKS)
+    },
     exportBackup: () => api.servers.exportBackup(),
     importBackup: () => api.servers.importBackup()
   },

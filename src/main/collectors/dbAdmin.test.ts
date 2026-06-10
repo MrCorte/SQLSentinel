@@ -7,9 +7,13 @@ const mssqlMocks = vi.hoisted(() => ({
   connect: vi.fn()
 }))
 
+// dbAdmin opens a dedicated pool per call (new ConnectionPool().connect()) —
+// never the global mssql.connect(), which would collide with the storage pool.
 vi.mock('mssql', () => ({
   NVarChar: 'NVarChar',
-  connect: mssqlMocks.connect
+  ConnectionPool: class {
+    connect = mssqlMocks.connect
+  }
 }))
 
 import { getShrinkEstimate, shrinkDatabase, shrinkFile } from './dbAdmin'

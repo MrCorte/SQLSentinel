@@ -65,6 +65,8 @@ export async function findLatest(serverId: string): Promise<ServerMetrics | null
 // can't render that many points anyway, so we always return the most recent N.
 const MAX_HISTORY_ROWS = 10000
 
+/** Returns snapshots in CHRONOLOGICAL order (oldest first), like findLastN.
+ * The query selects DESC only to apply TOP to the most recent rows. */
 export async function findHistory(serverId: string, limitDays: number): Promise<MetricsSnapshot[]> {
   const pool = getPool()
   if (limitDays === 0) {
@@ -77,7 +79,7 @@ export async function findHistory(serverId: string, limitDays: number): Promise<
        WHERE server_id = @server_id
        ORDER BY collected_at DESC`
       )
-    return r.recordset.map(rowToSnapshot)
+    return r.recordset.reverse().map(rowToSnapshot)
   }
   const r = await pool
     .request()
@@ -86,7 +88,7 @@ export async function findHistory(serverId: string, limitDays: number): Promise<
     .query<SnapshotRow>(
       `SELECT TOP ${MAX_HISTORY_ROWS} id, server_id, collected_at, metrics_json FROM dbo.metrics_snapshots WHERE server_id = @server_id AND collected_at >= DATEADD(DAY, -@days, GETUTCDATE()) ORDER BY collected_at DESC`
     )
-  return r.recordset.map(rowToSnapshot)
+  return r.recordset.reverse().map(rowToSnapshot)
 }
 
 // Batched purge: a single DELETE on millions of rows can lock the table for

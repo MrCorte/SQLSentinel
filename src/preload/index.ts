@@ -620,6 +620,12 @@ const realApi = {
     return () => ipcRenderer.removeListener(IpcChannel.ALERT_NEW, listener)
   },
 
+  onAlertResolved: (callback: (data: { ids: string[] }) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, data: { ids: string[] }) => callback(data)
+    ipcRenderer.on(IpcChannel.ALERT_RESOLVED, listener)
+    return () => ipcRenderer.removeListener(IpcChannel.ALERT_RESOLVED, listener)
+  },
+
   getSettings: (): Promise<IpcResult<AppSettings>> => ipcRenderer.invoke(IpcChannel.SETTINGS_GET),
 
   saveSettings: (req: SaveSettingsRequest): Promise<IpcResult<null>> =>
@@ -1024,6 +1030,10 @@ const mockApi = {
     (_callback: (alert: Alert) => void): (() => void) =>
     () => {},
 
+  onAlertResolved:
+    (_callback: (data: { ids: string[] }) => void): (() => void) =>
+    () => {},
+
   getSettings: (): Promise<IpcResult<AppSettings>> =>
     Promise.resolve({
       ok: true,
@@ -1329,6 +1339,7 @@ const bridgeApi = {
     cb: (batch: Array<{ serverId: string; metrics: ServerMetrics }>) => void
   ) => api.onMetricsBatchUpdated(cb),
   onAlertNew: (cb: (a: Alert) => void) => api.onAlertNew(cb),
+  onAlertResolved: (cb: (d: { ids: string[] }) => void) => api.onAlertResolved(cb),
   getSettings: () => api.getSettings(),
   saveSettings: (r: SaveSettingsRequest) => api.saveSettings(r),
   getEmailSettings: () => api.getEmailSettings(),

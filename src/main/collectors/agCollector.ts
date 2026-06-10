@@ -8,8 +8,16 @@ import type {
   ServerConnection
 } from './types'
 import * as serverStore from '../store/sqlserver/serverRepository'
-import { sanitizeSqlError } from './sqlCollector'
+import { sanitizeSqlError, isConnectionError } from './sqlCollector'
 import { getPool, invalidatePool } from './connectionPool'
+
+// Invalidate the cached pool ONLY for transport-level failures. Permission or
+// missing-DMV errors (e.g. editions without HADR views) would otherwise tear
+// down a healthy pool on every AG cycle — a fleet-wide TLS+TDS re-handshake
+// every 5 polls for servers that simply aren't in an AG.
+function invalidateOnConnError(sc: ServerConnection, err: unknown): void {
+  if (isConnectionError(err)) invalidatePool(sc)
+}
 
 // Same shape as ServerConnection — reuse the pool cache instead of opening
 // fresh tedious sessions every AG poll.
@@ -57,7 +65,7 @@ export async function getAvailabilityGroups(
     `)
     return result.recordset
   } catch (err) {
-    invalidatePool(sc)
+    invalidateOnConnError(sc, err)
     throw err
   }
 }
@@ -94,7 +102,7 @@ export async function getAvailabilityReplicas(
     `)
     return result.recordset
   } catch (err) {
-    invalidatePool(sc)
+    invalidateOnConnError(sc, err)
     throw err
   }
 }
@@ -139,7 +147,7 @@ export async function detectAndSyncReplicaRoles(
     `)
     replicas = result.recordset
   } catch (err) {
-    invalidatePool(sc)
+    invalidateOnConnError(sc, err)
     log.warn('[agCollector] detectAndSyncReplicaRoles failed:', sanitizeSqlError(err))
     return []
   }
@@ -155,7 +163,7 @@ export async function detectAndSyncReplicaRoles(
 
   // Build a host→server lookup once. Two-tier index:
   //  1. exact host match (lowercased)
-  //  2. substring fallback for legacy entries where host has FQDN suffix
+  //  2. first-DNS-label fallback for FQDN/short-name mismatches
   // Avoids the previous O(N) .find() inside the replica loop.
   const byExactHost = new Map<string, serverStore.StoredServer>()
   for (const s of allServers) {
@@ -167,11 +175,15 @@ export async function detectAndSyncReplicaRoles(
     const replicaBase = replica.replicaHost.split('\\')[0].toLowerCase()
     let match = byExactHost.get(replicaBase)
     if (!match) {
-      // Substring fallback (rare path) — only walks the array when exact miss.
-      match = allServers.find((s) => {
-        const addr = (s.host ?? '').toLowerCase()
-        return addr.includes(replicaBase) || replicaBase.includes(addr)
-      })
+      // Fallback (rare path): equal first DNS label, e.g. stored "sql1.corp.local"
+      // vs replica "SQL1" (or vice versa). The previous bidirectional substring
+      // match could bind "sql1" to "sql10" and patch the AG role onto the
+      // wrong server.
+      const replicaLabel = replicaBase.split('.')[0]
+      // Numeric label = IP address; first-octet comparison would be meaningless.
+      if (!/^\d+$/.test(replicaLabel)) {
+        match = allServers.find((s) => (s.host ?? '').toLowerCase().split('.')[0] === replicaLabel)
+      }
     }
     if (!match) continue
 
@@ -246,7 +258,7 @@ export async function getAvailabilityDatabases(
       last_commit_time: r.last_commit_time ? r.last_commit_time.toISOString() : null
     })) as AvailabilityDatabase[]
   } catch (err) {
-    invalidatePool(sc)
+    invalidateOnConnError(sc, err)
     throw err
   }
 }

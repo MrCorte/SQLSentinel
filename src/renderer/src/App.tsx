@@ -358,6 +358,18 @@ function AppInner(): React.JSX.Element {
 
   useIpcEvent(window.sqlSentinel.onAlertNew, handleAlertNew)
 
+  // Auto-resolve del worker: senza questo listener la risoluzione resta solo
+  // in memoria main e l'alert continua a figurare attivo in UI fino al riavvio.
+  const handleAlertResolved = useCallback(
+    (...args: unknown[]) => {
+      const data = args[0] as { ids: string[] }
+      for (const id of data?.ids ?? []) acknowledgeAlertInStore(id)
+    },
+    [acknowledgeAlertInStore]
+  )
+
+  useIpcEvent(window.sqlSentinel.onAlertResolved, handleAlertResolved)
+
   // Keep metricsMap fresh regardless of which tab is active.
   // Dashboard subscribes too (for local component state), but when it unmounts
   // this subscription ensures the global store keeps receiving worker pushes.

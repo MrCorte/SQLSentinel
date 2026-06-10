@@ -345,8 +345,9 @@ const INDEX_DDL: Array<{ table: string; name: string; sql: string }> = [
     // non-terminal statuses. resolved/archived rows are read by the
     // detail screen via PK lookups instead.
     name: 'IX_incidents_status_open',
+    // NB: i filtered index non ammettono NOT IN — solo <>, =, IN, IS [NOT] NULL.
     sql: `CREATE INDEX IX_incidents_status_open ON dbo.incidents(opened_at DESC)
-          WHERE status NOT IN (N'resolved', N'archived')`
+          WHERE status <> N'resolved' AND status <> N'archived'`
   },
   {
     table: 'incidents',
@@ -558,7 +559,12 @@ const MIGRATIONS: Migration[] = [
              WHERE object_id = i.object_id AND index_id = i.index_id) = 1;
 
       IF @pk IS NOT NULL
-        EXEC ('ALTER TABLE dbo.metrics_snapshots DROP CONSTRAINT ' + QUOTENAME(@pk));
+      BEGIN
+        -- EXEC(...) non accetta chiamate a funzione inline: costruire prima la stringa
+        DECLARE @drop_pk NVARCHAR(MAX) =
+          N'ALTER TABLE dbo.metrics_snapshots DROP CONSTRAINT ' + QUOTENAME(@pk);
+        EXEC (@drop_pk);
+      END
 
       IF NOT EXISTS (SELECT 1 FROM sys.indexes
                      WHERE object_id = OBJECT_ID(N'dbo.metrics_snapshots')
@@ -577,7 +583,7 @@ const MIGRATIONS: Migration[] = [
               ON dbo.metrics_snapshots(server_id, collected_at DESC)
               WITH (DATA_COMPRESSION = PAGE);
           ELSE
-            ;THROW;
+            THROW;
         END CATCH
       END
 
@@ -645,7 +651,12 @@ const MIGRATIONS: Migration[] = [
         WHERE fk.parent_object_id = OBJECT_ID(N'dbo.incident_actions')
           AND fk.referenced_object_id = OBJECT_ID(N'dbo.incidents');
         IF @fk IS NOT NULL
-          EXEC('ALTER TABLE dbo.incident_actions DROP CONSTRAINT ' + QUOTENAME(@fk));
+        BEGIN
+          -- EXEC(...) non accetta chiamate a funzione inline: costruire prima la stringa
+          DECLARE @drop_fk NVARCHAR(MAX) =
+            N'ALTER TABLE dbo.incident_actions DROP CONSTRAINT ' + QUOTENAME(@fk);
+          EXEC (@drop_fk);
+        END
         ALTER TABLE dbo.incident_actions ALTER COLUMN incident_id NVARCHAR(36) NULL;
         ALTER TABLE dbo.incident_actions
           ADD CONSTRAINT FK_incident_actions_incident

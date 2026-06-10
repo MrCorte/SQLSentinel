@@ -48,7 +48,11 @@ function pushCapped(buf: HistoryPoint[], point: HistoryPoint, cap: number): Hist
 }
 
 function memPercent(info: ServerMetrics['instanceInfo']): number {
-  return info.memoryTargetMb > 0 ? Math.round((info.memoryUsedMb / info.memoryTargetMb) * 100) : 0
+  // Cap al 100%: il target è un tetto soft (su Azure SQL Edge used può superarlo)
+  // e senza cap la history salvava valori >100 che facevano auto-scalare l'asse
+  // Y del grafico fino a ~291%. Il dettaglio in MB resta nel tooltip.
+  if (info.memoryTargetMb <= 0) return 0
+  return Math.min(100, Math.round((info.memoryUsedMb / info.memoryTargetMb) * 100))
 }
 
 function buildSummary(m: ServerMetrics): ServerSummary {

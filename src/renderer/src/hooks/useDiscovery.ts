@@ -112,7 +112,12 @@ export function useDiscovery() {
     const req: ManualServerRequest = {
       ip: params.ip,
       port: params.port,
-      ...(params.instanceName ? { instanceName: params.instanceName } : {})
+      ...(params.instanceName ? { instanceName: params.instanceName } : {}),
+      // Propaga le credenziali: senza, l'upsert lato main ripiegava su Windows
+      // auth con username NULL e sovrascriveva quelle appena registrate.
+      useWindowsAuth: params.useWindowsAuth,
+      ...(params.username ? { username: params.username } : {}),
+      ...(params.password ? { password: params.password } : {})
     }
 
     const result = await window.sqlSentinel.addServerManual(req)

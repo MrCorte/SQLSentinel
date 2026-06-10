@@ -663,6 +663,7 @@ export interface SqlSentinelAPI {
     callback: (batch: Array<{ serverId: string; metrics: ServerMetrics }>) => void
   ): () => void
   onAlertNew(callback: (alert: Alert) => void): () => void
+  onAlertResolved(callback: (data: { ids: string[] }) => void): () => void
   getSettings(): Promise<IpcResult<AppSettings>>
   saveSettings(req: SaveSettingsRequest): Promise<IpcResult<null>>
   getEmailSettings(): Promise<IpcResult<EmailSettings>>

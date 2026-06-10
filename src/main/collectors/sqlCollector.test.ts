@@ -139,9 +139,12 @@ describe('collectMetrics', () => {
 
     expect(databaseFilesSql).toContain('CAST(mf.size AS DECIMAL(19,2)) * 8 / 1024.0')
     expect(databaseFilesSql).toContain('CAST(mf.max_size AS DECIMAL(19,2)) * 8 / 1024.0')
+    // SpaceUsed is collected per-DB into @fs (FILEPROPERTY is only valid in the
+    // file's own database context) and cast before the page arithmetic.
     expect(databaseFilesSql).toContain(
-      "CAST(FILEPROPERTY(mf.name, 'SpaceUsed') AS DECIMAL(19,2)) * 8 / 1024.0"
+      'CAST(fs.space_used_pages AS DECIMAL(19,2)) * 8 / 1024.0'
     )
+    expect(databaseFilesSql).toContain("FILEPROPERTY(name, ''SpaceUsed'')")
   })
 
   it('propagates the error to the caller when the connection fails', async () => {

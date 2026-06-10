@@ -2,7 +2,8 @@ import { memo } from 'react'
 import { Tooltip as MuiTooltip } from '@mui/material'
 import { tokens } from '../../../styles/tokens'
 import { HOSTING_BADGE } from '../../../constants/hosting'
-import { dataAge, serverKey } from './useHomeDashboard'
+import { dataAge, serverKey, deriveServerStatus } from './useHomeDashboard'
+import { useMetricsStore } from '../../../store/metricsStore'
 import type { StoredServer, ServerMetrics } from '../../../../../preload/index'
 import type { ServerSummary } from '../../../store/metricsStore'
 import type { ServerGroup } from '../../../types/index'
@@ -126,10 +127,19 @@ export const ServerRow = memo(function ServerRow({
 }: ServerRowProps): React.JSX.Element {
   const key = serverKey(s)
   const name = serverAlias || s.host || s.ip || key
+  // Stato reale: il circuit-breaker del worker, non la sola presenza di metriche
+  // (uno snapshot stale faceva risultare ONLINE un collector che falliva sempre).
+  const failCount = useMetricsStore((st) => st.serverHealth[key]?.failCount ?? 0)
+  const status = deriveServerStatus(s, m, failCount)
   const cpu = m?.instanceInfo?.cpuUsagePercent
-  const memPct = m
-    ? Math.round((m.instanceInfo.memoryUsedMb / m.instanceInfo.memoryTargetMb) * 100)
-    : null
+  // Guard sul target 0/assente (es. Azure SQL Edge) → evita NaN%. Il target è
+  // un tetto soft: used può superarlo, quindi cap al 100% per la lettura a colpo
+  // d'occhio (il dettaglio in MB resta nella tab del server).
+  const memTarget = m?.instanceInfo.memoryTargetMb ?? 0
+  const memPct =
+    m && memTarget > 0
+      ? Math.min(100, Math.round((m.instanceInfo.memoryUsedMb / memTarget) * 100))
+      : null
   const dbCount = summary?.dbCount ?? null
   const age = dataAge(summary?.collectedAt, now)
   const critSrv = alertCount?.crit ?? 0
@@ -254,7 +264,7 @@ export const ServerRow = memo(function ServerRow({
 
       {/* STATUS */}
       <div style={cellStatus}>
-        {s.unreachable ? (
+        {status === 'offline' ? (
           <span
             style={{
               ...ellipsisSpan,
@@ -265,7 +275,7 @@ export const ServerRow = memo(function ServerRow({
           >
             ● OFFLINE
           </span>
-        ) : m ? (
+        ) : status === 'online' ? (
           <span
             style={{
               ...ellipsisSpan,
@@ -277,8 +287,15 @@ export const ServerRow = memo(function ServerRow({
             ● ONLINE
           </span>
         ) : (
-          <span style={{ ...ellipsisSpan, opacity: 0.4, fontSize: tokens.font.sizeXs }}>
-            ● UNKNOWN
+          <span
+            style={{
+              ...ellipsisSpan,
+              color: '#d83b01',
+              fontWeight: tokens.font.weightBold,
+              fontSize: tokens.font.sizeXs
+            }}
+          >
+            ● UNREACHABLE
           </span>
         )}
       </div>

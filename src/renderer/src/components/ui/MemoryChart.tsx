@@ -46,7 +46,13 @@ export function MemoryChart({ history }: Props): React.JSX.Element {
             tick={{ fontSize: tokens.font.sizeXs }}
             interval="preserveStartEnd"
           />
-          <YAxis domain={[0, 100]} tick={{ fontSize: tokens.font.sizeXs }} unit="%" width={40} />
+          <YAxis
+            domain={[0, 100]}
+            allowDataOverflow
+            tick={{ fontSize: tokens.font.sizeXs }}
+            unit="%"
+            width={40}
+          />
           <Tooltip
             formatter={(value, name) => [`${Number(value).toFixed(1)} %`, name as string]}
             contentStyle={{

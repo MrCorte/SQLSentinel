@@ -110,11 +110,16 @@ export async function addServerManual(req: ManualServerRequest): Promise<Discove
   // (cloud metadata, link-local SSRF targets, malformed strings).
   validateHostInput(req.ip, req.port)
   const probed = await scanHost(req.ip, req.port, 2000)
+  // Persisti le credenziali del dialog: il precedente `useWindowsAuth: true`
+  // fisso scartava utente/password appena testati e la successiva SERVERS_ADD
+  // moriva sul duplicate — server registrato ma senza credenziali.
   await serverStore.upsertByIpPort({
     host: probed.ip,
     port: probed.port,
     instanceName: req.instanceName,
-    useWindowsAuth: true
+    useWindowsAuth: req.useWindowsAuth ?? true,
+    username: req.username,
+    password: req.password
   })
   return probed
 }

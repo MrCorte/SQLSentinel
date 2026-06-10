@@ -27,6 +27,7 @@ export enum IpcChannel {
   METRICS_UPDATED = 'metrics:updated', // push-only: main → renderer (legacy single-server)
   METRICS_BATCH_UPDATED = 'metrics:batchUpdated', // push-only: coalesced batch per polling cycle
   ALERT_NEW = 'metrics:alert-new', // push-only: main → renderer
+  ALERT_RESOLVED = 'metrics:alert-resolved', // push-only: auto-resolve del worker → renderer
   WORKER_START = 'worker:start',
   WORKER_STOP = 'worker:stop',
   WORKER_SET_ACTIVE = 'worker:setActive',
@@ -223,6 +224,12 @@ export interface ManualServerRequest {
   ip: string
   port: number
   instanceName?: string
+  // Credenziali scelte nel dialog "Add Manually" — vanno persistite insieme al
+  // server, altrimenti la registrazione resta senza credenziali e il collector
+  // non potrà mai connettersi.
+  useWindowsAuth?: boolean
+  username?: string
+  password?: string
 }
 
 export interface RemoveServerRequest {

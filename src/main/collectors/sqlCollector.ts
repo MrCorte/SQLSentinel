@@ -1,7 +1,7 @@
 import * as mssql from 'mssql'
 import { createLogger } from '../utils/logger'
 const log = createLogger('sql-collector')
-import { getPool, invalidatePool } from './connectionPool'
+import { getPool, invalidatePool, buildAuthentication } from './connectionPool'
 
 const CONNECTION_ERROR_CODES = new Set([
   'ESOCKET',
@@ -11,7 +11,7 @@ const CONNECTION_ERROR_CODES = new Set([
   'ETIMEOUT'
 ])
 
-function isConnectionError(err: unknown): boolean {
+export function isConnectionError(err: unknown): boolean {
   const code = (err as NodeJS.ErrnoException).code
   return code != null && CONNECTION_ERROR_CODES.has(code)
 }
@@ -127,7 +127,7 @@ export function sanitizeSqlError(err: unknown): string {
 // --- Connection configuration ---
 
 function buildConfig(conn: ServerConnection): mssql.config {
-  const base: mssql.config = {
+  return {
     server: conn.ip,
     port: conn.port,
     database: 'master',
@@ -143,32 +143,9 @@ function buildConfig(conn: ServerConnection): mssql.config {
       // connectTimeout goes in options (via IOptions extends tds.ConnectionOptions)
       connectTimeout: 15000
       // instanceName NOT passed: SQL Browser is disabled and the port is always explicit
-    }
-  }
-
-  if (conn.useWindowsAuth) {
-    return {
-      ...base,
-      authentication: {
-        type: 'ntlm',
-        options: {
-          domain: '',
-          userName: '',
-          password: ''
-        }
-      }
-    }
-  }
-
-  return {
-    ...base,
-    authentication: {
-      type: 'default',
-      options: {
-        userName: conn.username ?? '',
-        password: conn.password ?? ''
-      }
-    }
+    },
+    // NTLM credential derivation shared with the pooled path (see connectionPool).
+    authentication: buildAuthentication(conn)
   }
 }
 
@@ -537,20 +514,48 @@ async function queryDiskVolumes(pool: mssql.ConnectionPool): Promise<DiskVolume[
 
 /**
  * Physical files for user databases with space usage and autogrowth info.
- * Source: sys.master_files JOIN sys.databases
- * Note: used_mb and free_mb may be 0 for DBs not in the current context.
+ * Source: sys.master_files JOIN sys.databases + per-DB FILEPROPERTY pass.
+ *
+ * FILEPROPERTY('SpaceUsed') only works for files of the CURRENT database —
+ * evaluated from master (the pool's catalog) it returns NULL for every other
+ * DB, which the old ISNULL coerced to used_mb=0/free_mb=0: the autogrowth
+ * alert false-fired on every fixed-growth file and the shrink suggestion never
+ * fired. The cursor below collects SpaceUsed inside each ONLINE user DB
+ * (per-DB TRY/CATCH: a DB the login can't enter just yields NULL → 0).
  */
 async function queryDatabaseFiles(pool: mssql.ConnectionPool): Promise<DatabaseFile[]> {
   const sql = `
+    SET NOCOUNT ON;
+    DECLARE @fs TABLE (database_id INT, file_id INT, space_used_pages BIGINT);
+    DECLARE @db sysname, @sql nvarchar(512);
+    DECLARE dbs CURSOR LOCAL FAST_FORWARD FOR
+      SELECT name FROM sys.databases WHERE database_id > 4 AND state = 0;
+    OPEN dbs;
+    FETCH NEXT FROM dbs INTO @db;
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+      SET @sql = N'USE ' + QUOTENAME(@db) +
+        N'; SELECT DB_ID(), file_id, CONVERT(bigint, FILEPROPERTY(name, ''SpaceUsed''))' +
+        N' FROM sys.database_files;';
+      BEGIN TRY
+        INSERT INTO @fs (database_id, file_id, space_used_pages) EXEC (@sql);
+      END TRY
+      BEGIN CATCH
+        -- login has no access to this DB / DB transitioned state: skip silently
+      END CATCH;
+      FETCH NEXT FROM dbs INTO @db;
+    END
+    CLOSE dbs; DEALLOCATE dbs;
+
     SELECT
       db.name                                                                      AS database_name,
       mf.name                                                                      AS file_name,
       mf.type_desc,
       mf.physical_name,
       CAST(CAST(mf.size AS DECIMAL(19,2)) * 8 / 1024.0 AS DECIMAL(10,2))          AS size_mb,
-      ISNULL(CAST(CAST(FILEPROPERTY(mf.name, 'SpaceUsed') AS DECIMAL(19,2)) * 8 / 1024.0
+      ISNULL(CAST(CAST(fs.space_used_pages AS DECIMAL(19,2)) * 8 / 1024.0
                AS DECIMAL(10,2)), 0)                                               AS used_mb,
-      ISNULL(CAST((CAST(mf.size AS DECIMAL(19,2)) - CAST(FILEPROPERTY(mf.name, 'SpaceUsed') AS DECIMAL(19,2))) * 8 / 1024.0
+      ISNULL(CAST((CAST(mf.size AS DECIMAL(19,2)) - CAST(fs.space_used_pages AS DECIMAL(19,2))) * 8 / 1024.0
                AS DECIMAL(10,2)), 0)                                               AS free_mb,
       CASE WHEN mf.max_size = -1 THEN NULL
            ELSE CAST(CAST(mf.max_size AS DECIMAL(19,2)) * 8 / 1024.0 AS DECIMAL(10,2))
@@ -559,6 +564,7 @@ async function queryDatabaseFiles(pool: mssql.ConnectionPool): Promise<DatabaseF
       mf.growth
     FROM sys.master_files mf
     JOIN sys.databases db ON mf.database_id = db.database_id
+    LEFT JOIN @fs fs ON fs.database_id = mf.database_id AND fs.file_id = mf.file_id
     WHERE db.database_id > 4
     ORDER BY db.name, mf.type_desc DESC
   `
@@ -604,7 +610,9 @@ export async function detectServerInfo(connection: ServerConnection): Promise<Se
   const config = buildConfig(connection)
   let pool: mssql.ConnectionPool | null = null
   try {
-    pool = await mssql.connect(config)
+    // Dedicated pool — mssql.connect() reuses the global pool (config ignored),
+    // which after storage init is the storage pool: wrong server + fatal close().
+    pool = await new mssql.ConnectionPool(config).connect()
     const [serverRes, agRes] = await Promise.allSettled([
       pool.request().query<{ machine_name: string; instance_name: string | null }>(`
         SELECT

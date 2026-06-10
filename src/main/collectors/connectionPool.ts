@@ -46,8 +46,49 @@ function buildKey(conn: ServerConnection): string {
   ].join('|')
 }
 
+/**
+ * Shared authentication block for all collector connections.
+ *
+ * Windows auth: tedious has no SSPI — NTLM REQUIRES explicit credentials, so
+ * empty domain/user/password can never authenticate. We derive them from the
+ * stored username, accepting both "DOMAIN\\user" and "user@domain" forms.
+ * A Windows-auth server without a username will still fail (as before), but
+ * one configured with domain credentials now actually works.
+ */
+export function buildAuthentication(conn: {
+  useWindowsAuth?: boolean
+  username?: string
+  password?: string
+}): mssql.config['authentication'] {
+  if (conn.useWindowsAuth) {
+    const raw = conn.username ?? ''
+    let domain = ''
+    let userName = raw
+    const backslash = raw.indexOf('\\')
+    const at = raw.indexOf('@')
+    if (backslash > 0) {
+      domain = raw.slice(0, backslash)
+      userName = raw.slice(backslash + 1)
+    } else if (at > 0) {
+      userName = raw.slice(0, at)
+      domain = raw.slice(at + 1)
+    }
+    return {
+      type: 'ntlm',
+      options: { domain, userName, password: conn.password ?? '' }
+    }
+  }
+  return {
+    type: 'default',
+    options: {
+      userName: conn.username ?? '',
+      password: conn.password ?? ''
+    }
+  }
+}
+
 function buildConfig(conn: ServerConnection): mssql.config {
-  const base: mssql.config = {
+  return {
     server: conn.ip,
     port: conn.port,
     database: 'master',
@@ -62,28 +103,8 @@ function buildConfig(conn: ServerConnection): mssql.config {
       encrypt: conn.encrypt ?? true,
       trustServerCertificate: conn.trustServerCertificate ?? true,
       connectTimeout: 15_000
-    }
-  }
-
-  if (conn.useWindowsAuth) {
-    return {
-      ...base,
-      authentication: {
-        type: 'ntlm',
-        options: { domain: '', userName: '', password: '' }
-      }
-    }
-  }
-
-  return {
-    ...base,
-    authentication: {
-      type: 'default',
-      options: {
-        userName: conn.username ?? '',
-        password: conn.password ?? ''
-      }
-    }
+    },
+    authentication: buildAuthentication(conn)
   }
 }
 
@@ -217,11 +238,16 @@ export function invalidatePool(conn: ServerConnection): void {
 }
 
 /**
- * Close every cached pool. Called from the main process shutdown handler.
- * Sets the shutting-down flag so any in-flight getPool rejects rather than
- * leaking a fresh pool that escapes the close.
+ * Close every cached pool. Called from the main process shutdown handler and
+ * from the power-resume handler. Sets the shutting-down flag so any in-flight
+ * getPool rejects rather than leaking a fresh pool that escapes the close.
+ *
+ * Pass { reopen: true } when the process keeps running (power resume): the
+ * flag is cleared once the close completes so subsequent getPool() calls can
+ * open fresh pools. Without it the flag stays set and every later collect
+ * fails with "connectionPool is shutting down" until app restart.
  */
-export async function closeAllPools(): Promise<void> {
+export async function closeAllPools(opts?: { reopen?: boolean }): Promise<void> {
   shuttingDown = true
   if (sweepTimer) {
     clearInterval(sweepTimer)
@@ -232,10 +258,14 @@ export async function closeAllPools(): Promise<void> {
   // Wait for any currently-connecting pools so they don't escape.
   const pendingConnects = Array.from(inflight.values()).map((p) => p.catch(() => null))
   inflight.clear()
-  await Promise.allSettled([
-    ...pools.map((entry) => entry.closing ?? entry.pool.close()),
-    ...pendingConnects
-  ])
+  try {
+    await Promise.allSettled([
+      ...pools.map((entry) => entry.closing ?? entry.pool.close()),
+      ...pendingConnects
+    ])
+  } finally {
+    if (opts?.reopen) shuttingDown = false
+  }
 }
 
 /** For diagnostics / tests. */

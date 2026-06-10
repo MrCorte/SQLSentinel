@@ -96,7 +96,9 @@ const HEALTH_CONCURRENCY = 20
 
 async function healthCheckAll(): Promise<void> {
   if (!mainWindow || mainWindow.isDestroyed()) return
-  const servers = serverStore.getAll()
+  // TCP probe needs no credentials — stripped view skips one DPAPI decrypt
+  // per server per minute (200/min at fleet scale with getAll()).
+  const servers = serverStore.getAllStripped()
 
   for (let i = 0; i < servers.length; i += HEALTH_CONCURRENCY) {
     const chunk = servers.slice(i, i + HEALTH_CONCURRENCY)
@@ -253,6 +255,11 @@ app.whenReady().then(async () => {
   // there too, so we cannot load the cache (or run migrations) before the pool
   // and schema are up.
   const storageCfg = getStorageConfig()
+  // Valorizzato se pool/schema/migrazioni falliscono: il probe getPool() in
+  // did-finish-load non basta — il pool può essere connesso anche quando
+  // initSchema è esploso a metà, e il renderer mostrerebbe un'app "sana" con
+  // registry vuoto e zero indicazioni per l'utente.
+  let storageInitError: string | null = null
   if (storageCfg) {
     try {
       await initStoragePool(storageCfg)
@@ -280,6 +287,7 @@ app.whenReady().then(async () => {
       })
     } catch (err) {
       log.error('[main] Storage pool init failed:', redactError(err))
+      storageInitError = err instanceof Error ? err.message : String(err)
     }
   }
 
@@ -408,9 +416,19 @@ app.whenReady().then(async () => {
   // Enforce CSP at the header level too, not just the <meta> tag — a header
   // can't be stripped by tampering with the bundled HTML, and it covers
   // responses the meta tag doesn't. Kept in sync with renderer/index.html.
-  const CSP =
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-    "img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+  //
+  // In dev (renderer servito da Vite) header e meta vengono rilassati allo
+  // stesso modo: il preamble react-refresh è uno script inline e l'HMR usa un
+  // WebSocket — con la CSP di produzione il renderer resta bianco. Header e
+  // meta si INTERSECANO (vince il più severo), quindi il rilassamento deve
+  // avvenire in entrambi (il meta è gestito dal plugin relax-csp-for-dev in
+  // electron.vite.config.ts).
+  const isDevRenderer = !app.isPackaged && !!process.env['ELECTRON_RENDERER_URL']
+  const CSP = isDevRenderer
+    ? "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; " +
+      "img-src 'self' data:; connect-src 'self' ws:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+    : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+      "img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
@@ -429,6 +447,10 @@ app.whenReady().then(async () => {
   mainWindow?.webContents.on('did-finish-load', () => {
     if (!storageCfg) {
       mainWindow?.webContents.send('storage:not-configured', {})
+    } else if (storageInitError) {
+      // Pool su ma schema/migrazioni falliti (o pool mai aperto): senza questo
+      // ramo l'app sembrava sana — registry vuoto, monitoring morto, zero errori.
+      mainWindow?.webContents.send('storage:not-configured', { error: storageInitError })
     } else {
       try {
         getPool()
@@ -447,7 +469,9 @@ app.whenReady().then(async () => {
   powerMonitor.on('resume', async () => {
     log.info('[main] System resumed — closing pools and re-staggering jobs')
     try {
-      await closeAllPools()
+      // reopen: true — the process keeps running, so the pool module must
+      // accept new connections after the dead post-sleep sockets are closed.
+      await closeAllPools({ reopen: true })
     } catch (err) {
       log.warn('[main] closeAllPools on resume:', err)
     }

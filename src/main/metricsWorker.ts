@@ -222,7 +222,9 @@ async function flushSaveQueue(): Promise<void> {
         // exceed the retry budget so a permanently failing storage can't OOM us.
         if (failedBatches.length >= MAX_FAILED_BATCHES) {
           const dropped = failedBatches.shift()
-          log.warn(`[worker] DLQ overflow: dropping oldest batch of ${dropped?.length ?? 0} item(s)`)
+          log.warn(
+            `[worker] DLQ overflow: dropping oldest batch of ${dropped?.length ?? 0} item(s)`
+          )
         }
         failedBatches.push(batch)
         anyFailed = true
@@ -336,7 +338,12 @@ function computeDelta(sid: string, fresh: ServerMetrics): ServerMetrics {
   for (const db of fresh.databases) {
     seenInFresh.add(db.name)
     const p = prevByName.get(db.name)
-    if (!p || p.sizeMb !== db.sizeMb || p.logSizeMb !== db.logSizeMb || p.stateDesc !== db.stateDesc) {
+    if (
+      !p ||
+      p.sizeMb !== db.sizeMb ||
+      p.logSizeMb !== db.logSizeMb ||
+      p.stateDesc !== db.stateDesc
+    ) {
       changedDbs.push(db)
     }
   }
@@ -364,7 +371,10 @@ function computeDelta(sid: string, fresh: ServerMetrics): ServerMetrics {
 
 // Hoisted to module level to avoid allocating a new closure on every
 // evaluateAlerts() call (~200 servers × every poll cycle).
-function buildShrinkSuggestion(volumes: DiskVolume[], databaseFiles: DatabaseFile[]): string | undefined {
+function buildShrinkSuggestion(
+  volumes: DiskVolume[],
+  databaseFiles: DatabaseFile[]
+): string | undefined {
   const mounts = volumes.map((v) => v.volume_mount_point.toLowerCase())
   const candidates = databaseFiles
     .filter((f) => {
@@ -479,7 +489,11 @@ function evaluateAlerts(sid: string, metrics: ServerMetrics): Alert[] {
 
   // Autogrowth disabled with low available space. Distinct dedupTag so this
   // WARNING isn't suppressed by the warn-volume WARNING (same category/severity).
-  const noGrowthLowSpace = databaseFiles.filter((f) => f.growth === 0 && f.free_mb < 100)
+  // used_mb > 0 — FILEPROPERTY data present; files the collector login can't
+  // measure come back 0/0 and must not raise a false "no space" warning.
+  const noGrowthLowSpace = databaseFiles.filter(
+    (f) => f.growth === 0 && f.used_mb > 0 && f.free_mb < 100
+  )
   if (noGrowthLowSpace.length > 0) {
     const desc = noGrowthLowSpace
       .map((f) => `${f.database_name} (${f.type_desc}): ${f.free_mb.toFixed(0)} MB free`)
@@ -498,8 +512,60 @@ function alertKey(a: Alert): string {
   return `${a.serverId}:${a.category}:${a.severity}:${a.dedupTag ?? ''}`
 }
 
+/**
+ * True when this poll's data is sufficient to declare the condition gone.
+ * Per-query collector failures return empty arrays / default instanceInfo —
+ * resolving on those would flap every open alert on a transient query error.
+ */
+function canAutoResolve(category: string, dedupTag: string, metrics: ServerMetrics): boolean {
+  switch (category) {
+    case 'cpu_high':
+      return metrics.instanceInfo.version !== 'unknown'
+    case 'database_offline':
+      return metrics.databases.length > 0
+    case 'backup_overdue':
+      return (metrics.backupStatus ?? []).length > 0
+    case 'disk_space_low':
+      return dedupTag === 'autogrowth'
+        ? (metrics.databaseFiles ?? []).length > 0
+        : (metrics.diskVolumes ?? []).length > 0
+    default:
+      // blocking_sessions: an empty session list IS the normal resolved state.
+      return true
+  }
+}
+
 function processAlerts(sid: string, metrics: ServerMetrics): void {
   const candidates = evaluateAlerts(sid, metrics)
+
+  // Auto-resolve: open alerts for THIS server whose condition no longer holds.
+  // Without this the dedup key lived until manual acknowledge, so a condition
+  // that cleared and later recurred (CPU spike, backup overdue again) was
+  // silently suppressed forever. Resolution = acknowledge: the alert leaves the
+  // "open" set, the 24h prune reclaims it, and a recurrence re-fires fresh.
+  const candidateKeys = new Set(candidates.map(alertKey))
+  const prefix = `${sid}:`
+  const resolvedIds: string[] = []
+  for (const [key, id] of openAlertKeys) {
+    if (!key.startsWith(prefix) || candidateKeys.has(key)) continue
+    const [category, , dedupTag = ''] = key.slice(prefix.length).split(':')
+    if (!canAutoResolve(category, dedupTag, metrics)) continue
+    openAlertKeys.delete(key)
+    resolvedIds.push(id)
+  }
+  if (resolvedIds.length > 0) {
+    const now = new Date()
+    for (const a of storedAlerts) {
+      if (a.acknowledgedAt === null && resolvedIds.includes(a.id)) {
+        a.acknowledgedAt = now
+      }
+    }
+    // Senza questo push la risoluzione restava solo in memoria main: il
+    // renderer continuava a mostrare l'alert come attivo fino al riavvio
+    // (riceve solo ALERT_NEW, e ALERTS_GET_ALL dipende dal service).
+    pushToRenderer(IpcChannel.ALERT_RESOLVED, { ids: resolvedIds })
+  }
+
   for (const alert of candidates) {
     const key = alertKey(alert)
     if (openAlertKeys.has(key)) continue // dedup hit, skip
@@ -1046,6 +1112,15 @@ export function __resetForTests(): void {
  */
 export function __getJobForTest(sid: string): PollJob | undefined {
   return jobs.get(sid)
+}
+
+/** Espone la guard di auto-resolve per i test (resta module-private a runtime). */
+export function __canAutoResolveForTest(
+  category: string,
+  dedupTag: string,
+  metrics: ServerMetrics
+): boolean {
+  return canAutoResolve(category, dedupTag, metrics)
 }
 
 /**

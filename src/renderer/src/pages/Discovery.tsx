@@ -19,6 +19,7 @@ import type { AddServerFormData } from '../components/features/add-server/AddSer
 import { useDiscovery } from '../hooks/useDiscovery'
 import type { DiscoveryRow } from '../hooks/useDiscovery'
 import { useServersStore } from '../store/serversStore'
+import { notify } from '../store/notifyStore'
 
 // -----------------------------------------------------------------------
 // Parsing porte da stringa "1433,1434" → [1433, 1434]
@@ -87,14 +88,10 @@ export function Discovery(): React.JSX.Element {
   }
 
   const handleDialogSave = async (data: AddServerFormData): Promise<void> => {
-    await addServer({
-      ip: data.ip,
-      port: data.port,
-      instanceName: data.instanceName || undefined,
-      useWindowsAuth: data.useWindowsAuth,
-      username: data.username || undefined,
-      password: data.password || undefined
-    })
+    // Prima la registrazione completa nel registry (aggiorna anche lo store →
+    // il server compare subito in UI), poi il probe discovery. Con l'ordine
+    // inverso l'upsert del probe creava la riga e questa add moriva in
+    // silenzio con reason='duplicate'.
     const result = await useServersStore.getState().addServer({
       host: data.ip,
       port: data.port,
@@ -107,6 +104,18 @@ export function Discovery(): React.JSX.Element {
       agRole: data.agRole,
       agName: data.agName,
       agGroupId: data.agGroupId
+    })
+    if (result?.success === false && result.reason !== 'duplicate') {
+      notify.error(result.reason ?? 'Registrazione non riuscita', 'Add server failed')
+      return
+    }
+    await addServer({
+      ip: data.ip,
+      port: data.port,
+      instanceName: data.instanceName || undefined,
+      useWindowsAuth: data.useWindowsAuth,
+      username: data.username || undefined,
+      password: data.password || undefined
     })
     // Use server UUID for group/alias keys; fall back to ip:port key for group (still keyed that way)
     const newServer =

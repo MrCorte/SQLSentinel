@@ -63,8 +63,7 @@ export const serviceApi = {
   acknowledgeAlert: (id: string) =>
     fetchService(`/api/alerts/${id}/acknowledge`, { method: 'POST' }),
   getSettings: () => fetchService('/api/settings'),
-  updateSettings: (patch: unknown) =>
-    fetchService('/api/settings', { method: 'PUT', body: patch }),
+  updateSettings: (patch: unknown) => fetchService('/api/settings', { method: 'PUT', body: patch }),
   getMetricsHistoryBulk: () => fetchService('/api/metrics/history/bulk'),
   health: () => fetch(`http://127.0.0.1:${_config?.port ?? 57432}/health`).then((r) => r.json())
 }
@@ -73,12 +72,27 @@ export const serviceApi = {
 
 function pushToRenderer(channel: string, data: unknown): void {
   BrowserWindow.getAllWindows().forEach((w) => {
-    if (!w.isDestroyed() && w.isVisible()) w.webContents.send(channel, data)
+    // No isVisible() gate — same policy as the in-process push handler in
+    // index.ts: a tray-hidden window must keep receiving service pushes or its
+    // store goes stale until the next poll after restore. The renderer already
+    // buffers updates while document.hidden, so nothing is wasted.
+    if (!w.isDestroyed()) w.webContents.send(channel, data)
   })
 }
 
+// Ultimo stato PUBBLICATO ai listener — distinto da _status: 'connecting' è
+// interno al ciclo di retry e non va mai pubblicato, altrimenti ogni tentativo
+// (connecting→disconnected, ogni 5s) diventa una "transizione" che il renderer
+// interpreta come nuova disconnessione → workerStart completo → job ricreati,
+// pollCount azzerato (quindi mai persistenza, che scatta ogni SAVE_EVERY_N
+// poll) e re-seed della history dal DB a ogni retry.
+let _publishedStatus: ServiceStatus | null = null
+
 function setStatus(s: ServiceStatus): void {
   _status = s
+  if (s === 'connecting') return
+  if (s === _publishedStatus) return
+  _publishedStatus = s
   _statusListeners.forEach((fn) => fn(s))
 }
 

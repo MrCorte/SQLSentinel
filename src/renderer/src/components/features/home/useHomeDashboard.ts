@@ -8,7 +8,7 @@ import { useAlertsStore } from '../../../store/alertsStore'
 import { useRefreshAllServers } from '../../../hooks/useRefreshAllServers'
 import { useNow } from '../../../hooks/useNow'
 import { useThrottledMetrics } from '../../../hooks/useThrottledMetrics'
-import type { StoredServer, Alert } from '../../../../../preload/index'
+import type { StoredServer, Alert, ServerMetrics } from '../../../../../preload/index'
 import type { ServerGroup } from '../../../types/index'
 
 // ---------------------------------------------------------------------------
@@ -17,6 +17,40 @@ import type { ServerGroup } from '../../../types/index'
 
 export function serverKey(s: StoredServer): string {
   return `${s.host ?? s.ip}:${s.port}`
+}
+
+// Soglia del circuit-breaker del worker (allineata a ServerHistoryChart): dopo
+// 3 poll consecutivi falliti il collector considera il server irraggiungibile.
+export const HEALTH_FAIL_THRESHOLD = 3
+
+export type ServerStatus = 'online' | 'offline' | 'unreachable'
+
+/**
+ * Una vera raccolta riuscita popola sempre instanceInfo.version. Lo stub creato
+ * da seedFromDatabases (per mostrare la lista DB) ha version='' e collectedAt
+ * all'epoch: "ha un oggetto metrics" NON significa "collector ha funzionato".
+ */
+function hasRealMetrics(m: ServerMetrics | undefined): boolean {
+  return !!m && m.instanceInfo.version !== ''
+}
+
+/**
+ * Stato reale del server. Il circuit-breaker (failCount) e la presenza di
+ * metriche VERE sono i segnali autorevoli — uno stub seedato o uno snapshot
+ * stale facevano risultare ONLINE un collector che falliva ogni ciclo.
+ *  - offline      → probe TCP fallito (campo `unreachable` dal registry)
+ *  - unreachable  → TCP ok ma il collector non si connette (failCount ≥ soglia)
+ *                   oppure nessuna metrica reale disponibile
+ *  - online       → metriche reali presenti e collector sano
+ */
+export function deriveServerStatus(
+  s: StoredServer,
+  m: ServerMetrics | undefined,
+  failCount: number
+): ServerStatus {
+  if (s.unreachable) return 'offline'
+  if (failCount >= HEALTH_FAIL_THRESHOLD || !hasRealMetrics(m)) return 'unreachable'
+  return 'online'
 }
 
 export function dataAge(
@@ -108,6 +142,7 @@ export function useHomeDashboard(onNavigateToServer: (id: string) => void): Home
 
   // Throttled metrics snapshot — max 1 re-render/s to handle 200+ servers
   const { metricsMap, summaries } = useThrottledMetrics()
+  const serverHealth = useMetricsStore((s) => s.serverHealth)
 
   const now = useNow()
   const { groups, serverGroups, serverAliases } = useGroupsStore(
@@ -154,8 +189,10 @@ export function useHomeDashboard(onNavigateToServer: (id: string) => void): Home
     let offlineCount = 0
     let unreachableCount = 0
     for (const s of servers) {
-      if (s.unreachable) offlineCount++
-      else if (metricsMap[serverKey(s)]) onlineCount++
+      const key = serverKey(s)
+      const status = deriveServerStatus(s, metricsMap[key], serverHealth[key]?.failCount ?? 0)
+      if (status === 'offline') offlineCount++
+      else if (status === 'online') onlineCount++
       else unreachableCount++
     }
     const totalDbs = Object.values(summaries).reduce((acc, s) => acc + s.dbCount, 0)
@@ -242,7 +279,7 @@ export function useHomeDashboard(onNavigateToServer: (id: string) => void): Home
       recentAlerts,
       offlineDbs
     }
-  }, [servers, metricsMap, summaries, alerts, serverAliases])
+  }, [servers, metricsMap, summaries, alerts, serverAliases, serverHealth])
 
   return {
     servers,

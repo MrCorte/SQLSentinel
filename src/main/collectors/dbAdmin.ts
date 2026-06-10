@@ -2,6 +2,7 @@ import * as mssql from 'mssql'
 import type { CollectMetricsRequest } from '../ipc/types'
 import type { ShrinkEstimate, ShrinkResult } from '../ipc/types'
 import { sanitizeSqlError } from './sqlCollector'
+import { buildAuthentication } from './connectionPool'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -46,7 +47,7 @@ function assertSafeDbIdentifier(
 }
 
 function buildConfig(conn: CollectMetricsRequest, dbName: string): mssql.config {
-  const base: mssql.config = {
+  return {
     server: conn.ip,
     port: conn.port,
     database: dbName,
@@ -56,28 +57,9 @@ function buildConfig(conn: CollectMetricsRequest, dbName: string): mssql.config 
       encrypt: conn.encrypt ?? true,
       trustServerCertificate: conn.trustServerCertificate ?? true,
       connectTimeout: 15_000
-    }
-  }
-
-  if (conn.useWindowsAuth) {
-    return {
-      ...base,
-      authentication: {
-        type: 'ntlm',
-        options: { domain: '', userName: '', password: '' }
-      }
-    }
-  }
-
-  return {
-    ...base,
-    authentication: {
-      type: 'default',
-      options: {
-        userName: conn.username ?? '',
-        password: conn.password ?? ''
-      }
-    }
+    },
+    // NTLM credential derivation shared with the pooled path (see connectionPool).
+    authentication: buildAuthentication(conn)
   }
 }
 
@@ -93,7 +75,9 @@ export async function getShrinkEstimate(
   const config = buildConfig(conn, dbName)
   let pool: mssql.ConnectionPool | null = null
   try {
-    pool = await mssql.connect(config)
+    // Dedicated pool — mssql.connect() reuses the global pool (config ignored),
+    // which after storage init would target the storage DB instead of dbName.
+    pool = await new mssql.ConnectionPool(config).connect()
     const result = await pool.request().query<ShrinkEstimate>(`
       SELECT
         name                                                           AS file_name,
@@ -123,7 +107,9 @@ export async function shrinkDatabase(
   const config = buildConfig(conn, dbName)
   let pool: mssql.ConnectionPool | null = null
   try {
-    pool = await mssql.connect(config)
+    // Dedicated pool — with mssql.connect() the global pool's current database
+    // could be the storage DB, and DBCC SHRINKDATABASE (0, …) would shrink THAT.
+    pool = await new mssql.ConnectionPool(config).connect()
     // Use 0 (current database) — safe since we connected with initial catalog = dbName
     await pool.request().query(`DBCC SHRINKDATABASE (0, ${safePercent})`)
     return { success: true, duration_ms: Date.now() - t0 }
@@ -155,7 +141,9 @@ export async function shrinkFile(
   const config = buildConfig(conn, dbName)
   let pool: mssql.ConnectionPool | null = null
   try {
-    pool = await mssql.connect(config)
+    // Dedicated pool — see shrinkDatabase: the global pool would point at the
+    // storage DB and the BACKUP LOG / SHRINKFILE below would hit the wrong server.
+    pool = await new mssql.ConnectionPool(config).connect()
 
     let warning: string | undefined
     if (isLog) {

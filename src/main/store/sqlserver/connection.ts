@@ -67,7 +67,9 @@ export async function initStoragePoolFromParams(params: {
     await _pool.close().catch((err) => log.warn('[storage] replacing pool close failed:', err))
     _pool = null
   }
-  _pool = await mssql.connect(buildConfig(params))
+  // Dedicated pool — never mssql.connect(): the global pool ignores the config
+  // on subsequent calls and any stray close() elsewhere would kill storage.
+  _pool = await new mssql.ConnectionPool(buildConfig(params)).connect()
 }
 
 export function getPool(): mssql.ConnectionPool {
@@ -103,12 +105,14 @@ export async function testConnection(params: {
     )
   })
 
-  const connect = mssql.connect({
+  // Dedicated pool — mssql.connect() would return the already-open storage
+  // pool (config ignored) and the close() below would tear it down.
+  const connect = new mssql.ConnectionPool({
     ...cfg,
     connectionTimeout: TIMEOUT_MS,
     requestTimeout: TIMEOUT_MS,
     options: { ...cfg.options, connectTimeout: TIMEOUT_MS }
-  })
+  }).connect()
 
   // If timeout wins the race, the connect promise is still in flight.
   // When it eventually resolves, close the pool so the TCP connection

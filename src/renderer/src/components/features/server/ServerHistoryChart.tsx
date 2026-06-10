@@ -97,6 +97,7 @@ export const ServerHistoryChart = memo(function ServerHistoryChart({
 
         <YAxis
           domain={[0, 100]}
+          allowDataOverflow
           tick={{ fontSize: 11 }}
           tickFormatter={(v) => `${v}%`}
           width={38}

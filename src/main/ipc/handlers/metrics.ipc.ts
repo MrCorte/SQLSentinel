@@ -7,7 +7,7 @@ import {
   syncServers,
   getHistory
 } from '../../metricsWorker'
-import { serviceApi } from '../../serviceClient'
+import { serviceApi, getStatus } from '../../serviceClient'
 import {
   IpcChannel,
   type WorkerStartRequest,
@@ -19,6 +19,8 @@ import {
 import type { ServerMetrics, DatabaseInfo } from '../../collectors/types'
 import { resolveConnection } from './servers.ipc'
 import { getAllGroupedByServer } from '../../store/sqlserver/serverDatabasesRepository'
+import * as serverStore from '../../store/sqlserver/serverRepository'
+import * as metricsRepository from '../../store/sqlserver/metricsRepository'
 
 export function registerMetricsHandlers(): void {
   // WORKER_START — avvia il worker con intervallo e lista server.
@@ -83,16 +85,37 @@ export function registerMetricsHandlers(): void {
     }
   )
 
-  // METRICS_HISTORY_BULK — proxied to service HTTP
+  // METRICS_HISTORY_BULK — service HTTP quando attivo; altrimenti lettura
+  // diretta dalle colonne chart (cpu_pct/mem_pct, niente JSON.parse). Senza il
+  // fallback la chart history restava vuota a ogni avvio con service giù.
   handle(
     IpcChannel.METRICS_HISTORY_BULK,
     async (): Promise<IpcResult<Record<string, ServerMetrics[]>>> => {
+      const localBulk = async (): Promise<Record<string, ServerMetrics[]>> => {
+        const records = serverStore.getAllStripped()
+        const byRecordId = await metricsRepository.findChartHistoryBulk(
+          records.map((r) => r.id),
+          500
+        )
+        // Il renderer indicizza la history per "host:port", non per UUID.
+        const out: Record<string, ServerMetrics[]> = {}
+        for (const r of records) {
+          const h = byRecordId[r.id]
+          if (h && h.length > 0) out[`${r.host}:${r.port}`] = h
+        }
+        return out
+      }
       try {
+        if (getStatus() !== 'connected') return { ok: true, data: await localBulk() }
         const res = await serviceApi.getMetricsHistoryBulk()
         return res as IpcResult<Record<string, ServerMetrics[]>>
       } catch (err) {
         log.error('[IPC] METRICS_HISTORY_BULK:', safeError(err))
-        return { ok: false, error: safeError(err) }
+        try {
+          return { ok: true, data: await localBulk() }
+        } catch (err2) {
+          return { ok: false, error: safeError(err2) }
+        }
       }
     }
   )

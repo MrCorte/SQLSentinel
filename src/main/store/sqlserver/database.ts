@@ -49,6 +49,8 @@ const TABLE_DDL: Array<{ name: string; sql: string }> = [
        server_id    NVARCHAR(36)  NOT NULL,
        collected_at DATETIME2     NOT NULL,
        metrics_json NVARCHAR(MAX) NOT NULL,
+       cpu_pct      DECIMAL(5,1)  NULL,
+       mem_pct      DECIMAL(5,1)  NULL,
        CONSTRAINT PK_metrics_snapshots PRIMARY KEY NONCLUSTERED (id),
        INDEX CX_metrics_server_collected CLUSTERED (server_id, collected_at DESC)
      )`
@@ -218,6 +220,24 @@ const TABLE_DDL: Array<{ name: string; sql: string }> = [
        create_date     NVARCHAR(50)  NOT NULL CONSTRAINT DF_server_databases_create DEFAULT N'',
        last_seen       BIGINT        NOT NULL CONSTRAINT DF_server_databases_seen DEFAULT 0,
        CONSTRAINT PK_server_databases PRIMARY KEY (server_id, name)
+     )`
+  },
+  {
+    // Alert del worker in-process: prima vivevano solo in memoria e un riavvio
+    // perdeva lo stato (badge azzerati, dedup ricominciata). server_id qui è
+    // la chiave "host:port" usata dal worker, non l'UUID del registry.
+    name: 'alerts',
+    sql: `CREATE TABLE dbo.alerts (
+       id              NVARCHAR(80)  NOT NULL PRIMARY KEY,
+       server_id       NVARCHAR(260) NOT NULL,
+       category        NVARCHAR(50)  NOT NULL,
+       severity        NVARCHAR(20)  NOT NULL,
+       message         NVARCHAR(2000) NOT NULL,
+       suggestion      NVARCHAR(MAX) NULL,
+       dedup_tag       NVARCHAR(100) NULL,
+       detected_at     DATETIME2     NOT NULL,
+       acknowledged_at DATETIME2     NULL,
+       INDEX IX_alerts_open (acknowledged_at) WHERE acknowledged_at IS NULL
      )`
   },
   {
@@ -678,6 +698,44 @@ const MIGRATIONS: Migration[] = [
 
       IF COL_LENGTH(N'dbo.servers', N'remediation_use_windows_auth') IS NULL
         ALTER TABLE dbo.servers ADD remediation_use_windows_auth BIT NULL;
+    `
+  },
+  {
+    id: 6,
+    description: 'Add cpu_pct/mem_pct chart columns to metrics_snapshots + backfill',
+    // I grafici usano solo cpu/mem: leggerli dal JSON intero costringeva a
+    // deserializzare fino a 10k payload per ogni load della history. Le colonne
+    // tipizzate rendono la lettura una scan di soli numeri. Il backfill estrae
+    // i valori dal JSON esistente in batch (installazioni grandi: milioni di
+    // righe — il loop evita un singolo UPDATE che blocchi la tabella).
+    // Idempotente: guard su COL_LENGTH; il backfill tocca solo righe NULL.
+    sql: `
+      IF COL_LENGTH(N'dbo.metrics_snapshots', N'cpu_pct') IS NULL
+        ALTER TABLE dbo.metrics_snapshots ADD cpu_pct DECIMAL(5,1) NULL;
+      IF COL_LENGTH(N'dbo.metrics_snapshots', N'mem_pct') IS NULL
+        ALTER TABLE dbo.metrics_snapshots ADD mem_pct DECIMAL(5,1) NULL;
+
+      -- Il backfill DEVE essere SQL dinamico: su un'installazione esistente la
+      -- tabella esiste già, quindi un UPDATE inline verrebbe compilato PRIMA
+      -- che l'ALTER sopra aggiunga le colonne ("Invalid column name").
+      EXEC sp_executesql N'
+        DECLARE @done BIT = 0;
+        WHILE @done = 0
+        BEGIN
+          UPDATE TOP (50000) s SET
+            cpu_pct = TRY_CONVERT(DECIMAL(5,1), JSON_VALUE(metrics_json, ''$.instanceInfo.cpuUsagePercent'')),
+            mem_pct = CASE
+              WHEN TRY_CONVERT(DECIMAL(18,2), JSON_VALUE(metrics_json, ''$.instanceInfo.memoryTargetMb'')) > 0
+              THEN CONVERT(DECIMAL(5,1), (SELECT MIN(v) FROM (VALUES (CONVERT(DECIMAL(18,1), 100.0)), (
+                TRY_CONVERT(DECIMAL(18,2), JSON_VALUE(metrics_json, ''$.instanceInfo.memoryUsedMb'')) * 100.0
+                / TRY_CONVERT(DECIMAL(18,2), JSON_VALUE(metrics_json, ''$.instanceInfo.memoryTargetMb''))
+              )) AS caps(v)))
+              ELSE NULL
+            END
+          FROM dbo.metrics_snapshots s
+          WHERE s.cpu_pct IS NULL;
+          IF @@ROWCOUNT < 50000 SET @done = 1;
+        END';
     `
   }
 ]

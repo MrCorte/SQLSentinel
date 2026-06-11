@@ -8,6 +8,8 @@
   "scripts": {
     "test": "node scripts/dev/vitest-runner.cjs run",
     "test:watch": "node scripts/dev/vitest-runner.cjs",
+    "test:integration": "node scripts/dev/vitest-runner.cjs run src/main/__tests__/migrations.integration.test.ts",
+    "test:smoke": "node scripts/dev/smoke-e2e.mjs",
     "format": "prettier --write .",
     "lint": "eslint --cache .",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",

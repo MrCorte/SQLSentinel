@@ -91,6 +91,69 @@ export async function findHistory(serverId: string, limitDays: number): Promise<
   return r.recordset.reverse().map(rowToSnapshot)
 }
 
+/**
+ * History "da grafico" per molti server in una query sola, SENZA deserializzare
+ * metrics_json: legge le colonne tipizzate cpu_pct/mem_pct (migration 6).
+ * Ritorna ServerMetrics minimali — sufficienti per metricsToHistoryPoint nel
+ * renderer (collectedAt + instanceInfo.cpu/memoria normalizzata su target=100).
+ * Righe pre-backfill con cpu_pct NULL vengono saltate.
+ */
+export async function findChartHistoryBulk(
+  serverIds: string[],
+  perServerLimit: number
+): Promise<Record<string, ServerMetrics[]>> {
+  if (serverIds.length === 0) return {}
+  const safe = serverIds.filter((id) => UUID_RE.test(id))
+  if (safe.length === 0) return {}
+  const pool = getPool()
+  const r = await pool
+    .request()
+    .input('serverIds', sql.NVarChar(sql.MAX), safe.join(','))
+    .input('n', sql.Int, perServerLimit).query<{
+      server_id: string
+      collected_at: Date
+      cpu_pct: number | null
+      mem_pct: number | null
+    }>(`
+      SELECT server_id, collected_at, cpu_pct, mem_pct
+      FROM (
+        SELECT server_id, collected_at, cpu_pct, mem_pct,
+               ROW_NUMBER() OVER (PARTITION BY server_id ORDER BY collected_at DESC) AS rn
+        FROM dbo.metrics_snapshots
+        WHERE server_id IN (SELECT value FROM STRING_SPLIT(@serverIds, ','))
+          AND cpu_pct IS NOT NULL
+      ) ranked
+      WHERE rn <= @n
+      ORDER BY server_id, collected_at ASC`)
+  const result: Record<string, ServerMetrics[]> = {}
+  for (const row of r.recordset) {
+    if (!result[row.server_id]) result[row.server_id] = []
+    result[row.server_id].push({
+      collectedAt: row.collected_at,
+      instanceInfo: {
+        version: '',
+        edition: '',
+        // mem_pct è già una percentuale: used=pct su target=100 riproduce
+        // esattamente il valore in metricsToHistoryPoint / memPercent.
+        memoryUsedMb: row.mem_pct ?? 0,
+        memoryTargetMb: row.mem_pct == null ? 0 : 100,
+        cpuUsagePercent: Number(row.cpu_pct),
+        uptimeDays: 0,
+        logicalCpus: 0,
+        physicalCpus: 0
+      },
+      databases: [],
+      activeSessions: [],
+      topQueries: [],
+      backupStatus: [],
+      waitStats: [],
+      diskVolumes: [],
+      databaseFiles: []
+    })
+  }
+  return result
+}
+
 // Batched purge: a single DELETE on millions of rows can lock the table for
 // 5-30s and pile up log writes. We loop in batches of 5000 with a tiny pause
 // between batches so concurrent metric inserts can interleave.
@@ -165,22 +228,39 @@ export async function findLastNBulk(
 }
 
 // Single multi-row INSERT — chunked to stay under SQL Server's 2100-param cap.
-// At 4 params/row, 500 rows/chunk leaves headroom for any future column additions.
-const BATCH_CHUNK_SIZE = 500
+// At 6 params/row, 300 rows/chunk leaves headroom for any future column additions.
+const BATCH_CHUNK_SIZE = 300
+
+// Stessi calcoli del renderer (memPercent in metricsStore): target è un tetto
+// soft, cap al 100; target assente/0 → NULL (la chart salta il punto).
+function chartFields(m: ServerMetrics): { cpu: number | null; mem: number | null } {
+  const info = m.instanceInfo
+  const cpu = Number.isFinite(info?.cpuUsagePercent) ? Math.round(info.cpuUsagePercent * 10) / 10 : null
+  const mem =
+    info && info.memoryTargetMb > 0
+      ? Math.min(100, Math.round((info.memoryUsedMb / info.memoryTargetMb) * 1000) / 10)
+      : null
+  return { cpu, mem }
+}
 
 async function insertChunk(chunk: SaveItem[]): Promise<void> {
   const pool = getPool()
-  const rows = chunk.map((_, i) => `(@id${i}, @sid${i}, @cat${i}, @json${i})`).join(', ')
+  const rows = chunk
+    .map((_, i) => `(@id${i}, @sid${i}, @cat${i}, @json${i}, @cpu${i}, @mem${i})`)
+    .join(', ')
   const req = pool.request()
   for (let i = 0; i < chunk.length; i++) {
+    const { cpu, mem } = chartFields(chunk[i].metrics)
     req
       .input(`id${i}`, sql.NVarChar(36), randomUUID())
       .input(`sid${i}`, sql.NVarChar(36), chunk[i].serverId)
       .input(`cat${i}`, sql.DateTime2, chunk[i].metrics.collectedAt)
       .input(`json${i}`, sql.NVarChar(sql.MAX), JSON.stringify(chunk[i].metrics))
+      .input(`cpu${i}`, sql.Decimal(5, 1), cpu)
+      .input(`mem${i}`, sql.Decimal(5, 1), mem)
   }
   await req.query(
-    `INSERT INTO dbo.metrics_snapshots (id, server_id, collected_at, metrics_json) VALUES ${rows}`
+    `INSERT INTO dbo.metrics_snapshots (id, server_id, collected_at, metrics_json, cpu_pct, mem_pct) VALUES ${rows}`
   )
 }
 

@@ -350,7 +350,14 @@ app.whenReady().then(async () => {
   if (process.platform !== 'win32') {
     const { fork } = await import('node:child_process')
     const servicePath = join(__dirname, '../../out/service/index.js')
-    const svc = fork(servicePath, [], { silent: true, execPath: process.execPath, execArgv: [] })
+    const svc = fork(servicePath, [], {
+      silent: true,
+      execPath: process.execPath,
+      execArgv: [],
+      // Il child non è un'app Electron: electron-store risolverebbe una
+      // config-dir diversa e non troverebbe sql-sentinel-storage-config.json.
+      env: { ...process.env, SQLSENTINEL_USERDATA: app.getPath('userData') }
+    })
     svc.stdout?.on('data', (d: Buffer) => process.stdout.write(d))
     svc.stderr?.on('data', (d: Buffer) => process.stderr.write(d))
     svc.on('exit', (code) => log.warn(`[main] service exited with code ${code}`))

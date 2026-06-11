@@ -13,6 +13,7 @@ import { collectMetrics, collectMetricsCritical } from './collectors/sqlCollecto
 import { detectAndSyncReplicaRoles } from './collectors/agCollector'
 import * as serverStore from './store/sqlserver/serverRepository'
 import * as metricsRepository from './store/sqlserver/metricsRepository'
+import * as alertsRepository from './store/sqlserver/alertsRepository'
 import * as serverDatabasesRepository from './store/sqlserver/serverDatabasesRepository'
 import { getSettings } from './store/sqlserver/settingsRepository'
 import type { ServerMetrics, DiskVolume, DatabaseFile } from './collectors/types'
@@ -560,6 +561,7 @@ function processAlerts(sid: string, metrics: ServerMetrics): void {
         a.acknowledgedAt = now
       }
     }
+    alertsRepository.tryAcknowledge(resolvedIds, now)
     // Senza questo push la risoluzione restava solo in memoria main: il
     // renderer continuava a mostrare l'alert come attivo fino al riavvio
     // (riceve solo ALERT_NEW, e ALERTS_GET_ALL dipende dal service).
@@ -571,6 +573,7 @@ function processAlerts(sid: string, metrics: ServerMetrics): void {
     if (openAlertKeys.has(key)) continue // dedup hit, skip
     storedAlerts.push(alert)
     openAlertKeys.set(key, alert.id)
+    alertsRepository.tryInsert(alert)
     pushToRenderer(IpcChannel.ALERT_NEW, alert)
     if (alertCallback) alertCallback(alert)
     if (incidentAlertCallback) incidentAlertCallback(alert)
@@ -590,6 +593,7 @@ function processAlerts(sid: string, metrics: ServerMetrics): void {
     )
     if (storedAlerts.length !== beforeLen) {
       rebuildOpenAlertKeys()
+      alertsRepository.tryPrune()
     }
   }
 
@@ -862,8 +866,32 @@ function scheduleTick(): void {
 // for every job. Production code never touches this.
 let _staggerEnabled = true
 
+// Una sola hydration per processo: startWorker può essere richiamato (resume,
+// cambio lista server) e non deve sovrascrivere lo stato alert già vivo.
+let alertsHydrated = false
+
+function hydrateAlertsFromDb(): void {
+  if (alertsHydrated) return
+  alertsHydrated = true
+  void alertsRepository
+    .loadRecent()
+    .then((persisted) => {
+      if (persisted.length === 0) return
+      // Gli alert generati DOPO il boot (poll partiti prima dell'hydration)
+      // vincono sul DB: merge solo degli id non già presenti.
+      const known = new Set(storedAlerts.map((a) => a.id))
+      for (const a of persisted) {
+        if (!known.has(a.id)) storedAlerts.push(a)
+      }
+      rebuildOpenAlertKeys()
+      log.info(`[worker] hydrated ${persisted.length} alert(s) from storage`)
+    })
+    .catch((err) => log.warn('[worker] alert hydration failed:', err))
+}
+
 export function startWorker(req: WorkerStartRequest): void {
   stopWorker()
+  hydrateAlertsFromDb()
   activeIntervalMs = Math.max(30_000, Math.min(300_000, req.intervalSeconds * 1000))
   if (req.activeServerId) activeServerId = req.activeServerId
   // Restore history before scheduling any polls — fire-and-forget so the
@@ -1017,6 +1045,7 @@ export function acknowledgeAlert(alertId: string): boolean {
   const alert = storedAlerts.find((a) => a.id === alertId)
   if (!alert) return false
   alert.acknowledgedAt = new Date()
+  alertsRepository.tryAcknowledge([alertId], alert.acknowledgedAt)
   // Drop from the dedup map so a fresh alert in the same category can re-fire
   // immediately after the operator acknowledges. Without this, the dedup
   // would keep blocking new alerts indefinitely.
@@ -1090,6 +1119,7 @@ export function __resetForTests(): void {
   flushInProgress = false
   storedAlerts = []
   openAlertKeys.clear()
+  alertsHydrated = false
   alertCounter = 0
   lastAlertPruneAt = 0
   activeServerId = null

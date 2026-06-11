@@ -18,9 +18,15 @@ interface StorageConfigStore {
   config: StorageConfig | null
 }
 
+// Fuori da Electron (service forked / Windows Service) electron-store risolve
+// una config-dir diversa da userData e il service moriva al boot con "Storage
+// not configured". Il processo host passa la dir giusta via env (vedi il fork
+// in src/main/index.ts e l'installer del servizio).
+const storeCwd = process.env.SQLSENTINEL_USERDATA
 const store = new Store<StorageConfigStore>({
   name: 'sql-sentinel-storage-config',
-  defaults: { config: null }
+  defaults: { config: null },
+  ...(storeCwd ? { cwd: storeCwd } : {})
 })
 
 export function getStorageConfig(): StorageConfig | null {

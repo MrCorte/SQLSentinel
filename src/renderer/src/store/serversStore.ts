@@ -75,15 +75,19 @@ export const useServersStore = create<ServersStore>((set) => ({
         // can write AG metadata back without importing serversStore itself.
         if (addedServer.id) {
           const allServers = useServersStore.getState().servers
+          // Le credenziali vengono da `params`, NON da `addedServer`: il server
+          // ritornato dall'IPC è strippato delle credenziali (stripCredentials
+          // lato main), quindi userebbe password vuota. Senza questo, l'AG
+          // replica-suggestion ereditava username ma non password.
           useAgStore.getState().detectAgsForServer(
             addedServer.id,
             {
               ip: addedServer.ip ?? addedServer.host,
               port: addedServer.port,
               instanceName: addedServer.instanceName,
-              useWindowsAuth: addedServer.useWindowsAuth,
-              username: addedServer.username,
-              password: addedServer.password
+              useWindowsAuth: params.useWindowsAuth ?? addedServer.useWindowsAuth,
+              username: params.username ?? addedServer.username,
+              password: params.password ?? addedServer.password
             },
             allServers,
             useServersStore.getState().updateServer

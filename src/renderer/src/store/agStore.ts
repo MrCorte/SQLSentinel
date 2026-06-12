@@ -39,6 +39,26 @@ export interface AgDetail {
 /** Callback type for writing AG metadata back to a server record. Injected by callers to avoid a circular store dependency. */
 export type OnUpdateServer = (id: string, patch: Partial<StoredServer>) => void
 
+/**
+ * Un server registrato corrisponde a una replica AG?
+ * `replica_server_name` è quasi sempre l'HOSTNAME del nodo, mentre il server
+ * può essere stato aggiunto per IP o `localhost`: in quel caso il confronto su
+ * ip/host fallisce e l'AG non si raggruppava. Si confronta anche con
+ * `machineName` (rilevato in automatico al test-connection), che è proprio
+ * l'hostname della macchina — la stessa cosa che SQL Server mette nel replica.
+ */
+export function replicaMatchesServer(replicaNameBase: string, s: StoredServer): boolean {
+  const candidates = [s.ip ?? s.host, s.machineName]
+    .filter((v): v is string => !!v)
+    .map((v) => v.toLowerCase())
+  return candidates.some(
+    (addr) =>
+      addr === replicaNameBase ||
+      replicaNameBase.includes(addr) ||
+      addr.includes(replicaNameBase)
+  )
+}
+
 export interface AgReplicaSuggestion {
   agName: string
   missingReplicas: Array<{ replica_server_name: string; role_desc: AgRole }>
@@ -125,10 +145,7 @@ export const useAgStore = create<AgStore>((set, get) => ({
         // allServers is injected by the caller so agStore does not import serversStore.
         for (const replica of agReplicas) {
           const nameBase = replica.replica_server_name.split('\\')[0].toLowerCase()
-          const matched = allServers.find((s) => {
-            const addr = (s.ip ?? s.host).toLowerCase()
-            return addr === nameBase || nameBase.includes(addr) || addr.includes(nameBase)
-          })
+          const matched = allServers.find((s) => replicaMatchesServer(nameBase, s))
           if (matched) {
             serverIds.add(matched.id)
             // Update ALL matched replicas with agGroupId + agName + agRole —
@@ -166,10 +183,7 @@ export const useAgStore = create<AgStore>((set, get) => ({
         const missingReplicas = agReplicas
           .filter((r) => {
             const nameBase = r.replica_server_name.split('\\')[0].toLowerCase()
-            return !allServers.some((s) => {
-              const addr = (s.ip ?? s.host ?? '').toLowerCase()
-              return addr === nameBase || nameBase.includes(addr) || addr.includes(nameBase)
-            })
+            return !allServers.some((s) => replicaMatchesServer(nameBase, s))
           })
           .map((r) => ({ replica_server_name: r.replica_server_name, role_desc: r.role_desc }))
         if (missingReplicas.length > 0) {

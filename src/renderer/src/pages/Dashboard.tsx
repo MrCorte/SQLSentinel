@@ -212,8 +212,14 @@ export function Dashboard(): React.JSX.Element {
         !selectedServer &&
         connection === null &&
         (() => {
-          // Use any available server connection for AG queries (prefer the first one)
-          const anyConn = servers.length > 0 ? toCollectRequest(servers[0]) : null
+          // Le query AG devono partire da un MEMBRO del cluster selezionato:
+          // usare servers[0] (un server qualsiasi del registry, magari di un
+          // altro AG o irraggiungibile) lasciava la dashboard su "Loading AG
+          // data..." per sempre. Si preferisce un membro raggiungibile.
+          const agMembers = servers.filter((s) => s.agName === selectedAgName)
+          const pick =
+            agMembers.find((s) => !s.unreachable) ?? agMembers[0] ?? servers[0]
+          const anyConn = pick ? toCollectRequest(pick) : null
           if (!anyConn)
             return (
               <Alert severity="warning">

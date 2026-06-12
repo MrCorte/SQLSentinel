@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo } from 'react'
 import { useShallow } from 'zustand/shallow'
 import { useGroupsStore } from '../../../store/groupsStore'
 import { useAgStore } from '../../../store/agStore'
+import type { AgGroupState } from '../../../store/agStore'
 import type { StoredServer } from '../../../../../preload/index'
 import type { SidebarItem } from './types'
 
@@ -134,6 +135,84 @@ export function useSidebarTree(servers: StoredServer[]): SidebarTreeResult {
       return filteredServers.map((s) => ({ kind: 'search-server', server: s }))
     }
 
+    // Costruisce gli item (cluster AG + macchine + server) per un sottoinsieme
+    // di server. Usato sia per i gruppi che per UNGROUPED: prima questa logica
+    // viveva solo nel loop dei gruppi, quindi i membri AG finiti in UNGROUPED
+    // (es. una replica aggiunta senza assegnare un gruppo) non formavano mai un
+    // cluster — apparivano come server sciolti.
+    const buildSubtree = (subset: StoredServer[]): SidebarItem[] => {
+      const out: SidebarItem[] = []
+
+      // Membro AG = agName valorizzato (più robusto di agGroupId: il worker
+      // propaga agName ai SECONDARY prima che la self-detection confermi il group_id).
+      const isAgMember = (s: StoredServer): boolean => {
+        const k = s.agName?.trim().toLowerCase()
+        return k != null && k !== ''
+      }
+
+      // I cluster AG si derivano dagli agName PERSISTITI, non da agStore.agGroups
+      // (stato runtime, vuoto al boot finché un detect non gira): altrimenti dopo
+      // un riavvio i membri AG sparivano dalla sidebar. agGroups, quando presente,
+      // arricchisce l'entry con health/primary aggiornati; altrimenti fallback.
+      const agNames = new Map<string, string>() // key → display name originale
+      for (const s of subset) {
+        const name = s.agName?.trim()
+        if (name) agNames.set(name.toLowerCase(), name)
+      }
+      const agClusters = [...agNames.entries()].map(([agKey, displayName]) => {
+        const live = Object.values(agGroups).find((ag) => ag.ag_name.trim().toLowerCase() === agKey)
+        if (live) return live
+        const members = subset.filter((s) => s.agName?.trim().toLowerCase() === agKey)
+        const primary = members.find((s) => s.agRole === 'PRIMARY')
+        const synthetic: AgGroupState = {
+          id: primary?.agGroupId ?? members[0]?.agGroupId ?? agKey,
+          ag_name: displayName,
+          health: 'PARTIALLY_HEALTHY',
+          primary_replica: primary?.machineName ?? primary?.host ?? '',
+          serverIds: members.map((s) => s.id)
+        }
+        return synthetic
+      })
+
+      const agServers = subset.filter(isAgMember)
+      const standaloneServers = subset.filter((s) => !isAgMember(s))
+
+      for (const ag of agClusters) {
+        const agKey = ag.ag_name.trim().toLowerCase()
+        const isExpanded = expandedAGs.includes(ag.ag_name)
+        out.push({ kind: 'ag', agName: ag.ag_name, agInfo: ag, isExpanded })
+        if (isExpanded) {
+          for (const s of agServers.filter((s) => s.agName?.trim().toLowerCase() === agKey)) {
+            out.push({ kind: 'server', server: s, inAgGroup: true, inMachineGroup: false })
+          }
+        }
+      }
+
+      // Standalone raggruppati per machineName (fallback: host)
+      const machineMap = new Map<string, StoredServer[]>()
+      for (const s of standaloneServers) {
+        const key = s.machineName ?? s.ip ?? s.host
+        if (!machineMap.has(key)) machineMap.set(key, [])
+        machineMap.get(key)!.push(s)
+      }
+      for (const [machineName, machineServers] of machineMap) {
+        if (machineServers.length >= 2) {
+          const isExpanded = expandedMachines.includes(machineName)
+          out.push({ kind: 'machine', machineName, instanceCount: machineServers.length, isExpanded })
+          if (isExpanded) {
+            for (const s of machineServers) {
+              out.push({ kind: 'server', server: s, inAgGroup: false, inMachineGroup: true })
+            }
+          }
+        } else {
+          for (const s of machineServers) {
+            out.push({ kind: 'server', server: s, inAgGroup: false, inMachineGroup: false })
+          }
+        }
+      }
+      return out
+    }
+
     const items: SidebarItem[] = []
     for (const group of sortedGroups) {
       const groupServers = serversByGroupId.get(group.id) ?? []
@@ -142,95 +221,14 @@ export function useSidebarTree(servers: StoredServer[]): SidebarTreeResult {
       items.push({ kind: 'group', group, onlineCount })
 
       if (!group.collapsed) {
-        // A server is considered an AG member if agName is set (case-insensitive, trimmed).
-        // This is more robust than agGroupId alone: the worker propagates agName to
-        // SECONDARY replicas even before agGroupId is confirmed via self-detection.
-        const isAgMember = (s: StoredServer): boolean => {
-          const k = s.agName?.trim().toLowerCase()
-          return k != null && k !== ''
-        }
-
-        // An AG is "active" in this group if any server in this group belongs to it.
-        const agGroupsInThisGroup = Object.values(agGroups).filter((ag) => {
-          const agKey = ag.ag_name.trim().toLowerCase()
-          return groupServers.some((s) => s.agName?.trim().toLowerCase() === agKey)
-        })
-
-        const agServersInGroup = groupServers.filter(isAgMember)
-        const standaloneServers = groupServers.filter((s) => !isAgMember(s))
-
-        for (const ag of agGroupsInThisGroup) {
-          const agKey = ag.ag_name.trim().toLowerCase()
-          const isExpanded = expandedAGs.includes(ag.ag_name)
-          items.push({ kind: 'ag', agName: ag.ag_name, agInfo: ag, isExpanded })
-          if (isExpanded) {
-            const agServers = agServersInGroup.filter(
-              (s) => s.agName?.trim().toLowerCase() === agKey
-            )
-            for (const s of agServers) {
-              items.push({ kind: 'server', server: s, inAgGroup: true, inMachineGroup: false })
-            }
-          }
-        }
-
-        // Group standalone servers by machineName (fallback: host)
-        const machineMap = new Map<string, StoredServer[]>()
-        for (const s of standaloneServers) {
-          const key = s.machineName ?? s.ip ?? s.host
-          if (!machineMap.has(key)) machineMap.set(key, [])
-          machineMap.get(key)!.push(s)
-        }
-        for (const [machineName, machineServers] of machineMap) {
-          if (machineServers.length >= 2) {
-            const isExpanded = expandedMachines.includes(machineName)
-            items.push({
-              kind: 'machine',
-              machineName,
-              instanceCount: machineServers.length,
-              isExpanded
-            })
-            if (isExpanded) {
-              for (const s of machineServers) {
-                items.push({ kind: 'server', server: s, inAgGroup: false, inMachineGroup: true })
-              }
-            }
-          } else {
-            for (const s of machineServers) {
-              items.push({ kind: 'server', server: s, inAgGroup: false, inMachineGroup: false })
-            }
-          }
-        }
+        items.push(...buildSubtree(groupServers))
       }
     }
 
     if (ungrouped.length > 0) {
       items.push({ kind: 'ungrouped-header' })
-      const ungroupedMachineMap = new Map<string, StoredServer[]>()
-      for (const s of ungrouped) {
-        const key = s.machineName ?? s.ip ?? s.host
-        if (!ungroupedMachineMap.has(key)) ungroupedMachineMap.set(key, [])
-        ungroupedMachineMap.get(key)!.push(s)
-      }
-      for (const [machineName, machineServers] of ungroupedMachineMap) {
-        if (machineServers.length >= 2) {
-          const isExpanded = expandedMachines.includes(machineName)
-          items.push({
-            kind: 'machine',
-            machineName,
-            instanceCount: machineServers.length,
-            isExpanded
-          })
-          if (isExpanded) {
-            for (const s of machineServers) {
-              items.push({ kind: 'server', server: s, inAgGroup: false, inMachineGroup: true })
-            }
-          }
-        } else {
-          for (const s of machineServers) {
-            items.push({ kind: 'server', server: s, inAgGroup: false, inMachineGroup: false })
-          }
-        }
-      }
+      // Stesso trattamento dei gruppi: i membri AG ungrouped formano un cluster.
+      items.push(...buildSubtree(ungrouped))
     }
 
     return items

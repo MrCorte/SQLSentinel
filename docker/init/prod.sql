@@ -1,6 +1,29 @@
 -- Production server: 3 databases, realistic schema + data
 -- Tests: multi-DB listing, metrics per DB, fragmentation, wait stats
 
+USE master;
+GO
+
+DECLARE @dockLogin sysname = N'$(DockUser)';
+DECLARE @dockPassword NVARCHAR(128) = N'$(DockPassword)';
+IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = @dockLogin)
+BEGIN
+    DECLARE @sql NVARCHAR(MAX) =
+        N'CREATE LOGIN ' + QUOTENAME(@dockLogin) +
+        N' WITH PASSWORD = ' + QUOTENAME(@dockPassword, '''') +
+        N', CHECK_POLICY = OFF';
+    EXEC(@sql);
+END
+GO
+DECLARE @dockLogin sysname = N'$(DockUser)';
+IF IS_SRVROLEMEMBER(N'sysadmin', @dockLogin) <> 1
+BEGIN
+    DECLARE @roleSql NVARCHAR(MAX) =
+        N'ALTER SERVER ROLE sysadmin ADD MEMBER ' + QUOTENAME(@dockLogin);
+    EXEC(@roleSql);
+END
+GO
+
 -- ── AppDB ──────────────────────────────────────────────────────────────────
 IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = 'AppDB')
     CREATE DATABASE AppDB;

@@ -154,6 +154,12 @@ export interface AvailabilityReplica {
   operational_state_desc: string
   recovery_health_desc: string
   endpoint_url: string
+  /**
+   * True se la riga descrive la replica locale dell'istanza interrogata.
+   * Solo il ruolo della riga locale (o tutti, se la locale è PRIMARY) è
+   * affidabile: i ruoli remoti visti da una secondaria arrivano NULL.
+   */
+  is_local: boolean
 }
 
 export interface AvailabilityDatabase {

@@ -133,6 +133,12 @@ export const useAgStore = create<AgStore>((set, get) => ({
       for (const ag of groups) {
         const agReplicas = replicas.filter((r) => r.ag_name === ag.ag_name)
 
+        // Su una replica non-PRIMARY i DMV non espongono il ruolo delle repliche
+        // remote (role_desc arriva NULL → coalizzato a RESOLVING dal collector):
+        // quei ruoli sono fabbricati e non vanno persistiti, o sovrascriverebbero
+        // il PRIMARY reale salvato in precedenza.
+        const localIsPrimary = agReplicas.some((r) => r.is_local && r.role_desc === 'PRIMARY')
+
         // Find the existing agGroups entry to preserve any already-matched serverIds
         const existing = get().agGroups[ag.ag_name]
         const existingServerIds = existing?.serverIds ?? []
@@ -148,27 +154,35 @@ export const useAgStore = create<AgStore>((set, get) => ({
           const matched = allServers.find((s) => replicaMatchesServer(nameBase, s))
           if (matched) {
             serverIds.add(matched.id)
-            // Update ALL matched replicas with agGroupId + agName + agRole —
+            // Update ALL matched replicas with agGroupId + agName —
             // not just the server currently being detected.
             // This ensures SECONDARY servers are grouped even if their own
             // detectAgsForServer() run hasn't succeeded yet.
             if (matched.id !== serverId && onUpdateServer) {
-              const replicaRole = replica.role_desc as AgRole
-              onUpdateServer(matched.id, {
+              const patch: Partial<StoredServer> = {
                 agGroupId: ag.group_id,
-                agName: ag.ag_name,
-                agRole: replicaRole
-              })
+                agName: ag.ag_name
+              }
+              if (replica.is_local || localIsPrimary) {
+                patch.agRole = replica.role_desc as AgRole
+              }
+              onUpdateServer(matched.id, patch)
             }
           }
         }
 
-        // Determine the role of this specific server in this AG
-        const myReplica = agReplicas.find((r) => {
-          const nameBase = r.replica_server_name.split('\\')[0].toLowerCase()
-          const connAddr = connection.ip.toLowerCase()
-          return nameBase === connAddr || connAddr.includes(nameBase) || nameBase.includes(connAddr)
-        })
+        // Determine the role of this specific server in this AG: la riga
+        // is_local è autoritativa (funziona anche per server registrati per
+        // IP); il confronto sul nome resta come fallback.
+        const myReplica =
+          agReplicas.find((r) => r.is_local) ??
+          agReplicas.find((r) => {
+            const nameBase = r.replica_server_name.split('\\')[0].toLowerCase()
+            const connAddr = connection.ip.toLowerCase()
+            return (
+              nameBase === connAddr || connAddr.includes(nameBase) || nameBase.includes(connAddr)
+            )
+          })
 
         // Persist agGroupId + agName + agRole for the current server via injected callback
         if (myReplica && onUpdateServer) {

@@ -1,9 +1,6 @@
 import { create } from 'zustand'
 
 interface AppStore {
-  /** Server ID to auto-select when Dashboard mounts/activates */
-  pendingServerId: string | null
-  setPendingServerId: (id: string | null) => void
   /** Currently selected server ID — shared between ServerTree and Dashboard */
   selectedServerId: string | null
   setSelectedServerId: (id: string | null) => void
@@ -17,8 +14,6 @@ interface AppStore {
 }
 
 export const useAppStore = create<AppStore>((set) => ({
-  pendingServerId: null,
-  setPendingServerId: (id) => set({ pendingServerId: id }),
   selectedServerId: null,
   setSelectedServerId: (id) => set({ selectedServerId: id }),
   selectedAgName: null,

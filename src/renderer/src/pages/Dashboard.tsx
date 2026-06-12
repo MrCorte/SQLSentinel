@@ -33,6 +33,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { getServerDisplayName } from '../types/index'
 import { tokens } from '../styles/tokens'
 import { selectDisplayMetrics } from '../utils/selectDisplayMetrics'
+import { pickAgQueryMember } from '../utils/agSelection'
 
 // -----------------------------------------------------------------------
 // Helpers
@@ -215,10 +216,12 @@ export function Dashboard(): React.JSX.Element {
           // Le query AG devono partire da un MEMBRO del cluster selezionato:
           // usare servers[0] (un server qualsiasi del registry, magari di un
           // altro AG o irraggiungibile) lasciava la dashboard su "Loading AG
-          // data..." per sempre. Si preferisce un membro raggiungibile.
+          // data..." per sempre. Si preferisce il PRIMARY raggiungibile: da
+          // una secondaria i ruoli/stati delle repliche remote arrivano
+          // RESOLVING/DISCONNECTED (post-failover la card del nuovo primary
+          // resterebbe rossa per sempre).
           const agMembers = servers.filter((s) => s.agName === selectedAgName)
-          const pick =
-            agMembers.find((s) => !s.unreachable) ?? agMembers[0] ?? servers[0]
+          const pick = pickAgQueryMember(agMembers) ?? servers[0]
           const anyConn = pick ? toCollectRequest(pick) : null
           if (!anyConn)
             return (

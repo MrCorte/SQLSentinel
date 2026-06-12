@@ -498,7 +498,10 @@ export function useInventoryState(onNavigateToDashboard: () => void) {
       } else if (row.type === 'machine-header') {
         toggleMachine(row.clusterKey!)
       } else if (row.serverId) {
-        useAppStore.getState().setPendingServerId(row.serverId)
+        // Selezione diretta: pendingServerId non aveva alcun consumer, la
+        // navigazione arrivava al Dashboard senza server selezionato.
+        useAppStore.getState().setSelectedAgName(null)
+        useAppStore.getState().setSelectedServerId(row.serverId)
         onNavigateToDashboard()
       }
     },

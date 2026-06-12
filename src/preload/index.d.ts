@@ -424,6 +424,8 @@ export interface AvailabilityReplica {
   operational_state_desc: string
   recovery_health_desc: string
   endpoint_url: string
+  /** True se la riga è la replica locale dell'istanza interrogata. */
+  is_local: boolean
 }
 
 export interface AvailabilityDatabase {

@@ -230,7 +230,8 @@ const MOCK_AG_REPLICAS: AvailabilityReplica[] = [
     connected_state_desc: 'CONNECTED',
     operational_state_desc: 'ONLINE',
     recovery_health_desc: 'ONLINE_IN_PROGRESS',
-    endpoint_url: 'TCP://192.168.1.10:5022'
+    endpoint_url: 'TCP://192.168.1.10:5022',
+    is_local: true
   },
   {
     replica_id: 'r-002-0000-0000-0000-000000000002',
@@ -244,7 +245,8 @@ const MOCK_AG_REPLICAS: AvailabilityReplica[] = [
     connected_state_desc: 'CONNECTED',
     operational_state_desc: 'ONLINE',
     recovery_health_desc: 'ONLINE_IN_PROGRESS',
-    endpoint_url: 'TCP://192.168.1.15:5022'
+    endpoint_url: 'TCP://192.168.1.15:5022',
+    is_local: false
   }
 ]
 

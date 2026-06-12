@@ -93,7 +93,8 @@ export async function getAvailabilityReplicas(
         ISNULL(ars.synchronization_health_desc, 'NOT_HEALTHY')       AS synchronization_health_desc,
         ISNULL(ars.connected_state_desc, 'DISCONNECTED')             AS connected_state_desc,
         ISNULL(ars.operational_state_desc, '')                       AS operational_state_desc,
-        ISNULL(ars.recovery_health_desc, '')                         AS recovery_health_desc
+        ISNULL(ars.recovery_health_desc, '')                         AS recovery_health_desc,
+        CAST(ISNULL(ars.is_local, 0) AS bit)                         AS is_local
       FROM sys.availability_groups ag
       JOIN sys.availability_replicas ar
         ON ag.group_id = ar.group_id
@@ -125,7 +126,13 @@ export async function detectAndSyncReplicaRoles(
   conn: CollectMetricsRequest
 ): Promise<serverStore.StoredServer[]> {
   const sc = asServerConnection(conn)
-  let replicas: Array<{ agName: string; groupId: string; replicaHost: string; agRole: string }> = []
+  let replicas: Array<{
+    agName: string
+    groupId: string
+    replicaHost: string
+    agRole: string
+    isLocal: boolean
+  }> = []
   try {
     const pool = await getPool(sc)
     const result = await pool.request().query<{
@@ -133,12 +140,14 @@ export async function detectAndSyncReplicaRoles(
       groupId: string
       replicaHost: string
       agRole: string
+      isLocal: boolean
     }>(`
       SELECT
         ag.name                        AS agName,
         CAST(ag.group_id AS nvarchar(36)) AS groupId,
         ar.replica_server_name         AS replicaHost,
-        ISNULL(ars.role_desc, 'RESOLVING') AS agRole
+        ISNULL(ars.role_desc, 'RESOLVING') AS agRole,
+        CAST(ISNULL(ars.is_local, 0) AS bit) AS isLocal
       FROM sys.availability_groups ag
       JOIN sys.availability_replicas ar
         ON ag.group_id = ar.group_id
@@ -154,6 +163,12 @@ export async function detectAndSyncReplicaRoles(
 
   if (replicas.length === 0) return []
 
+  // I ruoli delle repliche remote sono attendibili solo se l'istanza
+  // interrogata è il PRIMARY: viste da una secondaria arrivano NULL e il
+  // collector li coalizza a RESOLVING — persisterli sovrascriverebbe il
+  // PRIMARY reale salvato in precedenza.
+  const localIsPrimary = replicas.some((r) => r.isLocal && r.agRole === 'PRIMARY')
+
   // Use the stripped variant — AG sync only needs id/host/agRole, no
   // credentials. The previous getAll() decrypted every server's password via
   // DPAPI: with 50 AG groups × 5 replicas × 200 servers that's 50,000 DPAPI
@@ -161,19 +176,24 @@ export async function detectAndSyncReplicaRoles(
   const allServers = serverStore.getAllStripped()
   const updated: serverStore.StoredServer[] = []
 
-  // Build a host→server lookup once. Two-tier index:
+  // Build a host→server lookup once. Three-tier index:
   //  1. exact host match (lowercased)
-  //  2. first-DNS-label fallback for FQDN/short-name mismatches
+  //  2. machineName match — server registrati per IP/localhost: il
+  //     replica_server_name è l'hostname, che coincide col machineName
+  //     rilevato al test-connection (stesso criterio del renderer)
+  //  3. first-DNS-label fallback for FQDN/short-name mismatches
   // Avoids the previous O(N) .find() inside the replica loop.
   const byExactHost = new Map<string, serverStore.StoredServer>()
+  const byMachineName = new Map<string, serverStore.StoredServer>()
   for (const s of allServers) {
     byExactHost.set((s.host ?? '').toLowerCase(), s)
+    if (s.machineName) byMachineName.set(s.machineName.toLowerCase(), s)
   }
 
   for (const replica of replicas) {
     // Hostname matching: strip instance suffix, compare case-insensitive
     const replicaBase = replica.replicaHost.split('\\')[0].toLowerCase()
-    let match = byExactHost.get(replicaBase)
+    let match = byExactHost.get(replicaBase) ?? byMachineName.get(replicaBase)
     if (!match) {
       // Fallback (rare path): equal first DNS label, e.g. stored "sql1.corp.local"
       // vs replica "SQL1" (or vice versa). The previous bidirectional substring
@@ -187,18 +207,22 @@ export async function detectAndSyncReplicaRoles(
     }
     if (!match) continue
 
-    const agRole = replica.agRole as 'PRIMARY' | 'SECONDARY' | 'RESOLVING'
-    const patch = {
+    // Ruolo: scritto solo se attendibile (riga locale, o vista dal PRIMARY);
+    // altrimenti si preserva quello già persistito.
+    const roleIsTrusted = replica.isLocal || localIsPrimary
+    const patch: { agGroupId: string; agName: string; agRole?: 'PRIMARY' | 'SECONDARY' | 'RESOLVING' } = {
       agGroupId: replica.groupId,
-      agName: replica.agName,
-      agRole
+      agName: replica.agName
+    }
+    if (roleIsTrusted) {
+      patch.agRole = replica.agRole as 'PRIMARY' | 'SECONDARY' | 'RESOLVING'
     }
 
     // Only write if something actually changed — avoid useless electron-store writes
     if (
       match.agGroupId !== patch.agGroupId ||
       match.agName !== patch.agName ||
-      match.agRole !== patch.agRole
+      (roleIsTrusted && match.agRole !== patch.agRole)
     ) {
       await serverStore.update(match.id, patch)
       updated.push({ ...match, ...patch })

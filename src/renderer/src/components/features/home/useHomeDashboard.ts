@@ -138,10 +138,11 @@ export interface HomeDashboardData {
 
 export function useHomeDashboard(onNavigateToServer: (id: string) => void): HomeDashboardData {
   const servers = useServersStore((s) => s.servers)
-  const lastUpdate = useMetricsStore((s) => s.lastUpdate)
 
-  // Throttled metrics snapshot — max 1 re-render/s to handle 200+ servers
-  const { metricsMap, summaries } = useThrottledMetrics()
+  // Throttled metrics snapshot — max 1 re-render/s to handle 200+ servers.
+  // lastUpdate arriva dallo stesso snapshot throttlato (vedi useThrottledMetrics)
+  // invece che dallo store diretto, così non forza re-render ad ogni delta batch.
+  const { metricsMap, summaries, lastUpdate } = useThrottledMetrics()
   const serverHealth = useMetricsStore((s) => s.serverHealth)
 
   const now = useNow()

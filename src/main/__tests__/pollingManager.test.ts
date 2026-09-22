@@ -23,7 +23,7 @@ vi.mock('../store/sqlserver/settingsRepository', () => ({
 }))
 vi.mock('../store/sqlserver/serverDatabasesRepository', () => ({
   upsertDatabases: vi.fn(async () => {}),
-  deleteStale: vi.fn(async () => {}),
+  syncFullSnapshot: vi.fn(async () => {}),
   deleteByNames: vi.fn(async () => {}),
   getAllGroupedByServer: vi.fn(async () => ({}))
 }))

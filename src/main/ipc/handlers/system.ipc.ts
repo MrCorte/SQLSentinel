@@ -16,9 +16,11 @@ import { sendTestEmail } from '../../emailService'
 import {
   getCustomFields,
   setCustomFields,
+  setCustomFieldsBulk,
   getAllCustomFields
 } from '../../store/sqlserver/dbCustomFieldsRepository'
 import { getShrinkEstimate, shrinkDatabase, shrinkFile } from '../../collectors/dbAdmin'
+import { sanitizeSqlError } from '../../collectors/sqlCollector'
 import {
   getAvailabilityGroups,
   getAvailabilityReplicas,
@@ -36,6 +38,7 @@ import {
   type DbCustomFields,
   type DbCustomFieldsGetRequest,
   type DbCustomFieldsSetRequest,
+  type DbCustomFieldsSetBulkRequest,
   type SaveCsvRequest,
   type ExportInventoryCsvRequest,
   type IpcResult,
@@ -274,6 +277,28 @@ export function registerSystemHandlers(): void {
     }
   )
 
+  // DB_SET_CUSTOM_FIELDS_BULK — applica gli stessi custom fields a più DB in una
+  // sola MERGE batch (evita il pattern N+1 del bulk-edit "seleziona tutti").
+  handle(
+    IpcChannel.DB_SET_CUSTOM_FIELDS_BULK,
+    async (
+      _event: IpcMainInvokeEvent,
+      req: DbCustomFieldsSetBulkRequest
+    ): Promise<IpcResult<null>> => {
+      if (!isValidCustomFieldKey(req?.serverId) || !Array.isArray(req?.dbNames)) {
+        return { ok: false, error: 'Invalid serverId/dbNames' }
+      }
+      if (!req.dbNames.every(isValidCustomFieldKey)) {
+        return { ok: false, error: 'Invalid dbName in list' }
+      }
+      if (typeof req.fields !== 'object' || req.fields === null) {
+        return { ok: false, error: 'Invalid fields' }
+      }
+      await setCustomFieldsBulk(req.serverId, req.dbNames, req.fields)
+      return { ok: true, data: null }
+    }
+  )
+
   // DB_GET_ALL_CUSTOM_FIELDS — returns all custom fields (used by worker for alert suppression)
   handle(
     IpcChannel.DB_GET_ALL_CUSTOM_FIELDS,
@@ -294,7 +319,7 @@ export function registerSystemHandlers(): void {
         return { ok: true, data: estimates }
       } catch (err) {
         log.error('[IPC] DB_SHRINK_ESTIMATE:', safeError(err))
-        return { ok: false, error: safeError(err) }
+        return { ok: false, error: sanitizeSqlError(err) }
       }
     }
   )

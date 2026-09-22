@@ -21,7 +21,7 @@ vi.mock('../store/sqlserver/settingsRepository', () => ({
 }))
 vi.mock('../store/sqlserver/serverDatabasesRepository', () => ({
   upsertDatabases: vi.fn(async () => {}),
-  deleteStale: vi.fn(async () => {}),
+  syncFullSnapshot: vi.fn(async () => {}),
   deleteByNames: vi.fn(async () => {}),
   getAllGroupedByServer: vi.fn(async () => ({}))
 }))
@@ -89,15 +89,15 @@ describe('canAutoResolve', () => {
   describe('disk_space_low — fonte diversa per dedupTag', () => {
     it('autogrowth: risolve solo se databaseFiles è presente', () => {
       expect(canAutoResolve('disk_space_low', 'autogrowth', fullMetrics())).toBe(true)
-      expect(canAutoResolve('disk_space_low', 'autogrowth', fullMetrics({ databaseFiles: [] }))).toBe(
-        false
-      )
+      expect(
+        canAutoResolve('disk_space_low', 'autogrowth', fullMetrics({ databaseFiles: [] }))
+      ).toBe(false)
     })
     it('volume: risolve solo se diskVolumes è presente', () => {
       expect(canAutoResolve('disk_space_low', 'warn-volume', fullMetrics())).toBe(true)
-      expect(canAutoResolve('disk_space_low', 'warn-volume', fullMetrics({ diskVolumes: [] }))).toBe(
-        false
-      )
+      expect(
+        canAutoResolve('disk_space_low', 'warn-volume', fullMetrics({ diskVolumes: [] }))
+      ).toBe(false)
     })
   })
 

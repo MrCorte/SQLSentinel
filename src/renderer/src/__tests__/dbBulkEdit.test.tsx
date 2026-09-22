@@ -5,7 +5,8 @@ import { useMetricsData } from '../components/features/metrics/useMetricsData'
 
 vi.mock('../api/ipc', () => ({
   getAllDbCustomFields: vi.fn().mockResolvedValue({ ok: true, data: {} }),
-  setDbCustomFields: vi.fn().mockResolvedValue({ ok: true, data: null })
+  setDbCustomFields: vi.fn().mockResolvedValue({ ok: true, data: null }),
+  setDbCustomFieldsBulk: vi.fn().mockResolvedValue({ ok: true, data: null })
 }))
 import * as ipc from '../api/ipc'
 
@@ -116,11 +117,12 @@ describe('DbBulkEditDialog', () => {
 
 describe('useMetricsData — bulk save', () => {
   beforeEach(() => {
-    vi.mocked(ipc.setDbCustomFields).mockClear()
+    vi.mocked(ipc.setDbCustomFieldsBulk).mockClear()
+    vi.mocked(ipc.setDbCustomFieldsBulk).mockResolvedValue({ ok: true, data: null })
     vi.mocked(ipc.getAllDbCustomFields).mockClear()
   })
 
-  it('handleBulkSaveDbFields calls setDbCustomFields for each selected DB', async () => {
+  it('handleBulkSaveDbFields sends one bulk call with all selected DBs', async () => {
     const { result } = renderHook(() => useMetricsData({ metrics: METRICS, serverId: 'srv1' }))
     await act(async () => {
       result.current.setRowSelectionModel({ type: 'include', ids: new Set(['Alpha', 'Beta']) })
@@ -128,14 +130,10 @@ describe('useMetricsData — bulk save', () => {
     await act(async () => {
       await result.current.handleBulkSaveDbFields({ alias: 'Bulk', referente: 'Owner' })
     })
-    expect(ipc.setDbCustomFields).toHaveBeenCalledWith({
+    expect(ipc.setDbCustomFieldsBulk).toHaveBeenCalledTimes(1)
+    expect(ipc.setDbCustomFieldsBulk).toHaveBeenCalledWith({
       serverId: 'srv1',
-      dbName: 'Alpha',
-      fields: { alias: 'Bulk', referente: 'Owner' }
-    })
-    expect(ipc.setDbCustomFields).toHaveBeenCalledWith({
-      serverId: 'srv1',
-      dbName: 'Beta',
+      dbNames: ['Alpha', 'Beta'],
       fields: { alias: 'Bulk', referente: 'Owner' }
     })
   })
@@ -162,8 +160,8 @@ describe('useMetricsData — bulk save', () => {
     expect(result.current.snackbar?.severity).toBe('success')
   })
 
-  it('sets error snackbar when all saves fail', async () => {
-    vi.mocked(ipc.setDbCustomFields).mockResolvedValue({ ok: false, error: 'DB error' } as any)
+  it('sets error snackbar when the bulk save fails', async () => {
+    vi.mocked(ipc.setDbCustomFieldsBulk).mockResolvedValue({ ok: false, error: 'DB error' } as any)
     const { result } = renderHook(() => useMetricsData({ metrics: METRICS, serverId: 'srv1' }))
     await act(async () => {
       result.current.setRowSelectionModel({ type: 'include', ids: new Set(['Alpha', 'Beta']) })
@@ -175,18 +173,17 @@ describe('useMetricsData — bulk save', () => {
     expect(result.current.snackbar?.message).toMatch(/Failed to update/)
   })
 
-  it('sets warning snackbar on partial failure', async () => {
-    vi.mocked(ipc.setDbCustomFields)
-      .mockResolvedValueOnce({ ok: true, data: null })
-      .mockResolvedValueOnce({ ok: false, error: 'DB error' } as any)
+  it('reports all selected DBs as failed when the bulk save rejects', async () => {
+    vi.mocked(ipc.setDbCustomFieldsBulk).mockRejectedValue(new Error('boom'))
     const { result } = renderHook(() => useMetricsData({ metrics: METRICS, serverId: 'srv1' }))
     await act(async () => {
       result.current.setRowSelectionModel({ type: 'include', ids: new Set(['Alpha', 'Beta']) })
     })
+    let ret: { failed: string[] } | undefined
     await act(async () => {
-      await result.current.handleBulkSaveDbFields({ alias: 'X', referente: undefined })
+      ret = await result.current.handleBulkSaveDbFields({ alias: 'X', referente: undefined })
     })
-    expect(result.current.snackbar?.severity).toBe('warning')
-    expect(result.current.snackbar?.message).toMatch(/1 updated/)
+    expect(ret?.failed).toEqual(['Alpha', 'Beta'])
+    expect(result.current.snackbar?.severity).toBe('error')
   })
 })

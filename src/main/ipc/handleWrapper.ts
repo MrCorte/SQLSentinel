@@ -4,6 +4,7 @@ import { isAuthenticated, isMustChangePassword } from '../authService'
 import { getStorageConfig } from '../store/storageConfig'
 import { IpcChannel } from './types'
 import { createLogger } from '../utils/logger'
+import { redactPaths } from '../utils/safeLog'
 
 const log = createLogger('ipc')
 export { log }
@@ -85,6 +86,14 @@ export function handle<R>(
   })
 }
 
+/**
+ * Messaggio d'errore per log E per il ritorno al renderer. Redige i path
+ * assoluti / username OS (%USERPROFILE%, ~) prima di attraversare il boundary,
+ * così un renderer compromesso non può raccogliere path interni dai messaggi
+ * d'errore. Per gli handler che aprono connessioni SQL usare invece
+ * `sanitizeSqlError` (in collectors/sqlCollector), che striscia anche
+ * host/credenziali dai messaggi del driver mssql.
+ */
 export function safeError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
+  return redactPaths(err instanceof Error ? err.message : String(err))
 }

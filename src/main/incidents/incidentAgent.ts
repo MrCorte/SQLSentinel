@@ -291,7 +291,11 @@ export async function runIncidentAgent(
     let finalText = ''
     const promptIdentifier = `${incident.id}:${incident.category}:${provider.name}:${provider.model}`
     const { redactQueryText } = await loadSettings()
-    const shouldRedact = redactQueryText && provider.name === 'claude'
+    // La redazione del query-text è data-minimization (riduce prompt-injection di
+    // secondo ordine e leak in log), NON un controllo di egress cloud: va applicata
+    // a prescindere dal provider. In precedenza era limitata a 'claude', lasciando
+    // il path Ollama (default) non redatto e il setting di fatto inefficace.
+    const shouldRedact = redactQueryText
     const startedAt = Date.now()
     let toolCallCount = 0
     let runClosed = false
@@ -354,9 +358,9 @@ export async function runIncidentAgent(
               toolStartTimes.set(ev.name, Date.now())
               // Stream callback is sync; persist the event in the background
               // and surface failures via logger rather than blocking the stream.
-              repo.addEvent(incidentId, 'tool_call', { name: ev.name }).catch((e) =>
-                log.warn('addEvent(tool_call) failed:', e)
-              )
+              repo
+                .addEvent(incidentId, 'tool_call', { name: ev.name })
+                .catch((e) => log.warn('addEvent(tool_call) failed:', e))
             } else if (ev.type === 'tool_end') {
               const elapsedMs = Date.now() - (toolStartTimes.get(ev.name) ?? Date.now())
               log.info(

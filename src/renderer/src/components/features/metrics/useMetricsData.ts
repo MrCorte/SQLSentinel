@@ -32,9 +32,10 @@ export interface MetricsData {
 
   rowSelectionModel: GridRowSelectionModel
   setRowSelectionModel: (model: GridRowSelectionModel) => void
-  handleBulkSaveDbFields: (
-    fields: { alias: string | undefined; referente: string | undefined }
-  ) => Promise<{ failed: string[] }>
+  handleBulkSaveDbFields: (fields: {
+    alias: string | undefined
+    referente: string | undefined
+  }) => Promise<{ failed: string[] }>
 
   aliasSuggestions: string[]
   ownerSuggestions: string[]
@@ -56,8 +57,7 @@ export function useMetricsData({ metrics, serverId }: UseMetricsDataParams): Met
   }, [tab, tabKey])
   const [customFields, setCustomFields] = useState<Record<string, DbCustomFields>>({})
   const [editingDb, setEditingDb] = useState<DatabaseInfo | null>(null)
-  const [rowSelectionModel, setRowSelectionModel] =
-    useState<GridRowSelectionModel>(EMPTY_SELECTION)
+  const [rowSelectionModel, setRowSelectionModel] = useState<GridRowSelectionModel>(EMPTY_SELECTION)
   const [snackbar, setSnackbar] = useState<{
     message: string
     severity: 'success' | 'warning' | 'error'
@@ -84,26 +84,24 @@ export function useMetricsData({ metrics, serverId }: UseMetricsDataParams): Met
 
   // Suggestions drawn from all stored custom fields (cross-server, deduplicated)
   const aliasSuggestions = useMemo(
-    () =>
-      [
-        ...new Set(
-          Object.values(customFields)
-            .map((f) => f.alias)
-            .filter((v): v is string => !!v)
-        )
-      ],
+    () => [
+      ...new Set(
+        Object.values(customFields)
+          .map((f) => f.alias)
+          .filter((v): v is string => !!v)
+      )
+    ],
     [customFields]
   )
 
   const ownerSuggestions = useMemo(
-    () =>
-      [
-        ...new Set(
-          Object.values(customFields)
-            .map((f) => f.referente)
-            .filter((v): v is string => !!v)
-        )
-      ],
+    () => [
+      ...new Set(
+        Object.values(customFields)
+          .map((f) => f.referente)
+          .filter((v): v is string => !!v)
+      )
+    ],
     [customFields]
   )
 
@@ -133,41 +131,38 @@ export function useMetricsData({ metrics, serverId }: UseMetricsDataParams): Met
           : databases.map((db) => db.name).filter((n) => !rowSelectionModel.ids.has(n))
       const dbFields: DbCustomFields = { alias: fields.alias, referente: fields.referente }
 
-      const results = await Promise.allSettled(
-        selectedNames.map((dbName) => ipc.setDbCustomFields({ serverId, dbName, fields: dbFields }))
-      )
+      // Singola MERGE batch lato main invece di N chiamate IPC + N MERGE:
+      // l'operazione è atomica, quindi il risultato è all-or-nothing.
+      let ok = false
+      try {
+        const res = await ipc.setDbCustomFieldsBulk({
+          serverId,
+          dbNames: selectedNames,
+          fields: dbFields
+        })
+        ok = res.ok
+      } catch {
+        ok = false
+      }
+      const failed = ok ? [] : selectedNames
 
-      const failed = selectedNames.filter((_, i) => {
-        const r = results[i]
-        return r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok)
-      })
-      const succeeded = selectedNames.filter((_, i) => {
-        const r = results[i]
-        return r.status === 'fulfilled' && r.value.ok
-      })
-
-      if (succeeded.length > 0) {
+      if (ok) {
         setCustomFields((prev) => {
           const next = { ...prev }
-          for (const dbName of succeeded) next[`${serverId}/${dbName}`] = dbFields
+          for (const dbName of selectedNames) next[`${serverId}/${dbName}`] = dbFields
           return next
         })
       }
 
       setRowSelectionModel(EMPTY_SELECTION)
 
-      if (failed.length === 0) {
+      if (ok) {
         setSnackbar({
           message: `${selectedNames.length} database${selectedNames.length !== 1 ? 's' : ''} updated`,
           severity: 'success'
         })
-      } else if (succeeded.length === 0) {
-        setSnackbar({ message: `Failed to update: ${failed.join(', ')}`, severity: 'error' })
       } else {
-        setSnackbar({
-          message: `${succeeded.length} updated, ${failed.length} failed: ${failed.join(', ')}`,
-          severity: 'warning'
-        })
+        setSnackbar({ message: 'Failed to update selected databases', severity: 'error' })
       }
       return { failed }
     },

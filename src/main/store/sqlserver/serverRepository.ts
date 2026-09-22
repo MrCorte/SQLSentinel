@@ -11,6 +11,7 @@ import {
   isEncrypted
 } from '../../utils/safeStorageUtil'
 import { createLogger } from '../../utils/logger'
+import { safeError } from '../../utils/safeLog'
 import type { ServerConnection } from '../../collectors/types'
 
 const log = createLogger('server-repo')
@@ -511,8 +512,7 @@ async function insertRow(s: StoredServer): Promise<void> {
       'remediation_use_windows_auth',
       sql.Bit,
       s.remediationUseWindowsAuth == null ? null : s.remediationUseWindowsAuth ? 1 : 0
-    )
-    .query(`INSERT INTO dbo.servers
+    ).query(`INSERT INTO dbo.servers
       (id, host, port, instance_name, use_windows_auth, username, encrypted_password,
        added_at, last_seen, unreachable, unreachable_since, machine_name,
        ag_group_id, ag_name, ag_role, logical_cpus, physical_cpus, hosting_type, notes,
@@ -636,6 +636,16 @@ export async function update(id: string, patch: Partial<StoredServer>): Promise<
   }
   delete safePatch.ip
 
+  // Ri-valida il formato host anche in update (add() lo fa via validateNewServer).
+  // Senza questo controllo un renderer compromesso potrebbe ripuntare un server
+  // esistente a un endpoint interno (es. 169.254.169.254) mantenendo le
+  // credenziali cifrate: il worker/collector si connetterebbe poi lì.
+  if (typeof safePatch.host === 'string') {
+    if (!IPV4_RE.test(safePatch.host) && !HOSTNAME_RE.test(safePatch.host)) {
+      throw new Error('invalid host')
+    }
+  }
+
   // Filter to known columns and skip no-op fields so we don't burn write I/O.
   const setFragments: string[] = []
   const req = getPool().request().input('id', sql.NVarChar(36), id)
@@ -739,9 +749,7 @@ export async function migrateEncryptCredentials(): Promise<void> {
     // the stored value is plaintext (or corrupted) and needs to be re-encrypted.
     // The previous "looks like base64" heuristic gave false negatives on
     // randomly-generated plaintext passwords.
-    const toMigrate = cache.filter(
-      (s) => s.encryptedPassword && !isEncrypted(s.encryptedPassword)
-    )
+    const toMigrate = cache.filter((s) => s.encryptedPassword && !isEncrypted(s.encryptedPassword))
     if (toMigrate.length === 0) return
     for (const s of toMigrate) {
       const reEncrypted = encrypt(s.encryptedPassword!)
@@ -862,7 +870,8 @@ export async function importFromBackup(json: string): Promise<ImportResult> {
         result.skipped++
       }
     } catch (err) {
-      result.errors.push(`Error importing ${entry.host}:${entry.port}: ${String(err)}`)
+      // safeError striscia i path assoluti prima che l'errore torni al renderer.
+      result.errors.push(`Error importing ${entry.host}:${entry.port}: ${safeError(err)}`)
     }
   }
   return result

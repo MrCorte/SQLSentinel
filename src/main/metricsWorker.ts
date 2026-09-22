@@ -123,6 +123,14 @@ const previousMetrics = new Map<string, ServerMetrics>()
 // Track when each DB first went non-ONLINE: serverId → dbName → ISO 8601 timestamp
 const dbOfflineTimestamps = new Map<string, Map<string, string>>()
 
+// Ultimo failCount notificato via SERVER_HEALTH_UPDATE per ogni server.
+// Serve a deduplicare i push di health: un server sano rieffettuerebbe il push
+// ad ogni poll (con lastSuccess/nextRetry sempre diversi) facendo ricalcolare
+// l'intero HomeDashboard fuori dal throttle di 1s. Notifichiamo solo quando lo
+// stato cambia (transizione sano↔fallito) o mentre il server è in errore (dove
+// il countdown di retry è effettivamente utile in UI).
+const lastHealthFailCount = new Map<string, number>()
+
 // Batch buffer: coalesce per-server metrics pushes.
 // The macroscopic debounce window (BATCH_FLUSH_MS) groups all jobs that
 // complete within that window into a single IPC call — with 30 async I/O jobs
@@ -704,31 +712,34 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
     enqueueBatchPush(sid, delta)
     processAlerts(sid, enrichedMetrics)
 
+    // Persistenze indipendenti (lista DB e conteggio CPU) girano in parallelo:
+    // toccano tabelle/store diversi e prima erano awaited in serie, trattenendo
+    // lo slot di concorrenza del poll più a lungo del necessario.
+
     // Persist database list for instant availability on next startup.
     // Full snapshot: upsert all + remove stale. Delta: upsert only changed + remove dropped.
-    try {
-      if (!delta.isDelta) {
-        await serverDatabasesRepository.upsertDatabases(sid, enrichedMetrics.databases)
-        await serverDatabasesRepository.deleteStale(
-          sid,
-          enrichedMetrics.databases.map((d) => d.name)
-        )
-      } else {
-        if (delta.databases.length > 0) {
-          await serverDatabasesRepository.upsertDatabases(sid, delta.databases)
+    const persistDatabases = (async () => {
+      try {
+        if (!delta.isDelta) {
+          await serverDatabasesRepository.syncFullSnapshot(sid, enrichedMetrics.databases)
+        } else {
+          if (delta.databases.length > 0) {
+            await serverDatabasesRepository.upsertDatabases(sid, delta.databases)
+          }
+          if (delta.removedDbs?.length) {
+            await serverDatabasesRepository.deleteByNames(sid, delta.removedDbs)
+          }
         }
-        if (delta.removedDbs?.length) {
-          await serverDatabasesRepository.deleteByNames(sid, delta.removedDbs)
-        }
+      } catch (err) {
+        log.warn('[worker] persist server_databases:', err)
       }
-    } catch (err) {
-      log.warn('[worker] persist server_databases:', err)
-    }
+    })()
 
     // CPU count persistence — save logicalCpus/physicalCpus to electron-store if changed.
     // These values rarely change (only on hardware upgrade) so the write is infrequent.
-    const { logicalCpus, physicalCpus } = enrichedMetrics.instanceInfo
-    if (logicalCpus > 0) {
+    const persistCpu = (async () => {
+      const { logicalCpus, physicalCpus } = enrichedMetrics.instanceInfo
+      if (logicalCpus <= 0) return
       // CPU update doesn't need the password — use stripped lookup to skip DPAPI.
       const srvRecord = serverStore.getStrippedByIpPort(job.server.ip, job.server.port)
       if (
@@ -740,16 +751,22 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
           { ...srvRecord, logicalCpus, physicalCpus }
         ])
       }
-    }
+    })()
+
+    await Promise.all([persistDatabases, persistCpu])
 
     // AG detection — throttled to every AG_DETECT_EVERY_N polls. Replica
     // roles change only on failover/restart, so detection every ~5 minutes is
     // sufficient; on intermediate cycles we save a dedicated SQL connection
     // per server in the AG.
     if (job.pollCount % AG_DETECT_EVERY_N === 0) {
-      const agTimeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('AG detect timeout')), 30_000)
-      )
+      // Salviamo l'handle del timer di timeout e lo puliamo nel .finally: quando
+      // detectAndSyncReplicaRoles risolve prima, il setTimeout(30s) resterebbe
+      // altrimenti pendente, accumulando handle attivi ad ogni ciclo AG.
+      let agTimeoutHandle: ReturnType<typeof setTimeout> | undefined
+      const agTimeout = new Promise<never>((_, reject) => {
+        agTimeoutHandle = setTimeout(() => reject(new Error('AG detect timeout')), 30_000)
+      })
       Promise.race([detectAndSyncReplicaRoles(job.server), agTimeout])
         .then((updated) => {
           if (updated.length > 0) {
@@ -760,6 +777,7 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
           }
         })
         .catch((err: unknown) => log.warn('[worker] AG sync:', err))
+        .finally(() => clearTimeout(agTimeoutHandle))
     }
 
     // Persist snapshot to SQLite every SAVE_EVERY_N successful polls
@@ -793,17 +811,27 @@ async function runJob(sid: string, job: PollJob): Promise<void> {
       previousMetrics.delete(sid)
       metricsHistory.delete(sid)
       dbOfflineTimestamps.delete(sid)
+      // Non rimuoviamo lastHealthFailCount: il server resta in errore e il
+      // countdown di retry continua a essere pushato ad ogni poll.
     }
   } finally {
     clearTimeout(timeoutHandle)
-    // Always push health state so the UI can show retry info
-    const health: ServerHealthPayload = {
-      serverId: sid,
-      failCount: job.failCount,
-      nextRetry: job.nextRun,
-      lastSuccess: job.lastSuccess
+    // Push health state solo quando è informativo per la UI: allo stato cambia
+    // (transizione sano↔fallito o failCount diverso) oppure mentre il server è
+    // in errore (retry countdown live). Un server stabilmente sano non genera
+    // più un push per ogni poll — che avrebbe rimpiazzato serverHealth/lastUpdate
+    // e fatto ricalcolare l'intero HomeDashboard fuori dal throttle metriche.
+    const prevFail = lastHealthFailCount.get(sid)
+    if (job.failCount !== prevFail || job.failCount > 0) {
+      const health: ServerHealthPayload = {
+        serverId: sid,
+        failCount: job.failCount,
+        nextRetry: job.nextRun,
+        lastSuccess: job.lastSuccess
+      }
+      pushToRenderer(IpcChannel.SERVER_HEALTH_UPDATE, health)
+      lastHealthFailCount.set(sid, job.failCount)
     }
-    pushToRenderer(IpcChannel.SERVER_HEALTH_UPDATE, health)
     // ALERT_NEW is always sent — feeds alertCallback in BackgroundService
   }
 }
@@ -1031,6 +1059,7 @@ export function syncServers(servers: CollectMetricsRequest[]): void {
       previousMetrics.delete(sid)
       metricsHistory.delete(sid)
       dbOfflineTimestamps.delete(sid)
+      lastHealthFailCount.delete(sid)
     }
   }
 

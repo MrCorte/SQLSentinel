@@ -64,9 +64,13 @@ export function useThrottledMetricsMap(): StoreState['metricsMap'] {
 export function useThrottledMetrics(): {
   metricsMap: StoreState['metricsMap']
   summaries: StoreState['summaries']
+  lastUpdate: StoreState['lastUpdate']
 } {
   const snap = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
-  return { metricsMap: snap.metricsMap, summaries: snap.summaries }
+  // lastUpdate viene letto dallo snapshot throttlato (non dallo store diretto):
+  // così il "last updated" della dashboard si aggiorna al più 1/s invece che ad
+  // ogni delta batch, evitando re-render del dashboard fuori dal throttle.
+  return { metricsMap: snap.metricsMap, summaries: snap.summaries, lastUpdate: snap.lastUpdate }
 }
 
 /**

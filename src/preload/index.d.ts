@@ -677,6 +677,11 @@ export interface SqlSentinelAPI {
     dbName: string
     fields: DbCustomFields
   }): Promise<IpcResult<null>>
+  setDbCustomFieldsBulk(req: {
+    serverId: string
+    dbNames: string[]
+    fields: DbCustomFields
+  }): Promise<IpcResult<null>>
   getAllDbCustomFields(): Promise<IpcResult<Record<string, DbCustomFields>>>
   exportCustomFields(): Promise<IpcResult<string>>
   exportInventory(): Promise<IpcResult<string>>

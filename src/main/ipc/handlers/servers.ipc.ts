@@ -3,6 +3,7 @@ import { dialog } from 'electron'
 import { promises as dns } from 'dns'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { handle, safeError, log } from '../handleWrapper'
+import { sanitizeSqlError } from '../../collectors/sqlCollector'
 import { scanSubnet } from '../../discovery/tcpScanner'
 import {
   resolveConnection,
@@ -248,8 +249,10 @@ export function registerServerHandlers(): void {
         const info = await detectServer(req)
         return { ok: true, data: info }
       } catch (err) {
+        // sanitizeSqlError striscia host/credenziali dai messaggi del driver mssql
+        // prima che l'errore attraversi il boundary verso il renderer.
         log.error('[IPC] DETECT_SERVER_INFO:', safeError(err))
-        return { ok: false, error: safeError(err) }
+        return { ok: false, error: sanitizeSqlError(err) }
       }
     }
   )
@@ -266,7 +269,7 @@ export function registerServerHandlers(): void {
         return { ok: true, data: enriched }
       } catch (err) {
         log.error('[IPC] COLLECT_METRICS:', safeError(err))
-        return { ok: false, error: safeError(err) }
+        return { ok: false, error: sanitizeSqlError(err) }
       }
     }
   )

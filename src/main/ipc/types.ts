@@ -42,6 +42,7 @@ export enum IpcChannel {
   SETTINGS_SET = 'settings:set',
   DB_GET_CUSTOM_FIELDS = 'db:get-custom-fields',
   DB_SET_CUSTOM_FIELDS = 'db:set-custom-fields',
+  DB_SET_CUSTOM_FIELDS_BULK = 'db:set-custom-fields-bulk',
   DB_GET_ALL_CUSTOM_FIELDS = 'db:get-all-custom-fields',
   EXPORT_CUSTOM_FIELDS = 'export:customFields',
   EXPORT_INVENTORY = 'export:inventory',
@@ -80,7 +81,6 @@ export enum IpcChannel {
   AUTH_CHECK = 'auth:check',
   AUTH_CHANGE_PASSWORD = 'auth:changePassword',
   // AI assistant (Ollama local)
-  AI_ASK = 'ai:ask',
   AI_CHECK = 'ai:check',
   // AI LangGraph agent (tool calling, local Ollama)
   AI_AGENT_ASK = 'ai:agentAsk',
@@ -371,6 +371,12 @@ export interface DbCustomFieldsGetRequest {
 export interface DbCustomFieldsSetRequest {
   serverId: string
   dbName: string
+  fields: DbCustomFields
+}
+
+export interface DbCustomFieldsSetBulkRequest {
+  serverId: string
+  dbNames: string[]
   fields: DbCustomFields
 }
 

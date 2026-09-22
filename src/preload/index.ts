@@ -19,6 +19,7 @@ import type {
   DbCustomFields,
   DbCustomFieldsGetRequest,
   DbCustomFieldsSetRequest,
+  DbCustomFieldsSetBulkRequest,
   SaveCsvRequest,
   Alert,
   IpcResult,
@@ -647,6 +648,9 @@ const realApi = {
   setDbCustomFields: (req: DbCustomFieldsSetRequest): Promise<IpcResult<null>> =>
     ipcRenderer.invoke(IpcChannel.DB_SET_CUSTOM_FIELDS, req),
 
+  setDbCustomFieldsBulk: (req: DbCustomFieldsSetBulkRequest): Promise<IpcResult<null>> =>
+    ipcRenderer.invoke(IpcChannel.DB_SET_CUSTOM_FIELDS_BULK, req),
+
   getAllDbCustomFields: (): Promise<IpcResult<Record<string, DbCustomFields>>> =>
     ipcRenderer.invoke(IpcChannel.DB_GET_ALL_CUSTOM_FIELDS),
 
@@ -1078,6 +1082,9 @@ const mockApi = {
   setDbCustomFields: (_req: DbCustomFieldsSetRequest): Promise<IpcResult<null>> =>
     Promise.resolve({ ok: true, data: null }),
 
+  setDbCustomFieldsBulk: (_req: DbCustomFieldsSetBulkRequest): Promise<IpcResult<null>> =>
+    Promise.resolve({ ok: true, data: null }),
+
   getAllDbCustomFields: (): Promise<IpcResult<Record<string, DbCustomFields>>> =>
     Promise.resolve({ ok: true, data: {} }),
 
@@ -1349,6 +1356,7 @@ const bridgeApi = {
   sendTestEmail: () => realApi.sendTestEmail(),
   getDbCustomFields: (r: DbCustomFieldsGetRequest) => api.getDbCustomFields(r),
   setDbCustomFields: (r: DbCustomFieldsSetRequest) => api.setDbCustomFields(r),
+  setDbCustomFieldsBulk: (r: DbCustomFieldsSetBulkRequest) => api.setDbCustomFieldsBulk(r),
   getAllDbCustomFields: () => api.getAllDbCustomFields(),
   // File/CSV exports: always real IPC — dialog+writeFile operations
   // do not work in the mock layer (mockApi returns null without opening the dialog)

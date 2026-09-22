@@ -43,10 +43,15 @@ const UPSERT_CHUNK_SIZE = 150
  * would issue 10000 round-trips per polling cycle — this batched version
  * drops the worker-side I/O cost by ~2 orders of magnitude.
  */
-export async function upsertDatabases(serverId: string, databases: DatabaseInfo[]): Promise<void> {
+export async function upsertDatabases(
+  serverId: string,
+  databases: DatabaseInfo[],
+  // Watermark last_seen condiviso: syncFullSnapshot lo passa esplicito per poter
+  // poi eliminare in un colpo solo le righe non toccate da questo upsert.
+  now: number = Math.floor(Date.now() / 1000)
+): Promise<void> {
   if (databases.length === 0) return
   const pool = getPool()
-  const now = Math.floor(Date.now() / 1000)
   for (let off = 0; off < databases.length; off += UPSERT_CHUNK_SIZE) {
     const chunk = databases.slice(off, off + UPSERT_CHUNK_SIZE)
     const req = pool.request().input('server_id', sql.NVarChar(36), serverId)
@@ -118,22 +123,25 @@ export async function deleteByNames(serverId: string, names: string[]): Promise<
 }
 
 /**
- * Delete any databases for a server whose name is not in the current live set.
- * Called after a full snapshot to remove stale entries.
+ * Sincronizza l'intera lista DB di un server da uno snapshot completo: upsert di
+ * tutti i DB correnti + rimozione di quelli spariti, condividendo un unico
+ * watermark `last_seen`.
  *
- * Implemented as fetch-existing + diff-in-JS + chunked deleteByNames rather than
- * a single `NOT IN (...)`: the parameter list would otherwise be unbounded (a
- * server with >2099 DBs would throw the 2100-parameter error, and a NOT IN can't
- * be chunked safely — each chunk would delete names present in other chunks).
+ * Il vecchio deleteStale faceva SELECT di tutti i nomi esistenti + diff in JS +
+ * deleteByNames (una query di LETTURA extra per server ad ogni snapshot nel hot
+ * path di polling). Qui l'upsert marca ogni DB corrente con `last_seen = now`,
+ * quindi una singola DELETE parametrizzata rimuove le righe con `last_seen < now`
+ * — i DB non più presenti — senza round-trip di lettura né rischi di chunking
+ * di un NOT IN.
  */
-export async function deleteStale(serverId: string, currentNames: string[]): Promise<void> {
-  const live = new Set(currentNames)
-  const existing = await getPool()
+export async function syncFullSnapshot(serverId: string, databases: DatabaseInfo[]): Promise<void> {
+  const now = Math.floor(Date.now() / 1000)
+  await upsertDatabases(serverId, databases, now)
+  await getPool()
     .request()
     .input('server_id', sql.NVarChar(36), serverId)
-    .query<{ name: string }>(`SELECT name FROM dbo.server_databases WHERE server_id = @server_id`)
-  const stale = existing.recordset.map((r) => r.name).filter((n) => !live.has(n))
-  await deleteByNames(serverId, stale)
+    .input('cutoff', sql.BigInt, now)
+    .query(`DELETE FROM dbo.server_databases WHERE server_id = @server_id AND last_seen < @cutoff`)
 }
 
 /**
@@ -143,7 +151,12 @@ export async function deleteStale(serverId: string, currentNames: string[]): Pro
 export async function getAllGroupedByServer(): Promise<Record<string, DatabaseInfo[]>> {
   const r = await getPool()
     .request()
-    .query<DbRow>(`SELECT * FROM dbo.server_databases ORDER BY server_id, name`)
+    .query<DbRow>(
+      `SELECT server_id, name, state_desc, recovery_model, size_mb, log_size_mb,
+              compat_level, is_encrypted, is_read_only, owner, create_date, last_seen
+       FROM dbo.server_databases
+       ORDER BY server_id, name`
+    )
   const result: Record<string, DatabaseInfo[]> = {}
   for (const row of r.recordset) {
     if (!result[row.server_id]) result[row.server_id] = []

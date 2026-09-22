@@ -87,6 +87,9 @@ export const getDbCustomFields = (...args: Parameters<typeof api.getDbCustomFiel
 export const setDbCustomFields = (...args: Parameters<typeof api.setDbCustomFields>) =>
   withTimeout(api.setDbCustomFields(...args))
 
+export const setDbCustomFieldsBulk = (...args: Parameters<typeof api.setDbCustomFieldsBulk>) =>
+  withTimeout(api.setDbCustomFieldsBulk(...args))
+
 export const getAllDbCustomFields = () => withTimeout(api.getAllDbCustomFields())
 
 export const exportCustomFields = () => withTimeout(api.exportCustomFields())

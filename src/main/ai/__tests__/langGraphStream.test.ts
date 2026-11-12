@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const mockProviderStream = vi.fn()
 const mockProviderHealth = vi.fn(async () => true)
@@ -17,7 +17,7 @@ vi.mock('../../store/sqlserver/serverRepository', () => ({
 vi.mock('../../store/sqlserver/metricsRepository', () => ({
   findLastNBulk: vi.fn(async () => ({}))
 }))
-vi.mock('../../metricsWorker', () => ({ getAlerts: vi.fn(() => []) }))
+vi.mock('../../metricsWorker', () => ({ getAlerts: vi.fn(() => []), getHistoryAll: vi.fn(() => ({})) }))
 vi.mock('../../store/sqlserver/knowledgeRepository', () => ({
   searchFts: vi.fn(async () => []),
   semanticSearch: vi.fn(async () => [
@@ -26,6 +26,9 @@ vi.mock('../../store/sqlserver/knowledgeRepository', () => ({
   warmupEmbedder: vi.fn(async () => {})
 }))
 vi.mock('../telemetry/telemetryRetrieval', () => ({
+  // match semplice per nome host, sufficiente per i test di scope
+  matchServers: (q: string, servers: { host: string }[]) =>
+    servers.filter((s) => q.toLowerCase().includes(s.host.split('.')[0].toLowerCase())),
   retrieveTelemetry: vi.fn(async (question: string) => ({
     block: /ieri|yesterday/i.test(question)
       ? '[2026-11-11 14:00–15:00] prod01 — blocking up to 6 sessions ⚠ ANOMALIES: blocking'
@@ -39,6 +42,8 @@ vi.mock('../telemetry/telemetryRetrieval', () => ({
 }))
 import { langGraphAsk, langGraphStream, abortActiveStream } from '../langGraphAgent'
 import { getRecentTraces } from '../ragTrace'
+import * as serverStore from '../../store/sqlserver/serverRepository'
+import * as metricsRepository from '../../store/sqlserver/metricsRepository'
 import type { AiStreamEvent } from '../../ipc/types'
 
 beforeEach(() => {
@@ -140,6 +145,58 @@ describe('langGraphStream', () => {
     await langGraphStream('show blocking sessions', [], () => {})
     const systemPrompt = mockProviderStream.mock.calls[0][0].systemPrompt as string
     expect(systemPrompt).not.toContain('<<TELEMETRY_HISTORY>>')
+  })
+
+  describe('scoped context (prompt size)', () => {
+    const mkServer = (i: number) => ({ id: `id-${i}`, host: `srv${i}.corp`, port: 1433 })
+    const mkSnap = (cpu: number, blocked = 0) => ({
+      collectedAt: new Date(),
+      instanceInfo: { cpuUsagePercent: cpu, memoryUsedMb: 1, memoryTargetMb: 2 },
+      activeSessions: Array.from({ length: blocked }, () => ({ blockingSessionId: 1 })),
+      databases: [],
+      topQueries: [
+        { queryText: 'SELECT heavy FROM t', executionCount: 5, totalElapsedTimeMs: 999, avgCpuTimeMs: 10 }
+      ]
+    })
+
+    beforeEach(() => {
+      const servers = Array.from({ length: 8 }, (_, i) => mkServer(i))
+      vi.mocked(serverStore.getAllStripped).mockReturnValue(servers as never)
+      const bulk: Record<string, unknown[]> = {}
+      servers.forEach((s, i) => (bulk[s.id] = [mkSnap(i === 3 ? 95 : 10, i === 5 ? 4 : 0)]))
+      vi.mocked(metricsRepository.findLastNBulk).mockResolvedValue(bulk as never)
+    })
+
+    afterEach(() => {
+      vi.mocked(serverStore.getAllStripped).mockReturnValue([])
+      vi.mocked(metricsRepository.findLastNBulk).mockResolvedValue({})
+    })
+
+    it('fleet-wide: lists only servers with issues plus a summary, in one storage read', async () => {
+      await langGraphStream('show blocking sessions', [], () => {})
+      const prompt = mockProviderStream.mock.calls[0][0].systemPrompt as string
+      expect(prompt).toContain('srv3.corp:1433')
+      expect(prompt).toContain('srv5.corp:1433')
+      expect(prompt).not.toContain('srv1.corp:1433')
+      expect(prompt).toContain('6 healthy (not listed)')
+      // metrics + slow queries share a single read
+      expect(metricsRepository.findLastNBulk).toHaveBeenCalledTimes(1)
+    })
+
+    it('skips SLOW_QUERIES for non-performance questions', async () => {
+      await langGraphStream('show blocking sessions', [], () => {})
+      const prompt = mockProviderStream.mock.calls[0][0].systemPrompt as string
+      expect(prompt).not.toContain('<<SLOW_QUERIES>>')
+    })
+
+    it('includes SLOW_QUERIES for performance questions, scoped to the named server', async () => {
+      await langGraphStream('perché srv2 è lento?', [], () => {})
+      const prompt = mockProviderStream.mock.calls[0][0].systemPrompt as string
+      expect(prompt).toContain('<<SLOW_QUERIES>>')
+      expect(prompt).toContain('srv2.corp:1433')
+      expect(prompt).not.toContain('srv3.corp:1433')
+      expect(metricsRepository.findLastNBulk).toHaveBeenCalledWith(['id-2'], 1)
+    })
   })
 
   it('emits error event when LLM stream throws', async () => {

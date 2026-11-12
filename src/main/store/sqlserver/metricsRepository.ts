@@ -210,15 +210,22 @@ export async function findLastNBulk(
     .request()
     .input('serverIds', sql.NVarChar(sql.MAX), safe.join(','))
     .input('n', sql.Int, n).query<SnapshotRow>(`
-      SELECT id, server_id, collected_at, metrics_json
-      FROM (
-        SELECT id, server_id, collected_at, metrics_json,
-               ROW_NUMBER() OVER (PARTITION BY server_id ORDER BY collected_at DESC) AS rn
-        FROM dbo.metrics_snapshots
-        WHERE server_id IN (SELECT value FROM STRING_SPLIT(@serverIds, ','))
-      ) ranked
-      WHERE rn <= @n
-      ORDER BY server_id, collected_at ASC`)
+      -- Top-N-per-group con CROSS APPLY: per ogni server un seek sul clustered
+      -- (server_id, collected_at DESC) che legge solo le @n righe più recenti.
+      -- La versione precedente (ROW_NUMBER() OVER (PARTITION BY ...) + rn <= @n)
+      -- doveva leggere TUTTE le righe della retention di quei server — con il
+      -- loro metrics_json — per tenerne una. Il CAST a NVARCHAR(36) allinea il
+      -- tipo alla colonna, così il predicato resta sargable.
+      SELECT t.id, t.server_id, t.collected_at, t.metrics_json
+      FROM (SELECT DISTINCT CAST(value AS NVARCHAR(36)) AS server_id
+              FROM STRING_SPLIT(@serverIds, ',')) ids
+      CROSS APPLY (
+        SELECT TOP (@n) s.id, s.server_id, s.collected_at, s.metrics_json
+          FROM dbo.metrics_snapshots s
+         WHERE s.server_id = ids.server_id
+         ORDER BY s.collected_at DESC
+      ) t
+      ORDER BY t.server_id, t.collected_at ASC`)
   const result: Record<string, ServerMetrics[]> = {}
   for (const row of r.recordset) {
     if (!result[row.server_id]) result[row.server_id] = []

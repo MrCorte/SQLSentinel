@@ -1,6 +1,7 @@
 import type { AiStreamEvent } from '../ipc/types'
 import * as serverStore from '../store/sqlserver/serverRepository'
-import * as metricsRepository from '../store/sqlserver/metricsRepository'
+import type { StoredServer } from '../store/sqlserver/serverRepository'
+import { loadLatestSnapshots, type LatestSnapshots } from './liveSnapshot'
 import { getAlerts } from '../metricsWorker'
 import { searchFts, semanticSearch, warmupEmbedder } from '../store/sqlserver/knowledgeRepository'
 import { findSimilar as findSimilarFeedback } from './feedbackIndex'
@@ -19,7 +20,7 @@ import { buildServerActionTools } from './actionTools'
 import { toolDefinitionFromDynamicTool } from '../incidents/incidentAgent'
 import { getRawSetting } from '../store/sqlserver/settingsRepository'
 import { startTrace, type RagTraceRecorder } from './ragTrace'
-import { retrieveTelemetry, type TelemetryRetrieval } from './telemetry/telemetryRetrieval'
+import { retrieveTelemetry, matchServers, type TelemetryRetrieval } from './telemetry/telemetryRetrieval'
 import type { RagBlockStat } from '../ipc/types'
 
 const log = createLogger('ai')
@@ -76,15 +77,42 @@ export interface AgentHistory {
 // Tool implementations (standalone — no side-effects, no module-level state)
 // ---------------------------------------------------------------------------
 
-async function getServerMetricsImpl(): Promise<string> {
-  const servers = serverStore.getAllStripped()
-  const ids = servers.map((s) => s.id)
-  const bulk = await metricsRepository.findLastNBulk(ids, 1)
-  const result = servers.map((s) => {
-    const snaps = bulk[s.id]
-    const snap = snaps && snaps.length > 0 ? snaps[0] : undefined
+// Contesto per-richiesta: scope (quali server) + UNA lettura degli ultimi
+// snapshot, condivisa da get_server_metrics e get_slow_queries.
+interface RequestScope {
+  all: StoredServer[]
+  /** Server in scope: nominati nella domanda > server selezionato. [] = fleet. */
+  scoped: StoredServer[]
+  latest: Promise<LatestSnapshots>
+}
+
+function buildRequestScope(question: string, targetServerId?: string): RequestScope {
+  const all = serverStore.getAllStripped()
+  const mentioned = matchServers(question, all)
+  const scoped =
+    mentioned.length > 0 ? mentioned : targetServerId ? all.filter((s) => s.id === targetServerId) : []
+  const target = scoped.length > 0 ? scoped : all
+  const latest = loadLatestSnapshots(target)
+  // Evita "unhandled rejection" se nessun tool arriva ad attendere la promise
+  latest.catch(() => undefined)
+  return { all, scoped, latest }
+}
+
+function serverLabelOf(s: StoredServer): string {
+  return `${s.host ?? s.ip}:${s.port}`
+}
+
+// Sotto questa soglia la fleet è piccola: elencare tutti i server costa poco.
+const FLEET_LIST_ALL_MAX = 3
+const FLEET_INTERESTING_MAX = 10
+
+async function getServerMetricsImpl(scope: RequestScope): Promise<string> {
+  const { byId } = await scope.latest
+  const target = scope.scoped.length > 0 ? scope.scoped : scope.all
+  const rows = target.map((s) => {
+    const snap = byId.get(s.id)
     return {
-      server: `${s.host ?? s.ip}:${s.port}`,
+      server: serverLabelOf(s),
       unreachable: s.unreachable ?? false,
       cpu: snap?.instanceInfo.cpuUsagePercent ?? null,
       memUsedMb: snap?.instanceInfo.memoryUsedMb ?? null,
@@ -93,14 +121,34 @@ async function getServerMetricsImpl(): Promise<string> {
       offlineDbs: snap?.databases.filter((d) => d.stateDesc !== 'ONLINE').map((d) => d.name) ?? []
     }
   })
-  return JSON.stringify(result)
+  if (scope.scoped.length > 0 || rows.length <= FLEET_LIST_ALL_MAX) return JSON.stringify(rows)
+
+  // Fleet-wide: solo i server "interessanti" + una riga di riepilogo. Mandare
+  // 40 server sani a ogni domanda costa secondi di prefill e non aggiunge nulla.
+  const interesting = rows.filter(
+    (r) => r.unreachable || (r.cpu ?? 0) >= 70 || r.blockingSessions > 0 || r.offlineDbs.length > 0
+  )
+  const out: unknown[] = interesting.slice(0, FLEET_INTERESTING_MAX)
+  const maxCpu = Math.max(0, ...rows.map((r) => r.cpu ?? 0))
+  out.push({
+    fleetSummary: `${rows.length} servers monitored; ${rows.length - interesting.length} healthy (not listed); max CPU ${Math.round(maxCpu)}%${
+      interesting.length > FLEET_INTERESTING_MAX ? `; ${interesting.length - FLEET_INTERESTING_MAX} more with issues not listed` : ''
+    }`
+  })
+  return JSON.stringify(out)
 }
 
-async function getRecentAlertsImpl(): Promise<string> {
+async function getRecentAlertsImpl(scope: RequestScope): Promise<string> {
   const cutoff = Date.now() - 86400000
+  // dbo.alerts / worker usano la chiave "host:port", non l'UUID del registry
+  const keys =
+    scope.scoped.length > 0
+      ? new Set(scope.scoped.flatMap((s) => [`${s.host}:${s.port}`, s.ip ? `${s.ip}:${s.port}` : '']))
+      : null
   const alerts = getAlerts()
     .filter((a) => new Date(a.detectedAt).getTime() >= cutoff)
-    .slice(-20)
+    .filter((a) => !keys || keys.has(a.serverId))
+    .slice(-(keys ? 20 : 12))
     .map((a) => ({
       server: a.serverId,
       category: a.category,
@@ -111,32 +159,37 @@ async function getRecentAlertsImpl(): Promise<string> {
   return JSON.stringify(alerts)
 }
 
-async function getSlowQueriesImpl(): Promise<string> {
-  const servers = serverStore.getAllStripped()
-  const ids = servers.map((s) => s.id)
-  const bulk = await metricsRepository.findLastNBulk(ids, 1)
-  const queries = Object.entries(bulk).flatMap(([serverId, snaps]) => {
-    const snap = snaps && snaps.length > 0 ? snaps[0] : undefined
-    const srv = servers.find((s) => s.id === serverId)
-    const label = srv ? `${srv.host ?? srv.ip}:${srv.port}` : serverId
-    return (snap?.topQueries ?? []).map((q) => ({
-      server: label,
+// Le top query servono solo per domande di performance (o quando il server in
+// scope è sotto carico): per "dammi la query del blocking" sono rumore.
+const PERF_QUESTION_RE =
+  /\b(lent[aeio]|slow\w*|performance|prestazion\w*|cpu|tuning|ottimizz\w*|optimi[sz]\w*|elapsed|durata|carico|load|pesant[ei]|heavy|expensive|costos[ae]|logical reads|letture)\b|\btop\s+quer/i
+
+export function wantsSlowQueries(question: string): boolean {
+  return PERF_QUESTION_RE.test(question)
+}
+
+async function getSlowQueriesImpl(scope: RequestScope, question: string): Promise<string> {
+  const { byId } = await scope.latest
+  const target = scope.scoped.length > 0 ? scope.scoped : scope.all
+  const underLoad = scope.scoped.some((s) => (byId.get(s.id)?.instanceInfo.cpuUsagePercent ?? 0) >= 70)
+  if (!wantsSlowQueries(question) && !underLoad) return '[]'
+  const queries = target.flatMap((s) =>
+    (byId.get(s.id)?.topQueries ?? []).map((q) => ({
+      server: serverLabelOf(s),
       queryText: q.queryText.slice(0, 150),
       executionCount: q.executionCount,
       totalElapsedTimeMs: q.totalElapsedTimeMs,
       avgCpuTimeMs: q.avgCpuTimeMs
     }))
-  })
+  )
   queries.sort((a, b) => b.totalElapsedTimeMs - a.totalElapsedTimeMs)
-  return JSON.stringify(queries.slice(0, 10))
+  return JSON.stringify(queries.slice(0, scope.scoped.length > 0 ? 10 : 5))
 }
 
-async function getServerNotesImpl(): Promise<string> {
+async function getServerNotesImpl(scope: RequestScope): Promise<string> {
+  const target = scope.scoped.length > 0 ? scope.scoped : scope.all
   return JSON.stringify(
-    serverStore
-      .getAllStripped()
-      .filter((s) => s.notes)
-      .map((s) => ({ host: s.host ?? s.ip, notes: s.notes }))
+    target.filter((s) => s.notes).map((s) => ({ host: s.host ?? s.ip, notes: s.notes }))
   )
 }
 
@@ -613,6 +666,7 @@ export async function langGraphStream(
     // Step 1 — call tools in parallel; partial failures return empty results so the LLM
     // still gets useful context from the tools that succeeded
     const targetServerId = options?.targetServerId
+    const scope = buildRequestScope(question, targetServerId)
     const schemaPromise = targetServerId
       ? invokeWithEvent(
           'get_target_schema',
@@ -633,8 +687,8 @@ export async function langGraphStream(
     }
     const [metricsResult, alertsResult, knowledgeResult, slowQueriesResult, notesResult, pastExamplesResult, schemaResult, telemetryResult] =
       await Promise.allSettled([
-        invokeWithEvent('get_server_metrics', getServerMetricsImpl, onEvent, undefined, trace),
-        invokeWithEvent('get_recent_alerts', getRecentAlertsImpl, onEvent, undefined, trace),
+        invokeWithEvent('get_server_metrics', () => getServerMetricsImpl(scope), onEvent, undefined, trace),
+        invokeWithEvent('get_recent_alerts', () => getRecentAlertsImpl(scope), onEvent, undefined, trace),
         invokeWithEvent(
           'knowledge_retrieval',
           () => knowledgeRetrievalImpl(question),
@@ -642,8 +696,14 @@ export async function langGraphStream(
           (r) => r.display,
           trace
         ),
-        invokeWithEvent('get_slow_queries', getSlowQueriesImpl, onEvent, undefined, trace),
-        invokeWithEvent('get_server_notes', getServerNotesImpl, onEvent, undefined, trace),
+        invokeWithEvent(
+          'get_slow_queries',
+          () => getSlowQueriesImpl(scope, question),
+          onEvent,
+          (r) => (r === '[]' ? '(skipped: not a performance question)' : r),
+          trace
+        ),
+        invokeWithEvent('get_server_notes', () => getServerNotesImpl(scope), onEvent, undefined, trace),
         invokeWithEvent(
           'past_examples',
           () => pastExamplesImpl(question),

@@ -1,5 +1,5 @@
 import { ChatOllama } from '@langchain/ollama'
-import { HumanMessage, AIMessage, SystemMessage, ToolMessage } from '@langchain/core/messages'
+import { HumanMessage, AIMessage, AIMessageChunk, SystemMessage, ToolMessage } from '@langchain/core/messages'
 import { OLLAMA_HOST, checkOllamaHealth } from '../ollama'
 import { DEFAULT_OLLAMA_MODEL } from './defaults'
 import { withRetry } from '../retry'
@@ -87,25 +87,44 @@ export class OllamaProvider implements LlmProvider {
         return
       }
 
-      const response = await withRetry(() => (llm as ChatOllama).invoke(lcMessages, { signal }))
-      const usage = (response as { usage_metadata?: { input_tokens?: number; output_tokens?: number } })
-        .usage_metadata
+      // Streaming reale: i token arrivano alla UI mentre il modello li genera
+      // (prima si usava invoke(), che aspettava la risposta COMPLETA e poi la
+      // "fingeva" in streaming carattere per carattere → time-to-first-token =
+      // tempo totale di generazione).
+      // Il retry copre solo l'apertura dello stream (connessione/5xx): dopo il
+      // primo token non si può ritentare senza duplicare testo nella UI.
+      const stream = await withRetry(() => (llm as ChatOllama).stream(lcMessages, { signal }))
+      let response: AIMessageChunk | undefined
+      for await (const chunk of stream) {
+        if (signal.aborted) break
+        // Stessa aggregazione che ChatOllama._generate fa internamente:
+        // concat() unisce testo, tool_call_chunks e usage_metadata.
+        response = response ? response.concat(chunk) : chunk
+        const text = extractText(chunk.content)
+        if (text) onEvent({ type: 'token', text })
+      }
+      if (signal.aborted) {
+        onEvent({ type: 'error', message: 'Cancelled' })
+        return
+      }
+      if (!response) {
+        onEvent({ type: 'done' })
+        return
+      }
+
+      const usage = response.usage_metadata
       if (usage) {
         req.onUsage?.({ tokensIn: usage.input_tokens ?? 0, tokensOut: usage.output_tokens ?? 0 })
       }
 
-      const toolCalls = Array.isArray((response as { tool_calls?: unknown[] }).tool_calls)
-        ? (response as { tool_calls: { name: string; args: Record<string, unknown>; id?: string }[] }).tool_calls
-        : []
+      const toolCalls = (response.tool_calls ?? []) as {
+        name: string
+        args: Record<string, unknown>
+        id?: string
+      }[]
 
       if (toolCalls.length === 0) {
-        // Risposta finale — streamma i token
-        const text = extractText(response.content)
-        if (text) {
-          for (const char of text) {
-            onEvent({ type: 'token', text: char })
-          }
-        }
+        // Risposta finale — il testo è già stato inviato token per token
         onEvent({ type: 'done' })
         return
       }

@@ -39,6 +39,7 @@ import {
 } from './store/sqlserver/knowledgeRepository'
 import { preWarm as preWarmFeedbackIndex } from './ai/feedbackIndex'
 import { setTracePersister } from './ai/ragTrace'
+import { startDigestJob, stopDigestJob } from './ai/telemetry/digestJob'
 import {
   insertTrace as insertRagTrace,
   setTraceFeedback as setRagTraceFeedback,
@@ -423,6 +424,9 @@ app.whenReady().then(async () => {
       if (n > 0) log.info(`[main] purged ${n} RAG trace(s) past retention`)
     })
     .catch((err) => log.warn('[main] purgeOldRagTraces:', redactError(err)))
+  // Observability RAG — rollup orario degli snapshot in digest interrogabili
+  // dall'assistente (backfill 7 giorni, poi incrementale ogni 10 minuti).
+  startDigestJob()
 
   setPushHandler((channel, data) => {
     BrowserWindow.getAllWindows().forEach((w) => {
@@ -547,6 +551,7 @@ app.whenReady().then(async () => {
 })
 
 function cleanupResources(): void {
+  stopDigestJob()
   if (healthCheckIntervalId !== null) {
     clearInterval(healthCheckIntervalId)
     healthCheckIntervalId = null

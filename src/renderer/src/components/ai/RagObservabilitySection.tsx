@@ -228,7 +228,9 @@ function TraceDetail({ trace }: { trace: RagTrace }): React.JSX.Element {
                   <Box component="span" sx={{ color: tokens.color.textMuted }}>
                     {h.source === 'kb'
                       ? `KB · ${h.via ?? ''} · rrf ${fmtScore(h.score, 4)}`
-                      : `example · cos ${fmtScore(h.score)}`}
+                      : h.source === 'telemetry'
+                        ? 'telemetry'
+                        : `example · cos ${fmtScore(h.score)}`}
                   </Box>{' '}
                   {h.title}
                 </Typography>

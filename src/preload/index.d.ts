@@ -608,7 +608,7 @@ export interface RagSpan {
   detail?: string
 }
 export interface RagRetrievalHit {
-  source: 'kb' | 'example'
+  source: 'kb' | 'example' | 'telemetry'
   title: string
   score: number
   via?: 'fts' | 'semantic' | 'both'

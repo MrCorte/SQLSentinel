@@ -25,6 +25,18 @@ vi.mock('../../store/sqlserver/knowledgeRepository', () => ({
   ]),
   warmupEmbedder: vi.fn(async () => {})
 }))
+vi.mock('../telemetry/telemetryRetrieval', () => ({
+  retrieveTelemetry: vi.fn(async (question: string) => ({
+    block: /ieri|yesterday/i.test(question)
+      ? '[2026-11-11 14:00–15:00] prod01 — blocking up to 6 sessions ⚠ ANOMALIES: blocking'
+      : '',
+    display: 'mock telemetry',
+    temporal: /ieri|yesterday/i.test(question),
+    windowDigests: 1,
+    anomalous: 1,
+    precedents: []
+  }))
+}))
 import { langGraphAsk, langGraphStream, abortActiveStream } from '../langGraphAgent'
 import { getRecentTraces } from '../ragTrace'
 import type { AiStreamEvent } from '../../ipc/types'
@@ -109,6 +121,25 @@ describe('langGraphStream', () => {
     const trace = getRecentTraces().find((t) => t.id === traceId)
     expect(trace?.status).toBe('error')
     expect(trace?.error).toBe('Provider down')
+  })
+
+  it('injects <<TELEMETRY_HISTORY>> for temporal questions and calls the telemetry tool', async () => {
+    const events: AiStreamEvent[] = []
+    await langGraphStream('perché ieri era lento?', [], (e) => events.push(e))
+
+    const toolNames = events.filter((e) => e.type === 'tool_start').map((e) => (e as { name: string }).name)
+    expect(toolNames).toContain('telemetry_history')
+    const systemPrompt = mockProviderStream.mock.calls[0][0].systemPrompt as string
+    expect(systemPrompt).toContain('<<TELEMETRY_HISTORY>>')
+    expect(systemPrompt).toContain('blocking up to 6 sessions')
+    // blocco temporale vicino alla fine: dopo SERVER_METRICS/RECENT_ALERTS se presenti
+    expect(systemPrompt.indexOf('<<TELEMETRY_HISTORY>>')).toBeGreaterThan(systemPrompt.indexOf('Context:'))
+  })
+
+  it('omits <<TELEMETRY_HISTORY>> when the retriever has nothing', async () => {
+    await langGraphStream('show blocking sessions', [], () => {})
+    const systemPrompt = mockProviderStream.mock.calls[0][0].systemPrompt as string
+    expect(systemPrompt).not.toContain('<<TELEMETRY_HISTORY>>')
   })
 
   it('emits error event when LLM stream throws', async () => {

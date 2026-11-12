@@ -225,7 +225,7 @@ export interface RagSpan {
 }
 
 export interface RagRetrievalHit {
-  source: 'kb' | 'example'
+  source: 'kb' | 'example' | 'telemetry'
   title: string
   /** RRF score for KB hits, cosine similarity for few-shot examples. */
   score: number

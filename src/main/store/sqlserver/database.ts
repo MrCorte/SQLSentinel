@@ -155,6 +155,40 @@ const TABLE_DDL: Array<{ name: string; sql: string }> = [
      )`
   },
   {
+    // Observability RAG — rollup orario per server degli snapshot di
+    // metrics_snapshots (+ alert e incident dell'ora). È la "memoria storica"
+    // che l'assistente AI interroga: le feature sono colonne tipizzate
+    // (aggregabili), digest_text è ciò che legge l'LLM, embedding (768-dim
+    // nomic-embed-text, VARBINARY come knowledge_embeddings) serve per trovare
+    // episodi simili nel passato. Retention indipendente (più lunga) dei raw.
+    name: 'telemetry_digests',
+    sql: `CREATE TABLE dbo.telemetry_digests (
+       id                 NVARCHAR(36)  NOT NULL CONSTRAINT PK_telemetry_digests PRIMARY KEY NONCLUSTERED,
+       server_id          NVARCHAR(36)  NOT NULL,
+       bucket_start       DATETIME2(0)  NOT NULL,
+       bucket_end         DATETIME2(0)  NOT NULL,
+       snapshot_count     INT           NOT NULL,
+       cpu_avg            DECIMAL(5,1)  NULL,
+       cpu_max            DECIMAL(5,1)  NULL,
+       mem_pct_avg        DECIMAL(5,1)  NULL,
+       blocking_max       INT           NOT NULL,
+       longest_block_ms   BIGINT        NOT NULL,
+       disk_min_free_pct  DECIMAL(5,1)  NULL,
+       offline_db_count   INT           NOT NULL,
+       alert_count        INT           NOT NULL,
+       critical_alerts    INT           NOT NULL,
+       incident_count     INT           NOT NULL,
+       restart_detected   BIT           NOT NULL,
+       top_waits_json     NVARCHAR(MAX) NOT NULL,
+       anomaly_flags      NVARCHAR(400) NOT NULL,
+       anomaly_score      INT           NOT NULL,
+       digest_text        NVARCHAR(MAX) NOT NULL,
+       embedding          VARBINARY(MAX) NULL,
+       created_at         DATETIME2(0)  NOT NULL CONSTRAINT DF_telemetry_digests_created DEFAULT SYSUTCDATETIME(),
+       CONSTRAINT UQ_telemetry_digests_bucket UNIQUE CLUSTERED (server_id, bucket_start)
+     )`
+  },
+  {
     // Dynamic overlay on the hardcoded TSQL_MAP — promoted patterns the user
     // has approved via the Settings UI. lookupTsqlMap checks this table first.
     name: 'ai_tsql_map',
@@ -362,6 +396,12 @@ const INDEX_DDL: Array<{ table: string; name: string; sql: string }> = [
     table: 'ai_rag_traces',
     name: 'CX_ai_rag_traces_created',
     sql: `CREATE CLUSTERED INDEX CX_ai_rag_traces_created ON dbo.ai_rag_traces(created_at)`
+  },
+  {
+    // Retention (DELETE per bucket_start) e ricerca "episodi anomali" fleet-wide.
+    table: 'telemetry_digests',
+    name: 'IX_telemetry_digests_bucket',
+    sql: `CREATE INDEX IX_telemetry_digests_bucket ON dbo.telemetry_digests(bucket_start) INCLUDE (anomaly_score)`
   },
   {
     table: 'sessions',

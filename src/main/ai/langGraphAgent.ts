@@ -19,6 +19,7 @@ import { buildServerActionTools } from './actionTools'
 import { toolDefinitionFromDynamicTool } from '../incidents/incidentAgent'
 import { getRawSetting } from '../store/sqlserver/settingsRepository'
 import { startTrace, type RagTraceRecorder } from './ragTrace'
+import { retrieveTelemetry, type TelemetryRetrieval } from './telemetry/telemetryRetrieval'
 import type { RagBlockStat } from '../ipc/types'
 
 const log = createLogger('ai')
@@ -33,6 +34,7 @@ Rules:
 - T-SQL queries come ONLY from PREDEFINED_QUERY, KNOWLEDGE, or PAST_EXAMPLES blocks. Copy them VERBATIM. Never invent or modify queries.
 - PAST_EXAMPLES are real past answers the user marked as helpful — prefer them when the current question is very similar.
 - TARGET_SCHEMA (when present) lists the actual tables/views on the connected server. NEVER invent table or column names — use only what TARGET_SCHEMA shows. If a needed object isn't listed, say so.
+- TELEMETRY_HISTORY (when present) holds hourly digests computed from this app's stored monitoring snapshots, alerts and incidents, plus the server's usual behaviour and similar past episodes. Use it for any question about the past, trends, "is this normal?" or recurrences. Quote time windows and numbers exactly as written; never invent metrics for hours that are not listed. When a similar past episode has a root cause, mention it as a likely lead.
 - WAIT_STATS_REFERENCE (when present) is the authoritative explanation for any wait_type mentioned. Use it for diagnosis.
 - SELECT-only. No DML (INSERT/UPDATE/DELETE/DROP/EXEC).
 - If no relevant query exists in the context, say so in one sentence.
@@ -621,7 +623,15 @@ export async function langGraphStream(
         )
       : Promise.resolve('')
 
-    const [metricsResult, alertsResult, knowledgeResult, slowQueriesResult, notesResult, pastExamplesResult, schemaResult] =
+    const emptyTelemetry: TelemetryRetrieval = {
+      block: '',
+      display: '',
+      temporal: false,
+      windowDigests: 0,
+      anomalous: 0,
+      precedents: []
+    }
+    const [metricsResult, alertsResult, knowledgeResult, slowQueriesResult, notesResult, pastExamplesResult, schemaResult, telemetryResult] =
       await Promise.allSettled([
         invokeWithEvent('get_server_metrics', getServerMetricsImpl, onEvent, undefined, trace),
         invokeWithEvent('get_recent_alerts', getRecentAlertsImpl, onEvent, undefined, trace),
@@ -641,7 +651,14 @@ export async function langGraphStream(
           (r) => r.display,
           trace
         ),
-        schemaPromise
+        schemaPromise,
+        invokeWithEvent(
+          'telemetry_history',
+          () => retrieveTelemetry(question, targetServerId),
+          onEvent,
+          (r) => r.display,
+          trace
+        )
       ])
     const metrics      = metricsResult.status      === 'fulfilled' ? metricsResult.value      : '[]'
     const alerts       = alertsResult.status       === 'fulfilled' ? alertsResult.value       : '[]'
@@ -652,6 +669,7 @@ export async function langGraphStream(
     const notes        = notesResult.status        === 'fulfilled' ? notesResult.value        : '[]'
     const pastExamples = pastExamplesResult.status === 'fulfilled' ? pastExamplesResult.value : { display: '', examples: [] as PastExamplesResult['examples'] }
     const targetSchema = schemaResult.status       === 'fulfilled' ? schemaResult.value       : ''
+    const telemetry    = telemetryResult.status    === 'fulfilled' ? telemetryResult.value    : emptyTelemetry
 
     trace.markRetrievalDone()
     trace.recordKnowledge({
@@ -661,6 +679,7 @@ export async function langGraphStream(
       fused: knowledge.fused
     })
     trace.recordExamples(pastExamples.examples)
+    trace.recordTelemetry(telemetry.windowDigests, telemetry.anomalous, telemetry.precedents)
 
     if (controller.signal.aborted) {
       onEvent({ type: 'error', message: 'Cancelled' })
@@ -697,6 +716,14 @@ export async function langGraphStream(
       contextParts.push(`<<SERVER_NOTES>>\n${notes}\n<<END_SERVER_NOTES>>`)
     }
 
+    // Storico della telemetria: se la domanda è "temporale" (ieri, stanotte,
+    // è normale?, è già successo?) va vicino alla fine — priorità alta sotto
+    // pressione di budget; altrimenti resta contesto di sfondo.
+    const telemetryBlock = telemetry.block
+      ? `<<TELEMETRY_HISTORY>>\n${telemetry.block}\n<<END_TELEMETRY_HISTORY>>`
+      : ''
+    if (telemetryBlock && !telemetry.temporal) contextParts.push(telemetryBlock)
+
     if (targetSchema && targetSchema.length > 0) {
       contextParts.push(
         `<<TARGET_SCHEMA>>\nObjects available on the currently selected server (use only these table/view names — do not invent):\n${targetSchema.slice(0, 2500)}\n<<END_TARGET_SCHEMA>>`
@@ -713,6 +740,8 @@ export async function langGraphStream(
         contextParts.push(`<<WAIT_STATS_REFERENCE>>\n${block}\n<<END_WAIT_STATS_REFERENCE>>`)
       }
     }
+
+    if (telemetryBlock && telemetry.temporal) contextParts.push(telemetryBlock)
 
     if (knowledge.fused.length > 0) {
       const knowledgeBlock = knowledge.fused

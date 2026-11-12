@@ -26,6 +26,27 @@ export async function getQueryEmbedding(query: string): Promise<Float32Array> {
     return cached
   }
 
+  const vec = await fetchEmbedding(query)
+
+  // LRU eviction — drop oldest when over capacity
+  if (_queryCache.size >= QUERY_CACHE_MAX) {
+    const oldest = _queryCache.keys().next().value
+    if (oldest !== undefined) _queryCache.delete(oldest)
+  }
+  _queryCache.set(query, vec)
+  return vec
+}
+
+/**
+ * Embedding for a document being indexed (e.g. telemetry digests). Bypasses
+ * the query LRU: documents are embedded once and stored, so caching them would
+ * only evict genuinely repeated user queries.
+ */
+export async function embedDocument(text: string): Promise<Float32Array> {
+  return fetchEmbedding(text)
+}
+
+async function fetchEmbedding(input: string): Promise<Float32Array> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), EMBED_TIMEOUT_MS)
   let resp: Response
@@ -33,7 +54,7 @@ export async function getQueryEmbedding(query: string): Promise<Float32Array> {
     resp = await fetch(OLLAMA_EMBED_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: EMBED_MODEL, input: [query] }),
+      body: JSON.stringify({ model: EMBED_MODEL, input: [input] }),
       signal: controller.signal
     })
   } catch (err) {
@@ -55,15 +76,7 @@ export async function getQueryEmbedding(query: string): Promise<Float32Array> {
   if (!Array.isArray(embeddings) || embeddings.length === 0) {
     throw new Error('Ollama embed: unexpected response shape')
   }
-  const vec = new Float32Array(embeddings[0])
-
-  // LRU eviction — drop oldest when over capacity
-  if (_queryCache.size >= QUERY_CACHE_MAX) {
-    const oldest = _queryCache.keys().next().value
-    if (oldest !== undefined) _queryCache.delete(oldest)
-  }
-  _queryCache.set(query, vec)
-  return vec
+  return new Float32Array(embeddings[0])
 }
 
 // Warm the embedder so the first real query doesn't pay the model load

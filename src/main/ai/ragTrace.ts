@@ -165,7 +165,25 @@ export class RagTraceRecorder {
     this.exampleTopScore = examples.length > 0 ? Math.max(...examples.map((e) => e.score)) : null
   }
 
-  recordPredefined(hit: boolean): void {
+  /** Observability RAG: digest della finestra + precedenti simili recuperati. */
+  recordTelemetry(
+    windowDigests: number,
+    anomalous: number,
+    precedents: { title: string; score: number }[]
+  ): void {
+    if (windowDigests > 0) {
+      this.hits.push({
+        source: 'telemetry',
+        title: `${windowDigests} hourly digest(s), ${anomalous} anomalous`,
+        score: anomalous
+      })
+    }
+    for (const p of precedents) {
+      this.hits.push({ source: 'telemetry', title: `precedent: ${p.title}`, score: p.score })
+    }
+  }
+
+    recordPredefined(hit: boolean): void {
     this.predefinedHit = hit
   }
 
@@ -268,9 +286,15 @@ function avg(values: number[]): number | null {
   return values.reduce((s, v) => s + v, 0) / values.length
 }
 
-/** A turn is "ungrounded" when no knowledge, example or predefined query backed it. */
+/** A turn is "ungrounded" when no knowledge, example, predefined query or telemetry history backed it. */
 export function isUngrounded(t: RagTrace): boolean {
-  return t.status !== 'cache_hit' && t.kbHits === 0 && t.exampleHits === 0 && !t.predefinedHit
+  return (
+    t.status !== 'cache_hit' &&
+    t.kbHits === 0 &&
+    t.exampleHits === 0 &&
+    !t.predefinedHit &&
+    !t.hits.some((h) => h.source === 'telemetry')
+  )
 }
 
 export function computeRagStats(traces: RagTrace[]): RagStats {

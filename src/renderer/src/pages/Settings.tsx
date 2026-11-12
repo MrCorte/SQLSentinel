@@ -39,6 +39,7 @@ import { createLogger } from '../utils/logger'
 import { notify } from '../store/notifyStore'
 import { PasswordField } from '../components/ui/PasswordField'
 import { AITrainingSection } from '../components/ai/AITrainingSection'
+import { RagObservabilitySection } from '../components/ai/RagObservabilitySection'
 import { StorageSetupPage } from './StorageSetupPage'
 import type { StorageConfigInfo, AiProviderSettings, AiProviderName } from '../../../preload/index'
 
@@ -1046,6 +1047,9 @@ export function Settings(): React.JSX.Element {
 
       {/* Card — AI Training (feedback, promotion candidates, T-SQL map overlay) */}
       <AITrainingSection />
+
+      {/* Card — RAG Observability (traces, retrieval quality, latency, feedback) */}
+      <RagObservabilitySection />
 
       {/* Card — Storage Database */}
       <Card variant="outlined">

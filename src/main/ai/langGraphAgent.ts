@@ -18,6 +18,8 @@ import { createLogger } from '../utils/logger'
 import { buildServerActionTools } from './actionTools'
 import { toolDefinitionFromDynamicTool } from '../incidents/incidentAgent'
 import { getRawSetting } from '../store/sqlserver/settingsRepository'
+import { startTrace, type RagTraceRecorder } from './ragTrace'
+import type { RagBlockStat } from '../ipc/types'
 
 const log = createLogger('ai')
 
@@ -316,34 +318,39 @@ function normalizeQueryForFts(query: string): string {
 // Reciprocal Rank Fusion — combines two ranked lists into one ranked list.
 // Each document scores Σ 1 / (k + rank_i) across the lists it appears in.
 // k=60 is the standard constant from Cormack et al. (2009).
-interface FusedHit { title: string; content: string; rrf: number }
+interface FusedHit { title: string; content: string; rrf: number; via: 'fts' | 'semantic' | 'both' }
 function rrfFuse(
   fts: { title: string; content: string }[],
   semantic: { title: string; content: string }[]
 ): FusedHit[] {
   const k = 60
   const scores = new Map<string, FusedHit>()
-  const add = (list: { title: string; content: string }[]): void => {
+  const add = (list: { title: string; content: string }[], via: 'fts' | 'semantic'): void => {
     list.forEach((item, rank) => {
       const contribution = 1 / (k + rank + 1)
       const existing = scores.get(item.title)
       if (existing) {
         existing.rrf += contribution
+        if (existing.via !== via) existing.via = 'both'
         // Prefer the longer/richer content version when titles collide
         if (item.content.length > existing.content.length) existing.content = item.content
       } else {
-        scores.set(item.title, { title: item.title, content: item.content, rrf: contribution })
+        scores.set(item.title, { title: item.title, content: item.content, rrf: contribution, via })
       }
     })
   }
-  add(fts)
-  add(semantic)
+  add(fts, 'fts')
+  add(semantic, 'semantic')
   return Array.from(scores.values()).sort((a, b) => b.rrf - a.rrf)
 }
 
 interface KnowledgeRetrieval {
   display: string  // for the tool-timeline event
   fused: FusedHit[] // for context injection
+  // Observability: raw retriever counts before fusion + best cosine score
+  ftsCount: number
+  semanticCount: number
+  semanticTopScore: number | null
 }
 
 interface PastExamplesResult {
@@ -366,7 +373,7 @@ async function pastExamplesImpl(query: string): Promise<PastExamplesResult> {
 
 async function knowledgeRetrievalImpl(query: string): Promise<KnowledgeRetrieval> {
   if (!query || query.includes('"type"') || query.includes('"description"')) {
-    return { display: 'Knowledge base not available or no results found.', fused: [] }
+    return { display: 'Knowledge base not available or no results found.', fused: [], ftsCount: 0, semanticCount: 0, semanticTopScore: null }
   }
 
   const ftsRaw = await searchFts(normalizeQueryForFts(query), 5)
@@ -376,22 +383,25 @@ async function knowledgeRetrievalImpl(query: string): Promise<KnowledgeRetrieval
   }))
 
   let semanticHits: { title: string; content: string }[] = []
+  let semanticTopScore: number | null = null
   try {
     const vec = await semanticSearch(query, 5)
     semanticHits = vec.map((r) => ({ title: r.title, content: r.text }))
+    semanticTopScore = vec.length > 0 ? Math.max(...vec.map((r) => r.score)) : null
   } catch {
     // best-effort — degrade gracefully if Ollama embedder is down
   }
 
   const fused = rrfFuse(ftsHits, semanticHits).slice(0, 4)
+  const counts = { ftsCount: ftsHits.length, semanticCount: semanticHits.length, semanticTopScore }
   if (fused.length === 0) {
-    return { display: 'No relevant knowledge found.', fused: [] }
+    return { display: 'No relevant knowledge found.', fused: [], ...counts }
   }
 
   const display = fused
-    .map((h, i) => `[${i + 1}] ${h.title} (rrf=${h.rrf.toFixed(3)})`)
+    .map((h, i) => `[${i + 1}] ${h.title} (rrf=${h.rrf.toFixed(3)}, ${h.via})`)
     .join('\n')
-  return { display, fused }
+  return { display, fused, ...counts }
 }
 
 // ---------------------------------------------------------------------------
@@ -513,11 +523,12 @@ async function invokeWithEvent<T>(
   name: string,
   fn: () => Promise<T>,
   onEvent: (ev: AiStreamEvent) => void,
-  toDisplay?: (result: T) => string
+  toDisplay?: (result: T) => string,
+  trace?: RagTraceRecorder
 ): Promise<T> {
   onEvent({ type: 'tool_start', name })
   try {
-    const result = await fn()
+    const result = trace ? await trace.span(name, fn) : await fn()
     const display = toDisplay ? toDisplay(result) : String(result)
     onEvent({ type: 'tool_end', name, output: display.slice(0, 2000) })
     return result
@@ -538,16 +549,28 @@ export async function langGraphStream(
   const actionsEnabled =
     !!options?.targetServerId && (await getRawSetting('ai_agent_actions_enabled')) !== 'false'
 
+  // RAG observability: one trace per request. The id goes to the renderer
+  // first so a later 👍/👎 can be attached to this exact retrieval + generation.
+  const trace = startTrace({
+    question,
+    targetServerId: options?.targetServerId ?? null,
+    historyLength: history.length
+  })
+  onEvent({ type: 'trace', traceId: trace.id })
+
   // Fast path: same question answered <10 min ago → replay the cached text.
   // Skipped when there's chat history (the question may depend on prior turns)
   // and when fix tools are active (a cached text reply can't re-propose actions).
   if (history.length === 0 && !actionsEnabled) {
     const cached = getCached(question, options?.targetServerId)
     if (cached) {
+      trace.addSpan('response_cache', 0, trace.elapsed(), true, 'hit')
       onEvent({ type: 'tool_start', name: 'cached_response' })
       onEvent({ type: 'tool_end', name: 'cached_response', output: '(replayed from cache)' })
       onEvent({ type: 'token', text: cached })
+      trace.markFirstToken()
       onEvent({ type: 'done' })
+      trace.finish('cache_hit', { responseChars: cached.length })
       return
     }
   }
@@ -556,16 +579,18 @@ export async function langGraphStream(
   try {
     provider = await getProvider()
   } catch (err) {
-    onEvent({ type: 'error', message: err instanceof Error ? err.message : String(err) })
+    const message = err instanceof Error ? err.message : String(err)
+    onEvent({ type: 'error', message })
+    trace.finish('error', { error: message })
     return
   }
+  trace.setProvider(provider.name, provider.model)
 
-  const providerReady = await provider.health()
+  const providerReady = await trace.span('provider_health', () => provider.health(), String)
   if (!providerReady) {
-    onEvent({
-      type: 'error',
-      message: `AI provider '${provider.name}' is not reachable or is not configured for model '${provider.model}'.`
-    })
+    const message = `AI provider '${provider.name}' is not reachable or is not configured for model '${provider.model}'.`
+    onEvent({ type: 'error', message })
+    trace.finish('error', { error: message })
     return
   }
 
@@ -591,40 +616,55 @@ export async function langGraphStream(
           'get_target_schema',
           async () => (await getTargetSchemaBlock(targetServerId)) ?? '',
           onEvent,
-          (s) => (s ? s.slice(0, 200) : '(none)')
+          (s) => (s ? s.slice(0, 200) : '(none)'),
+          trace
         )
       : Promise.resolve('')
 
     const [metricsResult, alertsResult, knowledgeResult, slowQueriesResult, notesResult, pastExamplesResult, schemaResult] =
       await Promise.allSettled([
-        invokeWithEvent('get_server_metrics', getServerMetricsImpl, onEvent),
-        invokeWithEvent('get_recent_alerts', getRecentAlertsImpl, onEvent),
+        invokeWithEvent('get_server_metrics', getServerMetricsImpl, onEvent, undefined, trace),
+        invokeWithEvent('get_recent_alerts', getRecentAlertsImpl, onEvent, undefined, trace),
         invokeWithEvent(
           'knowledge_retrieval',
           () => knowledgeRetrievalImpl(question),
           onEvent,
-          (r) => r.display
+          (r) => r.display,
+          trace
         ),
-        invokeWithEvent('get_slow_queries', getSlowQueriesImpl, onEvent),
-        invokeWithEvent('get_server_notes', getServerNotesImpl, onEvent),
+        invokeWithEvent('get_slow_queries', getSlowQueriesImpl, onEvent, undefined, trace),
+        invokeWithEvent('get_server_notes', getServerNotesImpl, onEvent, undefined, trace),
         invokeWithEvent(
           'past_examples',
           () => pastExamplesImpl(question),
           onEvent,
-          (r) => r.display
+          (r) => r.display,
+          trace
         ),
         schemaPromise
       ])
     const metrics      = metricsResult.status      === 'fulfilled' ? metricsResult.value      : '[]'
     const alerts       = alertsResult.status       === 'fulfilled' ? alertsResult.value       : '[]'
-    const knowledge    = knowledgeResult.status    === 'fulfilled' ? knowledgeResult.value    : { display: '', fused: [] as FusedHit[] }
+    const knowledge: KnowledgeRetrieval = knowledgeResult.status === 'fulfilled'
+      ? knowledgeResult.value
+      : { display: '', fused: [], ftsCount: 0, semanticCount: 0, semanticTopScore: null }
     const slowQueries  = slowQueriesResult.status  === 'fulfilled' ? slowQueriesResult.value  : '[]'
     const notes        = notesResult.status        === 'fulfilled' ? notesResult.value        : '[]'
     const pastExamples = pastExamplesResult.status === 'fulfilled' ? pastExamplesResult.value : { display: '', examples: [] as PastExamplesResult['examples'] }
     const targetSchema = schemaResult.status       === 'fulfilled' ? schemaResult.value       : ''
 
+    trace.markRetrievalDone()
+    trace.recordKnowledge({
+      ftsCount: knowledge.ftsCount,
+      semanticCount: knowledge.semanticCount,
+      semanticTopScore: knowledge.semanticTopScore,
+      fused: knowledge.fused
+    })
+    trace.recordExamples(pastExamples.examples)
+
     if (controller.signal.aborted) {
       onEvent({ type: 'error', message: 'Cancelled' })
+      trace.finish('cancelled')
       return
     }
 
@@ -692,7 +732,8 @@ export async function langGraphStream(
       )
     }
 
-    const predefined = await lookupTsqlMap(question)
+    const predefined = await trace.span('tsql_map_lookup', () => lookupTsqlMap(question), (r) => (r ? 'hit' : 'miss'))
+    trace.recordPredefined(!!predefined)
     if (predefined) {
       contextParts.push(
         `<<PREDEFINED_QUERY>>\nUse this query verbatim:\n\`\`\`sql\n${predefined}\n\`\`\`\n<<END_PREDEFINED_QUERY>>`
@@ -708,15 +749,23 @@ export async function langGraphStream(
     // Blocks are ordered lowest→highest priority; we drop from the FRONT so that
     // KNOWLEDGE and PREDEFINED_QUERY (end of array) are preserved under pressure.
     const MAX_CONTEXT_CHARS = provider.name === 'claude' ? 30_000 : 12_000
+    const blockStats: RagBlockStat[] = contextParts.map((p) => ({
+      tag: p.match(/<<(\w+)>>/)?.[1] ?? '?',
+      chars: p.length,
+      kept: true
+    }))
     let contextTotal = contextParts.reduce((sum, p) => sum + p.length + 2, 0)
+    let droppedCount = 0
     while (contextParts.length > 1 && contextTotal > MAX_CONTEXT_CHARS) {
       const dropped = contextParts.shift()!
       contextTotal -= dropped.length + 2
+      blockStats[droppedCount++].kept = false
       const tag = dropped.match(/<<(\w+)>>/)?.[1] ?? '?'
       log.warn(
         `[context] budget (${MAX_CONTEXT_CHARS} chars) exceeded — dropped <<${tag}>> block (${dropped.length} chars)`
       )
     }
+    trace.recordContext(blockStats, Math.max(0, contextTotal), MAX_CONTEXT_CHARS)
 
     const context = contextParts.join('\n\n')
     const guardedContext = context
@@ -736,7 +785,10 @@ export async function langGraphStream(
     const actionToolMap = new Map(actionTools.map((t) => [t.name, t]))
     const systemPrompt = `${SYSTEM_PROMPT}${actionsEnabled ? ACTION_MODE_PROMPT : ''}\n\nContext:\n${guardedContext}`
 
+    const genStart = trace.elapsed()
+    let genOk = true
     await provider.stream({
+      onUsage: (u) => trace.addUsage(u.tokensIn, u.tokensOut),
       systemPrompt,
       messages: [
         ...history.slice(-4).map((h) => ({ role: h.role, content: h.content })),
@@ -756,7 +808,10 @@ export async function langGraphStream(
       },
       onEvent: (event) => {
         if (controller.signal.aborted || _activeAbortController !== controller) return
-        if (event.type === 'token') streamedBuffer += event.text
+        if (event.type === 'token') {
+          streamedBuffer += event.text
+          trace.markFirstToken()
+        }
         // Don't cache when fix tools are active — a replayed text reply would
         // omit the action proposals that were part of the original turn.
         if (
@@ -767,12 +822,37 @@ export async function langGraphStream(
         ) {
           putCached(question, streamedBuffer, options?.targetServerId)
         }
+        if (event.type === 'error') genOk = false
         onEvent(event)
+        if (event.type === 'done') {
+          trace.addSpan('llm_generation', genStart, trace.elapsed() - genStart, true)
+          trace.finish('ok', { responseChars: streamedBuffer.length })
+        } else if (event.type === 'error') {
+          trace.addSpan('llm_generation', genStart, trace.elapsed() - genStart, false, event.message)
+          trace.finish(event.message === 'Cancelled' ? 'cancelled' : 'error', {
+            responseChars: streamedBuffer.length,
+            error: event.message
+          })
+        }
       }
     })
+    // Provider returned without emitting done/error (or events were suppressed
+    // after a takeover) — close the trace so it isn't lost.
+    if (trace.isFinished) {
+      // already closed by the done/error event above
+    } else if (!genOk || controller.signal.aborted) {
+      trace.finish('cancelled', { responseChars: streamedBuffer.length })
+    } else {
+      trace.addSpan('llm_generation', genStart, trace.elapsed() - genStart, true)
+      trace.finish('ok', { responseChars: streamedBuffer.length })
+    }
   } catch (err) {
     const msg = controller.signal.aborted ? 'Cancelled' : err instanceof Error ? err.message : String(err)
     onEvent({ type: 'error', message: msg })
+    trace.finish(msg === 'Cancelled' ? 'cancelled' : 'error', {
+      responseChars: streamedBuffer.length,
+      error: msg
+    })
   } finally {
     clearTimeout(timeoutId)
     if (_activeAbortController === controller) _activeAbortController = null

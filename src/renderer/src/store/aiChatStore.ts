@@ -6,6 +6,8 @@ export interface AiMessage {
   role: 'user' | 'assistant'
   content: string
   ts: number
+  /** RAG trace id of the request that produced this assistant reply. */
+  traceId?: string
 }
 
 export interface ToolStep {
@@ -53,7 +55,7 @@ interface AiChatStore {
   appendToken: (text: string) => void
   addToolStep: (name: string) => void
   completeToolStep: (name: string, output: string) => void
-  finalizeStreaming: () => void
+  finalizeStreaming: (traceId?: string) => void
   resetStreaming: (error: string) => void
   setFeedback: (id: string, rating: 1 | -1) => void
   /** Insert or replace a proposed action by id (proposal + status updates). */
@@ -95,12 +97,15 @@ export const useAiChatStore = create<AiChatStore>((set, get) => ({
       )
     })),
 
-  finalizeStreaming: () => {
+  finalizeStreaming: (traceId) => {
     const { streamingText, toolSteps } = get()
     const content = streamingText || (toolSteps.length > 0 ? '*(no text response)*' : '')
     if (!content) return
     set((s) => ({
-      messages: [...s.messages, { id: newId(), role: 'assistant', content, ts: Date.now() }],
+      messages: [
+        ...s.messages,
+        { id: newId(), role: 'assistant', content, ts: Date.now(), ...(traceId ? { traceId } : {}) }
+      ],
       streamingText: '',
       toolSteps: []
     }))

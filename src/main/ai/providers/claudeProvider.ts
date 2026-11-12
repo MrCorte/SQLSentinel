@@ -143,6 +143,10 @@ export class ClaudeProvider implements LlmProvider {
       }
 
       const finalMessage = await stream.finalMessage()
+      req.onUsage?.({
+        tokensIn: finalMessage.usage?.input_tokens ?? 0,
+        tokensOut: finalMessage.usage?.output_tokens ?? 0
+      })
 
       if (finalMessage.stop_reason === 'end_turn' || toolUseBlocks.length === 0) {
         onEvent({ type: 'done' })

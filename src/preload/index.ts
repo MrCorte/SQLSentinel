@@ -47,7 +47,11 @@ import type {
   AiFeedbackRecord,
   PromotionCandidateDto,
   PromoteToTsqlMapInput,
-  TsqlMapEntryDto
+  TsqlMapEntryDto,
+  RagTrace,
+  RagStats,
+  RagStatsRequest,
+  RagListTracesRequest
 } from '../main/ipc/types'
 import type {
   Incident,
@@ -157,7 +161,16 @@ export type {
   AiFeedbackRecord,
   PromotionCandidateDto,
   TsqlMapEntryDto,
-  PromoteToTsqlMapInput
+  PromoteToTsqlMapInput,
+  RagTrace,
+  RagTraceStatus,
+  RagSpan,
+  RagRetrievalHit,
+  RagBlockStat,
+  RagStats,
+  RagStageStat,
+  RagStatsRequest,
+  RagListTracesRequest
 } from '../main/ipc/types'
 export type {
   Incident,
@@ -793,6 +806,10 @@ const realApi = {
     ipcRenderer.invoke(IpcChannel.AI_LIST_TSQL_MAP),
   aiDeleteTsqlMapEntry: (id: string): Promise<IpcResult<void>> =>
     ipcRenderer.invoke(IpcChannel.AI_DELETE_TSQL_MAP_ENTRY, id),
+  aiRagListTraces: (req?: RagListTracesRequest): Promise<IpcResult<RagTrace[]>> =>
+    ipcRenderer.invoke(IpcChannel.AI_RAG_LIST_TRACES, req),
+  aiRagStats: (req?: RagStatsRequest): Promise<IpcResult<RagStats>> =>
+    ipcRenderer.invoke(IpcChannel.AI_RAG_STATS, req),
 
   incidents: {
     list: (req?: IncidentListRequest): Promise<IpcResult<Incident[]>> =>
@@ -868,6 +885,129 @@ const realApi = {
     listForServer: (serverId: string): Promise<IpcResult<IncidentAction[]>> =>
       ipcRenderer.invoke(IpcChannel.ACTIONS_LIST_FOR_SERVER, serverId)
   }
+}
+
+
+// Mock RAG observability data — lets the dashboard render without SQL Server.
+const MOCK_RAG_TRACES: RagTrace[] = [
+  {
+    id: 'mock-trace-1',
+    createdAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    question: 'Why is tempdb growing on PROD01?',
+    targetServerId: null,
+    historyLength: 0,
+    provider: 'ollama',
+    model: 'gemma4:e4b',
+    status: 'ok',
+    totalMs: 6420,
+    ttftMs: 5900,
+    retrievalMs: 310,
+    tokensIn: 3120,
+    tokensOut: 410,
+    contextChars: 9800,
+    contextBudget: 12000,
+    responseChars: 1650,
+    ftsHits: 4,
+    semanticHits: 3,
+    semanticTopScore: 0.74,
+    kbHits: 4,
+    exampleHits: 1,
+    exampleTopScore: 0.81,
+    predefinedHit: false,
+    spans: [
+      { name: 'provider_health', startMs: 0, durationMs: 12, ok: true },
+      { name: 'get_server_metrics', startMs: 14, durationMs: 85, ok: true },
+      { name: 'knowledge_retrieval', startMs: 14, durationMs: 290, ok: true },
+      { name: 'past_examples', startMs: 14, durationMs: 120, ok: true },
+      { name: 'tsql_map_lookup', startMs: 310, durationMs: 2, ok: true, detail: 'miss' },
+      { name: 'llm_generation', startMs: 315, durationMs: 6100, ok: true }
+    ],
+    hits: [
+      { source: 'kb', title: 'tempdb contention and version store', score: 0.0325, via: 'both' },
+      { source: 'kb', title: 'Monitoring tempdb space usage', score: 0.0164, via: 'fts' },
+      { source: 'example', title: 'tempdb is full what do I do', score: 0.81 }
+    ],
+    blocks: [
+      { tag: 'SERVER_METRICS', chars: 2400, kept: false },
+      { tag: 'RECENT_ALERTS', chars: 900, kept: true },
+      { tag: 'KNOWLEDGE', chars: 3500, kept: true },
+      { tag: 'PAST_EXAMPLES', chars: 1400, kept: true }
+    ],
+    error: null,
+    feedbackRating: 1
+  },
+  {
+    id: 'mock-trace-2',
+    createdAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+    question: 'How do I configure distributed AG listeners?',
+    targetServerId: null,
+    historyLength: 0,
+    provider: 'ollama',
+    model: 'gemma4:e4b',
+    status: 'ok',
+    totalMs: 8100,
+    ttftMs: 7700,
+    retrievalMs: 280,
+    tokensIn: 1900,
+    tokensOut: 520,
+    contextChars: 4100,
+    contextBudget: 12000,
+    responseChars: 2100,
+    ftsHits: 0,
+    semanticHits: 0,
+    semanticTopScore: null,
+    kbHits: 0,
+    exampleHits: 0,
+    exampleTopScore: null,
+    predefinedHit: false,
+    spans: [
+      { name: 'knowledge_retrieval', startMs: 10, durationMs: 270, ok: true },
+      { name: 'llm_generation', startMs: 290, durationMs: 7800, ok: true }
+    ],
+    hits: [],
+    blocks: [{ tag: 'SERVER_METRICS', chars: 2400, kept: true }],
+    error: null,
+    feedbackRating: -1
+  }
+]
+
+const MOCK_RAG_STATS: RagStats = {
+  totalTraces: 42,
+  errorRate: 0.024,
+  cacheHitRate: 0.19,
+  p50TotalMs: 5200,
+  p95TotalMs: 11800,
+  p50TtftMs: 4700,
+  avgRetrievalMs: 295,
+  ungroundedRate: 0.21,
+  avgSemanticTopScore: 0.68,
+  predefinedHitRate: 0.14,
+  tokensIn: 96000,
+  tokensOut: 15400,
+  feedback: {
+    rated: 17,
+    up: 13,
+    down: 4,
+    satisfaction: 13 / 17,
+    avgSemanticScoreUp: 0.73,
+    avgSemanticScoreDown: 0.55,
+    groundedRateUp: 0.92,
+    groundedRateDown: 0.25
+  },
+  stages: [
+    { name: 'llm_generation', count: 34, avgMs: 4900, p95Ms: 11000, errors: 1 },
+    { name: 'knowledge_retrieval', count: 34, avgMs: 260, p95Ms: 610, errors: 0 },
+    { name: 'past_examples', count: 34, avgMs: 110, p95Ms: 240, errors: 0 },
+    { name: 'get_server_metrics', count: 34, avgMs: 80, p95Ms: 190, errors: 0 }
+  ],
+  blockDrops: [{ tag: 'SERVER_METRICS', count: 6 }],
+  knowledgeGaps: [
+    {
+      traceId: 'mock-trace-2',
+      question: 'How do I configure distributed AG listeners?',
+      createdAt: new Date(Date.now() - 30 * 60_000).toISOString()
+    }
+  ]
 }
 
 // ---------------------------------------------------------------------------
@@ -1276,6 +1416,14 @@ const mockApi = {
     ok: true,
     data: undefined
   }),
+  aiRagListTraces: async (_req?: RagListTracesRequest): Promise<IpcResult<RagTrace[]>> => ({
+    ok: true,
+    data: MOCK_RAG_TRACES
+  }),
+  aiRagStats: async (_req?: RagStatsRequest): Promise<IpcResult<RagStats>> => ({
+    ok: true,
+    data: MOCK_RAG_STATS
+  }),
 
   onAiStreamEvent: (_cb: (event: AiStreamEvent) => void): (() => void) => {
     return () => {
@@ -1433,6 +1581,8 @@ const bridgeApi = {
   aiPromoteToTsqlMap: (i: PromoteToTsqlMapInput) => realApi.aiPromoteToTsqlMap(i),
   aiListTsqlMap: () => realApi.aiListTsqlMap(),
   aiDeleteTsqlMapEntry: (id: string) => realApi.aiDeleteTsqlMapEntry(id),
+  aiRagListTraces: (r?: RagListTracesRequest) => api.aiRagListTraces(r),
+  aiRagStats: (r?: RagStatsRequest) => api.aiRagStats(r),
   incidents: realApi.incidents,
   actions: realApi.actions,
   getServiceStatus: () => ipcRenderer.invoke(IpcChannel.SERVICE_STATUS_GET),

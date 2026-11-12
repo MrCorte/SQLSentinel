@@ -18,6 +18,7 @@ import {
   preWarm as preWarmFeedbackIndex
 } from '../../ai/feedbackIndex'
 import { invalidate as invalidateResponseCache, putCachedApproved } from '../../ai/responseCache'
+import { attachFeedback as attachTraceFeedback } from '../../ai/ragTrace'
 import {
   insertFeedback,
   listAll as listAllFeedback,
@@ -169,6 +170,13 @@ export function registerKnowledgeHandlers(): void {
         // few-shot index so the bad answer can no longer appear as a past example.
         if (input.rating === -1) {
           removeByQuestionFromIndex(input.question)
+        }
+        // RAG observability: link the rating to the trace that produced the
+        // answer. Best-effort — feedback is already saved above.
+        if (typeof input.traceId === 'string' && input.traceId.length <= 36) {
+          attachTraceFeedback(input.traceId, input.rating).catch((err) =>
+            log.warn('[IPC] AI_SAVE_FEEDBACK: trace link failed:', safeError(err))
+          )
         }
         return { ok: true, data: id }
       } catch (err) {

@@ -14,6 +14,8 @@ export interface ThumbsRowProps {
   model: string
   /** Optional — set when the feedback originated inside an incident drawer. */
   incidentId?: string | null
+  /** RAG trace that produced the response — links the rating to retrieval telemetry. */
+  traceId?: string
   /** Current rating from the parent store (controlled). */
   currentRating?: 1 | -1
   onSaved?: (rating: 1 | -1) => void
@@ -30,6 +32,7 @@ export function ThumbsRow({
   provider,
   model,
   incidentId,
+  traceId,
   currentRating,
   onSaved
 }: ThumbsRowProps): React.JSX.Element {
@@ -46,7 +49,8 @@ export function ThumbsRow({
         rating,
         provider,
         model,
-        incidentId: incidentId ?? null
+        incidentId: incidentId ?? null,
+        traceId: traceId ?? null
       })
       if (result.ok) {
         onSaved?.(rating)

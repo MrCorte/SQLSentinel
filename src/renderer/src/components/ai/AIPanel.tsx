@@ -71,6 +71,9 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
   // of one Zustand setState per token.
   const tokenBufRef = useRef('')
   const tokenRafRef = useRef<number | null>(null)
+  // RAG trace id of the in-flight request — attached to the final message so
+  // thumbs up/down can be linked to the retrieval telemetry.
+  const traceIdRef = useRef<string | undefined>(undefined)
 
   useEffect(() => {
     mountedRef.current = true
@@ -136,9 +139,12 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
       }
     }
 
+    traceIdRef.current = undefined
     const unsubscribe = window.sqlSentinel.onAiStreamEvent((ev: AiStreamEvent) => {
       if (!mountedRef.current) return
-      if (ev.type === 'token') {
+      if (ev.type === 'trace') {
+        traceIdRef.current = ev.traceId
+      } else if (ev.type === 'token') {
         tokenBufRef.current += ev.text
         if (!tokenRafRef.current) tokenRafRef.current = requestAnimationFrame(flushTokens)
       } else if (ev.type === 'tool_start') {
@@ -152,7 +158,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
         unsubscribeRef.current = null
         if (tokenRafRef.current) { cancelAnimationFrame(tokenRafRef.current); tokenRafRef.current = null }
         flushTokens()
-        finalizeStreaming()
+        finalizeStreaming(traceIdRef.current)
         if (mountedRef.current) setLoading(false)
       } else if (ev.type === 'error') {
         unsubscribeRef.current?.()
@@ -160,7 +166,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
         if (tokenRafRef.current) { cancelAnimationFrame(tokenRafRef.current); tokenRafRef.current = null }
         flushTokens()
         if (ev.message === 'Cancelled') {
-          finalizeStreaming()
+          finalizeStreaming(traceIdRef.current)
         } else {
           resetStreaming(ev.message)
         }
@@ -330,6 +336,7 @@ export function AIPanel({ open, onClose }: AIPanelProps): React.JSX.Element {
                       response={msg.content}
                       provider={providerName}
                       model={modelName}
+                      traceId={msg.traceId}
                       currentRating={feedbackByMessageId[msg.id]}
                       onSaved={(rating) => setFeedback(msg.id, rating)}
                     />

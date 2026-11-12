@@ -88,6 +88,11 @@ export class OllamaProvider implements LlmProvider {
       }
 
       const response = await withRetry(() => (llm as ChatOllama).invoke(lcMessages, { signal }))
+      const usage = (response as { usage_metadata?: { input_tokens?: number; output_tokens?: number } })
+        .usage_metadata
+      if (usage) {
+        req.onUsage?.({ tokensIn: usage.input_tokens ?? 0, tokensOut: usage.output_tokens ?? 0 })
+      }
 
       const toolCalls = Array.isArray((response as { tool_calls?: unknown[] }).tool_calls)
         ? (response as { tool_calls: { name: string; args: Record<string, unknown>; id?: string }[] }).tool_calls

@@ -19,6 +19,8 @@ export interface LlmRequest {
   onToolCall: (name: string, params: Record<string, unknown>) => Promise<string>
   onEvent: (ev: AiStreamEvent) => void
   signal: AbortSignal
+  /** Optional observability hook — called once per model round-trip with token usage. */
+  onUsage?: (usage: { tokensIn: number; tokensOut: number }) => void
 }
 
 export interface LlmProvider {

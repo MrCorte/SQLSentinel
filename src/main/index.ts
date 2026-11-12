@@ -38,6 +38,12 @@ import {
   importKnowledgeIfEmpty
 } from './store/sqlserver/knowledgeRepository'
 import { preWarm as preWarmFeedbackIndex } from './ai/feedbackIndex'
+import { setTracePersister } from './ai/ragTrace'
+import {
+  insertTrace as insertRagTrace,
+  setTraceFeedback as setRagTraceFeedback,
+  purgeOlderThan as purgeOldRagTraces
+} from './store/sqlserver/ragTraceRepository'
 import { reloadDynamicTsqlMap } from './ai/langGraphAgent'
 import { safeError as redactError } from './utils/safeLog'
 import { createLogger } from './utils/logger'
@@ -409,6 +415,14 @@ app.whenReady().then(async () => {
   // — best-effort: they depend on SQL Server storage being configured.
   preWarmFeedbackIndex().catch((err) => log.warn('[main] preWarmFeedbackIndex:', err))
   reloadDynamicTsqlMap().catch((err) => log.warn('[main] reloadDynamicTsqlMap:', err))
+  // RAG observability — persist per-request traces to SQL Server (the in-memory
+  // ring buffer still works if storage is down) and apply the 30-day retention.
+  setTracePersister({ insert: insertRagTrace, setFeedback: setRagTraceFeedback })
+  purgeOldRagTraces()
+    .then((n) => {
+      if (n > 0) log.info(`[main] purged ${n} RAG trace(s) past retention`)
+    })
+    .catch((err) => log.warn('[main] purgeOldRagTraces:', redactError(err)))
 
   setPushHandler((channel, data) => {
     BrowserWindow.getAllWindows().forEach((w) => {

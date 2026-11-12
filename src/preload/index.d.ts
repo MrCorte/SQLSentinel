@@ -563,6 +563,7 @@ export type AiStreamEvent =
   | { type: 'tool_end'; name: string; output: string }
   | { type: 'token'; text: string }
   | { type: 'action_proposed'; action: IncidentAction }
+  | { type: 'trace'; traceId: string }
   | { type: 'done' }
   | { type: 'error'; message: string }
 
@@ -594,6 +595,99 @@ export interface AiFeedbackSaveInput {
   provider: string
   model: string
   incidentId?: string | null
+  traceId?: string | null
+}
+
+// RAG observability (mirrors src/main/ipc/types.ts)
+export type RagTraceStatus = 'ok' | 'error' | 'cancelled' | 'cache_hit'
+export interface RagSpan {
+  name: string
+  startMs: number
+  durationMs: number
+  ok: boolean
+  detail?: string
+}
+export interface RagRetrievalHit {
+  source: 'kb' | 'example'
+  title: string
+  score: number
+  via?: 'fts' | 'semantic' | 'both'
+}
+export interface RagBlockStat {
+  tag: string
+  chars: number
+  kept: boolean
+}
+export interface RagTrace {
+  id: string
+  createdAt: string
+  question: string
+  targetServerId: string | null
+  historyLength: number
+  provider: string | null
+  model: string | null
+  status: RagTraceStatus
+  totalMs: number
+  ttftMs: number | null
+  retrievalMs: number | null
+  tokensIn: number | null
+  tokensOut: number | null
+  contextChars: number
+  contextBudget: number
+  responseChars: number
+  ftsHits: number
+  semanticHits: number
+  semanticTopScore: number | null
+  kbHits: number
+  exampleHits: number
+  exampleTopScore: number | null
+  predefinedHit: boolean
+  spans: RagSpan[]
+  hits: RagRetrievalHit[]
+  blocks: RagBlockStat[]
+  error: string | null
+  feedbackRating: 1 | -1 | null
+}
+export interface RagStageStat {
+  name: string
+  count: number
+  avgMs: number
+  p95Ms: number
+  errors: number
+}
+export interface RagStats {
+  totalTraces: number
+  errorRate: number
+  cacheHitRate: number
+  p50TotalMs: number | null
+  p95TotalMs: number | null
+  p50TtftMs: number | null
+  avgRetrievalMs: number | null
+  ungroundedRate: number
+  avgSemanticTopScore: number | null
+  predefinedHitRate: number
+  tokensIn: number
+  tokensOut: number
+  feedback: {
+    rated: number
+    up: number
+    down: number
+    satisfaction: number | null
+    avgSemanticScoreUp: number | null
+    avgSemanticScoreDown: number | null
+    groundedRateUp: number | null
+    groundedRateDown: number | null
+  }
+  stages: RagStageStat[]
+  blockDrops: { tag: string; count: number }[]
+  knowledgeGaps: { traceId: string; question: string; createdAt: string }[]
+}
+export interface RagStatsRequest {
+  sinceHours?: number
+}
+export interface RagListTracesRequest {
+  limit?: number
+  sinceHours?: number
 }
 
 export interface AiFeedbackRecord {
@@ -743,6 +837,8 @@ export interface SqlSentinelAPI {
   aiPromoteToTsqlMap(input: PromoteToTsqlMapInput): Promise<IpcResult<string>>
   aiListTsqlMap(): Promise<IpcResult<TsqlMapEntryDto[]>>
   aiDeleteTsqlMapEntry(id: string): Promise<IpcResult<void>>
+  aiRagListTraces(req?: RagListTracesRequest): Promise<IpcResult<RagTrace[]>>
+  aiRagStats(req?: RagStatsRequest): Promise<IpcResult<RagStats>>
   incidents: {
     list(req?: { status?: IncidentStatus }): Promise<IpcResult<Incident[]>>
     get(id: string): Promise<IpcResult<IncidentDetail>>

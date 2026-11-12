@@ -26,6 +26,7 @@ vi.mock('../../store/sqlserver/knowledgeRepository', () => ({
   warmupEmbedder: vi.fn(async () => {})
 }))
 import { langGraphAsk, langGraphStream, abortActiveStream } from '../langGraphAgent'
+import { getRecentTraces } from '../ragTrace'
 import type { AiStreamEvent } from '../../ipc/types'
 
 beforeEach(() => {
@@ -80,6 +81,34 @@ describe('langGraphStream', () => {
     const systemPrompt = mockProviderStream.mock.calls[0][0].systemPrompt as string
     expect(systemPrompt).toContain('<<KNOWLEDGE>>')
     expect(systemPrompt).toContain('Mock Semantic')
+  })
+
+  it('emits a trace id first and records a finished RAG trace', async () => {
+    const events: AiStreamEvent[] = []
+    await langGraphStream('blocking query', [], (e) => events.push(e))
+
+    expect(events[0]).toMatchObject({ type: 'trace' })
+    const traceId = (events[0] as { type: 'trace'; traceId: string }).traceId
+    const trace = getRecentTraces().find((t) => t.id === traceId)
+    expect(trace).toBeDefined()
+    expect(trace!.status).toBe('ok')
+    expect(trace!.kbHits).toBeGreaterThan(0)
+    expect(trace!.blocks.map((b) => b.tag)).toContain('KNOWLEDGE')
+    const spanNames = trace!.spans.map((s) => s.name)
+    expect(spanNames).toEqual(expect.arrayContaining(['knowledge_retrieval', 'past_examples', 'llm_generation']))
+    expect(spanNames.filter((n) => n === 'llm_generation')).toHaveLength(1)
+  })
+
+  it('marks the trace as error when the provider throws', async () => {
+    mockProviderStream.mockImplementation(async () => {
+      throw new Error('Provider down')
+    })
+    const events: AiStreamEvent[] = []
+    await langGraphStream('test', [], (e) => events.push(e))
+    const traceId = (events[0] as { type: 'trace'; traceId: string }).traceId
+    const trace = getRecentTraces().find((t) => t.id === traceId)
+    expect(trace?.status).toBe('error')
+    expect(trace?.error).toBe('Provider down')
   })
 
   it('emits error event when LLM stream throws', async () => {

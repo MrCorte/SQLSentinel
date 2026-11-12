@@ -101,6 +101,9 @@ export enum IpcChannel {
   AI_PROMOTE_TO_TSQL_MAP = 'ai:promoteToTsqlMap',
   AI_LIST_TSQL_MAP = 'ai:listTsqlMap',
   AI_DELETE_TSQL_MAP_ENTRY = 'ai:deleteTsqlMapEntry',
+  // RAG observability — per-request traces + aggregated quality/latency stats
+  AI_RAG_LIST_TRACES = 'ai:ragListTraces',
+  AI_RAG_STATS = 'ai:ragStats',
   // Storage connection management
   STORAGE_GET_CONFIG = 'storage:get-config',
   STORAGE_TEST_CONNECTION = 'storage:test-connection',
@@ -138,6 +141,8 @@ export interface AiFeedbackSaveInput {
   provider: string
   model: string
   incidentId?: string | null
+  /** RAG trace that produced the rated answer — links feedback to retrieval telemetry. */
+  traceId?: string | null
 }
 
 export interface AiFeedbackRecord {
@@ -200,8 +205,117 @@ export type AiStreamEvent =
   | { type: 'tool_end'; name: string; output: string }
   | { type: 'token'; text: string }
   | { type: 'action_proposed'; action: IncidentAction }
+  | { type: 'trace'; traceId: string }
   | { type: 'done' }
   | { type: 'error'; message: string }
+
+// ---------------------------------------------------------------------------
+// RAG observability wire types (mirrored in preload/index.d.ts)
+// ---------------------------------------------------------------------------
+
+export type RagTraceStatus = 'ok' | 'error' | 'cancelled' | 'cache_hit'
+
+export interface RagSpan {
+  name: string
+  /** Offset from trace start (ms). */
+  startMs: number
+  durationMs: number
+  ok: boolean
+  detail?: string
+}
+
+export interface RagRetrievalHit {
+  source: 'kb' | 'example'
+  title: string
+  /** RRF score for KB hits, cosine similarity for few-shot examples. */
+  score: number
+  via?: 'fts' | 'semantic' | 'both'
+}
+
+export interface RagBlockStat {
+  tag: string
+  chars: number
+  /** false = dropped to respect the context budget. */
+  kept: boolean
+}
+
+export interface RagTrace {
+  id: string
+  createdAt: string
+  question: string
+  targetServerId: string | null
+  historyLength: number
+  provider: string | null
+  model: string | null
+  status: RagTraceStatus
+  totalMs: number
+  ttftMs: number | null
+  retrievalMs: number | null
+  tokensIn: number | null
+  tokensOut: number | null
+  contextChars: number
+  contextBudget: number
+  responseChars: number
+  ftsHits: number
+  semanticHits: number
+  semanticTopScore: number | null
+  kbHits: number
+  exampleHits: number
+  exampleTopScore: number | null
+  predefinedHit: boolean
+  spans: RagSpan[]
+  hits: RagRetrievalHit[]
+  blocks: RagBlockStat[]
+  error: string | null
+  feedbackRating: 1 | -1 | null
+}
+
+export interface RagStageStat {
+  name: string
+  count: number
+  avgMs: number
+  p95Ms: number
+  errors: number
+}
+
+export interface RagStats {
+  totalTraces: number
+  errorRate: number
+  cacheHitRate: number
+  p50TotalMs: number | null
+  p95TotalMs: number | null
+  p50TtftMs: number | null
+  avgRetrievalMs: number | null
+  /** Share of generated answers with no KB hit, no example and no predefined query. */
+  ungroundedRate: number
+  avgSemanticTopScore: number | null
+  predefinedHitRate: number
+  tokensIn: number
+  tokensOut: number
+  feedback: {
+    rated: number
+    up: number
+    down: number
+    satisfaction: number | null
+    avgSemanticScoreUp: number | null
+    avgSemanticScoreDown: number | null
+    groundedRateUp: number | null
+    groundedRateDown: number | null
+  }
+  stages: RagStageStat[]
+  blockDrops: { tag: string; count: number }[]
+  knowledgeGaps: { traceId: string; question: string; createdAt: string }[]
+}
+
+export interface RagStatsRequest {
+  /** Look-back window in hours (default 24, max 720). */
+  sinceHours?: number
+}
+
+export interface RagListTracesRequest {
+  limit?: number
+  sinceHours?: number
+}
 
 /** Request to approve & execute a remediation action (incident- or chat-originated). */
 export interface ApproveActionRequest {

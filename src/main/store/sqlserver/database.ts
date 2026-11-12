@@ -117,6 +117,44 @@ const TABLE_DDL: Array<{ name: string; sql: string }> = [
      )`
   },
   {
+    // RAG observability — one row per AI assistant request. Scalar KPIs are
+    // typed columns so the dashboard aggregates stay plain numeric scans; the
+    // variable-shape detail (spans / hits / context blocks) is JSON. Feedback
+    // (thumbs up/down) is written back onto the row when the user rates it.
+    name: 'ai_rag_traces',
+    sql: `CREATE TABLE dbo.ai_rag_traces (
+       id                 NVARCHAR(36)   NOT NULL PRIMARY KEY NONCLUSTERED,
+       created_at         DATETIME2(3)   NOT NULL,
+       question           NVARCHAR(2000) NOT NULL,
+       question_hash      CHAR(64)       NOT NULL,
+       target_server_id   NVARCHAR(36)   NULL,
+       history_length     INT            NOT NULL,
+       provider           NVARCHAR(20)   NULL,
+       model              NVARCHAR(100)  NULL,
+       status             NVARCHAR(20)   NOT NULL,
+       total_ms           INT            NOT NULL,
+       ttft_ms            INT            NULL,
+       retrieval_ms       INT            NULL,
+       tokens_in          INT            NULL,
+       tokens_out         INT            NULL,
+       context_chars      INT            NOT NULL,
+       context_budget     INT            NOT NULL,
+       response_chars     INT            NOT NULL,
+       fts_hits           INT            NOT NULL,
+       semantic_hits      INT            NOT NULL,
+       semantic_top_score FLOAT          NULL,
+       kb_hits            INT            NOT NULL,
+       example_hits       INT            NOT NULL,
+       example_top_score  FLOAT          NULL,
+       predefined_hit     BIT            NOT NULL,
+       spans_json         NVARCHAR(MAX)  NOT NULL,
+       hits_json          NVARCHAR(MAX)  NOT NULL,
+       blocks_json        NVARCHAR(MAX)  NOT NULL,
+       error              NVARCHAR(1000) NULL,
+       feedback_rating    SMALLINT       NULL
+     )`
+  },
+  {
     // Dynamic overlay on the hardcoded TSQL_MAP — promoted patterns the user
     // has approved via the Settings UI. lookupTsqlMap checks this table first.
     name: 'ai_tsql_map',
@@ -317,6 +355,13 @@ const INDEX_DDL: Array<{ table: string; name: string; sql: string }> = [
     table: 'metrics_snapshots',
     name: 'IX_metrics_cleanup',
     sql: `CREATE INDEX IX_metrics_cleanup ON dbo.metrics_snapshots(collected_at)`
+  },
+  {
+    // Time-window reads (dashboard) and retention deletes both filter on
+    // created_at; clustering on it keeps them range scans and appends at the end.
+    table: 'ai_rag_traces',
+    name: 'CX_ai_rag_traces_created',
+    sql: `CREATE CLUSTERED INDEX CX_ai_rag_traces_created ON dbo.ai_rag_traces(created_at)`
   },
   {
     table: 'sessions',
